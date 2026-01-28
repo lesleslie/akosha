@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: akasha
+  labels:
+    name: akasha
+    app: akasha-mcp

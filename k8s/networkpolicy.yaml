@@ -1,0 +1,40 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: akasha-network-policy
+  namespace: akasha
+  labels:
+    app: akasha-mcp
+spec:
+  podSelector:
+    matchLabels:
+      app: akasha-mcp
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow inbound traffic from anywhere (adjust as needed for security)
+  - ports:
+    - protocol: TCP
+      port: 3002
+  egress:
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow outbound HTTPS (for external API calls if needed)
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+  # Allow outbound HTTP (for external API calls if needed)
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 80

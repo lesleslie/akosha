@@ -1,0 +1,189 @@
+{
+  "dashboard": {
+    "title": "Akasha System Health",
+    "description": "Overall system health and analytics monitoring",
+    "tags": ["akasha", "health", "analytics"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Analytics Operations Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "rate(analytics_metrics_added_total[1m])",
+            "legendFormat": "Metrics Added/sec",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(analytics_trend_completed_total[1m])",
+            "legendFormat": "Trend Analysis/sec",
+            "refId": "B"
+          },
+          {
+            "expr": "rate(analytics_anomaly_detected_total[1m])",
+            "legendFormat": "Anomalies Detected/sec",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops"
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Knowledge Graph Growth",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "kg_entities_total",
+            "legendFormat": "Total Entities",
+            "refId": "A"
+          },
+          {
+            "expr": "kg_edges_total",
+            "legendFormat": "Total Edges",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short"
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Trend Analysis Strength Distribution",
+        "type": "heatmap",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(analytics_trend_strength_bucket[5m])) by (le))",
+            "legendFormat": "p95 Trend Strength",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Anomaly Detection Rate",
+        "type": "gauge",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "avg(analytics_anomaly_rate)",
+            "legendFormat": "Anomaly Rate",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 0.05, "color": "yellow"},
+                {"value": 0.1, "color": "red"}
+              ]
+            },
+            "color": {"mode": "thresholds"}
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Knowledge Graph Operations",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "targets": [
+          {
+            "expr": "rate(kg_entities_added_total[1m])",
+            "legendFormat": "Entities Added/sec",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(kg_edges_added_total[1m])",
+            "legendFormat": "Edges Added/sec",
+            "refId": "B"
+          },
+          {
+            "expr": "rate(kg_shortest_path_found_total[1m])",
+            "legendFormat": "Paths Found/sec",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops"
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "System Health Score",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 16},
+        "targets": [
+          {
+            "expr": "avg(circuit_success_rate)",
+            "legendFormat": "Circuit Breaker Success",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 0.8, "color": "yellow"},
+                {"value": 0.95, "color": "green"}
+              ]
+            },
+            "color": {"mode": "thresholds"}
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "Active Traces",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 18, "y": 16},
+        "targets": [
+          {
+            "expr": "sum(rate(span_duration_milliseconds_sum[5m]))",
+            "legendFormat": "Avg Span Duration",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "decimals": 2
+          }
+        }
+      }
+    ]
+  }
+}

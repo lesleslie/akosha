@@ -1,0 +1,117 @@
+groups:
+  - name: akasha_alerts
+    interval: 30s
+    rules:
+      # Circuit Breaker Alerts
+      - alert: CircuitBreakerOpen
+        expr: circuit_state{state="0"} == 1
+        for: 1m
+        labels:
+          severity: warning
+          component: circuit-breaker
+        annotations:
+          summary: "Circuit breaker OPEN for service {{ $labels.service_name }}"
+          description: "Circuit breaker has been OPEN for {{ $labels.service_name }} for more than 1 minute"
+
+      - alert: CircuitBreakerHighFailureRate
+        expr: |
+          (
+            sum(rate(circuit_failed_calls{service_name=~".+"}[5m])) by (service_name)
+            /
+            sum(rate(circuit_total_calls{service_name=~".+"}[5m])) by (service_name)
+          ) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+          component: circuit-breaker
+        annotations:
+          summary: "High failure rate for service {{ $labels.service_name }}"
+          description: "Service {{ $labels.service_name }} has >50% failure rate over 5 minutes"
+
+      - alert: CircuitBreakerConsecutiveFailures
+        expr: circuit_consecutive_failures >= 4
+        for: 30s
+        labels:
+          severity: critical
+          component: circuit-breaker
+        annotations:
+          summary: "Multiple consecutive failures for {{ $labels.service_name }}"
+          description: "Circuit breaker has {{ $value }} consecutive failures"
+
+      # Embedding Service Alerts
+      - alert: HighFallbackModeUsage
+        expr: |
+          (
+            sum(rate(embedding_generated_total{mode="fallback"}[5m]))
+            /
+            sum(rate(embedding_generated_total[5m]))
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: embeddings
+        annotations:
+          summary: "High fallback mode usage for embeddings"
+          description: "More than 50% of embeddings are using fallback mode"
+
+      - alert: EmbeddingServiceDown
+        expr: sum(rate(embedding_generated_total{mode="real"}[5m])) == 0
+        for: 5m
+        labels:
+          severity: critical
+          component: embeddings
+        annotations:
+          summary: "Embedding service not generating real embeddings"
+          description: "No real embeddings generated in the last 5 minutes"
+
+      # Analytics Alerts
+      - alert: HighAnomalyRate
+        expr: avg(analytics_anomaly_rate) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+          component: analytics
+        annotations:
+          summary: "High anomaly detection rate"
+          description: "Anomaly rate is {{ $value | humanizePercentage }}, indicating unusual system behavior"
+
+      - alert: AnalyticsProcessingFailure
+        expr: rate(analytics_trend_failed_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: analytics
+        annotations:
+          summary: "Analytics processing failures detected"
+          description: "Trend analysis operations are failing"
+
+      # System Health Alerts
+      - alert: HighRejectionRate
+        expr: |
+          (
+            sum(rate(circuit_rejected_calls[5m]))
+            /
+            sum(rate(circuit_total_calls[5m]))
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: resilience
+        annotations:
+          summary: "High call rejection rate"
+          description: "More than 10% of calls are being rejected by circuit breakers"
+
+      - alert: KnowledgeGraphGrowthStalled
+        expr: |
+          (
+            kg_entities_total offset 10m
+          ) == (
+            kg_entities_total
+          )
+        for: 15m
+        labels:
+          severity: info
+          component: knowledge-graph
+        annotations:
+          summary: "Knowledge graph growth has stalled"
+          description: "No new entities added in the last 15 minutes"

@@ -1,0 +1,21 @@
+# Prometheus metrics configuration for Akasha
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Akasha MCP Server metrics
+  - job_name: 'akasha-mcp'
+    static_configs:
+      - targets: ['localhost:3002']
+    metrics_path: /metrics
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # OpenTelemetry metrics (if using OTLP)
+  - job_name: 'akasha-otel'
+    static_configs:
+      - targets: ['localhost:4317']
+    metrics_path: /metrics
+    scrape_interval: 30s

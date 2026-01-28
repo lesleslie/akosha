@@ -12,6 +12,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Final
 
@@ -55,6 +56,21 @@ def create_app() -> FastMCP:
         """Custom lifespan manager for Akasha."""
         logger.info(f"{APP_NAME} v{APP_VERSION} starting up")
 
+        # Initialize OpenTelemetry
+        from akasha.observability import setup_telemetry, shutdown_telemetry
+
+        environment = os.getenv("ENVIRONMENT", "development")
+        otlp_endpoint = os.getenv("OTLP_ENDPOINT", None)
+
+        tracer, meter = setup_telemetry(
+            service_name="akasha-mcp",
+            environment=environment,
+            otlp_endpoint=otlp_endpoint,
+            enable_console_export=(environment == "development"),
+            sample_rate=1.0 if environment == "development" else 0.1,
+        )
+        logger.info("✅ OpenTelemetry tracing initialized")
+
         # Initialize Phase 2 services
         from akasha.processing.embeddings import get_embedding_service
         from akasha.processing.analytics import TimeSeriesAnalytics
@@ -86,8 +102,12 @@ def create_app() -> FastMCP:
             "akasha_ready": True,
             "embedding_service": embedding_service,
             "analytics_service": analytics_service,
+            "tracer": tracer,
+            "meter": meter,
         }
 
+        # Shutdown telemetry
+        await shutdown_telemetry()
         logger.info(f"{APP_NAME} shutdown complete")
 
     app._mcp_server.lifespan = lifespan

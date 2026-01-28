@@ -9,6 +9,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from akasha.observability import add_span_attributes, record_counter, record_histogram, traced
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,6 +53,7 @@ class KnowledgeGraphBuilder:
         self.entities: dict[str, GraphEntity] = {}
         self.edges: list[GraphEdge] = []
 
+    @traced("knowledge_graph_extract_entities")
     async def extract_entities(
         self,
         conversation: dict[str, Any],
@@ -63,6 +66,10 @@ class KnowledgeGraphBuilder:
         Returns:
             List of extracted entities
         """
+        add_span_attributes({
+            "kg.system_id": conversation.get("system_id", "unknown"),
+        })
+
         entities = []
 
         # Extract system entity
@@ -96,8 +103,12 @@ class KnowledgeGraphBuilder:
                 source_system=system_id or "unknown",
             ))
 
+        record_histogram("kg.entities.extracted", len(entities))
+        record_counter("kg.extract_entities.calls", 1)
+
         return entities
 
+    @traced("knowledge_graph_extract_relationships")
     async def extract_relationships(
         self,
         conversation: dict[str, Any],
@@ -114,6 +125,10 @@ class KnowledgeGraphBuilder:
         """
         edges = []
         system_id = conversation.get("system_id", "unknown")
+
+        add_span_attributes({
+            "kg.entity_count": str(len(entities)),
+        })
 
         # User worked on project
         user_entities = [e for e in entities if e.entity_type == "user"]
@@ -139,8 +154,12 @@ class KnowledgeGraphBuilder:
                 source_system=system_id,
             ))
 
+        record_histogram("kg.relationships.extracted", len(edges))
+        record_counter("kg.extract_relationships.calls", 1)
+
         return edges
 
+    @traced("knowledge_graph_add_to_graph")
     async def add_to_graph(
         self,
         entities: list[GraphEntity],
@@ -152,13 +171,25 @@ class KnowledgeGraphBuilder:
             entities: Entities to add
             edges: Edges to add
         """
+        add_span_attributes({
+            "kg.entities_to_add": str(len(entities)),
+            "kg.edges_to_add": str(len(edges)),
+        })
+
         # Add entities
+        new_entities = 0
         for entity in entities:
             if entity.entity_id not in self.entities:
                 self.entities[entity.entity_id] = entity
+                new_entities += 1
 
         # Add edges
         self.edges.extend(edges)
+
+        record_histogram("kg.entities.total", len(self.entities))
+        record_histogram("kg.edges.total", len(self.edges))
+        record_counter("kg.entities.added", new_entities)
+        record_counter("kg.edges.added", len(edges))
 
         logger.debug(
             f"Added {len(entities)} entities and {len(edges)} edges to graph"
@@ -180,6 +211,12 @@ class KnowledgeGraphBuilder:
         Returns:
             List of neighboring entities with relationship info
         """
+        add_span_attributes({
+            "kg.entity_id": entity_id,
+            "kg.edge_type": edge_type or "all",
+            "kg.limit": str(limit),
+        })
+
         neighbors = []
 
         for edge in self.edges:
@@ -207,7 +244,12 @@ class KnowledgeGraphBuilder:
                             "properties": source_entity.properties,
                         })
 
-        return neighbors[:limit]
+        result = neighbors[:limit]
+
+        record_histogram("kg.neighbors.found", len(result))
+        record_counter("kg.get_neighbors.calls", 1)
+
+        return result
 
     def find_shortest_path(
         self,
@@ -225,7 +267,14 @@ class KnowledgeGraphBuilder:
         Returns:
             List of entity IDs in path, or None if no path found
         """
+        add_span_attributes({
+            "kg.source_id": source_id,
+            "kg.target_id": target_id,
+            "kg.max_hops": str(max_hops),
+        })
+
         if source_id not in self.entities or target_id not in self.entities:
+            record_counter("kg.shortest_path.failed", 1, {"reason": "entity_not_found"})
             return None
 
         # BFS for shortest path
@@ -238,6 +287,8 @@ class KnowledgeGraphBuilder:
             current, path = queue.popleft()
 
             if current == target_id:
+                record_histogram("kg.shortest_path.length", len(path))
+                record_counter("kg.shortest_path.found", 1)
                 return path
 
             if len(path) >= max_hops:
@@ -255,6 +306,7 @@ class KnowledgeGraphBuilder:
                     visited.add(neighbor)
                     queue.append((neighbor, path + [neighbor]))
 
+        record_counter("kg.shortest_path.not_found", 1)
         return None
 
     def get_statistics(self) -> dict[str, Any]:

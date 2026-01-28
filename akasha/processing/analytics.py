@@ -15,6 +15,8 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from akasha.observability import add_span_attributes, record_counter, record_histogram, traced
+
 logger = logging.getLogger(__name__)
 
 
@@ -78,6 +80,7 @@ class TimeSeriesAnalytics:
         self._metrics_cache: dict[str, list[DataPoint]] = defaultdict(list)
         logger.info("Time-series analytics service initialized")
 
+    @traced("analytics_add_metric")
     async def add_metric(
         self,
         metric_name: str,
@@ -98,6 +101,12 @@ class TimeSeriesAnalytics:
         if timestamp is None:
             timestamp = datetime.now(UTC)
 
+        add_span_attributes({
+            "analytics.metric_name": metric_name,
+            "analytics.system_id": system_id,
+            "analytics.value": str(value),
+        })
+
         point = DataPoint(
             timestamp=timestamp,
             value=value,
@@ -106,8 +115,13 @@ class TimeSeriesAnalytics:
         )
 
         self._metrics_cache[metric_name].append(point)
+
+        record_counter("analytics.metrics.added", 1, {"metric_name": metric_name})
+        record_histogram("analytics.metric.value", value, {"metric_name": metric_name})
+
         logger.debug(f"Added metric: {metric_name}={value} for system={system_id}")
 
+    @traced("analytics_analyze_trend")
     async def analyze_trend(
         self,
         metric_name: str,
@@ -124,6 +138,12 @@ class TimeSeriesAnalytics:
         Returns:
             Trend analysis results or None if insufficient data
         """
+        add_span_attributes({
+            "analytics.metric_name": metric_name,
+            "analytics.system_id": system_id or "all",
+            "analytics.time_window_hours": str(time_window.total_seconds() / 3600),
+        })
+
         # Filter data points
         points = self._metrics_cache.get(metric_name, [])
 
@@ -135,6 +155,7 @@ class TimeSeriesAnalytics:
 
         if len(filtered) < 2:
             logger.warning(f"Insufficient data for trend analysis: {metric_name}")
+            record_counter("analytics.trend.failed", 1, {"reason": "insufficient_data"})
             return None
 
         # Sort by timestamp
@@ -175,6 +196,10 @@ class TimeSeriesAnalytics:
 
         time_range = (filtered[0].timestamp, filtered[-1].timestamp)
 
+        record_histogram("analytics.trend.strength", trend_strength, {"direction": trend_direction})
+        record_histogram("analytics.trend.confidence", confidence)
+        record_counter("analytics.trend.completed", 1, {"direction": trend_direction})
+
         logger.info(
             f"Trend analysis for {metric_name}: {trend_direction} "
             f"(strength={trend_strength:.2f}, change={percent_change:.1f}%)"
@@ -189,6 +214,7 @@ class TimeSeriesAnalytics:
             time_range=time_range,
         )
 
+    @traced("analytics_detect_anomalies")
     async def detect_anomalies(
         self,
         metric_name: str,
@@ -207,6 +233,12 @@ class TimeSeriesAnalytics:
         Returns:
             Anomaly detection results or None if insufficient data
         """
+        add_span_attributes({
+            "analytics.metric_name": metric_name,
+            "analytics.system_id": system_id or "all",
+            "analytics.threshold_std": str(threshold_std),
+        })
+
         # Filter data points
         points = self._metrics_cache.get(metric_name, [])
 
@@ -218,6 +250,7 @@ class TimeSeriesAnalytics:
 
         if len(filtered) < 10:
             logger.warning(f"Insufficient data for anomaly detection: {metric_name}")
+            record_counter("analytics.anomaly.failed", 1, {"reason": "insufficient_data"})
             return None
 
         # Extract values
@@ -243,6 +276,9 @@ class TimeSeriesAnalytics:
 
         anomaly_rate = len(anomalies) / len(filtered)
 
+        record_histogram("analytics.anomaly.rate", anomaly_rate, {"metric_name": metric_name})
+        record_counter("analytics.anomaly.detected", len(anomalies), {"metric_name": metric_name})
+
         logger.info(
             f"Anomaly detection for {metric_name}: "
             f"{len(anomalies)} anomalies detected ({anomaly_rate:.1%})"
@@ -257,6 +293,7 @@ class TimeSeriesAnalytics:
             anomaly_rate=anomaly_rate,
         )
 
+    @traced("analytics_correlate_systems")
     async def correlate_systems(
         self,
         metric_name: str,
@@ -271,6 +308,11 @@ class TimeSeriesAnalytics:
         Returns:
             Correlation analysis results or None if insufficient data
         """
+        add_span_attributes({
+            "analytics.metric_name": metric_name,
+            "analytics.time_window_hours": str(time_window.total_seconds() / 3600),
+        })
+
         # Filter data points
         points = self._metrics_cache.get(metric_name, [])
 
@@ -279,6 +321,7 @@ class TimeSeriesAnalytics:
 
         if len(filtered) < 10:
             logger.warning(f"Insufficient data for correlation analysis: {metric_name}")
+            record_counter("analytics.correlation.failed", 1, {"reason": "insufficient_data"})
             return None
 
         # Group by system
@@ -293,7 +336,12 @@ class TimeSeriesAnalytics:
 
         if len(systems) < 2:
             logger.warning(f"Need at least 2 systems for correlation: {metric_name}")
+            record_counter("analytics.correlation.failed", 1, {"reason": "insufficient_systems"})
             return None
+
+        add_span_attributes({
+            "analytics.system_count": str(len(systems)),
+        })
 
         # Build aligned time series
         # (simplified - in production, use proper time series alignment)
@@ -349,6 +397,9 @@ class TimeSeriesAnalytics:
             min(p.timestamp for p in filtered),
             max(p.timestamp for p in filtered),
         )
+
+        record_histogram("analytics.correlation.count", len(system_pairs))
+        record_counter("analytics.correlation.completed", 1)
 
         logger.info(
             f"Correlation analysis for {metric_name}: "

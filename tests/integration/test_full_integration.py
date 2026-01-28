@@ -29,16 +29,16 @@ async def test_storage_layers():
         system_id="test-system",
         conversation_id="test-conv-1",
         content="Test conversation about implementing JWT authentication",
-        embedding=[0.0] * 384,
+        embedding=[0.1] * 384,  # Use non-zero embedding for similarity
         timestamp=datetime.now(UTC),
         metadata={"user_id": "alice", "project": "auth-system"},
     )
-    
+
     await hot_store.insert(test_record)
-    
+
     # Search
     results = await hot_store.search_similar(
-        query_embedding=[0.0] * 384,
+        query_embedding=[0.1] * 384,  # Matching query
         system_id="test-system",
         limit=10,
         threshold=0.5,

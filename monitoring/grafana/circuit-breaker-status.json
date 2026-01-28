@@ -1,0 +1,178 @@
+{
+  "dashboard": {
+    "title": "Akasha Circuit Breaker Status",
+    "description": "Monitor circuit breaker states and resilience metrics",
+    "tags": ["akasha", "circuit-breaker", "resilience"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "15s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Circuit Breaker States",
+        "type": "stat",
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "sum(circuit_state{state=\"0\"})",
+            "legendFormat": "OPEN",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(circuit_state{state=\"1\"})",
+            "legendFormat": "CLOSED",
+            "refId": "B"
+          },
+          {
+            "expr": "sum(circuit_state{state=\"2\"})",
+            "legendFormat": "HALF_OPEN",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 1, "color": "green"}
+              ]
+            },
+            "color": {"mode": "thresholds"}
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Service Success Rates",
+        "type": "gauge",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "circuit_success_rate{service_name=\"$service\"}",
+            "legendFormat": "{{service_name}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 0.5, "color": "yellow"},
+                {"value": 0.8, "color": "green"}
+              ]
+            },
+            "color": {"mode": "thresholds"}
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Total Calls by Service",
+        "type": "bargauge",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "sum(circuit_total_calls) by (service_name)",
+            "legendFormat": "{{service_name}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "min": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1000, "color": "yellow"},
+                {"value": 5000, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Call Success/Failure Ratio",
+        "type": "piechart",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "targets": [
+          {
+            "expr": "sum(circuit_successful_calls)",
+            "legendFormat": "Successful",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(circuit_failed_calls)",
+            "legendFormat": "Failed",
+            "refId": "B"
+          },
+          {
+            "expr": "sum(circuit_rejected_calls)",
+            "legendFormat": "Rejected",
+            "refId": "C"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Consecutive Failures by Service",
+        "type": "bargauge",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "targets": [
+          {
+            "expr": "circuit_consecutive_failures",
+            "legendFormat": "{{service_name}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "min": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 3, "color": "yellow"},
+                {"value": 5, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Recent Circuit Breaker Trips",
+        "type": "table",
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+        "targets": [
+          {
+            "expr": "circuit_consecutive_failures >= 3",
+            "legendFormat": "{{service_name}}",
+            "refId": "A",
+            "format": "table"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {"Time": true, "__name__": true},
+              "indexByName": {"service_name": 0, "Value": 1},
+              "renameByName": {"service_name": "Service", "Value": "Failures"}
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

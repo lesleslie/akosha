@@ -3,7 +3,7 @@
 This module provides local embedding generation using sentence-transformers
 with ONNX runtime for privacy-preserving semantic search.
 
- graceful Degradation:
+graceful Degradation:
     - If sentence-transformers unavailable: Returns mock embeddings
     - If model loading fails: Falls back to random embeddings
     - Always functional, never blocks operations
@@ -18,6 +18,8 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
+
+from akasha.observability import record_counter, record_histogram, traced
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +114,7 @@ class EmbeddingService:
         """
         return self._available
 
+    @traced("generate_embedding")
     async def generate_embedding(
         self,
         text: str,
@@ -127,6 +130,13 @@ class EmbeddingService:
         if not self._initialized:
             await self.initialize()
 
+        from akasha.observability import add_span_attributes
+
+        add_span_attributes({
+            "embedding.text_length": len(text),
+            "embedding.mode": "real" if self._available else "fallback",
+        })
+
         if self._available and self._model:
             # Real embedding generation
             loop = asyncio.get_event_loop()
@@ -135,12 +145,25 @@ class EmbeddingService:
                 self._model.encode,
                 text,
             )
-            return np.array(embedding, dtype=np.float32)
+            result = np.array(embedding, dtype=np.float32)
+
+            # Record metrics
+            record_counter("embedding.generated", 1, {"mode": "real"})
+            record_histogram("embedding.text_length", len(text), {"mode": "real"})
+
+            return result
         else:
             # Fallback: Mock embedding based on text hash
             logger.debug("Using fallback embedding generation")
-            return self._generate_fallback_embedding(text)
+            result = self._generate_fallback_embedding(text)
 
+            # Record metrics
+            record_counter("embedding.generated", 1, {"mode": "fallback"})
+            record_histogram("embedding.text_length", len(text), {"mode": "fallback"})
+
+            return result
+
+    @traced("generate_batch_embeddings")
     async def generate_batch_embeddings(
         self,
         texts: list[str],
@@ -158,8 +181,15 @@ class EmbeddingService:
         if not self._initialized:
             await self.initialize()
 
+        from akasha.observability import add_span_attributes
+
         if not texts:
             return []
+
+        add_span_attributes({
+            "batch.size": batch_size,
+            "batch.count": len(texts),
+        })
 
         if self._available and self._model:
             # Batch embedding generation
@@ -170,11 +200,23 @@ class EmbeddingService:
                 texts,
                 {"batch_size": batch_size},
             )
-            return [np.array(emb, dtype=np.float32) for emb in embeddings]
+            result = [np.array(emb, dtype=np.float32) for emb in embeddings]
+
+            # Record metrics
+            record_histogram("embedding.batch_size", len(texts), {"mode": "real"})
+            record_counter("embedding.batch.generated", 1, {"mode": "real"})
+
+            return result
         else:
             # Fallback: Generate mock embeddings individually
             logger.debug(f"Using fallback embeddings for {len(texts)} texts")
-            return [self._generate_fallback_embedding(text) for text in texts]
+            result = [self._generate_fallback_embedding(text) for text in texts]
+
+            # Record metrics
+            record_histogram("embedding.batch_size", len(texts), {"mode": "fallback"})
+            record_counter("embedding.batch.generated", 1, {"mode": "fallback"})
+
+            return result
 
     def _generate_fallback_embedding(self, text: str) -> npt.NDArray[np.float32]:
         """Generate fallback embedding when model unavailable.

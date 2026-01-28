@@ -1,0 +1,142 @@
+{
+  "dashboard": {
+    "title": "Akasha Embedding Performance",
+    "description": "Monitor embedding generation performance and metrics",
+    "tags": ["akasha", "embeddings", "performance"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Embedding Generation Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "rate(embedding_generated_total[1m])",
+            "legendFormat": "{{mode}} - {{mode}} embeddings/sec",
+            "refId": "A"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Embeddings / Second",
+            "min": 0
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops"
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Text Length Distribution",
+        "type": "histogram",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(embedding_text_length_bucket[5m]))",
+            "legendFormat": "p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(embedding_text_length_bucket[5m]))",
+            "legendFormat": "p95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(embedding_text_length_bucket[5m]))",
+            "legendFormat": "p99",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short"
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Real vs Fallback Mode Ratio",
+        "type": "piechart",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(embedding_generated_total{mode=\"real\"}[5m]))",
+            "legendFormat": "Real Mode",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(rate(embedding_generated_total{mode=\"fallback\"}[5m]))",
+            "legendFormat": "Fallback Mode",
+            "refId": "B"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Total Embeddings Generated",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "sum(embedding_generated_total)",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Average Text Length",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 18, "y": 8},
+        "targets": [
+          {
+            "expr": "avg(embedding_text_length_sum / embedding_text_length_count)",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Batch Processing Metrics",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+        "targets": [
+          {
+            "expr": "rate(embedding_batch_generated_total[1m])",
+            "legendFormat": "{{mode}} Batches/sec",
+            "refId": "A"
+          },
+          {
+            "expr": "avg(embedding_batch_size_sum / embedding_batch_size_count) by (mode)",
+            "legendFormat": "Avg Batch Size ({{mode}})",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short"
+          }
+        }
+      }
+    ]
+  }
+}

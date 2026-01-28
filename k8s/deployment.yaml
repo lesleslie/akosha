@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: akasha-mcp
+  namespace: akasha
+  labels:
+    app: akasha-mcp
+    version: v1
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: akasha-mcp
+  template:
+    metadata:
+      labels:
+        app: akasha-mcp
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3002"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: akasha-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: akasha-mcp
+        image: akasha:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: mcp
+          containerPort: 3002
+          protocol: TCP
+        - name: metrics
+          containerPort: 3002
+          protocol: TCP
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: akasha-config
+              key: ENVIRONMENT
+        - name: OTLP_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: akasha-config
+              key: OTLP_ENDPOINT
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: akasha-config
+              key: LOG_LEVEL
+        - name: STORAGE_PATH
+          valueFrom:
+            configMapKeyRef:
+              name: akasha-config
+              key: STORAGE_PATH
+        # Add sensitive environment variables from Secret
+        # - name: REDIS_URL
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: akasha-secrets
+        #       key: REDIS_URL
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: data
+          mountPath: /data/akasha
+        - name: cache
+          mountPath: /tmp/akasha
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3002
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3002
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 3002
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 6
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: akasha-data-pvc
+      - name: cache
+        emptyDir:
+          sizeLimit: 100Mi
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - akasha-mcp
+              topologyKey: kubernetes.io/hostname
