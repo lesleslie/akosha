@@ -49,7 +49,7 @@ class TestIngestionWorker:
     ) -> IngestionWorker:
         """Create ingestion worker with mocked dependencies."""
         return IngestionWorker(
-            storage=mock_storage,
+            storage_adapter=mock_storage,  # type: ignore
             hot_store=mock_hot_store,
             max_concurrent_ingests=5,
             poll_interval_seconds=1,
@@ -231,7 +231,7 @@ class TestIngestionWorker:
     def test_worker_configuration(self) -> None:
         """Test worker configuration from environment."""
         worker = IngestionWorker(
-            storage=AsyncMock(),
+            storage_adapter=AsyncMock(),  # type: ignore
             hot_store=AsyncMock(),
             max_concurrent_ingests=100,
             poll_interval_seconds=60,

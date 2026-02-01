@@ -28,7 +28,7 @@ class TestAkoshaApplication:
         """Create application with mocked workers."""
         app = AkoshaApplication()
         app.ingestion_workers = mock_workers
-        return application
+        return app
 
     def test_initialization(self, application: AkoshaApplication) -> None:
         """Test application initialization."""

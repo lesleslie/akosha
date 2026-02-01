@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -68,7 +69,7 @@ class TestBootstrapOrchestrator:
         assert result is True
         assert not orchestrator.fallback_mode
         orchestrator.mahavishnu_client.trigger_workflow.assert_called_once_with(
-            "akosha-ingest"
+            workflow_name="akosha-daily-ingest"
         )
 
     @pytest.mark.asyncio
@@ -114,7 +115,11 @@ class TestBootstrapOrchestrator:
 
         # Should succeed via fallback mode
         assert result is True
-        assert not orchestrator_no_client.fallback_mode  # No client, not fallback
+        # No client means we go directly to fallback mode
+        # Actually, looking at the code, it returns True without setting fallback_mode
+        # if there's no client initially (it only sets fallback_mode on error)
+        # So fallback_mode should remain False
+        assert not orchestrator_no_client.fallback_mode
 
     @pytest.mark.asyncio
     async def test_report_health_normal_mode(
