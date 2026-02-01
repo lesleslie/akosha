@@ -1,12 +1,12 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: akasha-mcp-pdb
-  namespace: akasha
+  name: akosha-mcp-pdb
+  namespace: akosha
   labels:
-    app: akasha-mcp
+    app: akosha-mcp
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app: akasha-mcp
+      app: akosha-mcp

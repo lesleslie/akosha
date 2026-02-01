@@ -1,12 +1,12 @@
-"""Tests for Akasha MCP server integration."""
+"""Tests for Akosha MCP server integration."""
 
 from __future__ import annotations
 
 import pytest
 
-from akasha.processing.embeddings import get_embedding_service
-from akasha.processing.analytics import TimeSeriesAnalytics
-from akasha.processing.knowledge_graph import KnowledgeGraphBuilder
+from akosha.processing.analytics import TimeSeriesAnalytics
+from akosha.processing.embeddings import get_embedding_service
+from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
 
 
 class TestMCPIntegration:
@@ -15,7 +15,7 @@ class TestMCPIntegration:
     @pytest.mark.asyncio
     async def test_mcp_server_initialization(self) -> None:
         """Test that MCP server initializes with Phase 2 services."""
-        from akasha_mcp.main import create_app
+        from akosha.mcp.server import create_app
 
         app = create_app()
 
@@ -50,8 +50,8 @@ class TestMCPIntegration:
     @pytest.mark.asyncio
     async def test_tool_registration(self) -> None:
         """Test that MCP tools are registered correctly."""
-        from akasha_mcp.main import create_app
-        from akasha_mcp.tools.tool_registry import FastMCPToolRegistry
+        from akosha.mcp.server import create_app
+        from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
 
         app = create_app()
         registry = FastMCPToolRegistry(app)
@@ -63,9 +63,9 @@ class TestMCPIntegration:
         analytics_service = TimeSeriesAnalytics()
         graph_builder = KnowledgeGraphBuilder()
 
-        from akasha_mcp.tools.akasha_tools import register_akasha_tools
+        from akosha.mcp.tools.akosha_tools import register_akosha_tools
 
-        register_akasha_tools(
+        register_akosha_tools(
             registry,
             embedding_service=embedding_service,
             analytics_service=analytics_service,
@@ -90,9 +90,9 @@ class TestMCPIntegration:
     @pytest.mark.asyncio
     async def test_generate_embedding_tool(self) -> None:
         """Test generate_embedding tool."""
-        from akasha_mcp.tools.akasha_tools import register_embedding_tools
-        from akasha_mcp.tools.tool_registry import FastMCPToolRegistry
-        from akasha_mcp.main import create_app
+        from akosha.mcp.server import create_app
+        from akosha.mcp.tools.akosha_tools import register_embedding_tools
+        from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
 
         app = create_app()
         registry = FastMCPToolRegistry(app)
@@ -107,9 +107,7 @@ class TestMCPIntegration:
         assert "generate_embedding" in tools
 
         # Call the tool coroutine
-        result = await tools["generate_embedding"].coroutine(
-            text="test conversation about Python"
-        )
+        result = await tools["generate_embedding"].coroutine(text="test conversation about Python")
 
         assert result["text"] == "test conversation about Python"
         assert result["embedding_dim"] == 384
@@ -119,10 +117,11 @@ class TestMCPIntegration:
     @pytest.mark.asyncio
     async def test_analytics_tools(self) -> None:
         """Test analytics tools with sample data."""
-        from akasha_mcp.tools.akasha_tools import register_analytics_tools
-        from akasha_mcp.tools.tool_registry import FastMCPToolRegistry
-        from akasha_mcp.main import create_app
         from datetime import UTC, datetime, timedelta
+
+        from akosha.mcp.server import create_app
+        from akosha.mcp.tools.akosha_tools import register_analytics_tools
+        from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
 
         app = create_app()
         registry = FastMCPToolRegistry(app)
@@ -158,9 +157,9 @@ class TestMCPIntegration:
     @pytest.mark.asyncio
     async def test_graph_tools(self) -> None:
         """Test knowledge graph tools."""
-        from akasha_mcp.tools.akasha_tools import register_graph_tools
-        from akasha_mcp.tools.tool_registry import FastMCPToolRegistry
-        from akasha_mcp.main import create_app
+        from akosha.mcp.server import create_app
+        from akosha.mcp.tools.akosha_tools import register_graph_tools
+        from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
 
         app = create_app()
         registry = FastMCPToolRegistry(app)

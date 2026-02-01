@@ -1,23 +1,24 @@
-# Akasha Implementation Guide
+# Akosha Implementation Guide
 
 **Phase 1 Foundation** - Weeks 1-4
 
----
+______________________________________________________________________
 
 ## Overview
 
-This guide provides step-by-step implementation instructions for Akasha Phase 1, which establishes the core infrastructure for universal memory aggregation.
+This guide provides step-by-step implementation instructions for Akosha Phase 1, which establishes the core infrastructure for universal memory aggregation.
 
 **Phase 1 Scope**:
+
 - Core storage layer (DuckDB hot/warm stores)
 - Oneiric integration for cold storage
 - Basic ingestion pipeline
 - MCP + REST API endpoints
 - Initial testing framework
 
-**Target Scale**: 100 systems, <10M embeddings
+**Target Scale**: 100 systems, \<10M embeddings
 
----
+______________________________________________________________________
 
 ## Prerequisites
 
@@ -35,7 +36,7 @@ This guide provides step-by-step implementation instructions for Akasha Phase 1,
 - **Mahavishnu**: Must be running for workflow orchestration
 - **Oneiric**: Storage adapters must be available
 
----
+______________________________________________________________________
 
 ## Week 1: Foundation
 
@@ -43,13 +44,15 @@ This guide provides step-by-step implementation instructions for Akasha Phase 1,
 
 **Status**: ✅ Complete
 **Files Created**:
-- `/Users/les/Projects/akasha/` - Project directory
+
+- `/Users/les/Projects/akosha/` - Project directory
 - `pyproject.toml` - UV configuration
 - `.envrc` - Direnv configuration
 - `README.md` - Project documentation
 - `CLAUDE.md` - AI assistant instructions
 
 **Acceptance Criteria**:
+
 - [x] Project directory created
 - [x] UV venv initialized
 - [x] .envrc copied from crackerjack
@@ -57,12 +60,12 @@ This guide provides step-by-step implementation instructions for Akasha Phase 1,
 
 ### Task 1.2: Configuration Management
 
-**File**: `akasha/config.py`
+**File**: `akosha/config.py`
 
 Create centralized configuration management with Pydantic:
 
 ```python
-"""Akasha configuration management."""
+"""Akosha configuration management."""
 
 from __future__ import annotations
 import os
@@ -77,16 +80,16 @@ class HotStorageConfig(BaseModel):
     """Hot storage configuration."""
 
     backend: str = "duckdb-memory"
-    path: Path = Field(default_factory=lambda: Path("/data/akasha/hot"))
+    path: Path = Field(default_factory=lambda: Path("/data/akosha/hot"))
     write_ahead_log: bool = True
-    wal_path: Path = Field(default_factory=lambda: Path("/data/akasha/wal"))
+    wal_path: Path = Field(default_factory=lambda: Path("/data/akosha/wal"))
 
 
 class WarmStorageConfig(BaseModel):
     """Warm storage configuration."""
 
     backend: str = "duckdb-ssd"
-    path: Path = Field(default_factory=lambda: Path("/data/akasha/warm"))
+    path: Path = Field(default_factory=lambda: Path("/data/akosha/warm"))
     num_partitions: int = 256
 
 
@@ -94,7 +97,7 @@ class ColdStorageConfig(BaseModel):
     """Cold storage configuration."""
 
     backend: str = "s3"  # or azure, gcs
-    bucket: str = Field(default_factory=lambda: os.getenv("AKASHA_COLD_BUCKET", "akasha-cold-data"))
+    bucket: str = Field(default_factory=lambda: os.getenv("AKOSHA_COLD_BUCKET", "akosha-cold-data"))
     prefix: str = "conversations/"
     format: str = "parquet"
 
@@ -110,8 +113,8 @@ class CacheConfig(BaseModel):
     redis_ttl_seconds: int = 3600
 
 
-class AkashaConfig(BaseSettings):
-    """Main Akasha configuration."""
+class AkoshaConfig(BaseSettings):
+    """Main Akosha configuration."""
 
     # Storage
     hot: HotStorageConfig = Field(default_factory=HotStorageConfig)
@@ -135,23 +138,24 @@ class AkashaConfig(BaseSettings):
 
 
 # Global configuration instance
-config = AkashaConfig()
+config = AkoshaConfig()
 ```
 
 **Acceptance Criteria**:
+
 - [ ] Configuration loads from environment variables
-- [ ] YAML file support (via `config/akasha.yaml`)
+- [ ] YAML file support (via `config/akosha.yaml`)
 - [ ] Type validation with Pydantic
 - [ ] Default values for all settings
 
 ### Task 1.3: Data Models
 
-**File**: `akasha/models/__init__.py`
+**File**: `akosha/models/__init__.py`
 
 Define core data models:
 
 ```python
-"""Akasha data models."""
+"""Akosha data models."""
 
 from __future__ import annotations
 from dataclasses import dataclass
@@ -211,17 +215,18 @@ class ColdRecord(BaseModel):
 ```
 
 **Acceptance Criteria**:
+
 - [ ] All models defined with type hints
 - [ ] Pydantic validation working
 - [ ] JSON serialization/deserialization
 
----
+______________________________________________________________________
 
 ## Week 2: Storage Layer
 
 ### Task 2.1: Hot Store (DuckDB In-Memory)
 
-**File**: `akasha/storage/hot_store.py`
+**File**: `akosha/storage/hot_store.py`
 
 ```python
 """Hot store: DuckDB in-memory for recent data."""
@@ -235,7 +240,7 @@ from typing import Any
 
 import duckdb
 
-from akasha.models import HotRecord
+from akosha.models import HotRecord
 
 logger = logging.getLogger(__name__)
 
@@ -374,6 +379,7 @@ class HotStore:
 ```
 
 **Acceptance Criteria**:
+
 - [ ] DuckDB in-memory database initialized
 - [ ] HNSW index created for embeddings
 - [ ] Insert and search operations working
@@ -381,7 +387,7 @@ class HotStore:
 
 ### Task 2.2: Warm Store (DuckDB on-Disk)
 
-**File**: `akasha/storage/warm_store.py`
+**File**: `akosha/storage/warm_store.py`
 
 ```python
 """Warm store: DuckDB on-disk for historical data."""
@@ -395,7 +401,7 @@ from typing import Any
 
 import duckdb
 
-from akasha.models import WarmRecord
+from akosha.models import WarmRecord
 
 logger = logging.getLogger(__name__)
 
@@ -469,17 +475,18 @@ class WarmStore:
 ```
 
 **Acceptance Criteria**:
+
 - [ ] DuckDB on-disk database created
 - [ ] INT8 quantization for embeddings (75% size reduction)
 - [ ] Partitioned by date for efficient queries
 
----
+______________________________________________________________________
 
 ## Week 3: Ingestion Pipeline
 
 ### Task 3.1: Ingestion Worker
 
-**File**: `akasha/ingestion/worker.py`
+**File**: `akosha/ingestion/worker.py`
 
 Create pull-based ingestion worker that polls cloud storage for new uploads:
 
@@ -493,8 +500,8 @@ from datetime import UTC, datetime
 
 from oneiric.adapters import StorageAdapter
 
-from akasha.models import SystemMemoryUpload
-from akasha.storage.hot_store import HotStore
+from akosha.models import SystemMemoryUpload
+from akosha.storage.hot_store import HotStore
 
 logger = logging.getLogger(__name__)
 
@@ -591,21 +598,22 @@ class IngestionWorker:
 ```
 
 **Acceptance Criteria**:
+
 - [ ] Worker polls cloud storage for new uploads
 - [ ] Discovers system_id=XXX/upload_id=YYY pattern
 - [ ] Processes uploads sequentially
 - [ ] Graceful shutdown with `stop()` method
 
----
+______________________________________________________________________
 
 ## Week 4: API Layer
 
 ### Task 4.1: REST API with FastAPI
 
-**File**: `akasha/api/routes.py`
+**File**: `akosha/api/routes.py`
 
 ```python
-"""FastAPI routes for Akasha."""
+"""FastAPI routes for Akosha."""
 
 from __future__ import annotations
 import logging
@@ -614,11 +622,11 @@ from datetime import UTC, datetime
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from akasha.storage.hot_store import HotStore
+from akosha.storage.hot_store import HotStore
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Akasha Universal Memory API")
+app = FastAPI(title="Akosha Universal Memory API")
 
 # Initialize hot store (TODO: use dependency injection)
 hot_store = HotStore()
@@ -645,14 +653,14 @@ class SearchResponse(BaseModel):
 async def startup():
     """Initialize hot store on startup."""
     await hot_store.initialize()
-    logger.info("Akasha API started")
+    logger.info("Akosha API started")
 
 
 @app.on_event("shutdown")
 async def shutdown():
     """Close hot store on shutdown."""
     await hot_store.close()
-    logger.info("Akasha API stopped")
+    logger.info("Akosha API stopped")
 
 
 @app.get("/health")
@@ -694,12 +702,13 @@ async def search_conversations(request: SearchRequest) -> SearchResponse:
 ```
 
 **Acceptance Criteria**:
+
 - [ ] FastAPI server starts successfully
 - [ ] Health check endpoint working
 - [ ] Search endpoint accepts requests
 - [ ] Proper startup/shutdown hooks
 
----
+______________________________________________________________________
 
 ## Testing
 
@@ -711,8 +720,8 @@ async def search_conversations(request: SearchRequest) -> SearchResponse:
 """Unit tests for storage layer."""
 
 import pytest
-from akasha.storage.hot_store import HotStore
-from akasha.models import HotRecord
+from akosha.storage.hot_store import HotStore
+from akosha.models import HotRecord
 
 
 @pytest.fixture
@@ -750,12 +759,13 @@ async def test_search_similar(hot_store):
 ```
 
 **Acceptance Criteria**:
+
 - [ ] Unit tests for hot store
 - [ ] Unit tests for warm store
 - [ ] Unit tests for ingestion worker
 - [ ] >85% code coverage
 
----
+______________________________________________________________________
 
 ## Deployment
 
@@ -763,7 +773,7 @@ async def test_search_similar(hot_store):
 
 ```bash
 # Run server locally
-uv run python -m akasha.server
+uv run python -m akosha.server
 
 # Run tests
 uv run pytest
@@ -776,35 +786,40 @@ uv run crackerjack lint
 
 See `k8s/deployment.yaml` for Kubernetes deployment manifests.
 
----
+______________________________________________________________________
 
 ## Checklist
 
 ### Week 1
+
 - [ ] Task 1.1: Project setup ✅
 - [ ] Task 1.2: Configuration management
 - [ ] Task 1.3: Data models
 
 ### Week 2
+
 - [ ] Task 2.1: Hot store implementation
 - [ ] Task 2.2: Warm store implementation
 - [ ] Task 2.3: Sharding strategy
 
 ### Week 3
+
 - [ ] Task 3.1: Ingestion worker
 - [ ] Task 3.2: Upload discovery
 - [ ] Task 3.3: Deduplication service
 
 ### Week 4
+
 - [ ] Task 4.1: REST API with FastAPI
 - [ ] Task 4.2: MCP server integration
 - [ ] Task 4.3: End-to-end testing
 
----
+______________________________________________________________________
 
 ## Next Steps
 
 After completing Phase 1, proceed to:
+
 - **Phase 2**: Advanced Features (Vector indexing, time-series, knowledge graph)
 - **Phase 3**: Production Hardening (Circuit breakers, monitoring)
 - **Phase 4**: Scale Preparation (Milvus, TimescaleDB, Neo4j)

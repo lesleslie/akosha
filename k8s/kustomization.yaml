@@ -1,7 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: akasha
+namespace: akosha
 
 resources:
   - namespace.yaml
@@ -18,19 +18,19 @@ resources:
 
 images:
   # Update this with your image registry
-  - name: akasha
-    newName: your-registry/akasha
+  - name: akosha
+    newName: your-registry/akosha
     newTag: latest
 
 # Common labels applied to all resources
 commonLabels:
-  app: akasha-mcp
+  app: akosha-mcp
   environment: production
   managed-by: kubectl
 
 # ConfigMap generator (for environment-specific overrides)
 configMapGenerator:
-  - name: akasha-config
+  - name: akosha-config
     literals:
       - name: ENVIRONMENT
         value: "production"

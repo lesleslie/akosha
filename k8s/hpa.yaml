@@ -1,15 +1,15 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: akasha-mcp-hpa
-  namespace: akasha
+  name: akosha-mcp-hpa
+  namespace: akosha
   labels:
-    app: akasha-mcp
+    app: akosha-mcp
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: akasha-mcp
+    name: akosha-mcp
   minReplicas: 2
   maxReplicas: 10
   metrics:

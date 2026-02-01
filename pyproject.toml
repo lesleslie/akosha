@@ -1,5 +1,5 @@
 [project]
-name = "akasha"
+name = "akosha"
 version = "0.1.0"
 description = "Universal Memory Aggregation System - Cross-system intelligence for Session-Buddy"
 readme = "README.md"
@@ -36,6 +36,13 @@ dev = [
     "ruff>=0.8.0",
     "mypy>=1.0.0",
     "pre-commit>=3.0.0",
+    "bandit>=1.7.0",
+    "codespell>=2.2.0",
+    "refurb>=0.0.0",
+    "complexipy>=0.0.0",
+    "creosote>=3.0.0",
+    "pyright>=1.1.0",
+    "crackerjack>=0.48.0",
 ]
 
 embeddings = [
@@ -48,14 +55,22 @@ embeddings = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=5.0.0",
     "coverage[toml]>=7.0.0",
     "ruff>=0.8.0",
     "mypy>=1.0.0",
+    "bandit>=1.7.0",
+    "codespell>=2.2.0",
+    "refurb>=0.0.0",
+    "complexipy>=0.0.0",
+    "creosote>=3.0.0",
+    "pyright>=1.1.0",
+    "crackerjack>=0.48.0",
+    "pyarrow>=23.0.0",
 ]
 
 [tool.ruff]
@@ -63,8 +78,29 @@ line-length = 100
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
-ignore = ["E501"]  # Line length handled by formatter
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+    "TCH",    # flake8-type-checking
+    "PTH",    # flake8-use-pathlib
+    "ERA",    # eradicate
+    "RUF",    # Ruff-specific rules
+]
+ignore = [
+    "E501",   # Line length handled by formatter
+    "UP007",  # Optional[X] -> X | None (not ready for Python 3.13)
+    "RUF012", # Mutable class attributes (too strict)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ARG001"]  # Allow unused arguments in tests
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -75,12 +111,25 @@ asyncio_mode = "auto"
 addopts = [
     "-v",
     "--strict-markers",
-    "--cov=akasha",
+    "--cov=akosha",
     "--cov-report=term-missing",
+    "--cov-report=html",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "performance: marks tests as performance benchmarks",
+    "stress: marks tests as stress tests",
+    "flaky: marks tests as flaky (may fail intermittently)",
+    "network: marks tests that require network access",
+    "expensive: marks tests that are expensive to run (compute/time)",
+    "security: marks tests that verify security properties",
+    "maintenance: marks tests for maintenance tasks",
 ]
 
 [tool.coverage.run]
-source = ["akasha"]
+source = ["akosha"]
 branch = true
 omit = [
     "*/tests/*",
@@ -96,3 +145,37 @@ python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+reportMissingImports = "error"
+reportMissingTypeStubs = "error"
+
+[tool.bandit]
+exclude_dirs = ["tests", "test_*.py"]
+skips = ["B101"]  # Allow assert statements in code
+
+[tool.codespell]
+ignore-words-list = "akosha,SessionBuddy"
+skip = "*.lock,*.min.js"
+
+[tool.refurb]
+python_version = "3.13"
+
+[tool.complexipy]
+max_complexity = 15
+exclude = [
+    "tests/*",
+    "*/test_*.py",
+]
+
+[tool.creosote]
+paths = ["akosha"]
+deps_file = "pyproject.toml"
+sections = ["project", "project.optional-dependencies"]
+exclude_deps = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+]

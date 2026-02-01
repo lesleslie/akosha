@@ -1,5 +1,5 @@
 groups:
-  - name: akasha_alerts
+  - name: akosha_alerts
     interval: 30s
     rules:
       # Circuit Breaker Alerts

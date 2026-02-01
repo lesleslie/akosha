@@ -1,21 +1,21 @@
-# Akasha Phase 4: Scale Preparation
+# Akosha Phase 4: Scale Preparation
 
 **Status**: Planned
 **Duration**: Weeks 11-12 (2 weeks)
 **Focus**: Hyperscale architecture, 100M+ embeddings, distributed systems
 
----
+______________________________________________________________________
 
 ## Overview
 
 Phase 3 hardened the system for production. Phase 4 prepares for hyperscale growth (10,000-100,000 systems):
 
 1. **Milvus Integration** (100M-1B embeddings)
-2. **TimescaleDB** (advanced time-series analytics)
-3. **Neo4j** (complex graph queries)
-4. **Multi-Region Disaster Recovery**
+1. **TimescaleDB** (advanced time-series analytics)
+1. **Neo4j** (complex graph queries)
+1. **Multi-Region Disaster Recovery**
 
----
+______________________________________________________________________
 
 ## Week 11: Distributed Vector Database
 
@@ -30,37 +30,37 @@ Phase 3 hardened the system for production. Phase 4 prepares for hyperscale grow
 milvus:
   enabled: true
   mode: clustered
-  
+
   etcd:
     # Replicated etcd for Milvus coordination
     replicaCount: 3
-  
+
   milvus:
     image: milvusdb/milvus:v2.4.0
     replicaCount: 3
-    
+
     config:
       # Disk-based indexing (vectors don't need to fit in RAM)
       indexType: "DiskANN"
-      
+
       # S3-compatible storage for vectors
       minio:
         enabled: true
         accessKey: "${MINIO_ACCESS_KEY}"
         secretKey: "${MINIO_SECRET_KEY}"
-  
+
   pulsar:
     # Message queue for Milvus
     enabled: true
     replicaCount: 3
-  
+
   # Data persistence
   persistence:
     enabled: true
     storageClass: "fast-ssd"
 ```
 
-**Integration with Akasha**:
+**Integration with Akosha**:
 
 ```python
 """Milvus warm tier integration."""
@@ -69,14 +69,14 @@ from milvus import Milvus,connections
 
 class MilvusWarmStore:
     """Milvus-backed warm tier for large-scale vector search."""
-    
+
     def __init__(self):
         """Initialize Milvus client."""
         self.client = Milvus(
-            host="milvus.akasha.svc.cluster.local",
+            host="milvus.akosha.svc.cluster.local",
             port=19530,
         )
-        
+
         # Create collection for embeddings
         if not self.client.has_collection("embeddings"):
             self.client.create_collection(
@@ -89,18 +89,18 @@ class MilvusWarmStore:
                     "ef_construction": 200,
                 },
             )
-    
+
     async def search(
         self,
         query_vector: list[float],
         limit: int = 100,
     ) -> list[dict]:
         """Search Milvus collection.
-        
+
         Args:
             query_vector: Query embedding
             limit: Max results
-            
+
         Returns:
             Search results with metadata
         """
@@ -110,35 +110,35 @@ class MilvusWarmStore:
             limit=limit,
             output_fields=["conversation_id", "system_id", "content"],
         )
-        
+
         return results
 ```
 
 ### Task 11.2: Hybrid Search Strategy
 
-**File**: `akasha/query/hybrid_search.py`
+**File**: `akosha/query/hybrid_search.py`
 
 ```python
 """Hybrid search across hot and warm tiers."""
 
-from akasha.storage.hot_store import HotStore
-from akasha.query.milvus_store import MilvusWarmStore
+from akosha.storage.hot_store import HotStore
+from akosha.query.milvus_store import MilvusWarmStore
 
 
 class HybridVectorSearch:
     """Unified search across DuckDB hot and Milvus warm tiers.
-    
+
     Routing strategy:
     - Recent data (< 7 days): Hot store (DuckDB in-memory)
     - Historical data (7-90 days): Warm store (Milvus cluster)
     - Cold archive (> 90 days): Skip (too slow)
     """
-    
+
     def __init__(self, hot_store: HotStore, milvus_store: MilvusWarmStore):
         """Initialize hybrid search."""
         self.hot_store = hot_store
         self.milvus_store = milvus_store
-    
+
     async def search(
         self,
         query_embedding: list[float],
@@ -147,21 +147,21 @@ class HybridVectorSearch:
         limit: int = 10,
     ) -> list[dict]:
         """Search across tiers based on date range.
-        
+
         Args:
             query_embedding: Query vector
             date_range_start: Search range start
             date_range_end: Search range end
             limit: Max results
-            
+
         Returns:
             Unified search results
         """
         now = datetime.now(UTC)
         days_ago = (now - date_range_end).days
-        
+
         results = []
-        
+
         # Hot tier: Recent 7 days
         if days_ago < 7:
             hot_results = await self.hot_store.search_similar(
@@ -169,7 +169,7 @@ class HybridVectorSearch:
                 limit=limit,
             )
             results.extend(hot_results)
-        
+
         # Warm tier: 7-90 days (use Milvus)
         if 7 <= days_ago < 90:
             warm_results = await self.milvus_store.search(
@@ -177,13 +177,13 @@ class HybridVectorSearch:
                 limit=limit,
             )
             results.extend(warm_results)
-        
+
         # Merge and re-rank
         results.sort(key=lambda r: r["similarity"], reverse=True)
         return results[:limit]
 ```
 
----
+______________________________________________________________________
 
 ## Week 12: Advanced Analytics & DR
 
@@ -253,24 +253,24 @@ from neo4j import AsyncGraphDriver
 
 class Neo4jGraphStore:
     """Neo4j-backed knowledge graph for complex queries.
-    
+
     Used when:
     - Graph has >100M edges
     - Complex multi-hop queries needed
     - Native graph algorithms required
     """
-    
+
     def __init__(self, uri: str = "bolt://neo4j:7687"):
         """Initialize Neo4j driver.
-        
+
         Args:
             uri: Neo4j Bolt protocol URI
         """
         self.driver = AsyncGraphDriver(uri)
-    
+
     async def store_entity(self, entity: GraphEntity) -> None:
         """Store entity in Neo4j.
-        
+
         Args:
             entity: Entity to store
         """
@@ -282,7 +282,7 @@ class Neo4jGraphStore:
                 type=entity.entity_type,
                 props=entity.properties,
             )
-    
+
     async def find_shortest_path(
         self,
         source_id: str,
@@ -291,13 +291,13 @@ class Neo4jGraphStore:
         relationship_types: list[str] | None = None,
     ) -> list[str] | None:
         """Find shortest path using Cypher.
-        
+
         Args:
             source_id: Source entity
             target_id: Target entity
             max_hops: Maximum path length
             relationship_types: Optional filter
-            
+
         Returns:
             Path as list of entity IDs, or None if no path
         """
@@ -316,14 +316,14 @@ class Neo4jGraphStore:
                     )
                     RETURN [node.id(node) FOR node IN nodes(path)]
                 """
-            
+
             result = await session.run(
                 query,
                 source=source_id,
                 target=target_id,
                 max_hops=max_hops,
             )
-            
+
             record = await result.single()
             if record:
                 return record[0]
@@ -337,7 +337,7 @@ class Neo4jGraphStore:
 ```
 Region 1 (Primary)          Region 2 (Secondary)
 ┌─────────────────┐        ┌─────────────────┐
-│  Akasha (Active) │────────>│  Akasha (Standby) │
+│  Akosha (Active) │────────>│  Akosha (Standby) │
 │  - Hot Store      │         │  - Hot Store      │
 │  - Milvus         │         │  - Milvus         │
 │  - TimescaleDB    │         │  - TimescaleDB    │
@@ -361,10 +361,10 @@ Region 1 (Primary)          Region 2 (Secondary)
 
 class MultiRegionCoordinator:
     """Coordinate cross-region replication."""
-    
+
     def __init__(self, primary_region: str, secondary_regions: list[str]):
         """Initialize coordinator.
-        
+
         Args:
             primary_region: Primary region (e.g., 'us-east-1')
             secondary_regions: List of secondary regions
@@ -372,10 +372,10 @@ class MultiRegionCoordinator:
         self.primary_region = primary_region
         self.secondary_regions = secondary_regions
         self._current_region = primary_region
-    
+
     async def replicate_to_secondary(self, data: dict) -> None:
         """Replicate data to secondary regions.
-        
+
         Args:
             data: Data to replicate
         """
@@ -384,26 +384,26 @@ class MultiRegionCoordinator:
                 await self._upload_to_region(region, data)
             except Exception as e:
                 logger.error(f"Failed to replicate to {region}: {e}")
-    
+
     async def promote_to_primary(self, new_primary: str) -> None:
         """Promote secondary region to primary.
-        
+
         Args:
             new_primary: Region to promote
         """
         if new_primary not in self.secondary_regions:
             raise ValueError(f"Unknown region: {new_primary}")
-        
+
         # Update routing
         self.secondary_regions.remove(new_primary)
         self.secondary_regions.append(self.primary_region)
         self.primary_region = new_primary
         self._current_region = new_primary
-        
+
         logger.warning(f"Promoted {new_primary} to primary region")
 ```
 
----
+______________________________________________________________________
 
 ## Scaling Triggers
 
@@ -414,24 +414,26 @@ class MultiRegionCoordinator:
 | **10,000 systems** | 100M | Milvus | TimescaleDB + replicas | Neo4j | Add replicas |
 | **100,000 systems** | 1B | Milvus cluster | TimescaleDB cluster | Neo4j cluster | Multi-region |
 
----
+______________________________________________________________________
 
 ## Implementation Checklist
 
 ### Week 11
+
 - [ ] Deploy Milvus cluster (3 replicas)
 - [ ] Hybrid search (DuckDB + Milvus)
 - [ ] Auto-tier migration based on query performance
 - [ ] Milvus health monitoring
 
 ### Week 12
+
 - [ ] Deploy TimescaleDB with continuous aggregates
 - [ ] Deploy Neo4j for 100M+ edges
 - [ ] Multi-region replication setup
 - [ ] Disaster recovery testing
 - [ ] Runbook documentation
 
----
+______________________________________________________________________
 
 ## Success Criteria
 
@@ -440,12 +442,12 @@ Phase 4 is complete when:
 - [ ] System can handle 100M+ embeddings
 - [ ] Search latency < 100ms (p95) for hot tier
 - [ ] Search latency < 500ms (p95) for warm tier
-- [ ] Time-series queries run in <1 second
-- [ ] Graph path finding <2 seconds for 5 hops
+- [ ] Time-series queries run in \<1 second
+- [ ] Graph path finding \<2 seconds for 5 hops
 - [ ] RPO < 5 minutes, RTO < 1 hour for DR
 - [ ] System tested at 10,000 systems scale
 
----
+______________________________________________________________________
 
 ## Complete Roadmap Summary
 
@@ -458,7 +460,7 @@ Phase 4 is complete when:
 
 **Total Timeline**: 12 weeks to production at 10,000+ systems
 
----
+______________________________________________________________________
 
 ## Dependencies
 
@@ -474,16 +476,16 @@ hyperscale = [
 ]
 ```
 
----
+______________________________________________________________________
 
 ## Production Readiness
 
-After completing all 4 phases, Akasha will be:
+After completing all 4 phases, Akosha will be:
 
 - ✅ **Scalable**: 100 to 100,000 systems
 - ✅ **Resilient**: Circuit breakers, retries, graceful degradation
 - ✅ **Observable**: Full tracing, metrics, structured logging
-- ✅ **Performant**: Sub-100ms search (hot), <500ms (warm)
+- ✅ **Performant**: Sub-100ms search (hot), \<500ms (warm)
 - ✅ **Production-Ready**: Kubernetes deployment, DR tested
 
 **The universal memory aggregation system will be ready to handle cross-system intelligence at massive scale!** 🚀

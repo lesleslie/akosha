@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: ResourceQuota
 metadata:
-  name: akasha-resource-quota
-  namespace: akasha
+  name: akosha-resource-quota
+  namespace: akosha
   labels:
-    app: akasha-mcp
+    app: akosha-mcp
 spec:
   hard:
     requests.cpu: "4"
@@ -17,10 +17,10 @@ spec:
 apiVersion: v1
 kind: LimitRange
 metadata:
-  name: akasha-limit-range
-  namespace: akasha
+  name: akosha-limit-range
+  namespace: akosha
   labels:
-    app: akasha-mcp
+    app: akosha-mcp
 spec:
   limits:
   - max:

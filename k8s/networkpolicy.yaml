@@ -1,14 +1,14 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: akasha-network-policy
-  namespace: akasha
+  name: akosha-network-policy
+  namespace: akosha
   labels:
-    app: akasha-mcp
+    app: akosha-mcp
 spec:
   podSelector:
     matchLabels:
-      app: akasha-mcp
+      app: akosha-mcp
   policyTypes:
   - Ingress
   - Egress

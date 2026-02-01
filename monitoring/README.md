@@ -1,6 +1,6 @@
-# Akasha Monitoring Setup
+# Akosha Monitoring Setup
 
-This directory contains Grafana dashboards and Prometheus alerting rules for monitoring Akasha.
+This directory contains Grafana dashboards and Prometheus alerting rules for monitoring Akosha.
 
 ## Overview
 
@@ -10,9 +10,11 @@ This directory contains Grafana dashboards and Prometheus alerting rules for mon
 ## Grafana Dashboards
 
 ### 1. Embedding Performance Dashboard
+
 **File**: `grafana/embedding-performance.json`
 
 **Metrics**:
+
 - Embedding generation rate (embeddings/sec)
 - Text length distribution (p50, p95, p99)
 - Real vs Fallback mode ratio
@@ -21,14 +23,17 @@ This directory contains Grafana dashboards and Prometheus alerting rules for mon
 - Batch processing metrics
 
 **Use Cases**:
+
 - Monitor embedding service performance
 - Detect when fallback mode is being used
 - Track text processing patterns
 
 ### 2. Circuit Breaker Status Dashboard
+
 **File**: `grafana/circuit-breaker-status.json`
 
 **Metrics**:
+
 - Circuit breaker states (OPEN, CLOSED, HALF_OPEN)
 - Service success rates
 - Total calls by service
@@ -37,14 +42,17 @@ This directory contains Grafana dashboards and Prometheus alerting rules for mon
 - Recent circuit breaker trips
 
 **Use Cases**:
+
 - Monitor service health and resilience
 - Detect failing external services
 - Track circuit breaker state transitions
 
 ### 3. System Health Dashboard
+
 **File**: `grafana/system-health.json`
 
 **Metrics**:
+
 - Analytics operations rate
 - Knowledge graph growth
 - Trend analysis strength
@@ -54,6 +62,7 @@ This directory contains Grafana dashboards and Prometheus alerting rules for mon
 - Active traces
 
 **Use Cases**:
+
 - Overall system health monitoring
 - Analytics performance tracking
 - Knowledge graph growth trends
@@ -172,9 +181,9 @@ rule_files:
   - "/etc/prometheus/alerts.yml"
 
 scrape_configs:
-  - job_name: 'akasha-mcp'
+  - job_name: 'akosha-mcp'
     static_configs:
-      - targets: ['akasha:3002']
+      - targets: ['akosha:3002']
     metrics_path: /metrics
 
   - job_name: 'prometheus'
@@ -228,8 +237,8 @@ receivers:
 ### Method 1: Grafana UI
 
 1. Open Grafana at `http://localhost:3001` (default: admin/admin)
-2. Navigate to **Dashboards** → **Import**
-3. Upload JSON files from `monitoring/grafana/`
+1. Navigate to **Dashboards** → **Import**
+1. Upload JSON files from `monitoring/grafana/`
 
 ### Method 2: Provisioning (Docker)
 
@@ -297,32 +306,38 @@ curl -X POST \
 ### Dashboards Not Showing Data
 
 1. **Check Prometheus targets**:
+
    ```bash
    curl http://localhost:9090/api/v1/targets
    ```
 
-2. **Verify metrics are being exposed**:
+1. **Verify metrics are being exposed**:
+
    ```bash
    curl http://localhost:3002/metrics
    ```
 
-3. **Check Grafana data source**:
+1. **Check Grafana data source**:
+
    - Go to Configuration → Data Sources → Prometheus
    - Click "Test" to verify connection
 
 ### Alerts Not Firing
 
 1. **Check Prometheus rules**:
+
    ```bash
    curl http://localhost:9090/api/v1/rules
    ```
 
-2. **Verify AlertManager connectivity**:
+1. **Verify AlertManager connectivity**:
+
    ```bash
    curl http://localhost:9093/api/v1/status
    ```
 
-3. **Check alert evaluation**:
+1. **Check alert evaluation**:
+
    - Go to Prometheus UI → Alerts
    - Verify alert state and evaluation time
 
@@ -331,19 +346,19 @@ curl -X POST \
 Prometheus can use significant memory with high cardinality metrics. Solutions:
 
 1. **Reduce metric cardinality** by limiting label values
-2. **Adjust retention** in `prometheus.yml`:
+1. **Adjust retention** in `prometheus.yml`:
    ```yaml
    --storage.tsdb.retention.time=15d
    ```
-3. **Add recording rules** to pre-aggregate data
+1. **Add recording rules** to pre-aggregate data
 
 ## Next Steps
 
 1. **Set up AlertManager**: Configure notification channels (Slack, PagerDuty, email)
-2. **Customize dashboards**: Add project-specific panels and queries
-3. **Tune alert thresholds**: Adjust for your environment's baselines
-4. **Add recording rules**: Create pre-aggregated metrics for better performance
-5. **Set up alert silences**: Configure maintenance windows
+1. **Customize dashboards**: Add project-specific panels and queries
+1. **Tune alert thresholds**: Adjust for your environment's baselines
+1. **Add recording rules**: Create pre-aggregated metrics for better performance
+1. **Set up alert silences**: Configure maintenance windows
 
 ## Additional Resources
 

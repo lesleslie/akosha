@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: akasha
+  name: akosha
   labels:
-    name: akasha
-    app: akasha-mcp
+    name: akosha
+    app: akosha-mcp

@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
-import numpy.typing as npt
 import pytest
 
-from akasha.processing.embeddings import EmbeddingService, get_embedding_service
+from akosha.processing.embeddings import EmbeddingService, get_embedding_service
 
 
 class TestEmbeddingService:
@@ -154,7 +152,9 @@ class TestEmbeddingService:
 
         assert results == []
 
-    @pytest.mark.skip(reason="sentence_transformers not installed - graceful degradation tested instead")
+    @pytest.mark.skip(
+        reason="sentence_transformers not installed - graceful degradation tested instead"
+    )
     @pytest.mark.asyncio
     async def test_mock_model_loading(self) -> None:
         """Test model loading with mock."""
@@ -174,7 +174,9 @@ class TestEmbeddingService:
             assert service._initialized
             assert service.is_available()
 
-    @pytest.mark.skip(reason="sentence_transformers not installed - graceful degradation tested instead")
+    @pytest.mark.skip(
+        reason="sentence_transformers not installed - graceful degradation tested instead"
+    )
     @pytest.mark.asyncio
     async def test_real_embedding_generation_mock(self) -> None:
         """Test real embedding generation with mocked model."""
@@ -198,7 +200,9 @@ class TestEmbeddingService:
             # Verify model.encode was called
             mock_model.encode.assert_called_once_with(text)
 
-    @pytest.mark.skip(reason="sentence_transformers not installed - graceful degradation tested instead")
+    @pytest.mark.skip(
+        reason="sentence_transformers not installed - graceful degradation tested instead"
+    )
     @pytest.mark.asyncio
     async def test_batch_real_embeddings_mock(self) -> None:
         """Test batch embedding generation with mocked model."""
@@ -219,7 +223,9 @@ class TestEmbeddingService:
             # Verify model.encode was called with batch
             mock_model.encode.assert_called_once()
 
-    @pytest.mark.skip(reason="sentence_transformers not installed - graceful degradation tested instead")
+    @pytest.mark.skip(
+        reason="sentence_transformers not installed - graceful degradation tested instead"
+    )
     @pytest.mark.asyncio
     async def test_initialization_only_once(self, service: EmbeddingService) -> None:
         """Test that initialization only runs once."""

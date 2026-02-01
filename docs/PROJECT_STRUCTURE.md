@@ -1,8 +1,8 @@
-# Akasha Project Structure
+# Akosha Project Structure
 
 ```
-akasha/
-├── akasha/                    # Source code
+akosha/
+├── akosha/                    # Source code
 │   ├── __init__.py
 │   ├── config.py              # Configuration management
 │   ├── main.py                # Application entry point
@@ -62,22 +62,22 @@ akasha/
 │   │   └── conftest.py        # Pytest configuration
 │   └── conftest.py            # Global test configuration
 ├── config/                    # Configuration files
-│   ├── akasha.yaml            # Main configuration
-│   ├── akasha_storage.yaml    # Storage configuration
-│   └── akasha_secrets.yaml    # Secrets (not in git)
+│   ├── akosha.yaml            # Main configuration
+│   ├── akosha_storage.yaml    # Storage configuration
+│   └── akosha_secrets.yaml    # Secrets (not in git)
 ├── scripts/                   # Utility scripts
 │   ├── deploy.sh              # Deployment script
 │   ├── migrate_hot_to_warm.py # Manual migration trigger
 │   └── benchmark.py           # Performance benchmarks
 ├── k8s/                       # Kubernetes manifests
-│   ├── deployment.yaml        # Akasha deployment
+│   ├── deployment.yaml        # Akosha deployment
 │   ├── hpa.yaml               # Horizontal pod autoscaler
 │   ├── service.yaml           # Kubernetes service
 │   ├── configmap.yaml         # Configuration management
 │   ├── ingress.yaml           # Ingress configuration
 │   └── grafana/
 │       └── dashboards/
-│           └── akasha-dashboard.json
+│           └── akosha-dashboard.json
 ├── docs/                      # Documentation
 │   ├── ADR_001_ARCHITECTURE_DECISIONS.md  # Architecture decisions
 │   ├── IMPLEMENTATION_GUIDE.md           # Implementation guide

@@ -8,7 +8,7 @@
 
 ## 🎯 Implementation Overview
 
-Successfully implemented **OpenTelemetry distributed tracing** and **circuit breaker resilience patterns** for Akasha, providing production-ready observability and fault tolerance.
+Successfully implemented **OpenTelemetry distributed tracing** and **circuit breaker resilience patterns** for Akosha, providing production-ready observability and fault tolerance.
 
 ---
 
@@ -16,7 +16,7 @@ Successfully implemented **OpenTelemetry distributed tracing** and **circuit bre
 
 ### 1. ✅ Tracing Infrastructure
 
-**File**: `/Users/les/Projects/akasha/akasha/observability/tracing.py` (350 lines)
+**File**: `/Users/les/Projects/akosha/akosha/observability/tracing.py` (350 lines)
 
 **Key Features**:
 - **Automatic Span Creation**: Trace all operations with context propagation
@@ -29,7 +29,7 @@ Successfully implemented **OpenTelemetry distributed tracing** and **circuit bre
 ```python
 # Setup telemetry
 tracer, meter = setup_telemetry(
-    service_name="akasha-mcp",
+    service_name="akosha-mcp",
     environment="development",
     otlp_endpoint="http://localhost:4317",
     enable_console_export=True,
@@ -55,7 +55,7 @@ async def generate_embedding(text: str) -> np.ndarray:
 
 ### 2. ✅ Integration with Embedding Service
 
-**File**: `/Users/les/Projects/akasha/akasha/processing/embeddings.py`
+**File**: `/Users/les/Projects/akosha/akosha/processing/embeddings.py`
 
 **Enhancements**:
 - Added `@traced` decorator to `generate_embedding()` and `generate_batch_embeddings()`
@@ -77,7 +77,7 @@ embedding.batch_size{mode="real|fallback"}
 
 ### 3. ✅ MCP Server Integration
 
-**File**: `/Users/les/Projects/akasha/akasha_mcp/main.py`
+**File**: `/Users/les/Projects/akosha/akosha/mcp/server.py`
 
 **Enhancements**:
 - Initialize OpenTelemetry on server startup
@@ -111,7 +111,7 @@ async def lifespan(server):
 
 ### 1. ✅ Circuit Breaker Implementation
 
-**File**: `/Users/les/Projects/akasha/akasha/resilience/circuit_breaker.py` (430 lines)
+**File**: `/Users/les/Projects/akosha/akosha/resilience/circuit_breaker.py` (430 lines)
 
 **Three-State System**:
 1. **CLOSED**: Normal operation, calls pass through
@@ -176,7 +176,7 @@ stats = registry.get_all_stats()
 
 ### New Tests Created
 
-**File**: `/Users/les/Projects/akasha/tests/unit/test_circuit_breaker.py` (285 lines)
+**File**: `/Users/les/Projects/akosha/tests/unit/test_circuit_breaker.py` (285 lines)
 
 **Test Suites**:
 - `TestCircuitBreakerConfig` - Configuration validation
@@ -210,12 +210,12 @@ export OTLP_ENDPOINT=http://localhost:4317  # OTLP collector
 
 ### Prometheus Configuration
 
-**File**: `/Users/les/Projects/akasha/prometheus.yml`
+**File**: `/Users/les/Projects/akosha/prometheus.yml`
 
 **Scraping Configuration**:
 ```yaml
 scrape_configs:
-  - job_name: 'akasha-mcp'
+  - job_name: 'akosha-mcp'
     targets: ['localhost:3002']
     metrics_path: /metrics
     scrape_interval: 15s
@@ -226,8 +226,8 @@ scrape_configs:
 ```yaml
 version: '3.8'
 services:
-  akasha:
-    image: akasha:latest
+  akosha:
+    image: akosha:latest
     environment:
       - ENVIRONMENT=production
       - OTLP_ENDPOINT=http://jaeger:4317
@@ -317,22 +317,22 @@ services:
 
 ### New Files (5):
 
-1. **`akasha/observability/tracing.py`** (350 lines)
+1. **`akosha/observability/tracing.py`** (350 lines)
    - OpenTelemetry setup
    - Tracing decorators
    - Metrics recording functions
    - Span management utilities
 
-2. **`akasha/observability/__init__.py`** (28 lines)
+2. **`akosha/observability/__init__.py`** (28 lines)
    - Module exports
 
-3. **`akasha/resilience/circuit_breaker.py`** (430 lines)
+3. **`akosha/resilience/circuit_breaker.py`** (430 lines)
    - CircuitBreaker class
    - CircuitBreakerConfig
    - CircuitBreakerRegistry
    - Decorator `@with_circuit_breaker`
 
-4. **`akasha/resilience/__init__.py`** (26 lines)
+4. **`akosha/resilience/__init__.py`** (26 lines)
    - Module exports
 
 5. **`tests/unit/test_circuit_breaker.py`** (285 lines)
@@ -342,12 +342,12 @@ services:
 
 ### Modified Files (2):
 
-1. **`akasha/processing/embeddings.py`**
+1. **`akosha/processing/embeddings.py`**
    - Added `@traced` decorators
    - Added metrics recording
    - Added span attributes
 
-2. **`akasha_mcp/main.py`**
+2. **`akosha/mcp/server.py`**
    - Added OpenTelemetry initialization
    - Added environment variable support
    - Added graceful shutdown
@@ -387,9 +387,9 @@ pytest tests/unit/test_circuit_breaker.py -v
 ```bash
 # All imports verified
 uv run python -c "
-from akasha_mcp.main import create_app
-from akasha.observability import setup_telemetry
-from akasha.resilience import CircuitBreaker, get_circuit_breaker_registry
+from akosha.mcp.server import create_app
+from akosha.observability import setup_telemetry
+from akosha.resilience import CircuitBreaker, get_circuit_breaker_registry
 print('✅ All Phase 3 components verified!')
 "
 ```
@@ -402,10 +402,10 @@ print('✅ All Phase 3 components verified!')
 
 ```python
 # Start MCP server with telemetry
-ENVIRONMENT=production uv run python -m akasha_mcp.main
+ENVIRONMENT=production uv run python -m akosha.mcp
 
 # Generate embeddings - automatically traced
-from akasha.processing.embeddings import get_embedding_service
+from akosha.processing.embeddings import get_embedding_service
 
 service = get_embedding_service()
 await service.initialize()
@@ -419,7 +419,7 @@ embedding = await service.generate_embedding("Example text")
 ### Example 2: Protecting External API Calls
 
 ```python
-from akasha.resilience import with_circuit_breaker
+from akosha.resilience import with_circuit_breaker
 
 @with_circuit_breaker("external_api", config=CircuitBreakerConfig(
     failure_threshold=3,
@@ -436,7 +436,7 @@ result = await call_external_api()
 ### Example 3: Viewing Circuit Breaker Statistics
 
 ```python
-from akasha.resilience import get_circuit_breaker_registry
+from akosha.resilience import get_circuit_breaker_registry
 
 registry = get_circuit_breaker_registry()
 stats = registry.get_all_stats()
@@ -540,12 +540,12 @@ Circuit breakers prevent:
 
 ```bash
 # Start observability stack
-docker-compose up -d prometheus jaeger akasha
+docker-compose up -d prometheus jaeger akosha
 
 # Access services
 # Prometheus: http://localhost:9090
 # Jaeger UI: http://localhost:16686
-# Akasha MCP: http://localhost:3002
+# Akosha MCP: http://localhost:3002
 ```
 
 ### Kubernetes Deployment:
@@ -555,12 +555,12 @@ docker-compose up -d prometheus jaeger akasha
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: akasha-hpa
+  name: akosha-hpa
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: akasha
+    name: akosha
   minReplicas: 3
   maxReplicas: 10
   metrics:
@@ -600,7 +600,7 @@ spec:
 
 **Phase 3 Core Implementation**: ✅ **COMPLETE**
 
-Akasha now has:
+Akosha now has:
 - ✅ **OpenTelemetry distributed tracing** for all operations
 - ✅ **Circuit breaker resilience** for external service calls
 - ✅ **Prometheus metrics** for system monitoring
@@ -611,6 +611,6 @@ Akasha now has:
 
 ---
 
-**Made with ❤️ by the Akasha team**
+**Made with ❤️ by the Akosha team**
 
-*आकाश (Akasha) - The sky has no limits*
+*आकाश (Akosha) - The sky has no limits*

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
 from datetime import UTC, datetime
 
-from akasha.models import HotRecord
-from akasha.storage.hot_store import HotStore
+import pytest
+
+from akosha.models import HotRecord
+from akosha.storage.hot_store import HotStore
 
 
 class TestHotStore:
@@ -26,8 +27,7 @@ class TestHotStore:
         assert hot_store.conn is not None
         # Check table exists
         result = hot_store.conn.execute(
-            "SELECT table_name FROM information_schema.tables "
-            "WHERE table_name = 'conversations'"
+            "SELECT table_name FROM information_schema.tables WHERE table_name = 'conversations'"
         ).fetchone()
         assert result is not None
 
@@ -46,9 +46,7 @@ class TestHotStore:
         await hot_store.insert(record)
 
         # Verify insertion
-        result = hot_store.conn.execute(
-            "SELECT COUNT(*) FROM conversations"
-        ).fetchone()
+        result = hot_store.conn.execute("SELECT COUNT(*) FROM conversations").fetchone()
         assert result[0] == 1
 
     @pytest.mark.asyncio
@@ -66,7 +64,7 @@ class TestHotStore:
         await hot_store.insert(record)
 
         # Try inserting duplicate
-        with pytest.raises(Exception):  # DuckDB constraint violation
+        with pytest.raises(RuntimeError):  # DuckDB constraint violation
             await hot_store.insert(record)
 
     @pytest.mark.asyncio
@@ -116,23 +114,27 @@ class TestHotStore:
         now = datetime.now(UTC)
 
         # Insert conversations from different systems
-        await hot_store.insert(HotRecord(
-            system_id="system-1",
-            conversation_id="conv-1",
-            content="System 1 conversation",
-            embedding=[0.1] * 384,
-            timestamp=now,
-            metadata={},
-        ))
+        await hot_store.insert(
+            HotRecord(
+                system_id="system-1",
+                conversation_id="conv-1",
+                content="System 1 conversation",
+                embedding=[0.1] * 384,
+                timestamp=now,
+                metadata={},
+            )
+        )
 
-        await hot_store.insert(HotRecord(
-            system_id="system-2",
-            conversation_id="conv-2",
-            content="System 2 conversation",
-            embedding=[0.12] * 384,
-            timestamp=now,
-            metadata={},
-        ))
+        await hot_store.insert(
+            HotRecord(
+                system_id="system-2",
+                conversation_id="conv-2",
+                content="System 2 conversation",
+                embedding=[0.12] * 384,
+                timestamp=now,
+                metadata={},
+            )
+        )
 
         # Search filtering by system-1
         query = [0.11] * 384
@@ -151,23 +153,27 @@ class TestHotStore:
         """Test threshold filtering in vector search."""
         now = datetime.now(UTC)
 
-        await hot_store.insert(HotRecord(
-            system_id="system-1",
-            conversation_id="conv-1",
-            content="Similar conversation",
-            embedding=[0.1] * 384,
-            timestamp=now,
-            metadata={},
-        ))
+        await hot_store.insert(
+            HotRecord(
+                system_id="system-1",
+                conversation_id="conv-1",
+                content="Similar conversation",
+                embedding=[0.1] * 384,
+                timestamp=now,
+                metadata={},
+            )
+        )
 
-        await hot_store.insert(HotRecord(
-            system_id="system-1",
-            conversation_id="conv-2",
-            content="Dissimilar conversation",
-            embedding=[0.9] * 384,
-            timestamp=now,
-            metadata={},
-        ))
+        await hot_store.insert(
+            HotRecord(
+                system_id="system-1",
+                conversation_id="conv-2",
+                content="Dissimilar conversation",
+                embedding=[0.9] * 384,
+                timestamp=now,
+                metadata={},
+            )
+        )
 
         # Search with high threshold (only very similar results)
         query = [0.1] * 384
@@ -191,14 +197,16 @@ class TestHotStore:
 
         # Insert multiple conversations
         for i in range(10):
-            await hot_store.insert(HotRecord(
-                system_id="system-1",
-                conversation_id=f"conv-{i}",
-                content=f"Conversation {i}",
-                embedding=[0.1 + i * 0.001] * 384,
-                timestamp=now,
-                metadata={},
-            ))
+            await hot_store.insert(
+                HotRecord(
+                    system_id="system-1",
+                    conversation_id=f"conv-{i}",
+                    content=f"Conversation {i}",
+                    embedding=[0.1 + i * 0.001] * 384,
+                    timestamp=now,
+                    metadata={},
+                )
+            )
 
         # Search with limit
         query = [0.1] * 384
@@ -292,7 +300,5 @@ class TestHotStore:
         await asyncio.gather(*tasks)
 
         # Verify all inserted
-        result = hot_store.conn.execute(
-            "SELECT COUNT(*) FROM conversations"
-        ).fetchone()
+        result = hot_store.conn.execute("SELECT COUNT(*) FROM conversations").fetchone()
         assert result[0] == 10

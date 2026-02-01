@@ -1,27 +1,27 @@
-# Akasha Phase 3: Production Hardening
+# Akosha Phase 3: Production Hardening
 
 **Status**: Planned
 **Duration**: Weeks 9-10 (2 weeks)
 **Focus**: Reliability, observability, performance optimization
 
----
+______________________________________________________________________
 
 ## Overview
 
 Phase 2 added advanced features. Phase 3 hardens the system for production deployment with:
 
 1. **Resilience Patterns** (circuit breakers, retries, graceful degradation)
-2. **Observability** (OpenTelemetry tracing, Prometheus metrics, structured logging)
-3. **Performance Optimization** (profiling, caching strategies, query optimization)
-4. **Deployment** (Kubernetes manifests, health checks, rolling updates)
+1. **Observability** (OpenTelemetry tracing, Prometheus metrics, structured logging)
+1. **Performance Optimization** (profiling, caching strategies, query optimization)
+1. **Deployment** (Kubernetes manifests, health checks, rolling updates)
 
----
+______________________________________________________________________
 
 ## Week 9: Resilience & Observability
 
 ### Task 9.1: Circuit Breakers
 
-**File**: `akasha/utils/resilience.py`
+**File**: `akosha/utils/resilience.py`
 
 ```python
 """Circuit breakers and retry logic with tenacity."""
@@ -149,7 +149,7 @@ def retry_with_exponential_backoff(
 
 ### Task 9.2: OpenTelemetry Tracing
 
-**File**: `akasha/monitoring/tracing.py`
+**File**: `akosha/monitoring/tracing.py`
 
 ```python
 """OpenTelemetry distributed tracing."""
@@ -183,18 +183,18 @@ class TracingConfig:
             otlp_endpoint: OTLP collector endpoint
         """
         provider = TracerProvider()
-        
+
         if otlp_endpoint:
             otlp_exporter = OTLPSpanExporter(
                 endpoint=otlp_endpoint,
                 insecure=True,
             )
             provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
-        
+
         trace.set_tracer_provider(provider)
         self._tracer = trace.get_tracer(__name__)
         self._configured = True
-        
+
         logger.info(f"Tracing configured: {service_name}")
 
     def get_tracer(self):
@@ -233,22 +233,22 @@ async def trace_operation(
 
 ### Task 9.3: Prometheus Metrics
 
-**File**: `akasha/monitoring/metrics.py`
+**File**: `akosha/monitoring/metrics.py`
 
 ```python
-"""Prometheus metrics for Akasha."""
+"""Prometheus metrics for Akosha."""
 
 from prometheus_client import Counter, Gauge, Histogram
 
 # Ingestion metrics
 ingestion_total = Counter(
-    "akasha_ingestion_total",
+    "akosha_ingestion_total",
     "Total conversations ingested",
     ["system_id", "status"],
 )
 
 ingestion_duration_seconds = Histogram(
-    "akasha_ingestion_duration_seconds",
+    "akosha_ingestion_duration_seconds",
     "Ingestion processing time",
     ["system_id"],
     buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0],
@@ -256,13 +256,13 @@ ingestion_duration_seconds = Histogram(
 
 # Search metrics
 search_total = Counter(
-    "akasha_search_total",
+    "akosha_search_total",
     "Total searches performed",
     ["system_id", "tier"],
 )
 
 search_duration_seconds = Histogram(
-    "akasha_search_duration_seconds",
+    "akosha_search_duration_seconds",
     "Search query time",
     ["tier"],
     buckets=[0.01, 0.05, 0.1, 0.5, 1.0, 2.0],
@@ -270,25 +270,25 @@ search_duration_seconds = Histogram(
 
 # Storage metrics
 storage_size_bytes = Gauge(
-    "akasha_storage_size_bytes",
+    "akosha_storage_size_bytes",
     "Storage tier size in bytes",
     ["tier"],
 )
 
 storage_conversation_count = Gauge(
-    "akasha_storage_conversation_count",
+    "akosha_storage_conversation_count",
     "Number of conversations in storage tier",
     ["tier", "system_id"],
 )
 
 # Graph metrics
 graph_entities_total = Gauge(
-    "akasha_graph_entities_total",
+    "akosha_graph_entities_total",
     "Total entities in knowledge graph",
 )
 
 graph_edges_total = Gauge(
-    "akasha_graph_edges_total",
+    "akosha_graph_edges_total",
     "Total edges in knowledge graph",
 )
 
@@ -317,7 +317,7 @@ def record_search(system_id: str, tier: str, duration_seconds: float) -> None:
     search_duration_seconds.labels(tier=tier).observe(duration_seconds)
 ```
 
----
+______________________________________________________________________
 
 ## Week 10: Kubernetes Deployment
 
@@ -329,45 +329,45 @@ def record_search(system_id: str, tier: str, duration_seconds: float) -> None:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: akasha-config
-  namespace: akasha
+  name: akosha-config
+  namespace: akosha
 data:
-  AKASHA__STORAGE__HOT__BACKEND: "duckdb-memory"
-  AKASHA__STORAGE__WARM__BACKEND: "duckdb-ssd"
-  AKASHA__STORAGE__COLD__BACKEND: "s3"
-  AKASHA__STORAGE__COLD__BUCKET: "akasha-prod"
-  AKASHA__INGESTION__WORKERS: "3"
-  AKASHA__LOG__LEVEL: "INFO"
+  AKOSHA__STORAGE__HOT__BACKEND: "duckdb-memory"
+  AKOSHA__STORAGE__WARM__BACKEND: "duckdb-ssd"
+  AKOSHA__STORAGE__COLD__BACKEND: "s3"
+  AKOSHA__STORAGE__COLD__BUCKET: "akosha-prod"
+  AKOSHA__INGESTION__WORKERS: "3"
+  AKOSHA__LOG__LEVEL: "INFO"
 
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: akasha-ingestion
-  namespace: akasha
+  name: akosha-ingestion
+  namespace: akosha
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: akasha-ingestion
+      app: akosha-ingestion
   template:
     metadata:
       labels:
-        app: akasha-ingestion
+        app: akosha-ingestion
         version: v0.1.0
     spec:
       containers:
-      - name: akasha-ingestion
-        image: akasha:v0.1.0
+      - name: akosha-ingestion
+        image: akosha:v0.1.0
         ports:
         - containerPort: 8000
           name: http
         env:
-        - name: AKASHA__LOG_LEVEL
+        - name: AKOSHA__LOG_LEVEL
           valueFrom:
             configMapKeyRef:
-              name: akasha-config
-              key: AKASHA__LOG__LEVEL
+              name: akosha-config
+              key: AKOSHA__LOG__LEVEL
         resources:
           requests:
             memory: "256Mi"
@@ -392,13 +392,13 @@ spec:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: akasha-ingestion-hpa
-  namespace: akasha
+  name: akosha-ingestion-hpa
+  namespace: akosha
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: akasha-ingestion
+    name: akosha-ingestion
   minReplicas: 3
   maxReplicas: 50
   metrics:
@@ -420,11 +420,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: akasha-ingestion
-  namespace: akasha
+  name: akosha-ingestion
+  namespace: akosha
 spec:
   selector:
-    app: akasha-ingestion
+    app: akosha-ingestion
   ports:
   - port: 8000
     targetPort: http
@@ -435,26 +435,26 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: akasha-ingestion
-  namespace: akasha
+  name: akosha-ingestion
+  namespace: akosha
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:
   rules:
-  - host: akasha.example.com
+  - host: akosha.example.com
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: akasha-ingestion
+            name: akosha-ingestion
             port:
               number: 8000
   tls:
   - hosts:
-    - akasha.example.com
-    secretName: akasha-tls
+    - akosha.example.com
+    secretName: akosha-tls
 ```
 
 ### Task 10.2: Performance Testing
@@ -462,7 +462,7 @@ spec:
 **File**: `tests/performance/test_load.py`
 
 ```python
-"""Load testing for Akasha."""
+"""Load testing for Akosha."""
 
 import asyncio
 import time
@@ -471,8 +471,8 @@ from datetime import UTC, datetime
 from locust import HttpUser, task, between
 
 
-class AkashaUser(HttpUser):
-    """Simulated Akasha user."""
+class AkoshaUser(HttpUser):
+    """Simulated Akosha user."""
 
     wait_time = between(1, 3)
 
@@ -496,11 +496,12 @@ if __name__ == "__main__":
     pass
 ```
 
----
+______________________________________________________________________
 
 ## Implementation Checklist
 
 ### Week 9
+
 - [ ] Circuit breakers for all external calls
 - [ ] Retry logic with exponential backoff
 - [ ] OpenTelemetry tracing setup
@@ -508,6 +509,7 @@ if __name__ == "__main__":
 - [ ] Structured logging with context
 
 ### Week 10
+
 - [ ] Kubernetes deployment manifests
 - [ ] HPA configuration
 - [ ] Health check endpoints
@@ -515,7 +517,7 @@ if __name__ == "__main__":
 - [ ] Performance profiling and optimization
 - [ ] Rollout procedures
 
----
+______________________________________________________________________
 
 ## Success Criteria
 
@@ -529,11 +531,12 @@ Phase 3 is complete when:
 - [ ] Zero-downtime deployments tested
 - [ ] Runbook documentation complete
 
----
+______________________________________________________________________
 
 ## Next: Phase 4 (Scale Preparation)
 
 Phase 4 adds:
+
 - Milvus cluster for 100M-1B embeddings
 - TimescaleDB for advanced time-series
 - Neo4j for complex graph queries

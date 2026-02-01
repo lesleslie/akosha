@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 
 import pytest
 
-from akasha.resilience.circuit_breaker import (
+from akosha.resilience.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerConfig,
     CircuitBreakerError,
@@ -105,8 +106,10 @@ class TestCircuitBreaker:
         # Open the circuit
         for _ in range(3):
             try:
+
                 async def failing_func():
                     raise ValueError("Fail")
+
                 await breaker.call(failing_func)
             except ValueError:
                 pass
@@ -129,8 +132,10 @@ class TestCircuitBreaker:
         # Open the circuit
         for _ in range(3):
             try:
+
                 async def failing_func():
                     raise ValueError("Fail")
+
                 await breaker.call(failing_func)
             except ValueError:
                 pass
@@ -162,10 +167,8 @@ class TestCircuitBreaker:
 
         # Open the circuit
         for _ in range(3):
-            try:
+            with contextlib.suppress(ValueError):
                 await breaker.call(failing_func)
-            except ValueError:
-                pass
 
         assert breaker.state == CircuitState.OPEN
 
@@ -210,14 +213,15 @@ class TestCircuitBreakerRegistry:
     """Test suite for CircuitBreakerRegistry."""
 
     @pytest.fixture
-    def registry(self) -> "CircuitBreakerRegistry":
+    def registry(self):  # -> CircuitBreakerRegistry
         """Create circuit breaker registry."""
-        from akasha.resilience.circuit_breaker import CircuitBreakerRegistry
+        from akosha.resilience.circuit_breaker import CircuitBreakerRegistry
+
         return CircuitBreakerRegistry()
 
     def test_get_or_create_breaker(self) -> None:
         """Test getting or creating circuit breakers."""
-        from akasha.resilience.circuit_breaker import CircuitBreakerRegistry
+        from akosha.resilience.circuit_breaker import CircuitBreakerRegistry
 
         registry = CircuitBreakerRegistry()
 
@@ -233,7 +237,7 @@ class TestCircuitBreakerRegistry:
 
     def test_get_all_stats(self) -> None:
         """Test getting all statistics."""
-        from akasha.resilience.circuit_breaker import CircuitBreakerRegistry
+        from akosha.resilience.circuit_breaker import CircuitBreakerRegistry
 
         registry = CircuitBreakerRegistry()
 
@@ -254,8 +258,8 @@ class TestWithCircuitBreakerDecorator:
     @pytest.mark.asyncio
     async def test_decorator_protects_function(self) -> None:
         """Test decorator adds circuit breaker protection."""
-        from akasha.resilience import with_circuit_breaker
-        from akasha.resilience.circuit_breaker import CircuitBreakerConfig
+        from akosha.resilience import with_circuit_breaker
+        from akosha.resilience.circuit_breaker import CircuitBreakerConfig
 
         call_count = 0
 
@@ -279,12 +283,14 @@ class TestWithCircuitBreakerDecorator:
                 await protected_function()
 
         # 3rd call should be rejected (circuit open)
-        from akasha.resilience.circuit_breaker import CircuitBreakerError
+        from akosha.resilience.circuit_breaker import CircuitBreakerError
+
         with pytest.raises(CircuitBreakerError):
             await protected_function()
 
         # Verify circuit opened
-        from akasha.resilience.circuit_breaker import get_circuit_breaker_registry
+        from akosha.resilience.circuit_breaker import get_circuit_breaker_registry
+
         registry = get_circuit_breaker_registry()
         breaker = registry.get_or_create_breaker("decorator_test_service")
         assert breaker.state == CircuitState.OPEN
@@ -292,7 +298,7 @@ class TestWithCircuitBreakerDecorator:
     @pytest.mark.asyncio
     async def test_decorator_with_custom_config(self) -> None:
         """Test decorator with custom configuration."""
-        from akasha.resilience import with_circuit_breaker
+        from akosha.resilience import with_circuit_breaker
 
         config = CircuitBreakerConfig(
             failure_threshold=2,
@@ -308,7 +314,7 @@ class TestWithCircuitBreakerDecorator:
 
     def test_decorator_sync_function(self) -> None:
         """Test decorator works with synchronous functions (non-async context)."""
-        from akasha.resilience import with_circuit_breaker
+        from akosha.resilience import with_circuit_breaker
 
         @with_circuit_breaker("sync_service_test")
         def sync_function():

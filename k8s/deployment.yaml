@@ -1,10 +1,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: akasha-mcp
-  namespace: akasha
+  name: akosha-mcp
+  namespace: akosha
   labels:
-    app: akasha-mcp
+    app: akosha-mcp
     version: v1
 spec:
   replicas: 2
@@ -15,18 +15,18 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      app: akasha-mcp
+      app: akosha-mcp
   template:
     metadata:
       labels:
-        app: akasha-mcp
+        app: akosha-mcp
         version: v1
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "3002"
         prometheus.io/path: "/metrics"
     spec:
-      serviceAccountName: akasha-sa
+      serviceAccountName: akosha-sa
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -34,8 +34,8 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-      - name: akasha-mcp
-        image: akasha:latest
+      - name: akosha-mcp
+        image: akosha:latest
         imagePullPolicy: IfNotPresent
         ports:
         - name: mcp
@@ -48,28 +48,28 @@ spec:
         - name: ENVIRONMENT
           valueFrom:
             configMapKeyRef:
-              name: akasha-config
+              name: akosha-config
               key: ENVIRONMENT
         - name: OTLP_ENDPOINT
           valueFrom:
             configMapKeyRef:
-              name: akasha-config
+              name: akosha-config
               key: OTLP_ENDPOINT
         - name: LOG_LEVEL
           valueFrom:
             configMapKeyRef:
-              name: akasha-config
+              name: akosha-config
               key: LOG_LEVEL
         - name: STORAGE_PATH
           valueFrom:
             configMapKeyRef:
-              name: akasha-config
+              name: akosha-config
               key: STORAGE_PATH
         # Add sensitive environment variables from Secret
         # - name: REDIS_URL
         #   valueFrom:
         #     secretKeyRef:
-        #       name: akasha-secrets
+        #       name: akosha-secrets
         #       key: REDIS_URL
         resources:
           requests:
@@ -80,9 +80,9 @@ spec:
             cpu: "1000m"
         volumeMounts:
         - name: data
-          mountPath: /data/akasha
+          mountPath: /data/akosha
         - name: cache
-          mountPath: /tmp/akasha
+          mountPath: /tmp/akosha
         livenessProbe:
           httpGet:
             path: /health
@@ -110,7 +110,7 @@ spec:
       volumes:
       - name: data
         persistentVolumeClaim:
-          claimName: akasha-data-pvc
+          claimName: akosha-data-pvc
       - name: cache
         emptyDir:
           sizeLimit: 100Mi
@@ -124,5 +124,5 @@ spec:
                 - key: app
                   operator: In
                   values:
-                  - akasha-mcp
+                  - akosha-mcp
               topologyKey: kubernetes.io/hostname

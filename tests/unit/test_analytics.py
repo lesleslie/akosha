@@ -7,12 +7,8 @@ from datetime import UTC, datetime, timedelta
 import numpy as np
 import pytest
 
-from akasha.processing.analytics import (
-    AnomalyDetection,
-    CorrelationResult,
-    DataPoint,
+from akosha.processing.analytics import (
     TimeSeriesAnalytics,
-    TrendAnalysis,
 )
 
 
@@ -209,9 +205,7 @@ class TestTimeSeriesAnalytics:
         # Check for positive correlation between system-1 and system-2
         pair_found = False
         for pair in correlation.system_pairs:
-            if (
-                pair["system_1"] == "system-1" and pair["system_2"] == "system-2"
-            ) or (
+            if (pair["system_1"] == "system-1" and pair["system_2"] == "system-2") or (
                 pair["system_1"] == "system-2" and pair["system_2"] == "system-1"
             ):
                 pair_found = True
@@ -221,7 +215,9 @@ class TestTimeSeriesAnalytics:
         assert pair_found, "system-1 and system-2 pair not found"
 
     @pytest.mark.asyncio
-    async def test_correlate_systems_insufficient_data(self, analytics: TimeSeriesAnalytics) -> None:
+    async def test_correlate_systems_insufficient_data(
+        self, analytics: TimeSeriesAnalytics
+    ) -> None:
         """Test correlation with insufficient data."""
         await analytics.add_metric("metric8", 42.0, "system-1")
 
@@ -265,7 +261,7 @@ class TestTimeSeriesAnalytics:
                 "metric10",
                 20.0 + i,  # Increasing values
                 system_id="system-1",
-                timestamp=now - timedelta(days=9-i),  # From 9 days ago to now
+                timestamp=now - timedelta(days=9 - i),  # From 9 days ago to now
             )
 
         # Analyze with 7-day window

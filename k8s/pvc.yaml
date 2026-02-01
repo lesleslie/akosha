@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: akasha-data-pvc
-  namespace: akasha
+  name: akosha-data-pvc
+  namespace: akosha
   labels:
-    app: akasha-mcp
+    app: akosha-mcp
 spec:
   accessModes:
     - ReadWriteOnce
@@ -16,10 +16,10 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: akasha-cache-pvc
-  namespace: akasha
+  name: akosha-cache-pvc
+  namespace: akosha
   labels:
-    app: akasha-mcp
+    app: akosha-mcp
 spec:
   accessModes:
     - ReadWriteOnce

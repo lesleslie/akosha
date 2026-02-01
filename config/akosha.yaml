@@ -1,0 +1,74 @@
+# Akosha Configuration
+#
+
+# API Configuration
+api:
+  port: 8000
+  host: "0.0.0.0"
+  debug: false
+  workers: 4
+
+# MCP Configuration
+mcp:
+  port: 3001
+  enabled: true
+
+# Storage Configuration
+storage:
+  # Hot tier (0-7 days)
+  hot:
+    backend: "duckdb-memory"
+    path: "/data/akosha/hot"
+    write_ahead_log: true
+    wal_path: "/data/akosha/wal"
+    retention_days: 7
+
+  # Warm tier (7-90 days)
+  warm:
+    backend: "duckdb-ssd"
+    path: "/data/akosha/warm"
+    num_partitions: 256
+    retention_days: 90
+    compaction_schedule: "0 */6 * * *"  # Every 6 hours
+
+  # Cold tier (90+ days)
+  cold:
+    backend: "s3"  # or azure, gcs
+    bucket: "${AKOSHA_COLD_BUCKET:akosha-cold-data}"
+    prefix: "conversations/"
+    format: "parquet"
+    compression: "snappy"
+    retention_days: 2555  # 7 years
+
+# Cache Configuration
+cache:
+  backend: "redis"  # or memory
+  host: "${REDIS_HOST:localhost}"
+  port: 6379
+  db: 0
+  local_ttl_seconds: 60
+  redis_ttl_seconds: 3600
+
+# Ingestion Configuration
+ingestion:
+  workers: 3
+  poll_interval_seconds: 30
+  batch_size: 100
+  max_concurrent: 1000
+
+# Processing Configuration
+processing:
+  shard_count: 256
+  deduplication:
+    enabled: true
+    fuzzy_threshold: 0.85
+  vector_index:
+    dim: 384
+    m: 16
+    ef_construction: 200
+
+# Monitoring Configuration
+monitoring:
+  metrics_port: 9090
+  health_check_interval: 60
+  enable_tracing: true

@@ -1,8 +1,8 @@
-# Akasha Oneiric Integration - Quick Reference
+# Akosha Oneiric Integration - Quick Reference
 
 ## TL;DR
 
-**Akasha** = Universal memory aggregation system using **Oneiric's universal resolution layer** for pluggable, hot-swappable storage backends with automatic tier management.
+**Akosha** = Universal memory aggregation system using **Oneiric's universal resolution layer** for pluggable, hot-swappable storage backends with automatic tier management.
 
 ## Key Design Decisions
 
@@ -49,7 +49,7 @@ resolver = Resolver()
 
 register_adapter_metadata(
     resolver,
-    package_name="akasha",
+    package_name="akosha",
     adapters=[
         AdapterMetadata(
             category="storage",
@@ -79,6 +79,7 @@ storage = resolver.resolve("storage", "s3-hot")
 ## Implementation Checklist
 
 ### Phase 1: Core Storage (Weeks 1-2)
+
 ```bash
 ✅ Oneiric adapter registration
 ✅ DuckDB vector storage with HNSW
@@ -87,6 +88,7 @@ storage = resolver.resolve("storage", "s3-hot")
 ```
 
 ### Phase 2: Tier Management (Weeks 3-4)
+
 ```bash
 ✅ Automatic tier promotion/demotion
 ✅ Lifecycle hooks for data aging
@@ -95,6 +97,7 @@ storage = resolver.resolve("storage", "s3-hot")
 ```
 
 ### Phase 3: Multi-Cloud (Weeks 5-6)
+
 ```bash
 ✅ Azure Blob adapter
 ✅ GCS adapter
@@ -103,6 +106,7 @@ storage = resolver.resolve("storage", "s3-hot")
 ```
 
 ### Phase 4: Caching & Performance (Weeks 7-8)
+
 ```bash
 ✅ Redis cache layer
 ✅ Connection pooling
@@ -111,6 +115,7 @@ storage = resolver.resolve("storage", "s3-hot")
 ```
 
 ### Phase 5: Resilience (Weeks 9-10)
+
 ```bash
 ✅ Circuit breakers
 ✅ Retry with exponential backoff
@@ -121,12 +126,12 @@ storage = resolver.resolve("storage", "s3-hot")
 ## Configuration Example
 
 ```yaml
-# settings/akasha-storage.yml
+# settings/akosha-storage.yml
 storage:
   default_backend: "s3-hot"
 
   s3-hot:
-    bucket_name: "akasha-hot-prod"
+    bucket_name: "akosha-hot-prod"
     region: "${AWS_REGION:us-east-1}"
     storage_class: "STANDARD"
 
@@ -136,12 +141,12 @@ storage:
     ttl_seconds: 3600
 
   s3-warm:
-    bucket_name: "akasha-warm-prod"
+    bucket_name: "akosha-warm-prod"
     region: "${AWS_REGION:us-east-1}"
     storage_class: "STANDARD_IA"
 
   s3-cold:
-    bucket_name: "akasha-cold-prod"
+    bucket_name: "akosha-cold-prod"
     region: "${AWS_REGION:us-east-1}"
     storage_class: "GLACIER"
 ```
@@ -149,14 +154,15 @@ storage:
 ## Code Snippets
 
 ### Register Adapters
+
 ```python
-# akasha/storage/__init__.py
+# akosha/storage/__init__.py
 from oneiric.adapters.metadata import register_adapter_metadata, AdapterMetadata
 
-def register_akasha_adapters(resolver: Resolver):
+def register_akosha_adapters(resolver: Resolver):
     register_adapter_metadata(
         resolver,
-        package_name="akasha",
+        package_name="akosha",
         adapters=[
             AdapterMetadata(
                 category="storage",
@@ -169,19 +175,21 @@ def register_akasha_adapters(resolver: Resolver):
 ```
 
 ### Use Storage
+
 ```python
 # Use via Oneiric bridge
 from oneiric.adapters.bridge import AdapterBridge
 
 bridge = AdapterBridge(resolver=resolver, lifecycle=lifecycle)
 storage = await bridge.use("storage-s3-hot")
-await storage.instance.upload(bucket="akasha", path="test.txt", data=b"Hello")
+await storage.instance.upload(bucket="akosha", path="test.txt", data=b"Hello")
 ```
 
 ### Tier Transitions
+
 ```python
 # Automatic tier promotion/demotion
-class AkashaDataLifecycle:
+class AkoshaDataLifecycle:
     async def evaluate_tier_transition(
         self, data_id: str, current_tier: str, access_metrics: dict
     ) -> str | None:
@@ -194,28 +202,28 @@ class AkashaDataLifecycle:
 ## Key Benefits of Oneiric
 
 1. **Universal Resolution**: 4-tier precedence system
-2. **Hot-Swapping**: Zero-downtime backend changes
-3. **Domain-Agnostic**: Same patterns for all storage types
-4. **Remote-Ready**: Load adapters from manifests
-5. **Type Safety**: Full Pydantic validation
-6. **Observability**: OpenTelemetry integration
+1. **Hot-Swapping**: Zero-downtime backend changes
+1. **Domain-Agnostic**: Same patterns for all storage types
+1. **Remote-Ready**: Load adapters from manifests
+1. **Type Safety**: Full Pydantic validation
+1. **Observability**: OpenTelemetry integration
 
 ## Files Created
 
 ```
-/Users/les/Projects/akasha/docs/
-├── AKASHA_STORAGE_ARCHITECTURE.md  (Complete architecture)
-├── AKASHA_IMPLEMENTATION_GUIDE.md  (Step-by-step guide)
+/Users/les/Projects/akosha/docs/
+├── AKOSHA_STORAGE_ARCHITECTURE.md  (Complete architecture)
+├── AKOSHA_IMPLEMENTATION_GUIDE.md  (Step-by-step guide)
 └── QUICK_REFERENCE.md              (This file)
 ```
 
 ## Next Steps
 
-1. **Review Architecture**: `AKASHA_STORAGE_ARCHITECTURE.md`
-2. **Follow Implementation Guide**: `AKASHA_IMPLEMENTATION_GUIDE.md`
-3. **Start Coding**: Implement S3 adapter first
-4. **Test Thoroughly**: Use pytest with async fixtures
-5. **Deploy Gradually**: 100 → 1,000 → 10,000 systems
+1. **Review Architecture**: `AKOSHA_STORAGE_ARCHITECTURE.md`
+1. **Follow Implementation Guide**: `AKOSHA_IMPLEMENTATION_GUIDE.md`
+1. **Start Coding**: Implement S3 adapter first
+1. **Test Thoroughly**: Use pytest with async fixtures
+1. **Deploy Gradually**: 100 → 1,000 → 10,000 systems
 
 ## Scale Requirements
 
@@ -227,28 +235,32 @@ class AkashaDataLifecycle:
 ## Questions Answered
 
 ### Q1: What Oneiric patterns for each data type?
+
 - **Vectors**: DuckDB (hot) → Parquet (warm) → Compressed (cold)
 - **Time-series**: Raw (hot) → 5min rollups (warm) → 1hour rollups (cold)
 - **Graphs**: DuckDB nodes + Redis adjacency (hot) → Parquet edges (warm)
 - **Text**: SQLite FTS5 (hot) → GZIP Parquet (cold)
 
 ### Q2: How to implement multi-tier storage?
+
 - Use Oneiric's `stack_level` for tier priority
 - Implement lifecycle hooks for automatic transitions
 - Create promotion/demotion policies based on age + access count
 
 ### Q3: Best practices for Oneiric config at scale?
+
 - Use environment variables for deployment-specific settings
 - Validate configs with Pydantic models
 - Register adapters with proper `stack_level` values
 - Use Oneiric's `AdapterBridge` for consistent access patterns
 
 ### Q4: How to handle backend failures and fallbacks?
+
 - Circuit breakers for automatic failure detection
 - Retry with exponential backoff for transient errors
 - Multi-cloud coordinator for cross-cloud redundancy
 - Health checks with automatic promotion of secondary backends
 
----
+______________________________________________________________________
 
-**Summary**: Akasha leverages Oneiric's universal resolution layer to provide a scalable, resilient, multi-tier storage system that can handle 10,000+ Session-Buddy systems with automatic lifecycle management, cross-cloud redundancy, and seamless hot-swapping of storage backends.
+**Summary**: Akosha leverages Oneiric's universal resolution layer to provide a scalable, resilient, multi-tier storage system that can handle 10,000+ Session-Buddy systems with automatic lifecycle management, cross-cloud redundancy, and seamless hot-swapping of storage backends.

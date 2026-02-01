@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from akasha.models import WarmRecord
-from akasha.storage.warm_store import WarmStore
+from akosha.models import WarmRecord
+from akosha.storage.warm_store import WarmStore
 
 
 class TestWarmStore:
@@ -33,8 +33,7 @@ class TestWarmStore:
 
         # Check table exists
         result = warm_store.conn.execute(
-            "SELECT table_name FROM information_schema.tables "
-            "WHERE table_name = 'conversations'"
+            "SELECT table_name FROM information_schema.tables WHERE table_name = 'conversations'"
         ).fetchone()
         assert result is not None
 
@@ -70,9 +69,7 @@ class TestWarmStore:
         await warm_store.insert(record)
 
         # Verify insertion
-        result = warm_store.conn.execute(
-            "SELECT COUNT(*) FROM conversations"
-        ).fetchone()
+        result = warm_store.conn.execute("SELECT COUNT(*) FROM conversations").fetchone()
         assert result[0] == 1
 
     @pytest.mark.asyncio
@@ -90,7 +87,7 @@ class TestWarmStore:
         await warm_store.insert(record)
 
         # Try inserting duplicate
-        with pytest.raises(Exception):  # DuckDB constraint violation
+        with pytest.raises(RuntimeError):  # DuckDB constraint violation
             await warm_store.insert(record)
 
     @pytest.mark.asyncio
@@ -110,9 +107,7 @@ class TestWarmStore:
             await warm_store.insert(record)
 
         # Verify all inserted
-        result = warm_store.conn.execute(
-            "SELECT COUNT(*) FROM conversations"
-        ).fetchone()
+        result = warm_store.conn.execute("SELECT COUNT(*) FROM conversations").fetchone()
         assert result[0] == 10
 
     @pytest.mark.asyncio
@@ -123,21 +118,26 @@ class TestWarmStore:
         start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end_of_day = now.replace(hour=23, minute=59, second=59, microsecond=999999)
 
-        await warm_store.insert(WarmRecord(
-            system_id="system-1",
-            conversation_id="conv-1",
-            embedding=[1] * 384,
-            summary="Test",
-            timestamp=now,
-            metadata={},
-        ))
+        await warm_store.insert(
+            WarmRecord(
+                system_id="system-1",
+                conversation_id="conv-1",
+                embedding=[1] * 384,
+                summary="Test",
+                timestamp=now,
+                metadata={},
+            )
+        )
 
         # Query using date range (index should optimize this)
-        result = warm_store.conn.execute("""
+        result = warm_store.conn.execute(
+            """
             SELECT COUNT(*)
             FROM conversations
             WHERE timestamp >= ? AND timestamp <= ?
-        """, [start_of_day, end_of_day]).fetchone()
+        """,
+            [start_of_day, end_of_day],
+        ).fetchone()
 
         assert result[0] == 1
 
@@ -147,30 +147,37 @@ class TestWarmStore:
         now = datetime.now(UTC)
 
         # Insert conversations with different timestamps
-        await warm_store.insert(WarmRecord(
-            system_id="system-1",
-            conversation_id="conv-1",
-            embedding=[1] * 384,
-            summary="Old conversation",
-            timestamp=now.replace(hour=0),  # Earlier today
-            metadata={},
-        ))
+        await warm_store.insert(
+            WarmRecord(
+                system_id="system-1",
+                conversation_id="conv-1",
+                embedding=[1] * 384,
+                summary="Old conversation",
+                timestamp=now.replace(hour=0),  # Earlier today
+                metadata={},
+            )
+        )
 
-        await warm_store.insert(WarmRecord(
-            system_id="system-1",
-            conversation_id="conv-2",
-            embedding=[2] * 384,
-            summary="Recent conversation",
-            timestamp=now,  # Now
-            metadata={},
-        ))
+        await warm_store.insert(
+            WarmRecord(
+                system_id="system-1",
+                conversation_id="conv-2",
+                embedding=[2] * 384,
+                summary="Recent conversation",
+                timestamp=now,  # Now
+                metadata={},
+            )
+        )
 
         # Query today's conversations
-        result = warm_store.conn.execute("""
+        result = warm_store.conn.execute(
+            """
             SELECT COUNT(*)
             FROM conversations
             WHERE timestamp >= ? AND timestamp <= ?
-        """, [now.replace(hour=0, minute=0, second=0), now]).fetchone()
+        """,
+            [now.replace(hour=0, minute=0, second=0), now],
+        ).fetchone()
 
         assert result[0] == 2
 
@@ -180,30 +187,37 @@ class TestWarmStore:
         now = datetime.now(UTC)
 
         # Insert conversations from different systems
-        await warm_store.insert(WarmRecord(
-            system_id="system-1",
-            conversation_id="conv-1",
-            embedding=[1] * 384,
-            summary="System 1",
-            timestamp=now,
-            metadata={},
-        ))
+        await warm_store.insert(
+            WarmRecord(
+                system_id="system-1",
+                conversation_id="conv-1",
+                embedding=[1] * 384,
+                summary="System 1",
+                timestamp=now,
+                metadata={},
+            )
+        )
 
-        await warm_store.insert(WarmRecord(
-            system_id="system-2",
-            conversation_id="conv-2",
-            embedding=[2] * 384,
-            summary="System 2",
-            timestamp=now,
-            metadata={},
-        ))
+        await warm_store.insert(
+            WarmRecord(
+                system_id="system-2",
+                conversation_id="conv-2",
+                embedding=[2] * 384,
+                summary="System 2",
+                timestamp=now,
+                metadata={},
+            )
+        )
 
         # Query system-1 conversations
-        result = warm_store.conn.execute("""
+        result = warm_store.conn.execute(
+            """
             SELECT COUNT(*)
             FROM conversations
             WHERE system_id = ?
-        """, ["system-1"]).fetchone()
+        """,
+            ["system-1"],
+        ).fetchone()
 
         assert result[0] == 1
 
@@ -218,25 +232,31 @@ class TestWarmStore:
             "count": 42,
         }
 
-        await warm_store.insert(WarmRecord(
-            system_id="system-1",
-            conversation_id="conv-1",
-            embedding=[1] * 384,
-            summary="Test",
-            timestamp=now,
-            metadata=metadata,
-        ))
+        await warm_store.insert(
+            WarmRecord(
+                system_id="system-1",
+                conversation_id="conv-1",
+                embedding=[1] * 384,
+                summary="Test",
+                timestamp=now,
+                metadata=metadata,
+            )
+        )
 
         # Retrieve and verify metadata
-        result = warm_store.conn.execute("""
+        result = warm_store.conn.execute(
+            """
             SELECT metadata
             FROM conversations
             WHERE conversation_id = ?
-        """, ["conv-1"]).fetchone()
+        """,
+            ["conv-1"],
+        ).fetchone()
 
         assert result is not None
         # DuckDB stores JSON as strings
         import json
+
         retrieved_metadata = json.loads(result[0])
         assert retrieved_metadata == metadata
 
@@ -293,9 +313,7 @@ class TestWarmStore:
         await asyncio.gather(*tasks)
 
         # Verify all inserted
-        result = warm_store.conn.execute(
-            "SELECT COUNT(*) FROM conversations"
-        ).fetchone()
+        result = warm_store.conn.execute("SELECT COUNT(*) FROM conversations").fetchone()
         assert result[0] == 10
 
     @pytest.mark.asyncio
@@ -305,21 +323,26 @@ class TestWarmStore:
 
         embedding = [100, -50, 0, 127, -128] + [0] * 379  # INT8 range
 
-        await warm_store.insert(WarmRecord(
-            system_id="system-1",
-            conversation_id="conv-1",
-            embedding=embedding,
-            summary="Test",
-            timestamp=now,
-            metadata={},
-        ))
+        await warm_store.insert(
+            WarmRecord(
+                system_id="system-1",
+                conversation_id="conv-1",
+                embedding=embedding,
+                summary="Test",
+                timestamp=now,
+                metadata={},
+            )
+        )
 
         # Retrieve embedding
-        result = warm_store.conn.execute("""
+        result = warm_store.conn.execute(
+            """
             SELECT embedding
             FROM conversations
             WHERE conversation_id = ?
-        """, ["conv-1"]).fetchone()
+        """,
+            ["conv-1"],
+        ).fetchone()
 
         assert result is not None
         # Verify it's stored as array

@@ -1,18 +1,20 @@
 {
   "dashboard": {
-    "title": "Akasha System Health",
     "description": "Overall system health and analytics monitoring",
-    "tags": ["akasha", "health", "analytics"],
-    "timezone": "browser",
-    "schemaVersion": 16,
-    "version": 0,
-    "refresh": "30s",
     "panels": [
       {
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops"
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
         "id": 1,
-        "title": "Analytics Operations Rate",
-        "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
         "targets": [
           {
             "expr": "rate(analytics_metrics_added_total[1m])",
@@ -30,17 +32,22 @@
             "refId": "C"
           }
         ],
-        "fieldConfig": {
-          "defaults": {
-            "unit": "ops"
-          }
-        }
+        "title": "Analytics Operations Rate",
+        "type": "graph"
       },
       {
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short"
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 0
+        },
         "id": 2,
-        "title": "Knowledge Graph Growth",
-        "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
         "targets": [
           {
             "expr": "kg_entities_total",
@@ -53,17 +60,24 @@
             "refId": "B"
           }
         ],
-        "fieldConfig": {
-          "defaults": {
-            "unit": "short"
-          }
-        }
+        "title": "Knowledge Graph Growth",
+        "type": "graph"
       },
       {
+        "fieldConfig": {
+          "defaults": {
+            "max": 1,
+            "min": 0,
+            "unit": "percentunit"
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 8
+        },
         "id": 3,
-        "title": "Trend Analysis Strength Distribution",
-        "type": "heatmap",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
         "targets": [
           {
             "expr": "histogram_quantile(0.95, sum(rate(analytics_trend_strength_bucket[5m])) by (le))",
@@ -71,19 +85,44 @@
             "refId": "A"
           }
         ],
-        "fieldConfig": {
-          "defaults": {
-            "unit": "percentunit",
-            "min": 0,
-            "max": 1
-          }
-        }
+        "title": "Trend Analysis Strength Distribution",
+        "type": "heatmap"
       },
       {
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "max": 1,
+            "min": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": 0
+                },
+                {
+                  "color": "yellow",
+                  "value": 0.05
+                },
+                {
+                  "color": "red",
+                  "value": 0.1
+                }
+              ]
+            },
+            "unit": "percentunit"
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 8
+        },
         "id": 4,
-        "title": "Anomaly Detection Rate",
-        "type": "gauge",
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
         "targets": [
           {
             "expr": "avg(analytics_anomaly_rate)",
@@ -91,28 +130,22 @@
             "refId": "A"
           }
         ],
-        "fieldConfig": {
-          "defaults": {
-            "unit": "percentunit",
-            "min": 0,
-            "max": 1,
-            "thresholds": {
-              "mode": "absolute",
-              "steps": [
-                {"value": 0, "color": "green"},
-                {"value": 0.05, "color": "yellow"},
-                {"value": 0.1, "color": "red"}
-              ]
-            },
-            "color": {"mode": "thresholds"}
-          }
-        }
+        "title": "Anomaly Detection Rate",
+        "type": "gauge"
       },
       {
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops"
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 16
+        },
         "id": 5,
-        "title": "Knowledge Graph Operations",
-        "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
         "targets": [
           {
             "expr": "rate(kg_entities_added_total[1m])",
@@ -130,17 +163,44 @@
             "refId": "C"
           }
         ],
-        "fieldConfig": {
-          "defaults": {
-            "unit": "ops"
-          }
-        }
+        "title": "Knowledge Graph Operations",
+        "type": "graph"
       },
       {
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "max": 1,
+            "min": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "red",
+                  "value": 0
+                },
+                {
+                  "color": "yellow",
+                  "value": 0.8
+                },
+                {
+                  "color": "green",
+                  "value": 0.95
+                }
+              ]
+            },
+            "unit": "percentunit"
+          }
+        },
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 12,
+          "y": 16
+        },
         "id": 6,
-        "title": "System Health Score",
-        "type": "stat",
-        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 16},
         "targets": [
           {
             "expr": "avg(circuit_success_rate)",
@@ -148,28 +208,23 @@
             "refId": "A"
           }
         ],
-        "fieldConfig": {
-          "defaults": {
-            "unit": "percentunit",
-            "min": 0,
-            "max": 1,
-            "thresholds": {
-              "mode": "absolute",
-              "steps": [
-                {"value": 0, "color": "red"},
-                {"value": 0.8, "color": "yellow"},
-                {"value": 0.95, "color": "green"}
-              ]
-            },
-            "color": {"mode": "thresholds"}
-          }
-        }
+        "title": "System Health Score",
+        "type": "stat"
       },
       {
+        "fieldConfig": {
+          "defaults": {
+            "decimals": 2,
+            "unit": "ms"
+          }
+        },
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 18,
+          "y": 16
+        },
         "id": 7,
-        "title": "Active Traces",
-        "type": "stat",
-        "gridPos": {"h": 4, "w": 6, "x": 18, "y": 16},
         "targets": [
           {
             "expr": "sum(rate(span_duration_milliseconds_sum[5m]))",
@@ -177,13 +232,19 @@
             "refId": "A"
           }
         ],
-        "fieldConfig": {
-          "defaults": {
-            "unit": "ms",
-            "decimals": 2
-          }
-        }
+        "title": "Active Traces",
+        "type": "stat"
       }
-    ]
+    ],
+    "refresh": "30s",
+    "schemaVersion": 16,
+    "tags": [
+      "akosha",
+      "health",
+      "analytics"
+    ],
+    "timezone": "browser",
+    "title": "Akosha System Health",
+    "version": 0
   }
 }

@@ -1,27 +1,27 @@
-# Akasha Phase 2: Advanced Features
+# Akosha Phase 2: Advanced Features
 
 **Status**: Ready to Implement
 **Duration**: Weeks 5-8 (4 weeks)
 **Focus**: Vector indexing, time-series analytics, advanced graph operations
 
----
+______________________________________________________________________
 
 ## Overview
 
 Phase 1 established the foundation (storage, ingestion, basic knowledge graph). Phase 2 adds advanced analytics capabilities:
 
 1. **Production-Grade Vector Search** (with real embeddings)
-2. **Time-Series Analytics** (trends, anomalies, correlations)
-3. **Advanced Knowledge Graph** (community detection, centrality)
-4. **Real-Time Ingestion** (from S3/R2 event triggers)
+1. **Time-Series Analytics** (trends, anomalies, correlations)
+1. **Advanced Knowledge Graph** (community detection, centrality)
+1. **Real-Time Ingestion** (from S3/R2 event triggers)
 
----
+______________________________________________________________________
 
 ## Week 5: Vector Search with Embeddings
 
 ### Task 5.1: Embedding Service
 
-**File**: `akasha/processing/embeddings.py`
+**File**: `akosha/processing/embeddings.py`
 
 **Purpose**: Generate embeddings for search using local ONNX model
 
@@ -128,7 +128,7 @@ class EmbeddingService:
 
 ### Task 5.2: Enhanced Vector Search
 
-**Update**: `akasha/storage/hot_store.py`
+**Update**: `akosha/storage/hot_store.py`
 
 **Add**: Cosine similarity without HNSW (fallback)
 
@@ -184,13 +184,13 @@ async def search_similar_fallback(
         ][:limit]
 ```
 
----
+______________________________________________________________________
 
 ## Week 6: Time-Series Analytics
 
 ### Task 6.1: Metrics Storage
 
-**File**: `akasha/processing/time_series.py`
+**File**: `akosha/processing/time_series.py`
 
 ```python
 """Time-series analytics and trend detection."""
@@ -341,13 +341,13 @@ class TimeSeriesAggregator:
         return {}
 ```
 
----
+______________________________________________________________________
 
 ## Week 7: Advanced Knowledge Graph
 
 ### Task 7.1: Graph Algorithms
 
-**File**: `akasha/processing/graph_algorithms.py`
+**File**: `akosha/processing/graph_algorithms.py`
 
 ```python
 """Advanced knowledge graph algorithms."""
@@ -361,7 +361,7 @@ from typing import TYPE_CHECKING, Any
 import networkx as nx
 
 if TYPE_CHECKING:
-    from akasha.processing.knowledge_graph import KnowledgeGraphBuilder
+    from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -480,7 +480,7 @@ class GraphAnalyzer:
 
 ### Task 7.2: Add MCP Tools for Advanced Graph
 
-**Update**: `akasha_mcp/tools/akasha_tools.py`
+**Update**: `akosha/mcp/tools/akosha_tools.py`
 
 ```python
 @registry.register(
@@ -501,7 +501,7 @@ async def detect_communities(
     Returns:
         Community assignments
     """
-    from akasha.processing.graph_algorithms import GraphAnalyzer
+    from akosha.processing.graph_algorithms import GraphAnalyzer
 
     analyzer = GraphAnalyzer(graph_builder)
     communities = analyzer.detect_communities(method=method)
@@ -532,7 +532,7 @@ async def calculate_centrality(
     Returns:
         Centrality rankings
     """
-    from akasha.processing.graph_algorithms import GraphAnalyzer
+    from akosha.processing.graph_algorithms import GraphAnalyzer
 
     analyzer = GraphAnalyzer(graph_builder)
     centrality = analyzer.calculate_centrality(method=method)
@@ -551,13 +551,13 @@ async def calculate_centrality(
     }
 ```
 
----
+______________________________________________________________________
 
 ## Week 8: Real-Time Event-Driven Ingestion
 
 ### Task 8.1: Cloudflare R2 Event Notifications
 
-**File**: `akasha/ingestion/event_handler.py`
+**File**: `akosha/ingestion/event_handler.py`
 
 ```python
 """Event-driven ingestion from Cloudflare R2."""
@@ -662,23 +662,26 @@ class R2EventHandler:
         logger.info("R2 event handler stopped")
 ```
 
----
+______________________________________________________________________
 
 ## Implementation Checklist
 
 ### Week 5
+
 - [ ] Embedding service with ONNX all-MiniLM-L6-v2
 - [ ] Enhanced vector search with cosine similarity
 - [ ] Batch embedding generation
 - [ ] Fallback for when embeddings unavailable
 
 ### Week 6
+
 - [ ] Time-series aggregator
 - [ ] Trend detection (linear regression)
 - [ ] Anomaly detection (z-score, IQR)
 - [ ] Cross-system correlation matrix
 
 ### Week 7
+
 - [ ] Graph analyzer with NetworkX
 - [ ] Community detection (Louvain, label propagation)
 - [ ] Centrality metrics (betweenness, PageRank)
@@ -686,12 +689,13 @@ class R2EventHandler:
 - [ ] MCP tools: detect_communities, calculate_centrality
 
 ### Week 8
+
 - [ ] Cloudflare R2 event handler (SQS/SNS)
 - [ ] Event-driven ingestion pipeline
 - [ ] Backpressure handling
 - [ ] Dead letter queue for failed events
 
----
+______________________________________________________________________
 
 ## Dependencies Added
 
@@ -708,7 +712,7 @@ advanced = [
 ]
 ```
 
----
+______________________________________________________________________
 
 ## Success Criteria
 
@@ -722,11 +726,12 @@ Phase 2 is complete when:
 - [ ] All features have >85% test coverage
 - [ ] MCP tools are functional and documented
 
----
+______________________________________________________________________
 
 ## Next: Phase 3 (Production Hardening)
 
 After Phase 2, Phase 3 adds:
+
 - Circuit breakers and retry logic
 - Comprehensive monitoring with OpenTelemetry
 - Load testing and performance optimization

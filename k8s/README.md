@@ -1,19 +1,20 @@
-# Akasha Kubernetes Deployment Guide
+# Akosha Kubernetes Deployment Guide
 
-Complete guide for deploying Akasha on Kubernetes.
+Complete guide for deploying Akosha on Kubernetes.
 
----
+______________________________________________________________________
 
 ## 📋 Overview
 
-This directory contains Kubernetes manifests for deploying Akasha MCP server with:
+This directory contains Kubernetes manifests for deploying Akosha MCP server with:
+
 - **High Availability**: 2+ replicas with pod anti-affinity
 - **Auto-scaling**: HorizontalPodAutoscaler (2-10 replicas)
 - **Resilience**: PodDisruptionBudget, health checks, resource limits
 - **Security**: Network policies, RBAC, security contexts
 - **Observability**: Prometheus scraping, OpenTelemetry integration
 
----
+______________________________________________________________________
 
 ## 🚀 Quick Start
 
@@ -28,7 +29,7 @@ This directory contains Kubernetes manifests for deploying Akasha MCP server wit
 
 ```bash
 # From project root
-docker build -t akasha:latest .
+docker build -t akosha:latest .
 
 # Or use UV to build
 uv pip install .
@@ -59,43 +60,47 @@ kubectl apply -f k8s/resourcequota.yaml
 
 ```bash
 # Check pods are running
-kubectl get pods -n akasha
+kubectl get pods -n akosha
 
 # Check deployment status
-kubectl rollout status deployment/akasha-mcp -n akasha
+kubectl rollout status deployment/akosha-mcp -n akosha
 
 # Check services
-kubectl get svc -n akasha
+kubectl get svc -n akosha
 
 # Check HPA
-kubectl get hpa -n akasha
+kubectl get hpa -n akosha
 
 # Port forward to test locally
-kubectl port-forward svc/akasha-mcp 3002:3002 -n akasha
+kubectl port-forward svc/akosha-mcp 3002:3002 -n akosha
 ```
 
----
+______________________________________________________________________
 
 ## 📁 Manifests Breakdown
 
 ### Core Resources
 
 #### 1. Namespace (`namespace.yaml`)
-- Creates dedicated namespace: `akasha`
-- Isolates Akasha resources
+
+- Creates dedicated namespace: `akosha`
+- Isolates Akosha resources
 
 #### 2. ConfigMap (`configmap.yaml`)
+
 - Environment configuration
 - Feature flags
 - Resource limits
 - **Edit this** to customize configuration
 
 #### 3. Secret (`secret.yaml`)
+
 - Sensitive data (API keys, tokens)
 - Placeholder values (update for production)
 - **IMPORTANT**: Update before production use!
 
 #### 4. Deployment (`deployment.yaml`)
+
 - 2 replicas (scales via HPA)
 - Resource requests/limits:
   - Request: 250m CPU, 256Mi memory
@@ -109,12 +114,13 @@ kubectl port-forward svc/akasha-mcp 3002:3002 -n akasha
   - Seccomp profile
   - Read-only root filesystem
 - Storage:
-  - PVC for data (/data/akasha)
-  - EmptyDir for cache (/tmp/akasha)
+  - PVC for data (/data/akosha)
+  - EmptyDir for cache (/tmp/akosha)
 - Affinity:
   - Pod anti-affinity (spread across nodes)
 
 #### 5. Service (`service.yaml`)
+
 - **ClusterIP**: Internal access (port 3002)
 - **NodePort**: External access (port 30302)
 - Both services expose:
@@ -122,6 +128,7 @@ kubectl port-forward svc/akasha-mcp 3002:3002 -n akasha
   - Prometheus metrics (port 3002)
 
 #### 6. HPA (`hpa.yaml`)
+
 - Min replicas: 2
 - Max replicas: 10
 - Scaling metrics:
@@ -132,21 +139,25 @@ kubectl port-forward svc/akasha-mcp 3002:3002 -n akasha
   - Scale up quickly (60s stabilization)
 
 #### 7. PDB (`pdb.yaml`)
+
 - Ensures minimum availability during updates
 - Min available: 1 pod
 - Allows 1 pod to be down during rolling updates
 
 #### 8. PVC (`pvc.yaml`)
+
 - Data PVC: 10Gi (for embeddings and storage)
 - Cache PVC: 5Gi (for temporary data)
 - Uses storage class "fast-ssd" (customize as needed)
 
 #### 9. ServiceAccount + RBAC (`serviceaccount.yaml`)
-- Service account: `akasha-sa`
+
+- Service account: `akosha-sa`
 - Role: Read ConfigMaps/Secrets
 - RoleBinding: Binds role to service account
 
 #### 10. NetworkPolicy (`networkpolicy.yaml`)
+
 - Ingress: Allow TCP on port 3002
 - Egress:
   - DNS (UDP 53)
@@ -155,6 +166,7 @@ kubectl port-forward svc/akasha-mcp 3002:3002 -n akasha
 - **Customize** for your security requirements
 
 #### 11. ResourceQuota (`resourcequota.yaml`)
+
 - Namespace limits:
   - CPU: 4 requests, 10 limits
   - Memory: 8Gi requests, 20Gi limits
@@ -165,7 +177,7 @@ kubectl port-forward svc/akasha-mcp 3002:3002 -n akasha
   - Min: 100m CPU, 128Mi memory
   - Max: 2000m CPU, 2Gi memory
 
----
+______________________________________________________________________
 
 ## 🔧 Configuration
 
@@ -176,7 +188,7 @@ Edit `k8s/configmap.yaml` to change:
 ```yaml
 ENVIRONMENT: "production"          # or "development"
 LOG_LEVEL: "INFO"                  # DEBUG, INFO, WARNING, ERROR
-STORAGE_PATH: "/data/akasha"       # Data directory
+STORAGE_PATH: "/data/akosha"       # Data directory
 EMBEDDING_MODEL: "all-MiniLM-L6-v2" # Model name
 MCP_PORT: "3002"                    # Server port
 ```
@@ -214,7 +226,7 @@ resources:
     storage: 10Gi    # Increase for more data
 ```
 
----
+______________________________________________________________________
 
 ## 📊 Scaling Behavior
 
@@ -233,13 +245,13 @@ The HPA automatically scales based on CPU/memory usage:
 
 ```bash
 # Scale to 5 replicas
-kubectl scale deployment/akasha-mcp --replicas=5 -n akasha
+kubectl scale deployment/akosha-mcp --replicas=5 -n akosha
 
 # Edit HPA min/max
-kubectl edit hpa akasha-mcp-hpa -n akasha
+kubectl edit hpa akosha-mcp-hpa -n akosha
 ```
 
----
+______________________________________________________________________
 
 ## 🔍 Monitoring
 
@@ -255,9 +267,11 @@ annotations:
 ```
 
 **Prometheus targets**:
-- `http://akasha-mcp.akasha.svc:3002/metrics`
+
+- `http://akosha-mcp.akosha.svc:3002/metrics`
 
 **Available metrics**:
+
 - Embedding generation rate
 - Circuit breaker states
 - Analytics operations
@@ -268,29 +282,30 @@ annotations:
 
 ```bash
 # View logs
-kubectl logs -f deployment/akasha-mcp -n akasha
+kubectl logs -f deployment/akosha-mcp -n akosha
 
 # View logs from specific pod
-kubectl logs -f pod/akasha-mcp-xxxxx -n akasha
+kubectl logs -f pod/akosha-mcp-xxxxx -n akosha
 ```
 
 ### Health Checks
 
 ```bash
 # Check pod health
-kubectl describe pod -n akasha
+kubectl describe pod -n akosha
 
 # Check endpoints
-kubectl get endpoints akasha-mcp -n akasha
+kubectl get endpoints akosha-mcp -n akosha
 ```
 
----
+______________________________________________________________________
 
 ## 🛡️ Security
 
 ### Network Policies
 
 The default network policy allows:
+
 - ✅ Inbound TCP on port 3002
 - ✅ DNS resolution
 - ✅ HTTPS/HTTP outbound
@@ -311,7 +326,8 @@ ingress:
 ### RBAC
 
 The deployment includes:
-- Service account: `akasha-sa`
+
+- Service account: `akosha-sa`
 - Role: Read ConfigMaps/Secrets
 - RoleBinding: Binds role to SA
 
@@ -327,12 +343,13 @@ rules:
 ### Security Contexts
 
 Pod security features:
+
 - ✅ Run as non-root user (UID 1000)
 - ✅ Read-only root filesystem
 - ✅ Seccomp profile (RuntimeDefault)
 - ✅ Drop all capabilities (minimal container)
 
----
+______________________________________________________________________
 
 ## 📈 Production Checklist
 
@@ -350,13 +367,13 @@ Pod security features:
 
 - [ ] Verify all pods are Running
 - [ ] Verify HPA is functioning
-- [ ] Test rolling update: `kubectl rollout status deployment/akasha-mcp -n akasha`
+- [ ] Test rolling update: `kubectl rollout status deployment/akosha-mcp -n akosha`
 - [ ] Test pod disruption budget
 - [ ] Verify metrics are being scraped
 - [ ] Test scaling behavior
 - [ ] Verify log aggregation
 
----
+______________________________________________________________________
 
 ## 🚀 Deployment Strategies
 
@@ -364,13 +381,13 @@ Pod security features:
 
 ```bash
 # Update image
-kubectl set image deployment/akasha-mcp akasha-mcp=akasha:v2.0 -n akasha
+kubectl set image deployment/akosha-mcp akosha-mcp=akosha:v2.0 -n akosha
 
 # Watch rollout status
-kubectl rollout status deployment/akasha-mcp -n akasha
+kubectl rollout status deployment/akosha-mcp -n akosha
 
 # Rollback if needed
-kubectl rollout undo deployment/akasha-mcp -n akasha
+kubectl rollout undo deployment/akosha-mcp -n akosha
 ```
 
 ### Canary Deployment
@@ -391,10 +408,10 @@ kubectl apply -f k8s/deployment-canary.yaml
 kubectl apply -f k8s/deployment-green.yaml
 
 # Switch service to green
-kubectl patch svc akasha-mcp -n akasha -p '{"spec":{"selector":{"app":"akasha-mcp-green"}}}'
+kubectl patch svc akosha-mcp -n akosha -p '{"spec":{"selector":{"app":"akosha-mcp-green"}}}'
 ```
 
----
+______________________________________________________________________
 
 ## 🔧 Troubleshooting
 
@@ -402,23 +419,23 @@ kubectl patch svc akasha-mcp -n akasha -p '{"spec":{"selector":{"app":"akasha-mc
 
 ```bash
 # Describe pod for details
-kubectl describe pod -n akasha
+kubectl describe pod -n akosha
 
 # Check logs
-kubectl logs -n akasha <pod-name>
+kubectl logs -n akosha <pod-name>
 
 # Check events
-kubectl get events -n akasha --sort-by='.lastTimestamp'
+kubectl get events -n akosha --sort-by='.lastTimestamp'
 ```
 
 ### HPA Not Scaling
 
 ```bash
 # Check HPA status
-kubectl describe hpa akasha-mcp-hpa -n akasha
+kubectl describe hpa akosha-mcp-hpa -n akosha
 
 # Check resource usage
-kubectl top pods -n akasha
+kubectl top pods -n akosha
 
 # Verify metrics server is running
 kubectl get apiservice | grep metrics
@@ -428,10 +445,10 @@ kubectl get apiservice | grep metrics
 
 ```bash
 # Check PVC status
-kubectl get pvc -n akasha
+kubectl get pvc -n akosha
 
 # Check PV binding
-kubectl describe pvc akasha-data-pvc -n akasha
+kubectl describe pvc akosha-data-pvc -n akosha
 
 # Verify storage class
 kubectl get storageclass
@@ -441,16 +458,16 @@ kubectl get storageclass
 
 ```bash
 # Test network policy
-kubectl run -it --rm debug --image=nicolaka/netshoot -n akasha
+kubectl run -it --rm debug --image=nicolaka/netshoot -n akosha
 
 # Check service endpoints
-kubectl get endpoints akasha-mcp -n akasha
+kubectl get endpoints akosha-mcp -n akosha
 
 # Test connectivity
-kubectl run -it --rm debug --image=curlimages/curl -n akasha -- curl http://akasha-mcp:3002/health
+kubectl run -it --rm debug --image=curlimages/curl -n akosha -- curl http://akosha-mcp:3002/health
 ```
 
----
+______________________________________________________________________
 
 ## 📚 Additional Resources
 
@@ -459,7 +476,7 @@ kubectl run -it --rm debug --image=curlimages/curl -n akasha -- curl http://akas
 - [OpenTelemetry Kubernetes](https://opentelemetry.io/docs/instrumentation/kubernetes/)
 - [HPA Guidelines](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/)
 
----
+______________________________________________________________________
 
 ## 🎯 Quick Reference
 
@@ -470,16 +487,16 @@ kubectl run -it --rm debug --image=curlimages/curl -n akasha -- curl http://akas
 kubectl apply -f k8s/
 
 # Check status
-kubectl get all -n akasha
+kubectl get all -n akosha
 
 # Scale deployment
-kubectl scale deployment/akasha-mcp --replicas=5 -n akasha
+kubectl scale deployment/akosha-mcp --replicas=5 -n akosha
 
 # View logs
-kubectl logs -f deployment/akasha-mcp -n akasha
+kubectl logs -f deployment/akosha-mcp -n akosha
 
 # Port forward for testing
-kubectl port-forward svc/akasha-mcp 3002:3002 -n akasha
+kubectl port-forward svc/akosha-mcp 3002:3002 -n akosha
 
 # Delete deployment
 kubectl delete -f k8s/
@@ -489,7 +506,7 @@ kubectl delete -f k8s/
 
 ```bash
 # From within cluster
-http://akasha-mcp.akasha.svc:3002
+http://akosha-mcp.akosha.svc:3002
 
 # From outside (via NodePort)
 http://<node-ip>:30302
@@ -498,6 +515,6 @@ http://<node-ip>:30302
 http://localhost:3002
 ```
 
----
+______________________________________________________________________
 
-**Deploy Akasha on Kubernetes with confidence!** 🚀
+**Deploy Akosha on Kubernetes with confidence!** 🚀

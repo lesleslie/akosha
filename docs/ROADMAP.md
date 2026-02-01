@@ -1,10 +1,10 @@
-# Akasha Complete Development Roadmap
+# Akosha Complete Development Roadmap
 
-**Project**: Akasha - Universal Memory Aggregation System
+**Project**: Akosha - Universal Memory Aggregation System
 **Timeline**: 12 weeks (3 months) to full production
 **Target Scale**: 100 → 100,000 systems
 
----
+______________________________________________________________________
 
 ## Quick Reference
 
@@ -15,7 +15,7 @@
 | **Phase 3** | Weeks 9-10 | Production Hardening | 📋 Planned | [PHASE_3_PRODUCTION_HARDENING.md](PHASE_3_PRODUCTION_HARDENING.md) |
 | **Phase 4** | Weeks 11-12 | Scale Preparation | 📋 Planned | [PHASE_4_SCALE_PREPARATION.md](PHASE_4_SCALE_PREPARATION.md) |
 
----
+______________________________________________________________________
 
 ## Architecture Evolution
 
@@ -58,7 +58,7 @@ Phase 4: Hyperscale (100,000 systems)
 └─────────────────────────────┘
 ```
 
----
+______________________________________________________________________
 
 ## Feature Matrix by Phase
 
@@ -70,7 +70,7 @@ Phase 4: Hyperscale (100,000 systems)
 | Cold Store (Parquet/R2) | 📋 | ✅ | ✅ | ✅ |
 | Milvus Warm Store | ❌ | ❌ | ❌ | ✅ |
 | **Search** |
-| Vector Similarity | ✅* | ✅ | ✅ | ✅ |
+| Vector Similarity | ✅\* | ✅ | ✅ | ✅ |
 | Hybrid Search | ❌ | ❌ | ❌ | ✅ |
 | **Graph** |
 | Basic Builder | ✅ | ✅ | ✅ | ✅ |
@@ -92,9 +92,9 @@ Phase 4: Hyperscale (100,000 systems)
 | Kubernetes | ❌ | ❌ | ✅ | ✅ |
 | Multi-Region DR | ❌ | ❌ | ❌ | ✅ |
 
-* = Fallback cosine similarity (HNSW may not be available in all DuckDB versions)
+- = Fallback cosine similarity (HNSW may not be available in all DuckDB versions)
 
----
+______________________________________________________________________
 
 ## Technology Stack Evolution
 
@@ -116,19 +116,21 @@ Phase 4: Hyperscale (100,000 systems)
 | **Monitoring** | Logs | Logs + Metrics | Logs + Metrics + Tracing | Full Observability |
 | **Resilience** | Basic retry | Retry + Backoff | Circuit Breaker + DR | Full DR Multi-Region |
 
----
+______________________________________________________________________
 
 ## Key Milestones
 
 ### ✅ Phase 1 Complete (Week 4)
+
 - [x] Hot/Warm/Cold storage architecture
 - [x] Basic ingestion worker
 - [x] Deduplication service
 - [x] Knowledge graph builder
-- [x] Akasha MCP server (6 tools)
+- [x] Akosha MCP server (6 tools)
 - [x] Cloudflare R2 integration ready
 
 ### 📋 Phase 2 Targets (Week 8)
+
 - [ ] ONNX embedding generation
 - [ ] Semantic search with real embeddings
 - [ ] Time-series aggregator
@@ -138,6 +140,7 @@ Phase 4: Hyperscale (100,000 systems)
 - [ ] Event-driven ingestion
 
 ### 📋 Phase 3 Targets (Week 10)
+
 - [ ] Circuit breakers for all external calls
 - [ ] Retry with exponential backoff
 - [ ] OpenTelemetry tracing
@@ -147,14 +150,15 @@ Phase 4: Hyperscale (100,000 systems)
 - [ ] Zero-downtime deployments
 
 ### 📋 Phase 4 Targets (Week 12)
+
 - [ ] Milvus cluster deployment
-- ] Hybrid vector search (DuckDB + Milvus)
-- ] TimescaleDB with continuous aggregates
-- ] Neo4j for complex graph queries
+- \] Hybrid vector search (DuckDB + Milvus)
+- \] TimescaleDB with continuous aggregates
+- \] Neo4j for complex graph queries
 - [ ] Multi-region disaster recovery
 - [ ] Test at 10,000 systems scale
 
----
+______________________________________________________________________
 
 ## Estimated Resource Requirements
 
@@ -167,7 +171,7 @@ Phase 4: Hyperscale (100,000 systems)
 
 *Costs assume Cloudflare R2 for storage + Google Cloud Platform compute*
 
----
+______________________________________________________________________
 
 ## Development Team
 
@@ -177,7 +181,7 @@ Phase 4: Hyperscale (100,000 systems)
 - **Weeks 5-8**: 2 engineers (features + testing)
 - **Weeks 9-12**: 2-3 engineers (hardening + scale)
 
----
+______________________________________________________________________
 
 ## Risk Mitigation
 
@@ -190,71 +194,77 @@ Phase 4: Hyperscale (100,000 systems)
 | **Multi-region latency** | Async replication + eventual consistency |
 | **Cost overruns** | Tiered auto-aging + lifecycle policies |
 
----
+______________________________________________________________________
 
 ## Getting Started
 
 **For Developers**:
+
 ```bash
 # Clone and setup
 git clone <repository>
-cd akasha
+cd akosha
 uv sync --group dev
 
 # Run tests
 pytest -m "not slow"
 
 # Start local server
-uv run python -m akasha.main
+uv run python -m akosha.main
 
 # Start MCP server
-uv run python -m akasha_mcp
+uv run python -m akosha.mcp
 ```
 
 **For Operations**:
+
 ```bash
 # Deploy to Kubernetes
 kubectl apply -f k8s/
 
 # Check status
-kubectl get pods -n akasha
-kubectl logs -f deployment/akasha-ingestion -n akasha
+kubectl get pods -n akosha
+kubectl logs -f deployment/akosha-ingestion -n akosha
 
 # Scale up
-kubectl scale deployment/akasha-ingestion --replicas=10 -n akasha
+kubectl scale deployment/akosha-ingestion --replicas=10 -n akosha
 ```
 
----
+______________________________________________________________________
 
 ## Success Metrics
 
 Phase is successful when:
 
 **Phase 1**:
+
 - ✅ Storage layers initialized
 - ✅ Basic search working
 - ✅ Knowledge graph building entities
 - ✅ MCP tools responding
 
 **Phase 2**:
+
 - ✅ Embeddings generated < 50ms
-- ✅ Trends detected with <10% false positive rate
-- ✅ Communities detected in <5 seconds
+- ✅ Trends detected with \<10% false positive rate
+- ✅ Communities detected in \<5 seconds
 - ✅ Search precision >0.8 (semantic similarity)
 
 **Phase 3**:
+
 - ✅ P99 latency < 500ms
 - ✅ 99.9% uptime (SLA)
 - ✅ MTTR < 15 minutes
 - ✅ Deployments < 5 minutes downtime
 
 **Phase 4**:
+
 - ✅ Handles 100M+ embeddings
-- ✅ Search latency <100ms (hot), <500ms (warm)
+- ✅ Search latency \<100ms (hot), \<500ms (warm)
 - ✅ RPO < 5 minutes, RTO < 1 hour
 - ✅ Cost per query < $0.001
 
----
+______________________________________________________________________
 
 ## Documentation Index
 
@@ -265,7 +275,7 @@ Phase is successful when:
 - [Phase 3: Production Hardening](PHASE_3_PRODUCTION_HARDENING.md) - Resilience, observability
 - [Phase 4: Scale Preparation](PHASE_4_SCALE_PREPARATION.md) - Milvus, TimescaleDB, Neo4j
 
----
+______________________________________________________________________
 
 **Last Updated**: 2025-01-27
 **Status**: Phase 1 Complete, Phases 2-4 Ready to Implement

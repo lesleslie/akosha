@@ -1,21 +1,21 @@
-# Akasha User Guide
+# Akosha User Guide
 
-Complete guide for using Akasha to aggregate, search, and analyze memories across Session-Buddy instances.
+Complete guide for using Akosha to aggregate, search, and analyze memories across Session-Buddy instances.
 
----
+______________________________________________________________________
 
 ## Table of Contents
 
 1. [Getting Started](#getting-started)
-2. [Embedding Generation](#embedding-generation)
-3. [Time-Series Analytics](#time-series-analytics)
-4. [Knowledge Graph Queries](#knowledge-graph-queries)
-5. [MCP Tool Usage](#mcp-tool-usage)
-6. [Advanced Patterns](#advanced-patterns)
-7. [Best Practices](#best-practices)
-8. [Troubleshooting](#troubleshooting)
+1. [Embedding Generation](#embedding-generation)
+1. [Time-Series Analytics](#time-series-analytics)
+1. [Knowledge Graph Queries](#knowledge-graph-queries)
+1. [MCP Tool Usage](#mcp-tool-usage)
+1. [Advanced Patterns](#advanced-patterns)
+1. [Best Practices](#best-practices)
+1. [Troubleshooting](#troubleshooting)
 
----
+______________________________________________________________________
 
 ## Getting Started
 
@@ -23,8 +23,8 @@ Complete guide for using Akasha to aggregate, search, and analyze memories acros
 
 ```python
 # Test your installation
-from akasha.processing.embeddings import get_embedding_service
-from akasha.processing.analytics import TimeSeriesAnalytics
+from akosha.processing.embeddings import get_embedding_service
+from akosha.processing.analytics import TimeSeriesAnalytics
 
 # Initialize services
 embedding_service = get_embedding_service()
@@ -32,7 +32,7 @@ await embedding_service.initialize()
 
 analytics = TimeSeriesAnalytics()
 
-print("✅ Akasha ready!")
+print("✅ Akosha ready!")
 print(f"Embedding mode: {'real' if embedding_service.is_available() else 'fallback'}")
 ```
 
@@ -47,14 +47,14 @@ print(f"Generated {len(embedding)}-dimensional embedding")
 print(f"First 5 values: {embedding[:5]}")
 ```
 
----
+______________________________________________________________________
 
 ## Embedding Generation
 
 ### Single Text Embedding
 
 ```python
-from akasha.processing.embeddings import get_embedding_service
+from akosha.processing.embeddings import get_embedding_service
 
 service = get_embedding_service()
 await service.initialize()
@@ -128,14 +128,14 @@ for idx, similarity in rankings:
     print(f"{similarity:.3f}: {candidates[idx]}")
 ```
 
----
+______________________________________________________________________
 
 ## Time-Series Analytics
 
 ### Tracking Metrics
 
 ```python
-from akasha.processing.analytics import TimeSeriesAnalytics
+from akosha.processing.analytics import TimeSeriesAnalytics
 from datetime import datetime, timedelta, UTC
 
 analytics = TimeSeriesAnalytics()
@@ -236,14 +236,14 @@ for pair in correlation.system_pairs:
     print(f"  Strength: {pair['strength']}")
 ```
 
----
+______________________________________________________________________
 
 ## Knowledge Graph Queries
 
 ### Building the Graph
 
 ```python
-from akasha.processing.knowledge_graph import KnowledgeGraphBuilder
+from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
 
 builder = KnowledgeGraphBuilder()
 
@@ -307,11 +307,11 @@ print(f"Entity types: {stats['entity_type_counts']}")
 print(f"Edge types: {stats['edge_type_counts']}")
 ```
 
----
+______________________________________________________________________
 
 ## MCP Tool Usage
 
-### Using Akasha MCP Tools
+### Using Akosha MCP Tools
 
 Once configured (see README), tools are available in Claude Code:
 
@@ -369,7 +369,7 @@ User: How many entities are in the knowledge graph?
 User: What are the most common relationship types?
 ```
 
----
+______________________________________________________________________
 
 ## Advanced Patterns
 
@@ -453,45 +453,51 @@ async def find_best_practices(analytics, metric_name):
     return trends
 ```
 
----
+______________________________________________________________________
 
 ## Best Practices
 
 ### 1. Embedding Generation
 
 ✅ **DO:**
+
 - Use batch embedding for multiple texts
 - Cache embeddings for frequently searched content
 - Normalize input text (lowercase, remove extra whitespace)
 - Use fallback mode during development
 
 ❌ **DON'T:**
-- Generate embeddings for very short texts (<10 characters)
+
+- Generate embeddings for very short texts (\<10 characters)
 - Re-embed identical content without caching
 - Use embeddings for non-text data without adaptation
 
 ### 2. Analytics Queries
 
 ✅ **DO:**
+
 - Use appropriate time windows (7-30 days for trends)
 - Set realistic anomaly thresholds (2.5-3.0 sigma)
 - Filter by system_id when analyzing specific instances
 - Analyze trends before and after deployments
 
 ❌ **DON'T:**
-- Use very short time windows (<1 hour) for trend analysis
-- Set anomaly thresholds too low (<2.0) - too many false positives
+
+- Use very short time windows (\<1 hour) for trend analysis
+- Set anomaly thresholds too low (\<2.0) - too many false positives
 - Ignore metric metadata - it provides valuable context
 
 ### 3. Knowledge Graph
 
 ✅ **DO:**
+
 - Build graph incrementally as conversations arrive
 - Use descriptive entity IDs (e.g., "user:alice", "project:X")
 - Query with appropriate limits (10-50 neighbors)
 - Find paths with reasonable max_hops (3-5)
 
 ❌ **DON'T:**
+
 - Create entities for every word (be selective)
 - Use numeric IDs without meaning
 - Query unlimited neighbors (performance issues)
@@ -500,33 +506,37 @@ async def find_best_practices(analytics, metric_name):
 ### 4. Performance
 
 ✅ **DO:**
+
 - Batch operations when possible
 - Use async/await throughout
 - Close database connections when done
 - Monitor memory usage with large embeddings
 
 ❌ **DON'T:**
+
 - Generate embeddings in tight loops without batching
 - Block event loop with synchronous operations
 - Leave connections open indefinitely
 - Embed massive documents (>100K words) without summarization
 
----
+______________________________________________________________________
 
 ## Troubleshooting
 
 ### Issue: Embedding generation is slow
 
 **Solution:**
+
 ```python
 # Use batch processing
 texts = [text1, text2, text3, ...]
 embeddings = await service.generate_batch_embeddings(texts, batch_size=32)
 ```
 
-### Issue: Low similarity scores (<0.5)
+### Issue: Low similarity scores (\<0.5)
 
 **Solution:**
+
 ```python
 # Check if using real embeddings
 if not service.is_available():
@@ -537,6 +547,7 @@ if not service.is_available():
 ### Issue: No anomalies detected
 
 **Solution:**
+
 ```python
 # Lower threshold
 anomalies = await analytics.detect_anomalies(
@@ -548,6 +559,7 @@ anomalies = await analytics.detect_anomalies(
 ### Issue: Trend analysis returns None
 
 **Solution:**
+
 ```python
 # Check data point count
 # Need at least 10 data points for trend analysis
@@ -558,6 +570,7 @@ for i in range(10):
 ### Issue: Graph queries return empty results
 
 **Solution:**
+
 ```python
 # Build graph first
 await builder.build_from_conversation(conversation)
@@ -570,18 +583,17 @@ print(f"Entities in graph: {stats['total_entities']}")
 neighbors = builder.get_neighbors(entity_id="user:alice")
 ```
 
----
+______________________________________________________________________
 
 ## Additional Resources
 
-- **GitHub Repository**: [https://github.com/yourusername/akasha](https://github.com/yourusername/akasha)
-- **API Reference**: See [MCP_TOOLS_REFERENCE.md](MCP_TOOLS_REFERENCE.md)
+- **GitHub Repository**: [https://github.com/yourusername/akosha](https://github.com/yourusername/akosha)
 - **Architecture**: [ADR_001_ARCHITECTURE_DECISIONS.md](ADR_001_ARCHITECTURE_DECISIONS.md)
 - **Roadmap**: [ROADMAP.md](ROADMAP.md)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/akasha/issues)
+- **Issues**: [GitHub Issues](https://github.com/yourusername/akosha/issues)
 
----
+______________________________________________________________________
 
 **Happy aggregating!** 🚀
 
-*आकाश (Akasha) - The sky has no limits*
+*आकाश (Akosha) - The sky has no limits*

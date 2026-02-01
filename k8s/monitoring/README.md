@@ -1,8 +1,8 @@
-# Akasha Production Deployment with Monitoring Stack
+# Akosha Production Deployment with Monitoring Stack
 
-Complete deployment including Akasha MCP server, Prometheus, Grafana, and Jaeger.
+Complete deployment including Akosha MCP server, Prometheus, Grafana, and Jaeger.
 
----
+______________________________________________________________________
 
 ## 📋 Architecture
 
@@ -11,7 +11,7 @@ Complete deployment including Akasha MCP server, Prometheus, Grafana, and Jaeger
 │                    Kubernetes Cluster                         │
 │                                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │  Akasha MCP  │  │  Prometheus   │  │   Grafana    │  │
+│  │  Akosha MCP  │  │  Prometheus   │  │   Grafana    │  │
 │  │  (2-10 pods) │  │              │  │              │  │
 │  │              │  │  Scrapes      │  │  Dashboards   │  │
 │  │  Port: 3002  │  │  metrics      │  │              │  │
@@ -26,14 +26,14 @@ Complete deployment including Akasha MCP server, Prometheus, Grafana, and Jaeger
 └──────────────────────────────────────────────────────────────┘
 ```
 
----
+______________________________________________________________________
 
 ## 🚀 Quick Start
 
 ### 1. Deploy Complete Stack
 
 ```bash
-# Deploy Akasha with monitoring
+# Deploy Akosha with monitoring
 kubectl apply -f k8s/monitoring/
 ```
 
@@ -41,19 +41,19 @@ kubectl apply -f k8s/monitoring/
 
 ```bash
 # Port forward all services
-kubectl port-forward -n akasha svc/akasha-mcp 3002:3002 &
-kubectl port-forward -n akasha svc/prometheus 9090:9090 &
-kubectl port-forward -n akasha svc/grafana 3001:3000 &
-kubectl port-forward -n akasha svc/jaeger 16686:16686 &
+kubectl port-forward -n akosha svc/akosha-mcp 3002:3002 &
+kubectl port-forward -n akosha svc/prometheus 9090:9090 &
+kubectl port-forward -n akosha svc/grafana 3001:3000 &
+kubectl port-forward -n akosha svc/jaeger 16686:16686 &
 
 # Access URLs:
-# Akasha MCP: http://localhost:3002
+# Akosha MCP: http://localhost:3002
 # Prometheus: http://localhost:9090
 # Grafana: http://localhost:3001 (admin/admin)
 # Jaeger UI: http://localhost:16686
 ```
 
----
+______________________________________________________________________
 
 ## 📁 Monitoring Stack Files
 
@@ -64,7 +64,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: prometheus-config
-  namespace: akasha
+  namespace: akosha
 data:
   prometheus.yml: |
     global:
@@ -75,16 +75,16 @@ data:
       - "/etc/prometheus/alerts.yml"
 
     scrape_configs:
-      # Akasha MCP metrics
-      - job_name: 'akasha-mcp'
+      # Akosha MCP metrics
+      - job_name: 'akosha-mcp'
         kubernetes_sd_configs:
           - role: pod
             namespaces:
               names:
-                - akasha
+                - akosha
         relabel_configs:
           - source_labels: [__meta_kubernetes_pod_label_app]
-            regex: 'akasha-mcp'
+            regex: 'akosha-mcp'
             action: keep
           - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
             regex: 'true'
@@ -106,7 +106,7 @@ data:
               - alertmanager:9093
 ```
 
----
+______________________________________________________________________
 
 ### Grafana (`k8s/monitoring/grafana.yaml`)
 
@@ -115,18 +115,18 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: grafana-dashboards
-  namespace: akasha
+  namespace: akosha
 data:
-  akasha-dashboard.json: |
+  akosha-dashboard.json: |
     {
       "dashboard": {
-        "title": "Akasha Overview",
+        "title": "Akosha Overview",
         "panels": [
           {
             "title": "System Health",
             "targets": [
               {
-                "expr": "up{job=\"akasha-mcp\"}"
+                "expr": "up{job=\"akosha-mcp\"}"
               }
             ]
           }
@@ -142,7 +142,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: grafana-provisioning
-  namespace: akasha
+  namespace: akosha
 data:
   provisioning.yml: |
     apiVersion: 1
@@ -161,7 +161,7 @@ data:
         editable: false
 ```
 
----
+______________________________________________________________________
 
 ### Jaeger (`k8s/monitoring/jaeger.yaml`)
 
@@ -170,7 +170,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: jaeger
-  namespace: akasha
+  namespace: akosha
   labels:
     app: jaeger
 spec:
@@ -211,7 +211,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: jaeger
-  namespace: akasha
+  namespace: akosha
 spec:
   selector:
     app: jaeger
@@ -228,7 +228,7 @@ spec:
   type: ClusterIP
 ```
 
----
+______________________________________________________________________
 
 ### AlertManager (`k8s/monitoring/alertmanager.yaml`)
 
@@ -237,7 +237,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: alertmanager
-  namespace: akasha
+  namespace: akosha
   labels:
     app: alertmanager
 spec:
@@ -276,7 +276,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: alertmanager-config
-  namespace: akasha
+  namespace: akosha
 data:
   alertmanager.yml: |
     global:
@@ -306,7 +306,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: alertmanager
-  namespace: akasha
+  namespace: akosha
 spec:
   selector:
     app: alertmanager
@@ -316,7 +316,7 @@ spec:
   type: ClusterIP
 ```
 
----
+______________________________________________________________________
 
 ### Prometheus Service (`k8s/monitoring/prometheus-service.yaml`)
 
@@ -325,7 +325,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: prometheus
-  namespace: akasha
+  namespace: akosha
 spec:
   selector:
     app: prometheus
@@ -338,7 +338,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: prometheus
-  namespace: akasha
+  namespace: akosha
   labels:
     app: prometheus
 spec:
@@ -397,7 +397,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: prometheus-pvc
-  namespace: akasha
+  namespace: akosha
 spec:
   accessModes:
     - ReadWriteOnce
@@ -407,7 +407,7 @@ spec:
   storageClassName: standard
 ```
 
----
+______________________________________________________________________
 
 ### Grafana Service (`k8s/monitoring/grafana-service.yaml`)
 
@@ -416,7 +416,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: grafana
-  namespace: akasha
+  namespace: akosha
 spec:
   selector:
     app: grafana
@@ -429,7 +429,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: grafana
-  namespace: akasha
+  namespace: akosha
   labels:
     app: grafana
 spec:
@@ -475,7 +475,7 @@ spec:
           name: grafana-provisioning
 ```
 
----
+______________________________________________________________________
 
 ## 🔧 Configuration
 
@@ -485,8 +485,8 @@ Edit `k8s/kustomization.yaml`:
 
 ```yaml
 images:
-  - name: akasha
-    newName: your-registry.com/akasha  # Update this
+  - name: akosha
+    newName: your-registry.com/akosha  # Update this
     newTag: v1.0.0                          # Update this
 ```
 
@@ -513,7 +513,7 @@ resources:
     cpu: "2000m"
 ```
 
----
+______________________________________________________________________
 
 ## 📊 Monitoring Setup
 
@@ -521,7 +521,7 @@ resources:
 
 ```bash
 # Port forward Grafana
-kubectl port-forward -n akasha svc/grafana 3001:3000
+kubectl port-forward -n akosha svc/grafana 3001:3000
 
 # Open Grafana: http://localhost:3001 (admin/admin)
 
@@ -537,29 +537,29 @@ kubectl port-forward -n akasha svc/grafana 3001:3000
 # Alerts are automatically loaded from k8s/monitoring/prometheus/
 
 # Verify in Prometheus UI
-kubectl port-forward -n akasha svc/prometheus 9090:9090
+kubectl port-forward -n akosha svc/prometheus 9090:9090
 # Open: http://localhost:9090
-# Navigate to: Alerts → akasha_alerts
+# Navigate to: Alerts → akosha_alerts
 ```
 
 ### 3. View Traces in Jaeger
 
 ```bash
 # Port forward Jaeger
-kubectl port-forward -n akasha svc/jaeger 16686:16686
+kubectl port-forward -n akosha svc/jaeger 16686:16686
 
 # Open Jaeger UI: http://localhost:16686
 # Search for traces by service name, operation, or tags
 ```
 
----
+______________________________________________________________________
 
 ## 🚀 Deployment Commands
 
 ### Deploy Everything
 
 ```bash
-# Deploy Akasha
+# Deploy Akosha
 kubectl apply -f k8s/
 
 # Deploy monitoring stack
@@ -570,45 +570,45 @@ kubectl apply -f k8s/monitoring/
 
 ```bash
 # Update image (after building new version)
-kubectl set image deployment/akasha-mcp akasha=your-registry/akasha:v2.0 -n akasha
+kubectl set image deployment/akosha-mcp akosha=your-registry/akosha:v2.0 -n akosha
 
 # Rolling update
-kubectl rollout status deployment/akasha-mcp -n akasha
+kubectl rollout status deployment/akosha-mcp -n akosha
 
 # Rollback if needed
-kubectl rollout undo deployment/akasha-mcp -n akasha
+kubectl rollout undo deployment/akosha-mcp -n akosha
 ```
 
 ### Scale Deployment
 
 ```bash
 # Manual scaling
-kubectl scale deployment/akasha-mcp --replicas=5 -n akasha
+kubectl scale deployment/akosha-mcp --replicas=5 -n akosha
 
 # Or let HPA handle it automatically
-kubectl get hpa -n akasha
+kubectl get hpa -n akosha
 ```
 
 ### Check Status
 
 ```bash
 # Overall status
-kubectl get all -n akasha
+kubectl get all -n akosha
 
 # Pod status
-kubectl get pods -n akasha
+kubectl get pods -n akosha
 
 # Deployment status
-kubectl rollout status deployment/akasha-mcp -n akasha
+kubectl rollout status deployment/akosha-mcp -n akosha
 
 # HPA status
-kubectl describe hpa akasha-mcp-hpa -n akasha
+kubectl describe hpa akosha-mcp-hpa -n akosha
 
 # Metrics
-kubectl top pods -n akasha
+kubectl top pods -n akosha
 ```
 
----
+______________________________________________________________________
 
 ## 🛡️ Production Considerations
 
@@ -646,13 +646,14 @@ kubectl top pods -n akasha
 - ✅ PVC for Prometheus metrics
 - ✅ Backup strategy needed
 
----
+______________________________________________________________________
 
 ## 📈 Scaling Strategy
 
 ### Horizontal Scaling
 
 **Current limits**:
+
 - Min: 2 pods
 - Max: 10 pods (via HPA)
 - Per-pod limits: 1Gi memory, 1000m CPU
@@ -660,18 +661,21 @@ kubectl top pods -n akasha
 **To increase capacity**:
 
 1. Edit `k8s/hpa.yaml`:
+
    ```yaml
    maxReplicas: 20  # Increase from 10
    ```
 
-2. Edit `k8s/resourcequota.yaml`:
+1. Edit `k8s/resourcequota.yaml`:
+
    ```yaml
    hard:
      pods: "30"  # Increase from 20
      limits.cpu: "20"  # Increase from 10
    ```
 
-3. Redeploy:
+1. Redeploy:
+
    ```bash
    kubectl apply -f k8s/
    ```
@@ -679,6 +683,7 @@ kubectl top pods -n akasha
 ### Vertical Scaling
 
 Edit `k8s/deployment.yaml`:
+
 ```yaml
 resources:
   requests:
@@ -689,7 +694,7 @@ resources:
     cpu: "2000m"
 ```
 
----
+______________________________________________________________________
 
 ## 🔍 Troubleshooting
 
@@ -697,10 +702,10 @@ resources:
 
 ```bash
 # Check pod logs
-kubectl logs -n akasha <pod-name>
+kubectl logs -n akosha <pod-name>
 
 # Describe pod for events
-kubectl describe pod -n akasha <pod-name>
+kubectl describe pod -n akosha <pod-name>
 
 # Common issues:
 # - OOMKilled: Increase memory limit
@@ -712,10 +717,10 @@ kubectl describe pod -n akasha <pod-name>
 
 ```bash
 # Check HPA conditions
-kubectl describe hpa akasha-mcp-hpa -n akasha
+kubectl describe hpa akosha-mcp-hpa -n akosha
 
 # Check resource usage
-kubectl top pods -n akasha
+kubectl top pods -n akosha
 
 # Verify metrics-server is running
 kubectl get apiservice | grep metrics
@@ -729,13 +734,13 @@ kubectl port-forward svc/prometheus 9090:9090
 # Open: http://localhost:9090/targets
 
 # Check service endpoints
-kubectl get endpoints -n akasha
+kubectl get endpoints -n akosha
 
 # Verify annotations
-kubectl get pod <pod-name> -n akasha -o yaml | grep prometheus
+kubectl get pod <pod-name> -n akosha -o yaml | grep prometheus
 ```
 
----
+______________________________________________________________________
 
 ## 📚 Additional Resources
 
@@ -745,6 +750,6 @@ kubectl get pod <pod-name> -n akasha -o yaml | grep prometheus
 - [Jaeger Kubernetes](https://www.jaegertracing.io/docs/latest/deployment/)
 - [HPA Best Practices](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/)
 
----
+______________________________________________________________________
 
-**Deploy Akasha with confidence on Kubernetes!** 🚀
+**Deploy Akosha with confidence on Kubernetes!** 🚀
