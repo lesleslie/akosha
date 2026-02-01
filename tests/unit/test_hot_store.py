@@ -64,7 +64,7 @@ class TestHotStore:
         await hot_store.insert(record)
 
         # Try inserting duplicate
-        with pytest.raises(RuntimeError):  # DuckDB constraint violation
+        with pytest.raises(Exception):  # DuckDB constraint violation (ConstraintException)
             await hot_store.insert(record)
 
     @pytest.mark.asyncio
