@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -305,61 +306,124 @@ class KnowledgeGraphBuilder:
             record_counter("kg.shortest_path.found", 1)
             return [source_id]
 
-        from collections import deque
+        # Initialize bidirectional search state
+        forward_queue, forward_visited = self._init_bfs_queue(source_id)
+        backward_queue, backward_visited = self._init_bfs_queue(target_id)
 
-        # Forward queue from source
-        forward_queue = deque([source_id])
-        forward_visited: dict[str, str | None] = {source_id: None}  # Maps node to parent
+        # Execute bidirectional BFS
+        result = self._bidirectional_bfs_search(
+            forward_queue,
+            forward_visited,
+            backward_queue,
+            backward_visited,
+            source_id,
+            target_id,
+            max_hops,
+        )
 
-        # Backward queue from target
-        backward_queue = deque([target_id])
-        backward_visited: dict[str, str | None] = {target_id: None}  # Maps node to parent
+        if result is None:
+            record_counter("kg.shortest_path.not_found", 1)
 
-        # Bidirectional BFS: expand both frontiers alternately
+        return result
+
+    def _init_bfs_queue(
+        self, start_node: str
+    ) -> tuple[deque[str], dict[str, str | None]]:
+        """Initialize BFS queue and visited map for a search direction.
+
+        Args:
+            start_node: Node to start search from
+
+        Returns:
+            Tuple of (queue, visited_dict)
+        """
+        queue = deque([start_node])
+        visited: dict[str, str | None] = {start_node: None}
+        return queue, visited
+
+    def _bidirectional_bfs_search(
+        self,
+        forward_queue: deque[str],
+        forward_visited: dict[str, str | None],
+        backward_queue: deque[str],
+        backward_visited: dict[str, str | None],
+        source_id: str,
+        target_id: str,
+        max_hops: int,
+    ) -> list[str] | None:
+        """Execute bidirectional BFS search until meeting point or exhaustion.
+
+        Args:
+            forward_queue: Queue for forward search
+            forward_visited: Visited map for forward search
+            backward_queue: Queue for backward search
+            backward_visited: Visited map for backward search
+            source_id: Original source entity ID
+            target_id: Original target entity ID
+            max_hops: Maximum path length
+
+        Returns:
+            List of entity IDs in path, or None if no path found
+        """
         while forward_queue and backward_queue:
             # Expand forward frontier
-            for _ in range(len(forward_queue)):
-                current = forward_queue.popleft()
-
-                # Check if meeting point reached
-                if current in backward_visited:
-                    path = self._reconstruct_path(
-                        source_id, target_id, current, forward_visited, backward_visited
-                    )
-                    if path and len(path) <= max_hops:
-                        record_histogram("kg.shortest_path.length", len(path))
-                        record_counter("kg.shortest_path.found", 1)
-                        return path
-
-                # Get neighbors and expand
-                neighbors = self._get_neighbors(current)
-                for neighbor in neighbors:
-                    if neighbor not in forward_visited:
-                        forward_visited[neighbor] = current
-                        forward_queue.append(neighbor)
+            meeting_point = self._expand_frontier(
+                forward_queue, forward_visited, backward_visited
+            )
+            if meeting_point is not None:
+                path = self._reconstruct_path(
+                    source_id, target_id, meeting_point, forward_visited, backward_visited
+                )
+                if path and len(path) <= max_hops:
+                    record_histogram("kg.shortest_path.length", len(path))
+                    record_counter("kg.shortest_path.found", 1)
+                    return path
 
             # Expand backward frontier
-            for _ in range(len(backward_queue)):
-                current = backward_queue.popleft()
+            meeting_point = self._expand_frontier(
+                backward_queue, backward_visited, forward_visited
+            )
+            if meeting_point is not None:
+                path = self._reconstruct_path(
+                    source_id, target_id, meeting_point, forward_visited, backward_visited
+                )
+                if path and len(path) <= max_hops:
+                    record_histogram("kg.shortest_path.length", len(path))
+                    record_counter("kg.shortest_path.found", 1)
+                    return path
 
-                # Check if meeting point reached
-                if current in forward_visited:
-                    path = self._reconstruct_path(
-                        source_id, target_id, current, forward_visited, backward_visited
-                    )
-                    if path and len(path) <= max_hops:
-                        record_histogram("kg.shortest_path.length", len(path))
-                        record_counter("kg.shortest_path.found", 1)
-                        return path
+        return None
 
-                # Get neighbors and expand (reverse direction)
-                neighbors = self._get_neighbors(current)
-                for neighbor in neighbors:
-                    if neighbor not in backward_visited:
-                        backward_visited[neighbor] = current
-                        backward_queue.append(neighbor)
+    def _expand_frontier(
+        self,
+        queue: deque[str],
+        visited: dict[str, str | None],
+        other_visited: dict[str, str | None],
+    ) -> str | None:
+        """Expand one level of BFS frontier.
 
-        record_counter("kg.shortest_path.not_found", 1)
+        Args:
+            queue: Queue for current search direction
+            visited: Visited map for current search direction
+            other_visited: Visited map for opposite search direction
+
+        Returns:
+            Meeting point node if found, None otherwise
+        """
+        for _ in range(len(queue)):
+            current = queue.popleft()
+
+            # Check if meeting point reached
+            if current in other_visited:
+                return current
+
+            # Get neighbors and expand
+            neighbors = self._get_neighbors(current)
+            for neighbor in neighbors:
+                if neighbor not in visited:
+                    visited[neighbor] = current
+                    queue.append(neighbor)
+
         return None
 
     def _get_neighbors(self, entity_id: str) -> list[str]:

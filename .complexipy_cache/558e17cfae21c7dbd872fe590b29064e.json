@@ -1,0 +1,157 @@
+{
+  "functions": [
+    {
+      "complexity": 0,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "_collect_metrics_text",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "_reregister_metrics",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "generate_metrics",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "get_metric_summary",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "increment_errors",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "observe_operation",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "observe_store_operation",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "record_cache_hit",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "record_cache_miss",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "record_deduplication_check",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "reset_all_metrics",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "start_metrics_server",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "update_cache_entry_count",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "update_cache_hit_rate",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "update_cache_size",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "update_ingestion_throughput",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "_add_metric_to_summary",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "_is_valid_metric_line",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "_parse_labeled_metric",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "record_ingestion_record",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "_parse_unlabeled_metric",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "observe_search_latency",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "update_store_sizes",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "get_metrics_registry",
+      "path": "prometheus_metrics.py"
+    },
+    {
+      "complexity": 12,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "_aggregate_metrics_from_text",
+      "path": "prometheus_metrics.py"
+    }
+  ],
+  "targets": [
+    "/Users/les/Projects/akosha/akosha/observability/prometheus_metrics.py"
+  ]
+}

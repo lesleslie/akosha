@@ -201,8 +201,7 @@ def record_counter(
         value: Counter increment
         attributes: Metric attributes
     """
-    meter = get_meter()
-    counter = meter.create_counter(
+    counter = get_meter().create_counter(
         name,
         description=f"Counter for {name}",
     )
@@ -221,8 +220,7 @@ def record_histogram(
         value: Histogram value
         attributes: Metric attributes
     """
-    meter = get_meter()
-    histogram = meter.create_histogram(
+    histogram = get_meter().create_histogram(
         name,
         description=f"Histogram for {name}",
     )
@@ -241,8 +239,7 @@ def record_gauge(
         value: Gauge value
         attributes: Metric attributes
     """
-    meter = get_meter()
-    gauge = meter.create_gauge(
+    gauge = get_meter().create_gauge(
         name,
         description=f"Gauge for {name}",
     )

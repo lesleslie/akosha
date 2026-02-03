@@ -1,0 +1,97 @@
+{
+  "functions": [
+    {
+      "complexity": 0,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::__init__",
+      "path": "analytics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::_compute_time_range",
+      "path": "analytics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::get_metric_names",
+      "path": "analytics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::get_system_count",
+      "path": "analytics.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::_align_time_series",
+      "path": "analytics.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::_filter_data_by_time_window",
+      "path": "analytics.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::_get_systems_with_sufficient_data",
+      "path": "analytics.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::_group_data_by_system",
+      "path": "analytics.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::add_metric",
+      "path": "analytics.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::correlate_systems",
+      "path": "analytics.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::_calculate_pairwise_correlation",
+      "path": "analytics.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::_compute_correlation_matrix",
+      "path": "analytics.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::_extract_significant_correlations",
+      "path": "analytics.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::analyze_trend",
+      "path": "analytics.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::detect_anomalies",
+      "path": "analytics.py"
+    }
+  ],
+  "targets": [
+    "/Users/les/Projects/akosha/akosha/processing/analytics.py"
+  ]
+}

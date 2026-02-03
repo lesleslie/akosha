@@ -262,6 +262,140 @@ def extract_token_from_headers(headers: dict[str, str] | None) -> str | None:
     return token
 
 
+def _extract_direct_token(kwargs: dict[str, Any]) -> str | None:
+    """Extract authentication token from direct parameters.
+
+    Args:
+        kwargs: Function keyword arguments
+
+    Returns:
+        Token string if found, None otherwise
+    """
+    return kwargs.get("auth_token") or kwargs.get("token")
+
+
+def _clear_token_from_kwargs(kwargs: dict[str, Any]) -> None:
+    """Remove token parameters from keyword arguments.
+
+    Args:
+        kwargs: Function keyword arguments to modify in-place
+    """
+    kwargs.pop("auth_token", None)
+    kwargs.pop("token", None)
+
+
+def _extract_context_from_kwargs(kwargs: dict[str, Any]) -> Any:
+    """Extract request context from keyword arguments.
+
+    Args:
+        kwargs: Function keyword arguments
+
+    Returns:
+        Context object if found, None otherwise
+    """
+    return kwargs.get("_context") or kwargs.get("context")
+
+
+def _extract_headers_from_context(context: Any) -> dict[str, str] | None:
+    """Extract headers from request context.
+
+    Args:
+        context: Request context object
+
+    Returns:
+        Headers dictionary if found, None otherwise
+    """
+    return getattr(context, "headers", None) if context else None
+
+
+def _validate_direct_token(token: str, func_name: str) -> None:
+    """Validate a directly provided token.
+
+    Args:
+        token: Token to validate
+        func_name: Name of the protected function (for error reporting)
+
+    Raises:
+        InvalidTokenError: If token is invalid
+    """
+    if not validate_token(token):
+        logger.warning(f"Access denied to {func_name}: invalid token")
+        raise InvalidTokenError(
+            {
+                "tool": func_name,
+                "reason": "invalid_token",
+            }
+        )
+
+
+def _validate_context_token(token: str, func_name: str) -> None:
+    """Validate a token extracted from request context.
+
+    Args:
+        token: Token to validate
+        func_name: Name of the protected function (for error reporting)
+
+    Raises:
+        InvalidTokenError: If token is invalid
+    """
+    if not validate_token(token):
+        logger.warning(f"Access denied to {func_name}: invalid token")
+        raise InvalidTokenError(
+            {
+                "tool": func_name,
+                "reason": "token_validation_failed",
+            }
+        )
+
+
+def _authenticate_via_context(
+    context: Any,
+    func_name: str,
+) -> None:
+    """Authenticate using token from request context.
+
+    Args:
+        context: Request context object
+        func_name: Name of the protected function (for error reporting)
+
+    Raises:
+        MissingTokenError: If token cannot be extracted
+        InvalidTokenError: If token is invalid
+    """
+    if not context:
+        logger.warning(f"Access denied to {func_name}: no authentication context")
+        raise MissingTokenError(
+            {
+                "tool": func_name,
+                "reason": "no_context_or_token",
+            }
+        )
+
+    headers = _extract_headers_from_context(context)
+
+    if not headers:
+        logger.warning(f"Access denied to {func_name}: no headers in context")
+        raise MissingTokenError(
+            {
+                "tool": func_name,
+                "reason": "no_headers",
+            }
+        )
+
+    token = extract_token_from_headers(headers)
+
+    if not token:
+        logger.warning(f"Access denied to {func_name}: missing token")
+        raise MissingTokenError(
+            {
+                "tool": func_name,
+                "reason": "missing_bearer_token",
+            }
+        )
+
+    _validate_context_token(token, func_name)
+
+
 def require_auth(func: Callable) -> Callable:
     """Decorator to require authentication for MCP tools.
 
@@ -288,71 +422,18 @@ def require_auth(func: Callable) -> Callable:
             return await func(*args, **kwargs)
 
         # Check for direct token parameter first (for testing)
-        token = kwargs.get("auth_token") or kwargs.get("token")
+        token = _extract_direct_token(kwargs)
 
         if token:
-            if not validate_token(token):
-                logger.warning(f"Access denied to {func.__name__}: invalid token")
-                raise InvalidTokenError(
-                    {
-                        "tool": func.__name__,
-                        "reason": "invalid_token",
-                    }
-                )
-
-            # Remove token from kwargs before calling the actual function
-            kwargs.pop("auth_token", None)
-            kwargs.pop("token", None)
-
+            _validate_direct_token(token, func.__name__)
+            _clear_token_from_kwargs(kwargs)
             logger.debug(f"Access granted to {func.__name__} (direct token)")
             return await func(*args, **kwargs)
 
         # Try to extract token from context
         # FastMCP passes context as part of kwargs
-        context = kwargs.get("_context") or kwargs.get("context")
-
-        if not context:
-            # No context available and no direct token
-            logger.warning(f"Access denied to {func.__name__}: no authentication context")
-            raise MissingTokenError(
-                {
-                    "tool": func.__name__,
-                    "reason": "no_context_or_token",
-                }
-            )
-
-        # Extract token from context headers
-        headers = getattr(context, "headers", None)
-
-        if not headers:
-            # Context exists but no headers
-            logger.warning(f"Access denied to {func.__name__}: no headers in context")
-            raise MissingTokenError(
-                {
-                    "tool": func.__name__,
-                    "reason": "no_headers",
-                }
-            )
-
-        token = extract_token_from_headers(headers)
-
-        if not token:
-            logger.warning(f"Access denied to {func.__name__}: missing token")
-            raise MissingTokenError(
-                {
-                    "tool": func.__name__,
-                    "reason": "missing_bearer_token",
-                }
-            )
-
-        if not validate_token(token):
-            logger.warning(f"Access denied to {func.__name__}: invalid token")
-            raise InvalidTokenError(
-                {
-                    "tool": func.__name__,
-                    "reason": "token_validation_failed",
-                }
-            )
+        context = _extract_context_from_kwargs(kwargs)
+        _authenticate_via_context(context, func.__name__)
 
         # Token is valid, proceed with function
         logger.debug(f"Access granted to {func.__name__}")

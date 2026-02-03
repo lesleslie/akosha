@@ -1171,6 +1171,118 @@ def _reregister_metrics(registry: CollectorRegistry) -> None:
     )
 
 
+def _collect_metrics_text(registry: CollectorRegistry) -> str:
+    """Generate Prometheus metrics text from the registry.
+
+    Args:
+        registry: The Prometheus metrics registry.
+
+    Returns:
+        Decoded metrics text in Prometheus exposition format.
+    """
+    from prometheus_client import exposition
+
+    return exposition.generate_latest(registry).decode("utf-8")
+
+
+def _is_valid_metric_line(line: str) -> bool:
+    """Check if a line is a valid metric data line.
+
+    Args:
+        line: A line from the metrics text output.
+
+    Returns:
+        True if the line contains metric data (not empty or comment).
+    """
+    stripped = line.strip()
+    return bool(stripped and not stripped.startswith("#"))
+
+
+def _parse_labeled_metric(line: str) -> tuple[str, str, float] | None:
+    """Parse a metric line that contains labels.
+
+    Args:
+        line: Metric line in format 'metric_name{labels} value'
+
+    Returns:
+        Tuple of (metric_name, labels, value) or None if parsing fails.
+    """
+    try:
+        name_part, value_part = line.split("}", 1)
+        metric_name = name_part.split("{", 1)[0]
+        labels = name_part.split("{", 1)[1]
+        value = float(value_part.strip())
+        return metric_name, labels, value
+    except (ValueError, IndexError):
+        return None
+
+
+def _parse_unlabeled_metric(line: str) -> tuple[str, float] | None:
+    """Parse a metric line without labels.
+
+    Args:
+        line: Metric line in format 'metric_name value'
+
+    Returns:
+        Tuple of (metric_name, value) or None if parsing fails.
+    """
+    parts = line.split()
+    if len(parts) >= 2:
+        try:
+            return parts[0], float(parts[1])
+        except ValueError:
+            return None
+    return None
+
+
+def _add_metric_to_summary(
+    summary: dict[str, dict[str, float]],
+    metric_name: str,
+    labels: str,
+    value: float,
+) -> None:
+    """Add a parsed metric to the summary dictionary.
+
+    Args:
+        summary: The summary dictionary to update.
+        metric_name: Name of the metric.
+        labels: Label string (empty string for unlabeled metrics).
+        value: Numeric value of the metric.
+    """
+    if metric_name not in summary:
+        summary[metric_name] = {}
+    summary[metric_name][labels] = value
+
+
+def _aggregate_metrics_from_text(metrics_text: str) -> dict[str, dict[str, float]]:
+    """Parse metrics text and aggregate into a summary dictionary.
+
+    Args:
+        metrics_text: Raw Prometheus metrics text output.
+
+    Returns:
+        Dictionary mapping metric names to their labeled samples and values.
+    """
+    summary: dict[str, dict[str, float]] = {}
+
+    for line in metrics_text.split("\n"):
+        if not _is_valid_metric_line(line):
+            continue
+
+        if "{" in line:
+            result = _parse_labeled_metric(line)
+            if result:
+                metric_name, labels, value = result
+                _add_metric_to_summary(summary, metric_name, labels, value)
+        else:
+            result = _parse_unlabeled_metric(line)
+            if result:
+                metric_name, value = result
+                _add_metric_to_summary(summary, metric_name, "", value)
+
+    return summary
+
+
 def get_metric_summary() -> dict[str, dict[str, float]]:
     """Get a summary of all current metric values.
 
@@ -1183,43 +1295,9 @@ def get_metric_summary() -> dict[str, dict[str, float]]:
         print(f"Cache hit rate: {summary['akosha_cache_hit_rate']}")
         ```
     """
-    from prometheus_client import exposition
-
     registry = get_metrics_registry()
-    summary: dict[str, dict[str, float]] = {}
-
-    # Generate metrics text and parse it
-    metrics_text = exposition.generate_latest(registry).decode("utf-8")
-
-    for line in metrics_text.split("\n"):
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-
-        # Parse metric line
-        # Format: metric_name{labels} value or metric_name value
-        if "{" in line:
-            # Has labels
-            name_part, value_part = line.split("}", 1)
-            metric_name = name_part.split("{", 1)[0]
-            labels = name_part.split("{", 1)[1]
-            value = float(value_part.strip())
-
-            if metric_name not in summary:
-                summary[metric_name] = {}
-            summary[metric_name][labels] = value
-        else:
-            # No labels
-            parts = line.split()
-            if len(parts) >= 2:
-                metric_name = parts[0]
-                value = float(parts[1])
-
-                if metric_name not in summary:
-                    summary[metric_name] = {}
-                summary[metric_name][""] = value
-
-    return summary
+    metrics_text = _collect_metrics_text(registry)
+    return _aggregate_metrics_from_text(metrics_text)
 
 
 __all__ = [

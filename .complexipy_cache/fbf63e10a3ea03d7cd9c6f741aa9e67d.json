@@ -37,33 +37,75 @@
       "path": "akosha/ingestion/worker.py"
     },
     {
+      "complexity": 1,
+      "file_name": "worker.py",
+      "function_name": "IngestionWorker::_discover_uploads_concurrent",
+      "path": "akosha/ingestion/worker.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "worker.py",
+      "function_name": "IngestionWorker::_scan_system",
+      "path": "akosha/ingestion/worker.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "worker.py",
+      "function_name": "IngestionWorker::_extract_system_id",
+      "path": "akosha/ingestion/worker.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "worker.py",
+      "function_name": "IngestionWorker::_collect_system_prefixes",
+      "path": "akosha/ingestion/worker.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "worker.py",
+      "function_name": "IngestionWorker::_collect_upload_prefixes",
+      "path": "akosha/ingestion/worker.py"
+    },
+    {
       "complexity": 4,
       "file_name": "worker.py",
       "function_name": "IngestionWorker::_discover_uploads",
       "path": "akosha/ingestion/worker.py"
     },
     {
+      "complexity": 4,
+      "file_name": "worker.py",
+      "function_name": "IngestionWorker::_flatten_scan_results",
+      "path": "akosha/ingestion/worker.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "worker.py",
+      "function_name": "IngestionWorker::_scan_systems_concurrent",
+      "path": "akosha/ingestion/worker.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "worker.py",
+      "function_name": "IngestionWorker::_try_create_upload",
+      "path": "akosha/ingestion/worker.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "worker.py",
+      "function_name": "IngestionWorker::_process_upload_prefixes",
+      "path": "akosha/ingestion/worker.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "worker.py",
+      "function_name": "IngestionWorker::_discover_uploads_sequential",
+      "path": "akosha/ingestion/worker.py"
+    },
+    {
       "complexity": 14,
       "file_name": "worker.py",
       "function_name": "IngestionWorker::run",
-      "path": "akosha/ingestion/worker.py"
-    },
-    {
-      "complexity": 18,
-      "file_name": "worker.py",
-      "function_name": "IngestionWorker::_discover_uploads_concurrent",
-      "path": "akosha/ingestion/worker.py"
-    },
-    {
-      "complexity": 26,
-      "file_name": "worker.py",
-      "function_name": "IngestionWorker::_scan_system",
-      "path": "akosha/ingestion/worker.py"
-    },
-    {
-      "complexity": 37,
-      "file_name": "worker.py",
-      "function_name": "IngestionWorker::_discover_uploads_sequential",
       "path": "akosha/ingestion/worker.py"
     },
     {
@@ -381,6 +423,12 @@
     {
       "complexity": 0,
       "file_name": "prometheus_metrics.py",
+      "function_name": "_collect_metrics_text",
+      "path": "akosha/observability/prometheus_metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "prometheus_metrics.py",
       "function_name": "_reregister_metrics",
       "path": "akosha/observability/prometheus_metrics.py"
     },
@@ -388,6 +436,12 @@
       "complexity": 0,
       "file_name": "prometheus_metrics.py",
       "function_name": "generate_metrics",
+      "path": "akosha/observability/prometheus_metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "get_metric_summary",
       "path": "akosha/observability/prometheus_metrics.py"
     },
     {
@@ -465,7 +519,31 @@
     {
       "complexity": 1,
       "file_name": "prometheus_metrics.py",
+      "function_name": "_add_metric_to_summary",
+      "path": "akosha/observability/prometheus_metrics.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "_is_valid_metric_line",
+      "path": "akosha/observability/prometheus_metrics.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "_parse_labeled_metric",
+      "path": "akosha/observability/prometheus_metrics.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "prometheus_metrics.py",
       "function_name": "record_ingestion_record",
+      "path": "akosha/observability/prometheus_metrics.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "prometheus_metrics.py",
+      "function_name": "_parse_unlabeled_metric",
       "path": "akosha/observability/prometheus_metrics.py"
     },
     {
@@ -487,9 +565,9 @@
       "path": "akosha/observability/prometheus_metrics.py"
     },
     {
-      "complexity": 17,
+      "complexity": 12,
       "file_name": "prometheus_metrics.py",
-      "function_name": "get_metric_summary",
+      "function_name": "_aggregate_metrics_from_text",
       "path": "akosha/observability/prometheus_metrics.py"
     },
     {
@@ -625,7 +703,7 @@
       "path": "akosha/observability/tracing.py"
     },
     {
-      "complexity": 7,
+      "complexity": 6,
       "file_name": "tracing.py",
       "function_name": "traced",
       "path": "akosha/observability/tracing.py"
@@ -634,6 +712,12 @@
       "complexity": 0,
       "file_name": "analytics.py",
       "function_name": "TimeSeriesAnalytics::__init__",
+      "path": "akosha/processing/analytics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::_compute_time_range",
       "path": "akosha/processing/analytics.py"
     },
     {
@@ -651,7 +735,55 @@
     {
       "complexity": 1,
       "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::_align_time_series",
+      "path": "akosha/processing/analytics.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::_filter_data_by_time_window",
+      "path": "akosha/processing/analytics.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::_get_systems_with_sufficient_data",
+      "path": "akosha/processing/analytics.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::_group_data_by_system",
+      "path": "akosha/processing/analytics.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "analytics.py",
       "function_name": "TimeSeriesAnalytics::add_metric",
+      "path": "akosha/processing/analytics.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::correlate_systems",
+      "path": "akosha/processing/analytics.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::_calculate_pairwise_correlation",
+      "path": "akosha/processing/analytics.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::_compute_correlation_matrix",
+      "path": "akosha/processing/analytics.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "analytics.py",
+      "function_name": "TimeSeriesAnalytics::_extract_significant_correlations",
       "path": "akosha/processing/analytics.py"
     },
     {
@@ -664,12 +796,6 @@
       "complexity": 6,
       "file_name": "analytics.py",
       "function_name": "TimeSeriesAnalytics::detect_anomalies",
-      "path": "akosha/processing/analytics.py"
-    },
-    {
-      "complexity": 23,
-      "file_name": "analytics.py",
-      "function_name": "TimeSeriesAnalytics::correlate_systems",
       "path": "akosha/processing/analytics.py"
     },
     {
@@ -763,6 +889,12 @@
       "path": "akosha/processing/knowledge_graph.py"
     },
     {
+      "complexity": 0,
+      "file_name": "knowledge_graph.py",
+      "function_name": "KnowledgeGraphBuilder::_init_bfs_queue",
+      "path": "akosha/processing/knowledge_graph.py"
+    },
+    {
       "complexity": 2,
       "file_name": "knowledge_graph.py",
       "function_name": "KnowledgeGraphBuilder::get_statistics",
@@ -799,15 +931,27 @@
       "path": "akosha/processing/knowledge_graph.py"
     },
     {
-      "complexity": 15,
+      "complexity": 4,
       "file_name": "knowledge_graph.py",
-      "function_name": "KnowledgeGraphBuilder::get_neighbors",
+      "function_name": "KnowledgeGraphBuilder::find_shortest_path",
       "path": "akosha/processing/knowledge_graph.py"
     },
     {
-      "complexity": 39,
+      "complexity": 8,
       "file_name": "knowledge_graph.py",
-      "function_name": "KnowledgeGraphBuilder::find_shortest_path",
+      "function_name": "KnowledgeGraphBuilder::_expand_frontier",
+      "path": "akosha/processing/knowledge_graph.py"
+    },
+    {
+      "complexity": 14,
+      "file_name": "knowledge_graph.py",
+      "function_name": "KnowledgeGraphBuilder::_bidirectional_bfs_search",
+      "path": "akosha/processing/knowledge_graph.py"
+    },
+    {
+      "complexity": 15,
+      "file_name": "knowledge_graph.py",
+      "function_name": "KnowledgeGraphBuilder::get_neighbors",
       "path": "akosha/processing/knowledge_graph.py"
     },
     {
@@ -913,7 +1057,7 @@
       "path": "akosha/resilience/circuit_breaker.py"
     },
     {
-      "complexity": 6,
+      "complexity": 5,
       "file_name": "circuit_breaker.py",
       "function_name": "with_circuit_breaker",
       "path": "akosha/resilience/circuit_breaker.py"
@@ -969,6 +1113,12 @@
     {
       "complexity": 0,
       "file_name": "security.py",
+      "function_name": "_clear_token_from_kwargs",
+      "path": "akosha/security.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "security.py",
       "function_name": "generate_token",
       "path": "akosha/security.py"
     },
@@ -993,6 +1143,36 @@
     {
       "complexity": 1,
       "file_name": "security.py",
+      "function_name": "_extract_context_from_kwargs",
+      "path": "akosha/security.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "security.py",
+      "function_name": "_extract_direct_token",
+      "path": "akosha/security.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "security.py",
+      "function_name": "_extract_headers_from_context",
+      "path": "akosha/security.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "security.py",
+      "function_name": "_validate_context_token",
+      "path": "akosha/security.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "security.py",
+      "function_name": "_validate_direct_token",
+      "path": "akosha/security.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "security.py",
       "function_name": "is_auth_enabled",
       "path": "akosha/security.py"
     },
@@ -1006,6 +1186,18 @@
       "complexity": 2,
       "file_name": "security.py",
       "function_name": "AuthenticationMiddleware::is_tool_protected",
+      "path": "akosha/security.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "security.py",
+      "function_name": "_authenticate_via_context",
+      "path": "akosha/security.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "security.py",
+      "function_name": "require_auth",
       "path": "akosha/security.py"
     },
     {
@@ -1030,12 +1222,6 @@
       "complexity": 12,
       "file_name": "security.py",
       "function_name": "validate_token",
-      "path": "akosha/security.py"
-    },
-    {
-      "complexity": 17,
-      "file_name": "security.py",
-      "function_name": "require_auth",
       "path": "akosha/security.py"
     },
     {

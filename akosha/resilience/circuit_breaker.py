@@ -130,8 +130,36 @@ class CircuitBreaker:
             TimeoutError: If call times out
             Exception: If function raises any exception
         """
+        # Check circuit state and reject if open
+        await self._check_circuit_state()
+
+        # Execute the call with timeout
+        try:
+            result = await asyncio.wait_for(
+                self._execute_with_retry(func, *args, **kwargs),
+                timeout=self.config.call_timeout,
+            )
+            return await self._handle_success(result)
+
+        except TimeoutError:
+            await self._handle_failure_with_logging("timed out")
+            logger.warning(
+                f"⏱️ Call to '{self.service_name}' timed out after {self.config.call_timeout}s"
+            )
+            raise
+
+        except Exception as e:
+            await self._handle_failure_with_logging("failed")
+            logger.error(f"❌ Call to '{self.service_name}' failed: {e.__class__.__name__}: {e}")
+            raise
+
+    async def _check_circuit_state(self) -> None:
+        """Check if circuit is open and should reject calls.
+
+        Raises:
+            CircuitBreakerError: If circuit is OPEN
+        """
         async with self._lock:
-            # Check circuit state
             if self._state == CircuitState.OPEN:
                 if self._should_attempt_reset():
                     logger.info(f"⚡ Circuit '{self.service_name}' entering HALF_OPEN state")
@@ -145,45 +173,37 @@ class CircuitBreaker:
                         self._state,
                     )
 
-        # Execute the call with timeout
-        try:
-            result = await asyncio.wait_for(
-                self._execute_with_retry(func, *args, **kwargs),
-                timeout=self.config.call_timeout,
-            )
+    async def _handle_success(self, result: T) -> T:
+        """Handle successful call execution.
 
-            # Success
-            async with self._lock:
-                self._stats.successful_calls += 1
-                self._stats.total_calls += 1
+        Args:
+            result: The result from the function call
 
-                if self._state == CircuitState.HALF_OPEN:
-                    self._stats.consecutive_successes += 1
-                    if self._stats.consecutive_successes >= self.config.success_threshold:
-                        logger.info(f"✅ Circuit '{self.service_name}' CLOSED (service recovered)")
-                        self._state = CircuitState.CLOSED
-                        self._stats.last_state_change = datetime.now(UTC)
-                        self._stats.consecutive_failures = 0
+        Returns:
+            The same result
+        """
+        async with self._lock:
+            self._stats.successful_calls += 1
+            self._stats.total_calls += 1
 
-                return result
+            if self._state == CircuitState.HALF_OPEN:
+                self._stats.consecutive_successes += 1
+                if self._stats.consecutive_successes >= self.config.success_threshold:
+                    logger.info(f"✅ Circuit '{self.service_name}' CLOSED (service recovered)")
+                    self._state = CircuitState.CLOSED
+                    self._stats.last_state_change = datetime.now(UTC)
+                    self._stats.consecutive_failures = 0
 
-        except TimeoutError:
-            # Timeout counts as failure
-            async with self._lock:
-                self._handle_failure()
+            return result
 
-            logger.warning(
-                f"⏱️ Call to '{self.service_name}' timed out after {self.config.call_timeout}s"
-            )
-            raise
+    async def _handle_failure_with_logging(self, reason: str) -> None:
+        """Handle call failure and update circuit state.
 
-        except Exception as e:
-            # Other exceptions
-            async with self._lock:
-                self._handle_failure()
-
-            logger.error(f"❌ Call to '{self.service_name}' failed: {e.__class__.__name__}: {e}")
-            raise
+        Args:
+            reason: Description of why the call failed (for logging)
+        """
+        async with self._lock:
+            self._handle_failure()
 
     def _should_attempt_reset(self) -> bool:
         """Check if enough time has passed to attempt reset.
@@ -350,8 +370,7 @@ def with_circuit_breaker(
 
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any):
-            registry = get_circuit_breaker_registry()
-            breaker = registry.get_or_create_breaker(service_name, config)
+            breaker = get_circuit_breaker_registry().get_or_create_breaker(service_name, config)
 
             return await breaker.call(func, *args, **kwargs)
 
@@ -365,8 +384,9 @@ def with_circuit_breaker(
                 return func(*args, **kwargs)
 
             async def _wrapped():
-                registry = get_circuit_breaker_registry()
-                breaker = registry.get_or_create_breaker(service_name or func.__name__, config)
+                breaker = get_circuit_breaker_registry().get_or_create_breaker(
+                    service_name or func.__name__, config
+                )
                 return await breaker.call(_async_call)
 
             # Sync wrapper only works from non-async contexts

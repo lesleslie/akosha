@@ -323,30 +323,15 @@ class TimeSeriesAnalytics:
             }
         )
 
-        # Filter data points
-        points = self._metrics_cache.get(metric_name, [])
-
-        cutoff_time = datetime.now(UTC) - time_window
-        filtered = [p for p in points if p.timestamp >= cutoff_time]
-
-        if len(filtered) < 10:
-            logger.warning(f"Insufficient data for correlation analysis: {metric_name}")
-            record_counter("analytics.correlation.failed", 1, {"reason": "insufficient_data"})
+        # Step 1: Filter data by time window
+        filtered = self._filter_data_by_time_window(metric_name, time_window)
+        if filtered is None:
             return None
 
-        # Group by system
-        system_data: dict[str, list[tuple[datetime, float]]] = defaultdict(list)
-        for point in filtered:
-            # Round timestamp to nearest hour for alignment
-            hour_key = point.timestamp.replace(minute=0, second=0, microsecond=0)
-            system_data[point.system_id].append((hour_key, point.value))
-
-        # Get systems with sufficient data
-        systems = [sys for sys, data in system_data.items() if len(data) >= 5]
-
-        if len(systems) < 2:
-            logger.warning(f"Need at least 2 systems for correlation: {metric_name}")
-            record_counter("analytics.correlation.failed", 1, {"reason": "insufficient_systems"})
+        # Step 2: Group and validate systems
+        system_data = self._group_data_by_system(filtered)
+        systems = self._get_systems_with_sufficient_data(system_data)
+        if systems is None:
             return None
 
         add_span_attributes(
@@ -355,62 +340,20 @@ class TimeSeriesAnalytics:
             }
         )
 
-        # Build aligned time series
-        # (simplified - in production, use proper time series alignment)
-        aligned_data: dict[str, list[float]] = {}
-        for system_id in systems:
-            data = system_data[system_id]
-            # Take last N values for alignment
-            values = [v for _, v in data]
-            aligned_data[system_id] = values[-min(len(values), 100) :]
+        # Step 3: Align time series data
+        aligned_data = self._align_time_series(systems, system_data)
 
-        # Compute correlation matrix
+        # Step 4: Compute correlation matrix
         sys_list = list(aligned_data.keys())
-        n = len(sys_list)
-        correlation_matrix = np.eye(n)
+        correlation_matrix = self._compute_correlation_matrix(aligned_data, sys_list)
 
-        for i in range(n):
-            for j in range(i + 1, n):
-                # Align lengths
-                vals_i = aligned_data[sys_list[i]]
-                vals_j = aligned_data[sys_list[j]]
-                min_len = min(len(vals_i), len(vals_j))
-
-                if min_len < 5:
-                    corr = 0.0
-                else:
-                    arr_i = np.array(vals_i[-min_len:])
-                    arr_j = np.array(vals_j[-min_len:])
-
-                    # Compute Pearson correlation
-                    if np.std(arr_i) > 0 and np.std(arr_j) > 0:
-                        corr_matrix = np.corrcoef(arr_i, arr_j)
-                        corr = float(corr_matrix[0, 1])
-                    else:
-                        corr = 0.0
-
-                correlation_matrix[i, j] = corr
-                correlation_matrix[j, i] = corr
-
-        # Extract significant correlations
-        system_pairs = []
-        for i in range(n):
-            for j in range(i + 1, n):
-                corr = float(correlation_matrix[i, j])
-                if abs(corr) > 0.5:  # Significant correlation threshold
-                    system_pairs.append(
-                        {
-                            "system_1": sys_list[i],
-                            "system_2": sys_list[j],
-                            "correlation": corr,
-                            "strength": "strong" if abs(corr) > 0.7 else "moderate",
-                        }
-                    )
-
-        time_range = (
-            min(p.timestamp for p in filtered),
-            max(p.timestamp for p in filtered),
+        # Step 5: Extract significant correlations
+        system_pairs = self._extract_significant_correlations(
+            sys_list, correlation_matrix
         )
+
+        # Step 6: Build result
+        time_range = self._compute_time_range(filtered)
 
         record_histogram("analytics.correlation.count", len(system_pairs))
         record_counter("analytics.correlation.completed", 1)
@@ -426,6 +369,189 @@ class TimeSeriesAnalytics:
             correlation_matrix=correlation_matrix,
             systems=sys_list,
             time_range=time_range,
+        )
+
+    def _filter_data_by_time_window(
+        self, metric_name: str, time_window: timedelta
+    ) -> list[DataPoint] | None:
+        """Filter metric data points by time window.
+
+        Args:
+            metric_name: Name of metric to filter
+            time_window: Time window to filter by
+
+        Returns:
+            Filtered data points or None if insufficient data
+        """
+        points = self._metrics_cache.get(metric_name, [])
+        cutoff_time = datetime.now(UTC) - time_window
+        filtered = [p for p in points if p.timestamp >= cutoff_time]
+
+        if len(filtered) < 10:
+            logger.warning(f"Insufficient data for correlation analysis: {metric_name}")
+            record_counter("analytics.correlation.failed", 1, {"reason": "insufficient_data"})
+            return None
+
+        return filtered
+
+    def _group_data_by_system(
+        self, filtered: list[DataPoint]
+    ) -> dict[str, list[tuple[datetime, float]]]:
+        """Group filtered data points by system ID.
+
+        Args:
+            filtered: List of filtered data points
+
+        Returns:
+            Dictionary mapping system_id to list of (timestamp, value) tuples
+        """
+        system_data: dict[str, list[tuple[datetime, float]]] = defaultdict(list)
+        for point in filtered:
+            hour_key = point.timestamp.replace(minute=0, second=0, microsecond=0)
+            system_data[point.system_id].append((hour_key, point.value))
+        return system_data
+
+    def _get_systems_with_sufficient_data(
+        self, system_data: dict[str, list[tuple[datetime, float]]]
+    ) -> list[str] | None:
+        """Get list of systems with sufficient data points.
+
+        Args:
+            system_data: Dictionary mapping system_id to data points
+
+        Returns:
+            List of system IDs with sufficient data, or None if < 2 systems
+        """
+        systems = [sys_id for sys_id, data in system_data.items() if len(data) >= 5]
+
+        if len(systems) < 2:
+            logger.warning("Need at least 2 systems for correlation")
+            record_counter("analytics.correlation.failed", 1, {"reason": "insufficient_systems"})
+            return None
+
+        return systems
+
+    def _align_time_series(
+        self,
+        systems: list[str],
+        system_data: dict[str, list[tuple[datetime, float]]],
+    ) -> dict[str, list[float]]:
+        """Align time series data for correlation analysis.
+
+        Args:
+            systems: List of system IDs to align
+            system_data: Dictionary mapping system_id to data points
+
+        Returns:
+            Dictionary mapping system_id to aligned value lists
+        """
+        aligned_data: dict[str, list[float]] = {}
+        for system_id in systems:
+            data = system_data[system_id]
+            values = [v for _, v in data]
+            max_values = 100
+            aligned_data[system_id] = values[-min(len(values), max_values) :]
+        return aligned_data
+
+    def _compute_correlation_matrix(
+        self, aligned_data: dict[str, list[float]], sys_list: list[str]
+    ) -> npt.NDArray[np.float64]:
+        """Compute correlation matrix for all system pairs.
+
+        Args:
+            aligned_data: Dictionary mapping system_id to aligned values
+            sys_list: List of system IDs
+
+        Returns:
+            NxN correlation matrix
+        """
+        n = len(sys_list)
+        correlation_matrix = np.eye(n)
+
+        for i in range(n):
+            for j in range(i + 1, n):
+                corr = self._calculate_pairwise_correlation(
+                    aligned_data[sys_list[i]], aligned_data[sys_list[j]]
+                )
+                correlation_matrix[i, j] = corr
+                correlation_matrix[j, i] = corr
+
+        return correlation_matrix
+
+    def _calculate_pairwise_correlation(
+        self, vals_i: list[float], vals_j: list[float]
+    ) -> float:
+        """Calculate Pearson correlation between two value lists.
+
+        Args:
+            vals_i: First value list
+            vals_j: Second value list
+
+        Returns:
+            Correlation coefficient (0.0 if insufficient data or zero variance)
+        """
+        min_len = min(len(vals_i), len(vals_j))
+
+        if min_len < 5:
+            return 0.0
+
+        arr_i = np.array(vals_i[-min_len:])
+        arr_j = np.array(vals_j[-min_len:])
+
+        if np.std(arr_i) > 0 and np.std(arr_j) > 0:
+            corr_matrix = np.corrcoef(arr_i, arr_j)
+            return float(corr_matrix[0, 1])
+
+        return 0.0
+
+    def _extract_significant_correlations(
+        self,
+        sys_list: list[str],
+        correlation_matrix: npt.NDArray[np.float64],
+        threshold: float = 0.5,
+    ) -> list[dict[str, Any]]:
+        """Extract system pairs with significant correlations.
+
+        Args:
+            sys_list: List of system IDs
+            correlation_matrix: NxN correlation matrix
+            threshold: Minimum absolute correlation for significance
+
+        Returns:
+            List of correlation info dictionaries
+        """
+        system_pairs = []
+        n = len(sys_list)
+
+        for i in range(n):
+            for j in range(i + 1, n):
+                corr = float(correlation_matrix[i, j])
+                if abs(corr) > threshold:
+                    system_pairs.append(
+                        {
+                            "system_1": sys_list[i],
+                            "system_2": sys_list[j],
+                            "correlation": corr,
+                            "strength": "strong" if abs(corr) > 0.7 else "moderate",
+                        }
+                    )
+
+        return system_pairs
+
+    def _compute_time_range(
+        self, filtered: list[DataPoint]
+    ) -> tuple[datetime, datetime]:
+        """Compute time range from filtered data points.
+
+        Args:
+            filtered: List of filtered data points
+
+        Returns:
+            Tuple of (earliest_timestamp, latest_timestamp)
+        """
+        return (
+            min(p.timestamp for p in filtered),
+            max(p.timestamp for p in filtered),
         )
 
     def get_metric_names(self) -> list[str]:
