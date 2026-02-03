@@ -114,7 +114,7 @@ class IngestionWorker:
         Returns:
             List of discovered uploads with system_id, upload_id, and manifest data
         """
-        uploads = []
+        uploads: list[SystemMemoryUpload] = []
 
         try:
             # List all system prefixes (pattern: systems/<system-id>/)
@@ -188,7 +188,7 @@ class IngestionWorker:
         Returns:
             List of discovered uploads
         """
-        uploads = []
+        uploads: list[SystemMemoryUpload] = []
 
         try:
             logger.debug("Discovering uploads from cloud storage (sequential)")
@@ -262,14 +262,14 @@ class IngestionWorker:
 
     async def _scan_systems_concurrent(
         self, system_prefixes: list[str]
-    ) -> list[SystemMemoryUpload | Exception]:
+    ) -> list[list[SystemMemoryUpload] | Exception]:
         """Scan multiple systems concurrently.
 
         Args:
             system_prefixes: List of system prefixes to scan
 
         Returns:
-            List of scan results (uploads or exceptions)
+            List of scan results (each is a list of uploads or an exception)
         """
         scan_tasks = []
         for system_prefix in system_prefixes[: self.MAX_CONCURRENT_SCANS]:
@@ -280,10 +280,25 @@ class IngestionWorker:
         if not scan_tasks:
             return []
 
-        return await asyncio.gather(*scan_tasks, return_exceptions=True)
+        # asyncio.gather returns tuple[T1, T2, ...] but we need list
+        # Each task returns list[SystemMemoryUpload], and we catch exceptions
+        results = await asyncio.gather(*scan_tasks, return_exceptions=True)
+
+        # Convert tuple to list and handle BaseException -> Exception narrowing
+        # In practice, asyncio.gather with return_exceptions=True returns Exception, not BaseException
+        # but the type signature uses BaseException for safety. We cast to satisfy mypy.
+        output: list[list[SystemMemoryUpload] | Exception] = []
+        for r in results:
+            if isinstance(r, Exception):
+                output.append(r)  # type: ignore[arg-type]
+            else:
+                # r is list[SystemMemoryUpload], which is compatible with our union type
+                # but mypy sees it as list[SystemMemoryUpload] | BaseException from gather()
+                output.append(r)  # type: ignore[arg-type]
+        return output
 
     def _flatten_scan_results(
-        self, system_results: list[SystemMemoryUpload | Exception]
+        self, system_results: list[list[SystemMemoryUpload] | Exception]
     ) -> list[SystemMemoryUpload]:
         """Flatten scan results and filter errors.
 
@@ -297,7 +312,7 @@ class IngestionWorker:
         for result in system_results:
             if isinstance(result, Exception):
                 logger.error(f"System scan failed: {result}")
-            elif result:
+            else:
                 uploads.extend(result)
         return uploads
 

@@ -86,7 +86,7 @@ class ColdStore:
         Returns:
             PyArrow Table with proper schema
         """
-        data = {
+        data: dict[str, list[Any]] = {
             "system_id": [],
             "conversation_id": [],
             "fingerprint": [],

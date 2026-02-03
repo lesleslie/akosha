@@ -173,7 +173,7 @@ def require_rate_limit(
             # Process request
             return await func(*args, **kwargs)
 
-        return wrapper
+        return wrapper  # type: ignore[return-value]  # async wrapper is compatible with sync signature
 
     return decorator
 

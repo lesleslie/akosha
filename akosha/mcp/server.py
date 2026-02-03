@@ -178,8 +178,8 @@ def create_app() -> FastMCP:
             "meter": meter,
         }
 
-        # Shutdown telemetry
-        await shutdown_telemetry()
+        # Shutdown telemetry (synchronous call, no await needed)
+        shutdown_telemetry()
         logger.info(f"{APP_NAME} shutdown complete")
 
     app._mcp_server.lifespan = lifespan

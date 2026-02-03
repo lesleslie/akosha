@@ -13,7 +13,7 @@ All validation schemas include:
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -21,6 +21,9 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 ALPHANUMERIC_DASH_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
 SAFE_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_:@.-]+$")
 SAFE_TEXT_PATTERN = re.compile(r"^[\w\s\-\.\,\!\?\:\;\'\"\(\)\[\]\{\}]+$")
+
+# Type variable for generic validate_request function
+T = TypeVar("T", bound=BaseModel)
 
 
 class ValidationError(Exception):
@@ -621,7 +624,7 @@ class FindPathRequest(BaseModel):
 # ============================================================================
 
 
-def validate_request(schema: type[BaseModel], **kwargs: Any) -> BaseModel:
+def validate_request(schema: type[T], **kwargs: Any) -> T:
     """Validate request parameters against a schema.
 
     Args:
@@ -629,7 +632,7 @@ def validate_request(schema: type[BaseModel], **kwargs: Any) -> BaseModel:
         **kwargs: Request parameters to validate
 
     Returns:
-        Validated model instance
+        Validated model instance with proper type inference
 
     Raises:
         ValidationError: If validation fails

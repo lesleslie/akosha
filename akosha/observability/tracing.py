@@ -9,6 +9,7 @@ This module provides:
 
 from __future__ import annotations
 
+import functools
 import logging
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
@@ -272,10 +273,8 @@ def traced(
         if operation_name is None:
             operation_name = f"{func.__module__}.{func.__name__}"
 
-        import functools
-
         @functools.wraps(func)
-        async def async_wrapper(*args: Any, **kwargs: Any):
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             tracer_instance = get_tracer()
             with tracer_instance.start_as_current_span(
                 operation_name,
@@ -295,7 +294,7 @@ def traced(
                     raise
 
         @functools.wraps(func)
-        def sync_wrapper(*args: Any, **kwargs: Any):
+        def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             tracer_instance = get_tracer()
             with tracer_instance.start_as_current_span(
                 operation_name,
@@ -323,10 +322,14 @@ def traced(
     return decorator
 
 
-async def shutdown_telemetry() -> None:
+def shutdown_telemetry() -> None:
     """Shutdown telemetry providers gracefully.
 
     This should be called when shutting down the application.
+
+    Note:
+        This function is synchronous as OpenTelemetry's shutdown() methods
+        are synchronous blocking calls.
     """
     global _tracer, _meter
 
@@ -335,11 +338,13 @@ async def shutdown_telemetry() -> None:
     # Shutdown trace provider
     trace_provider = trace.get_tracer_provider()
     if trace_provider:
-        await trace_provider.shutdown()
+        # shutdown() is a synchronous method
+        trace_provider.shutdown()  # type: ignore[attr-defined]
 
     # Shutdown meter provider
     meter_provider = metrics.get_meter_provider()
     if meter_provider:
-        await meter_provider.shutdown()
+        # shutdown() is a synchronous method with optional timeout_millis parameter
+        meter_provider.shutdown()  # type: ignore[attr-defined]
 
     logger.info("✅ Telemetry shutdown complete")

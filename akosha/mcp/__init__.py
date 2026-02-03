@@ -1,5 +1,7 @@
 """Akosha MCP Server - Universal Memory Aggregation via Model Context Protocol."""
 
+import typing as t
+
 __version__ = "0.1.0"
 
 from akosha.mcp.server import APP_NAME, APP_VERSION, create_app
@@ -13,7 +15,7 @@ __all__ = [
 
 
 # Lazy initialization pattern - expose http_app from server module
-def __getattr__(name: str):
+def __getattr__(name: str) -> t.Any:
     """Lazy attribute access for http_app."""
     if name == "http_app":
         from akosha.mcp.server import create_app

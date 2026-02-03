@@ -77,9 +77,10 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from threading import Lock
-from typing import Literal
+from typing import Callable, Literal
 
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
 
@@ -224,7 +225,7 @@ def observe_search_latency(
     query_type: Literal["semantic", "keyword", "hybrid", "graph"],
     shard_count: int,
     tier: Literal["hot", "warm", "cold"] = "hot",
-):
+) -> Iterator[Callable[[int], None]]:
     """Context manager for measuring search latency.
 
     Automatically records the search operation duration and result count.
@@ -471,12 +472,15 @@ def update_store_sizes(
 def observe_store_operation(
     tier: Literal["hot", "warm", "cold"],
     operation: Literal["read", "write", "delete", "scan"],
-):
+) -> Iterator[Callable[[Literal["success", "error"]], None]]:
     """Context manager for measuring storage operation duration.
 
     Args:
         tier: Storage tier being accessed
         operation: Type of storage operation
+
+    Yields:
+        A function to call with the operation status
 
     Example:
         ```python
@@ -618,11 +622,14 @@ operation_duration: Histogram = Histogram(
 @contextmanager
 def observe_operation(
     operation_type: str,
-):
+) -> Iterator[Callable[[Literal["success", "error"]], None]]:
     """Context manager for measuring any operation duration and status.
 
     Args:
         operation_type: Type of operation being measured
+
+    Yields:
+        A function to call with the operation status
 
     Example:
         ```python
@@ -794,11 +801,11 @@ http_active_requests: Gauge = Gauge(
 # ============================================================================
 
 
-def generate_metrics() -> str:
+def generate_metrics() -> bytes:
     """Generate Prometheus metrics exposition format.
 
     Returns:
-        Metrics in Prometheus text exposition format.
+        Metrics in Prometheus text exposition format as bytes.
 
     Example:
         ```python
@@ -809,7 +816,8 @@ def generate_metrics() -> str:
 
         @app.get("/metrics")
         async def metrics():
-            return generate_metrics()
+            from fastapi.responses import Response
+            return Response(content=generate_metrics(), media_type="text/plain")
         ```
     """
     from prometheus_client import generate_latest
@@ -1270,14 +1278,14 @@ def _aggregate_metrics_from_text(metrics_text: str) -> dict[str, dict[str, float
             continue
 
         if "{" in line:
-            result = _parse_labeled_metric(line)
-            if result:
-                metric_name, labels, value = result
+            labeled_result = _parse_labeled_metric(line)
+            if labeled_result:
+                metric_name, labels, value = labeled_result
                 _add_metric_to_summary(summary, metric_name, labels, value)
         else:
-            result = _parse_unlabeled_metric(line)
-            if result:
-                metric_name, value = result
+            unlabeled_result = _parse_unlabeled_metric(line)
+            if unlabeled_result:
+                metric_name, value = unlabeled_result
                 _add_metric_to_summary(summary, metric_name, "", value)
 
     return summary

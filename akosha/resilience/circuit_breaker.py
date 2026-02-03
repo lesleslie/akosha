@@ -262,7 +262,8 @@ class CircuitBreaker:
         Raises:
             Exception: If function execution fails
         """
-        return await func(*args, **kwargs)
+        result: T = await func(*args, **kwargs)  # type: ignore[misc]
+        return result
 
     def get_stats_summary(self) -> dict[str, Any]:
         """Get summary of circuit statistics.
@@ -369,21 +370,21 @@ def with_circuit_breaker(
             service_name = func.__name__
 
         @functools.wraps(func)
-        async def async_wrapper(*args: Any, **kwargs: Any):
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             breaker = get_circuit_breaker_registry().get_or_create_breaker(service_name, config)
 
             return await breaker.call(func, *args, **kwargs)
 
         @functools.wraps(func)
-        def sync_wrapper(*args: Any, **kwargs: Any):
+        def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             """Sync wrapper - only works from non-async contexts."""
             import asyncio
 
             # For sync functions, run in executor
-            async def _async_call():
+            async def _async_call() -> Any:
                 return func(*args, **kwargs)
 
-            async def _wrapped():
+            async def _wrapped() -> Any:
                 breaker = get_circuit_breaker_registry().get_or_create_breaker(
                     service_name or func.__name__, config
                 )

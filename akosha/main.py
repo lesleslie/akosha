@@ -16,12 +16,12 @@ logger = logging.getLogger(__name__)
 class AkoshaApplication:
     """Akosha application with lifecycle management."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize application."""
         self.shutdown_event = asyncio.Event()
         self.ingestion_workers: list[Any] = []
 
-    async def start(self):
+    async def start(self) -> None:
         """Start Akosha services."""
         # Start ingestion workers
         logger.info("Starting Akosha application")
@@ -40,13 +40,13 @@ class AkoshaApplication:
         except asyncio.CancelledError:
             logger.info("Application cancelled")
 
-    def _handle_shutdown(self, signum: int, _frame: Any = None):
+    def _handle_shutdown(self, signum: int, _frame: Any = None) -> None:
         """Handle shutdown signal."""
         signal_name = "SIGINT" if signum == signal.SIGINT else "SIGTERM"
         logger.info(f"Received {signal_name} signal, initiating graceful shutdown")
         self.shutdown_event.set()
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop Akosha services with drain period."""
         # Log shutdown start
         logger.info("Initiating graceful shutdown with drain period")

@@ -62,7 +62,7 @@ class EmbeddingService:
 
         try:
             # Try importing sentence-transformers
-            from sentence_transformers import SentenceTransformer
+            from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
 
             logger.debug("sentence-transformers available, loading model...")
 

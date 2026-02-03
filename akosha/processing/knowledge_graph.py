@@ -467,7 +467,7 @@ class KnowledgeGraphBuilder:
         """
         # Reconstruct forward path (source -> meeting_point)
         forward_path = []
-        current = meeting_point
+        current: str | None = meeting_point
         while current is not None:
             forward_path.append(current)
             current = forward_visited.get(current)

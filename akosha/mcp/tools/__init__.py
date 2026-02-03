@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 
 def register_all_tools(
     app: FastMCP,
-    embedding_service=None,
-    analytics_service=None,
-    graph_builder=None,
+    embedding_service: Any = None,
+    analytics_service: Any = None,
+    graph_builder: Any = None,
 ) -> None:
     """Register all Akosha MCP tools.
 
