@@ -1056,3 +1056,29 @@ def register_system_tools(registry: FastMCPToolRegistry) -> None:
             "warm_store": {"status": "unknown", "conversation_count": 0},
             "cold_store": {"status": "unknown", "conversation_count": 0},
         }
+
+
+def register_code_graph_tools(
+    registry: FastMCPToolRegistry,
+    hot_store: Any,
+) -> None:
+    """Register code graph analysis tools.
+
+    Registers tools for analyzing indexed code graphs across repositories,
+    including finding similar implementations and cross-repo function usage.
+
+    Args:
+        registry: FastMCP tool registry instance
+        hot_store: HotStore instance for data access
+
+    Tools registered:
+        - list_ingested_code_graphs: List all ingested code graphs
+        - get_code_graph_details: Get full code graph data
+        - find_similar_repositories: Find structurally similar repos
+        - get_cross_repo_function_usage: Find function usage across repos
+    """
+    from .code_graph_tools import register_code_graph_analysis_tools
+
+    tool_logger = logging.getLogger(__name__)
+    register_code_graph_analysis_tools(registry, hot_store)
+    tool_logger.info("Registered code graph analysis tools")
