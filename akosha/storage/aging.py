@@ -87,9 +87,7 @@ class AgingService:
         for idx, hot_record in enumerate(records_to_migrate, 1):
             try:
                 # Step 1: Compress embedding (FLOAT -> INT8)
-                compressed_embedding = await self._quantize_embedding(
-                    hot_record["embedding"]
-                )
+                compressed_embedding = await self._quantize_embedding(hot_record["embedding"])
 
                 # Step 2: Generate summary
                 summary = await self._generate_summary(hot_record["content"])
@@ -200,10 +198,9 @@ class AgingService:
                 compressed_embeddings = [emb.tolist() for emb in scaled_embeddings]
 
                 # Step 2: Parallel summary generation (concurrent with asyncio.gather)
-                summaries = await asyncio.gather(*[
-                    self._generate_summary(record["content"])
-                    for record in batch
-                ])
+                summaries = await asyncio.gather(
+                    *[self._generate_summary(record["content"]) for record in batch]
+                )
 
                 # Step 3: Create WarmRecord objects in batch
                 warm_records = [
@@ -345,9 +342,7 @@ class AgingService:
 
         return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
-    def _verify_checksum_compatibility(
-        self, hot_checksum: str, warm_checksum: str
-    ) -> bool:
+    def _verify_checksum_compatibility(self, hot_checksum: str, warm_checksum: str) -> bool:
         """Verify that warm record is derived from hot record.
 
         Note: Checksums won't match exactly (content vs summary),
@@ -411,15 +406,11 @@ class AgingService:
         warm_count = 0
 
         if self.hot_store.conn:
-            result = self.hot_store.conn.execute(
-                "SELECT COUNT(*) FROM conversations"
-            ).fetchone()
+            result = self.hot_store.conn.execute("SELECT COUNT(*) FROM conversations").fetchone()
             hot_count = result[0] if result else 0
 
         if self.warm_store.conn:
-            result = self.warm_store.conn.execute(
-                "SELECT COUNT(*) FROM conversations"
-            ).fetchone()
+            result = self.warm_store.conn.execute("SELECT COUNT(*) FROM conversations").fetchone()
             warm_count = result[0] if result else 0
 
         return {

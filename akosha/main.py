@@ -40,7 +40,7 @@ class AkoshaApplication:
         except asyncio.CancelledError:
             logger.info("Application cancelled")
 
-    def _handle_shutdown(self, signum: int, frame: Any = None):
+    def _handle_shutdown(self, signum: int, _frame: Any = None):
         """Handle shutdown signal."""
         signal_name = "SIGINT" if signum == signal.SIGINT else "SIGTERM"
         logger.info(f"Received {signal_name} signal, initiating graceful shutdown")
@@ -64,7 +64,7 @@ class AkoshaApplication:
         # Stop each worker
         logger.info("Stopping ingestion workers")
         for worker in self.ingestion_workers:
-            if hasattr(worker, 'stop'):
+            if hasattr(worker, "stop"):
                 logger.info(f"Stopping worker: {worker}")
                 await worker.stop()
             else:

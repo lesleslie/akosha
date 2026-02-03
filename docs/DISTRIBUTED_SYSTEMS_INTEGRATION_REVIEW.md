@@ -5,7 +5,7 @@
 **Scope**: Integration architecture across Session-Buddy, Mahavishnu, Oneiric, and Akosha
 **Focus**: Production reality, failure modes, operational complexity
 
----
+______________________________________________________________________
 
 ## Executive Summary
 
@@ -14,6 +14,7 @@
 The Akosha ecosystem demonstrates thoughtful service decomposition and clear responsibility boundaries. However, several **HIGH** and **CRITICAL** concerns exist around dependency cascades, single points of failure, and missing failure modes that will cause production incidents.
 
 **Key Findings**:
+
 - ✅ **Excellent**: Service boundaries and pull model decoupling
 - ✅ **Excellent**: Clear separation of concerns (4 services)
 - ⚠️ **Concerning**: No clear Mahavishnu failure strategy
@@ -21,7 +22,7 @@ The Akosha ecosystem demonstrates thoughtful service decomposition and clear res
 - ❌ **Critical**: Missing ingestion backlog monitoring/alerting
 - ❌ **Critical**: No documented partial failure scenarios
 
----
+______________________________________________________________________
 
 ## Architecture Overview
 
@@ -62,7 +63,7 @@ The Akosha ecosystem demonstrates thoughtful service decomposition and clear res
 | **Akosha → Cloud Storage** | Oneiric Adapter | Pull/process data | Low (storage is decoupled) |
 | **Consumers → Akosha** | REST/MCP | Query APIs | Low (multiple consumers) |
 
----
+______________________________________________________________________
 
 ## Strengths
 
@@ -80,12 +81,14 @@ The 4-service architecture has **excellent** separation of concerns:
 | **Akosha** | Aggregation and query | Pulls from storage, serves queries |
 
 **Why this works**:
+
 - Session-Buddy can evolve independently (no Akosha API dependency)
 - Akosha can be down without blocking Session-Buddy uploads
 - Clear responsibility ownership per team
 - Each service has independent deployment cadence
 
 **Evidence from code**:
+
 ```python
 # Session-Buddy: Upload and forget
 await oneiric_storage.upload(
@@ -109,12 +112,14 @@ uploads = await oneiric_storage.list_prefixes(
 The pull model (Session-Buddy → S3 → Akosha) is **production-grade** decoupling:
 
 **Benefits**:
+
 - ✅ **Failure isolation**: Akosha down doesn't block Session-Buddy
 - ✅ **No write-path latency**: User experience unaffected
 - ✅ **Replay capability**: Can reprocess historical uploads
 - ✅ **Independent scaling**: Scale Akosha without touching Session-Buddy
 
 **Trade-offs**:
+
 - ⚠️ **Eventual consistency**: 30-second to 5-minute delay
 - ⚠️ **Duplicate storage**: Uploads stored twice temporarily
 - ⚠️ **Discovery needed**: Need polling or S3 events for new uploads
@@ -134,6 +139,7 @@ Hot/Warm/Cold tiering is **well-designed** for cost optimization:
 | **Cold** | 90+ days | Parquet + R2 | 1x | Compliance/archive |
 
 **Why this works**:
+
 - ✅ **80% cost reduction** for cold data (no embeddings)
 - ✅ **Sub-second latency** for hot tier (most queries)
 - ✅ **Automatic aging** reduces operational overhead
@@ -159,11 +165,13 @@ cold_storage = await bridge.use("storage-s3-cold")
 ```
 
 **Benefits**:
+
 - ✅ **Vendor portability**: Switch S3/Azure/GCS via config
 - ✅ **Tier abstraction**: `stack_level` for priority routing
 - ✅ **Unified interface**: Single API for all storage backends
 
 **Concerns**:
+
 - ⚠️ **Dependency risk**: Oneiric is a shared dependency
 - ⚠️ **Version coupling**: Akosha tied to Oneiric API changes
 - ⚠️ **Debugging complexity**: Oneiric failures obscure root cause
@@ -185,6 +193,7 @@ class CircuitBreaker:
 ```
 
 **Why this works**:
+
 - ✅ **Cascading failure prevention**: Stops bouncing failures
 - ✅ **Graceful degradation**: Falls back to next tier
 - ✅ **Auto-recovery**: Half-open state tests service recovery
@@ -192,7 +201,7 @@ class CircuitBreaker:
 
 **Evidence**: 98.78% test coverage for circuit breaker module.
 
----
+______________________________________________________________________
 
 ## Concerns
 
@@ -205,10 +214,11 @@ class CircuitBreaker:
 **Problem**:
 
 Akosha is **fully dependent** on Mahavishnu for:
+
 1. Workflow triggering (scheduled/cron/manual)
-2. Pod scaling based on backlog metrics
-3. Health check monitoring
-4. Alert escalation
+1. Pod scaling based on backlog metrics
+1. Health check monitoring
+1. Alert escalation
 
 **What happens when Mahavishnu is down?**
 
@@ -231,6 +241,7 @@ await register_with_mahavishnu(
 **Recommendations**:
 
 1. **Bootstrap mode**: Akosha should have "safe mode" when Mahavishnu is down
+
    ```python
    # Akosha should work without Mahavishnu
    if not await mahavishnu_healthy():
@@ -240,7 +251,8 @@ await register_with_mahavishnu(
        # Buffer metrics until Mahavishnu recovers
    ```
 
-2. **Dual health reporting**: Report to both Mahavishnu AND Prometheus
+1. **Dual health reporting**: Report to both Mahavishnu AND Prometheus
+
    ```python
    # Push metrics to Prometheus (always works)
    prometheus_client.push_metrics(akosha_metrics)
@@ -252,7 +264,8 @@ await register_with_mahavishnu(
        logger.warning("Mahavishnu unavailable - metrics buffered")
    ```
 
-3. **Document fail-fast behavior**:
+1. **Document fail-fast behavior**:
+
    ```markdown
    ## Mahavishnu Failure Mode
 
@@ -293,17 +306,19 @@ ingestion:
 ```
 
 **What happens**:
+
 1. Upload rate spikes (e.g., 10x normal traffic)
-2. 3 workers cannot keep up
-3. Backlog grows to 50,000 uploads
-4. Data becomes 12+ hours stale
-5. **No alert fired** - ops team unaware until users complain
+1. 3 workers cannot keep up
+1. Backlog grows to 50,000 uploads
+1. Data becomes 12+ hours stale
+1. **No alert fired** - ops team unaware until users complain
 
 **Evidence**: ADR-001 mentions "Backlog > 10,000 uploads" as a failure scenario, but no alert is configured.
 
 **Recommendations**:
 
 1. **Add Prometheus alert** (urgent):
+
    ```yaml
    # monitoring/prometheus/alerts.yml
    - alert: AkoshaIngestionBacklogHigh
@@ -325,7 +340,8 @@ ingestion:
        description: "{{ $value }} uploads pending - scale pods immediately"
    ```
 
-2. **Auto-scale trigger**:
+1. **Auto-scale trigger**:
+
    ```yaml
    # k8s/hpa.yaml
    apiVersion: autoscaling/v2
@@ -345,7 +361,8 @@ ingestion:
            averageValue: "1000"  # Scale up if backlog > 1000 per pod
    ```
 
-3. **Backlog metric implementation**:
+1. **Backlog metric implementation**:
+
    ```python
    # akosha/ingestion/worker.py
    from prometheus_client import Gauge
@@ -386,27 +403,33 @@ async def trigger_akosha_ingest(source_system: str):
 **Why this is concerning**:
 
 1. **Non-standard**: MCP is designed for LLM tool calling, not service orchestration
+
    - Standard orchestration: gRPC, REST, message queues (SQS/Kafka)
    - Chosen protocol: MCP (JSON-RPC over stdio/HTTP)
 
-2. **Debugging complexity**: MCP tool calls are harder to trace than REST
+1. **Debugging complexity**: MCP tool calls are harder to trace than REST
+
    - No standardized request/response logging
    - No OpenAPI/Swagger documentation
    - Fewer debugging tools available
 
-3. **Operational unfamiliarity**: Ops teams don't know MCP
+1. **Operational unfamiliarity**: Ops teams don't know MCP
+
    - Standard ops tools: curl, Postman, AWS X-Ray
    - MCP requires specialized tooling
 
-4. **Vendor lock-in**: FastMCP is a custom library
+1. **Vendor lock-in**: FastMCP is a custom library
+
    - Smaller ecosystem than gRPC/REST
    - Fewer client libraries
 
 **When MCP makes sense**:
+
 - ✅ LLM-to-service communication (designed use case)
 - ✅ Human-in-the-loop workflows (Claude Code calling Akosha)
 
 **When MCP doesn't make sense**:
+
 - ❌ Service-to-service orchestration (Mahavishnu → Akosha)
 - ❌ Health checks and metrics (use REST/HTTP)
 - ❌ High-frequency triggers (use message queue)
@@ -414,6 +437,7 @@ async def trigger_akosha_ingest(source_system: str):
 **Recommendations**:
 
 1. **Dual protocol**: Keep MCP for LLM use, add gRPC for service orchestration
+
    ```python
    # Keep MCP for LLM workflows
    @akosha.mcp.tool()
@@ -428,7 +452,8 @@ async def trigger_akosha_ingest(source_system: str):
            return await start_ingestion(request.system_id)
    ```
 
-2. **Document MCP limitations**:
+1. **Document MCP limitations**:
+
    ```markdown
    ## MCP Protocol Constraints
 
@@ -442,7 +467,8 @@ async def trigger_akosha_ingest(source_system: str):
    - ❌ Service mesh integration → Use gRPC
    ```
 
-3. **Add REST fallback** for critical operations:
+1. **Add REST fallback** for critical operations:
+
    ```python
    # Akosha REST API (always available)
    @app.post("/api/v1/ingestion/trigger")
@@ -472,16 +498,19 @@ await storage.upload(bucket="akosha-cold", path=data.id, data=data)
 **Failure scenarios**:
 
 1. **Oneiric adapter bug**: All storage operations fail
+
    - Example: Oneiric S3 adapter has multipart upload bug
    - Impact: Akosha cannot write to cold tier
    - Recovery: Wait for Oneiric fix OR bypass with direct S3 client
 
-2. **Oneiric version skew**: Breaking API changes
+1. **Oneiric version skew**: Breaking API changes
+
    - Example: Oneiric v2.0 changes `upload()` signature
    - Impact: Akosha deployment fails
    - Recovery: Pin Oneiric version OR update Akosha code
 
-3. **Oneiric deployment dependency**: Shared runtime
+1. **Oneiric deployment dependency**: Shared runtime
+
    - Example: Oneiric deployed as sidecar
    - Impact: Oneiric pod crash = Akosha storage unavailable
    - Recovery: Restart Oneiric sidecar
@@ -491,6 +520,7 @@ await storage.upload(bucket="akosha-cold", path=data.id, data=data)
 **Recommendations**:
 
 1. **Circuit break Oneiric calls** (already implemented, good):
+
    ```python
    # /Users/les/Projects/akosha/akosha/resilience/circuit_breaker.py
    oneiric_breaker = CircuitBreaker(
@@ -506,7 +536,8 @@ await storage.upload(bucket="akosha-cold", path=data.id, data=data)
        return await cold_storage.upload(data)
    ```
 
-2. **Add fallback to direct S3 client**:
+1. **Add fallback to direct S3 client**:
+
    ```python
    async def upload_with_fallback(data: bytes, path: str):
        """Upload with Oneiric fallback."""
@@ -519,15 +550,17 @@ await storage.upload(bucket="akosha-cold", path=data.id, data=data)
            return await boto3_client.upload_fileobj(data, path)
    ```
 
-3. **Version pinning**:
+1. **Version pinning**:
+
    ```toml
    # pyproject.toml
    [dependencies]
    oneiric = ">=1.2.0,<2.0.0"  # Pin to major version
    ```
 
-4. **Document Oneiric failure mode**:
-   ```markdown
+1. **Document Oneiric failure mode**:
+
+   ````markdown
    ## Oneiric Failure Recovery
 
    If Oneiric adapters fail:
@@ -539,7 +572,10 @@ await storage.upload(bucket="akosha-cold", path=data.id, data=data)
       ```bash
       export AKOSHA_STORAGE_DIRECT_S3=true
       kubectl rollout restart deployment/akosha-ingestion
-      ```
+   ````
+
+   ```
+
    ```
 
 ### 🟡 MEDIUM: No Message Queue for Event-Driven Ingestion
@@ -564,16 +600,19 @@ class IngestionWorker:
 **Why polling is problematic**:
 
 1. **Wasteful**: S3 LIST operations are expensive ($0.005 per 1,000 requests)
+
    - 3 workers × 2 polls/min = 8,640 polls/day = $0.13/day
    - At scale: 50 workers × 2 polls/min = 144,000 polls/day
 
-2. **Delayed ingestion**: 30-second average delay
+1. **Delayed ingestion**: 30-second average delay
+
    - Upload arrives at t=0
    - Worker polls at t=15 (misses)
    - Worker polls at t=45 (detects)
    - **45-second average delay**
 
-3. **No push scaling**: Can't scale workers based on incoming events
+1. **No push scaling**: Can't scale workers based on incoming events
+
    - Must over-provision workers
    - Can't use event-driven autoscaling
 
@@ -585,11 +624,13 @@ Session-Buddy → S3 upload → S3 Event → SQS queue → Akosha workers
 ```
 
 **Benefits of event-driven**:
+
 - ✅ **Real-time**: Sub-second ingestion latency
 - ✅ **Efficient**: No polling overhead
 - ✅ **Auto-scaling**: Scale based on SQS queue depth
 
 **Trade-offs**:
+
 - ⚠️ **Complexity**: Additional SQS infrastructure
 - ⚠️ **Cost**: SQS request costs ($0.40 per 1M requests)
 - ⚠️ **Failure handling**: Need DLQ for failed messages
@@ -597,7 +638,9 @@ Session-Buddy → S3 upload → S3 Event → SQS queue → Akosha workers
 **Recommendations**:
 
 1. **Keep polling for Phase 1** (100 systems): Acceptable trade-off
-2. **Add event-driven for Phase 2** (1,000+ systems):
+
+1. **Add event-driven for Phase 2** (1,000+ systems):
+
    ```python
    # Phase 2: Event-driven ingestion
    import boto3
@@ -616,7 +659,8 @@ Session-Buddy → S3 upload → S3 Event → SQS queue → Akosha workers
                await process_s3_event(msg)
    ```
 
-3. **Hybrid approach**: Polling + event-driven
+1. **Hybrid approach**: Polling + event-driven
+
    ```python
    # Use SQS when available, fall back to polling
    if os.getenv('AKOSHA_INGESTION_QUEUE'):
@@ -647,13 +691,14 @@ class IngestionWorker:
 **What happens during deployment**:
 
 1. Kubernetes sends SIGTERM to Akosha pod
-2. Worker's `stop()` called immediately
-3. **Current upload processing aborted mid-way**
-4. Partial data written to hot store
-5. Next worker re-processes upload (duplicate work)
-6. Orphaned records in hot store
+1. Worker's `stop()` called immediately
+1. **Current upload processing aborted mid-way**
+1. Partial data written to hot store
+1. Next worker re-processes upload (duplicate work)
+1. Orphaned records in hot store
 
 **Missing logic**:
+
 - ❌ No in-flight upload completion
 - ❌ No checkpoint/save state
 - ❌ No drain period before shutdown
@@ -662,6 +707,7 @@ class IngestionWorker:
 **Recommendations**:
 
 1. **Add graceful shutdown handler**:
+
    ```python
    class IngestionWorker:
        def __init__(self):
@@ -722,7 +768,8 @@ class IngestionWorker:
            logger.info("Worker shutdown complete")
    ```
 
-2. **Kubernetes preStop hook**:
+1. **Kubernetes preStop hook**:
+
    ```yaml
    # k8s/deployment.yaml
    lifecycle:
@@ -731,7 +778,8 @@ class IngestionWorker:
          command: ["/bin/sh", "-c", "curl -X POST http://localhost:8000/api/v1/shutdown && sleep 30"]
    ```
 
-3. **Add shutdown endpoint**:
+1. **Add shutdown endpoint**:
+
    ```python
    @app.post("/api/v1/shutdown")
    async def shutdown_endpoint():
@@ -760,6 +808,7 @@ ADR-001 documents failure scenarios but **doesn't provide runbooks**:
 ```
 
 **What's missing**:
+
 - ❌ Step-by-step recovery procedures
 - ❌ Command examples for ops to run
 - ❌ Expected recovery times
@@ -768,7 +817,7 @@ ADR-001 documents failure scenarios but **doesn't provide runbooks**:
 
 **Example runbook (should be documented)**:
 
-```markdown
+````markdown
 ## Runbook: Akosha Hot Store Corruption
 
 ### Detection
@@ -776,9 +825,10 @@ ADR-001 documents failure scenarios but **doesn't provide runbooks**:
 # Hot store health check failing
 kubectl get pods -n akosha
 # akosha-ingestion-5d7f8b9c-abc12   0/1     CrashLoopBackOff
-```
+````
 
 ### Symptoms
+
 - Search queries returning errors
 - Ingestion failing with "Database locked"
 - Logs show: `duckdb.Error: IO Error: Corruption`
@@ -786,78 +836,88 @@ kubectl get pods -n akosha
 ### Recovery Steps
 
 1. **Verify corruption**
+
    ```bash
    kubectl logs -n akosha deployment/akosha-ingestion --tail=100 | grep -i corrupt
    ```
 
-2. **Scale to zero (stop writes)**
+1. **Scale to zero (stop writes)**
+
    ```bash
    kubectl scale deployment/akosha-ingestion --replicas=0 -n akosha
    ```
 
-3. **Enable warm tier fallback**
+1. **Enable warm tier fallback**
+
    ```bash
    kubectl set env deployment/akosha-ingestion AKOSHA_HOT_FALLBACK=WARM -n akosha
    ```
 
-4. **Restore from backup**
+1. **Restore from backup**
+
    ```bash
    # Restore from latest S3 backup
    aws s3 sync s3://akosha-backups/hot/$(date +%Y-%m-%d) /data/akosha/hot
    ```
 
-5. **Resume ingestion**
+1. **Resume ingestion**
+
    ```bash
    kubectl scale deployment/akosha-ingestion --replicas=3 -n akosha
    ```
 
 ### Expected Recovery Time
+
 - 5 minutes (if backup available)
 - 2 hours (if rebuild from warm tier required)
 
 ### Escalation
+
 - If recovery fails after 2 hours → Page storage team
 - If data loss suspected → Page security team
+
 ```
 
 **Recommendations**:
 
 1. **Create runbook directory**:
-   ```
-   /docs/runbooks/
-   ├── 001-ingestion-backlog.md
-   ├── 002-hot-store-corruption.md
-   ├── 003-mahavishnu-unreachable.md
-   ├── 004-s3-slow-upload.md
-   ├── 005-high-latency-queries.md
-   └── 006-circuit-breaker-open.md
-   ```
+```
+
+/docs/runbooks/
+├── 001-ingestion-backlog.md
+├── 002-hot-store-corruption.md
+├── 003-mahavishnu-unreachable.md
+├── 004-s3-slow-upload.md
+├── 005-high-latency-queries.md
+└── 006-circuit-breaker-open.md
+
+````
 
 2. **Runbook template**:
-   ```markdown
-   # Runbook: [Title]
+```markdown
+# Runbook: [Title]
 
-   **Severity**: [Critical/High/Medium/Low]
-   **Estimated MTTR**: [X minutes]
-   **Escalation**: [Team/Role]
+**Severity**: [Critical/High/Medium/Low]
+**Estimated MTTR**: [X minutes]
+**Escalation**: [Team/Role]
 
-   ## Detection
-   [Commands to detect issue]
+## Detection
+[Commands to detect issue]
 
-   ## Symptoms
-   [Observable symptoms]
+## Symptoms
+[Observable symptoms]
 
-   ## Recovery Steps
-   1. [Step 1]
-   2. [Step 2]
-   3. [Step 3]
+## Recovery Steps
+1. [Step 1]
+2. [Step 2]
+3. [Step 3]
 
-   ## Rollback
-   [How to rollback if recovery fails]
+## Rollback
+[How to rollback if recovery fails]
 
-   ## Prevention
-   [How to prevent recurrence]
-   ```
+## Prevention
+[How to prevent recurrence]
+````
 
 ### 🟢 LOW: Service Count Complexity
 
@@ -870,6 +930,7 @@ kubectl get pods -n akosha
 4 services (Session-Buddy, Mahavishnu, Oneiric, Akosha) is **manageable** but adds complexity:
 
 **Complexity factors**:
+
 - 4 codebases to maintain
 - 4 deployment pipelines
 - 4 monitoring dashboards
@@ -877,11 +938,13 @@ kubectl get pods -n akosha
 - 4 on-call rotations (or 1 complex rotation)
 
 **When 4 services is too many**:
-- Small team (<5 engineers): 2-3 services better
-- Low traffic (<100 req/sec): Monolith simpler
+
+- Small team (\<5 engineers): 2-3 services better
+- Low traffic (\<100 req/sec): Monolith simpler
 - Limited ops maturity: Fewer services = fewer alerts
 
 **When 4 services is justified**:
+
 - Team size: 10+ engineers (can specialize)
 - Scale: 1,000+ systems (need horizontal scaling)
 - Complexity: Each service has distinct domain logic
@@ -889,6 +952,7 @@ kubectl get pods -n akosha
 **Verdict**: 4 services is **appropriate** for the stated scale (100-10,000 systems).
 
 **Recommendation**: No changes needed, but document **why 4 services**:
+
 ```markdown
 ## Why 4 Services?
 
@@ -907,7 +971,7 @@ We chose 4 services over a monolith because:
 **If starting over**: Would choose 4 services again.
 ```
 
----
+______________________________________________________________________
 
 ## Failure Mode Analysis
 
@@ -924,19 +988,21 @@ We chose 4 services over a monolith because:
 | Akosha query serving | ✅ Unaffected | **NONE** |
 
 **Current behavior**:
+
 - Akosha continues serving queries (✅ good)
 - No scheduled workflows run (❌ bad)
 - Ingestion workers continue polling (✅ good)
 - No pod autoscaling (❌ bad)
 
 **What should happen**:
+
 1. Akosha detects Mahavishnu unreachable (timeout: 10s)
-2. Enters "bootstrap mode" with degraded functionality:
+1. Enters "bootstrap mode" with degraded functionality:
    - Local cron schedules daily ingestion (12:00 AM UTC)
    - HPA scales based on CPU/memory (not backlog)
    - Metrics buffered to local file (max 1 hour)
-3. Alert sent: "Mahavishnu unreachable - Akosha in bootstrap mode"
-4. When Mahavishnu recovers:
+1. Alert sent: "Mahavishnu unreachable - Akosha in bootstrap mode"
+1. When Mahavishnu recovers:
    - Buffer replayed
    - Workflows re-registered
    - Normal operation resumes
@@ -956,6 +1022,7 @@ We chose 4 services over a monolith because:
 | Akosha queries | ✅ Serve from hot | **NONE** |
 
 **Current behavior**:
+
 - Session-Buddy buffers uploads locally (✅ good)
 - Akosha workers retry S3 operations (✅ good)
 - Circuit breaker opens after 5 failures (✅ good)
@@ -964,7 +1031,8 @@ We chose 4 services over a monolith because:
 **Graceful degradation score**: **9/10** (excellent)
 
 **Improvement needed**: Document S3 outage runbook
-```markdown
+
+````markdown
 ## Runbook: S3 Outage
 
 ### Detection
@@ -976,23 +1044,27 @@ kubectl get configmap akosha-config -o jsonpath='{.data.circuit_breakers}'
 # S3 health check failing
 aws s3 ls s3://akosha-cold --summarize
 # An error occurred (503) when calling the ListObjectsV2 operation
-```
+````
 
 ### Symptoms
+
 - Ingestion backlog growing
 - Circuit breaker OPEN for S3
 - Logs show: `ConnectionError: S3 unavailable`
 
 ### Recovery
+
 1. **Wait for AWS recovery** (check https://status.aws.amazon.com/)
-2. **Circuit breaker auto-recovers** after 60 seconds
-3. **Backlog drains** automatically
-4. **No manual intervention needed**
+1. **Circuit breaker auto-recovers** after 60 seconds
+1. **Backlog drains** automatically
+1. **No manual intervention needed**
 
 ### Prevention
+
 - Multi-region S3 (replication to us-west-2)
 - Local buffering for 1 hour of uploads
-```
+
+````
 
 ### Scenario 3: Akosha Hot Store Memory Exhaustion
 
@@ -1035,7 +1107,7 @@ aws s3 ls s3://akosha-cold --summarize
 
            # Then write to DuckDB (performance)
            self.conn.execute("INSERT INTO conversations ...")
-   ```
+````
 
 2. **Warm tier promotion** on hot store failure:
    ```python
@@ -1047,7 +1119,7 @@ aws s3 ls s3://akosha-cold --summarize
            return await warm_store.search(query_embedding)
    ```
 
----
+______________________________________________________________________
 
 ## Integration Pattern Assessment
 
@@ -1071,12 +1143,14 @@ aws s3 ls s3://akosha-cold --summarize
 **Current state**: No service mesh (plain Kubernetes Service)
 
 **Service mesh benefits**:
+
 - ✅ mTLS encryption (automatic)
 - ✅ Traffic shifting (canary deployments)
 - ✅ Observability (distributed tracing)
 - ✅ Retry logic (application-level)
 
 **Service mesh costs**:
+
 - ⚠️ Complexity (Istio/Linkerd ops overhead)
 - ⚠️ Latency (sidecar proxy overhead: 2-5ms)
 - ⚠️ Resource usage (sidecar CPU/memory)
@@ -1084,6 +1158,7 @@ aws s3 ls s3://akosha-cold --summarize
 **Verdict**: 🟡 **Not needed for Phase 1, evaluate for Phase 3**
 
 **Recommendation**:
+
 - Phase 1-2 (100-1,000 systems): **No service mesh**
   - Use application-level mTLS (if needed)
   - Use application-level retries
@@ -1098,12 +1173,14 @@ aws s3 ls s3://akosha-cold --summarize
 **Current state**: Polling (30-second interval)
 
 **Message queue benefits**:
+
 - ✅ Real-time ingestion (sub-second latency)
 - � Efficient (no polling overhead)
 - ✅ Auto-scaling (scale based on queue depth)
 - ✅ Dead letter queue (failed messages)
 
 **Message queue costs**:
+
 - ⚠️ Infrastructure (SQS + S3 event configuration)
 - ⚠️ Cost ($0.40 per 1M requests)
 - ⚠️ Failure handling (DLQ monitoring)
@@ -1111,6 +1188,7 @@ aws s3 ls s3://akosha-cold --summarize
 **Verdict**: 🟡 **Keep polling for Phase 1, add SQS for Phase 2**
 
 **Recommendation**:
+
 ```python
 # Hybrid approach
 class IngestionWorker:
@@ -1129,6 +1207,7 @@ class IngestionWorker:
 **Current state**: No versioning documented
 
 **REST API**:
+
 ```python
 # Current: No versioning
 @app.post("/api/v1/search")  # Hardcoded v1
@@ -1137,6 +1216,7 @@ async def search(request: SearchRequest):
 ```
 
 **MCP API**:
+
 ```python
 # No versioning mechanism
 @akosha.mcp.tool()
@@ -1147,6 +1227,7 @@ async def akosha_search(query: str):
 **Risk**: Breaking API changes will break consumers
 
 **Recommendation**: Document versioning strategy
+
 ```markdown
 ## API Versioning
 
@@ -1170,23 +1251,26 @@ Tool-based versioning:
 Both versions supported indefinitely (no breaking changes to existing tools).
 ```
 
----
+______________________________________________________________________
 
 ## Recommendations Summary
 
 ### Critical (Must Fix Before Production)
 
 1. **Add Mahavishnu failure handling** (bootstrap mode)
+
    - [ ] Implement local cron fallback for scheduled workflows
    - [ ] Buffer metrics when Mahavishnu unreachable
    - [ ] Document bootstrap mode behavior
 
-2. **Add ingestion backlog alerting**
+1. **Add ingestion backlog alerting**
+
    - [ ] Create Prometheus alert: `akosha_ingestion_backlog_count > 10000`
    - [ ] Create HPA trigger: Scale pods when backlog > 1000/pod
    - [ ] Implement `akosha_ingestion_backlog_count` metric
 
-3. **Document partial failure scenarios** (runbooks)
+1. **Document partial failure scenarios** (runbooks)
+
    - [ ] Create `/docs/runbooks/` directory
    - [ ] Write 6 runbooks for common failures
    - [ ] Include step-by-step recovery commands
@@ -1194,16 +1278,19 @@ Both versions supported indefinitely (no breaking changes to existing tools).
 ### High (Should Fix in Next Sprint)
 
 4. **Evaluate MCP for orchestration**
+
    - [ ] Audit all Mahavishnu → Akosha MCP calls
    - [ ] Add gRPC endpoint for high-frequency triggers
    - [ ] Keep MCP for LLM workflows only
 
-5. **Add Oneiric fallback**
+1. **Add Oneiric fallback**
+
    - [ ] Implement direct S3 client fallback
    - [ ] Add Oneiric health check
    - [ ] Document Oneiric failure recovery
 
-6. **Implement graceful shutdown**
+1. **Implement graceful shutdown**
+
    - [ ] Add in-flight upload completion
    - [ ] Add 30-second drain period
    - [ ] Add Kubernetes preStop hook
@@ -1211,16 +1298,19 @@ Both versions supported indefinitely (no breaking changes to existing tools).
 ### Medium (Nice to Have)
 
 7. **Add event-driven ingestion** (Phase 2)
+
    - [ ] Configure S3 → SQS event notifications
    - [ ] Implement SQS listener
    - [ ] Keep polling as fallback
 
-8. **Add hot store write-ahead log**
+1. **Add hot store write-ahead log**
+
    - [ ] Implement WAL for in-memory hot store
    - [ ] Add WAL replay on startup
    - [ ] Document recovery procedures
 
-9. **Document API versioning strategy**
+1. **Document API versioning strategy**
+
    - [ ] Write API versioning guide
    - [ ] Add deprecation timeline
    - [ ] Version MCP tools (v1/v2)
@@ -1232,7 +1322,7 @@ Both versions supported indefinitely (no breaking changes to existing tools).
     - [ ] Compare Istio vs Linkerd
     - [ ] Pilot service mesh in staging
 
----
+______________________________________________________________________
 
 ## Conclusion
 
@@ -1246,26 +1336,27 @@ The Akosha ecosystem demonstrates **solid distributed systems fundamentals**:
 **Critical gaps** must be addressed before production:
 
 1. 🔴 **Mahavishnu failure handling** - Add bootstrap mode
-2. 🔴 **Backlog alerting** - Add Prometheus alerts and HPA triggers
-3. 🔴 **Runbook documentation** - Document failure recovery procedures
+1. 🔴 **Backlog alerting** - Add Prometheus alerts and HPA triggers
+1. 🔴 **Runbook documentation** - Document failure recovery procedures
 
 **High-priority improvements**:
 
 4. 🟠 **MCP protocol evaluation** - Consider gRPC for orchestration
-5. 🟠 **Oneiric fallback** - Add direct S3 client
-6. 🟠 **Graceful shutdown** - Complete in-flight work
+1. 🟠 **Oneiric fallback** - Add direct S3 client
+1. 🟠 **Graceful shutdown** - Complete in-flight work
 
 **Overall readiness**: **7.5/10** - Address critical gaps before production deployment.
 
----
+______________________________________________________________________
 
 **Next steps**:
-1. Prioritize critical issues (1-3) for next sprint
-2. Create runbooks for common failure scenarios
-3. Add integration tests for failure modes
-4. Conduct chaos engineering test (Mahavishnu outage simulation)
 
----
+1. Prioritize critical issues (1-3) for next sprint
+1. Create runbooks for common failure scenarios
+1. Add integration tests for failure modes
+1. Conduct chaos engineering test (Mahavishnu outage simulation)
+
+______________________________________________________________________
 
 **Document version**: 1.0
 **Last updated**: 2026-01-31

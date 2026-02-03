@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from collections import defaultdict
-from datetime import datetime, timedelta
+from collections.abc import Callable  # noqa: TC003  # Used in runtime type hints
 from functools import wraps
-from typing import Callable, TypeVar
+from typing import TypeVar
 
-from akosha.observability import record_counter, record_histogram
+from akosha.observability import record_counter
 
 logger = logging.getLogger(__name__)
 
@@ -72,10 +73,7 @@ class RateLimiter:
 
             # Refill tokens based on time elapsed
             elapsed = now - last_time
-            self.tokens[user_id] = min(
-                self.burst,
-                self.tokens[user_id] + elapsed * self.rate
-            )
+            self.tokens[user_id] = min(self.burst, self.tokens[user_id] + elapsed * self.rate)
             self.last_update[user_id] = now
 
             # Check if enough tokens available
@@ -150,7 +148,7 @@ def require_rate_limit(
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
-        async def wrapper(*args: **kwargs):  # type: ignore
+        async def wrapper(*args, **kwargs):  # type: ignore
             # Extract user_id from kwargs or args
             user_id = kwargs.get(user_id_param)
             if user_id is None:
@@ -178,10 +176,6 @@ def require_rate_limit(
         return wrapper
 
     return decorator
-
-
-# Import for decorator
-import os
 
 
 __all__ = [

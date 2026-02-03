@@ -16,7 +16,7 @@ Akosha is a universal memory aggregation system designed to ingest and store mas
 - **Data Types**: Vector embeddings (FLOAT[384]), time-series metrics, knowledge graphs, conversation text
 - **Access Patterns**: Real-time search, batch analytics, archival retention
 
----
+______________________________________________________________________
 
 ## 1. Oneiric Architecture Foundation
 
@@ -92,7 +92,7 @@ await handle.instance.store(
 )
 ```
 
----
+______________________________________________________________________
 
 ## 2. Multi-Tier Storage Strategy
 
@@ -217,7 +217,7 @@ class AkoshaDataLifecycle:
             return False
 ```
 
----
+______________________________________________________________________
 
 ## 3. Backend Selection & Configuration
 
@@ -434,7 +434,7 @@ class AkoshaStorageSettings:
         )
 ```
 
----
+______________________________________________________________________
 
 ## 4. Data Type Storage Patterns
 
@@ -793,7 +793,7 @@ class ConversationTextStorage:
         return await self._scan_parquet(query, limit)
 ```
 
----
+______________________________________________________________________
 
 ## 5. Integration Architecture
 
@@ -1012,7 +1012,7 @@ class AkoshaStorageLifecycle:
             return False
 ```
 
----
+______________________________________________________________________
 
 ## 6. Multi-Backend Coordination
 
@@ -1158,7 +1158,7 @@ class HybridCloudStorage:
             return path
 ```
 
----
+______________________________________________________________________
 
 ## 7. Failure Handling & Fallbacks
 
@@ -1316,7 +1316,7 @@ class ResilientStorageClient:
         return any(pattern in error_str for pattern in retryable_patterns)
 ```
 
----
+______________________________________________________________________
 
 ## 8. Configuration Best Practices
 
@@ -1420,7 +1420,7 @@ class AkoshaStorageConfig(BaseModel):
         return cls(**config_data)
 ```
 
----
+______________________________________________________________________
 
 ## 9. Performance Optimization
 
@@ -1536,7 +1536,7 @@ class ParallelStorageOperations:
         return await asyncio.gather(*[bounded_task(t) for t in tasks])
 ```
 
----
+______________________________________________________________________
 
 ## 10. Monitoring & Observability
 
@@ -1698,75 +1698,84 @@ class StorageHealthChecker:
         return results
 ```
 
----
+______________________________________________________________________
 
 ## 11. Implementation Roadmap
 
 ### Phase 1: Core Storage (Weeks 1-2)
+
 - [ ] Implement Oneiric storage adapter registration
 - [ ] Create DuckDB vector storage with HNSW indexes
 - [ ] Implement Parquet-based embeddings storage
 - [ ] Setup S3 bucket lifecycle policies
 
 ### Phase 2: Tier Management (Weeks 3-4)
+
 - [ ] Implement automatic tier promotion/demotion
 - [ ] Create lifecycle hooks for data aging
 - [ ] Build tier transition orchestrator
 - [ ] Add tier migration jobs
 
 ### Phase 3: Multi-Cloud (Weeks 5-6)
+
 - [ ] Implement Azure Blob adapter
 - [ ] Implement GCS adapter
 - [ ] Create multi-cloud coordinator
 - [ ] Setup cross-cloud replication
 
 ### Phase 4: Caching & Performance (Weeks 7-8)
+
 - [ ] Implement Redis cache layer
 - [ ] Add connection pooling
 - [ ] Implement parallel upload/download
 - [ ] Optimize Parquet compression
 
 ### Phase 5: Resilience (Weeks 9-10)
+
 - [ ] Implement circuit breakers
 - [ ] Add retry with exponential backoff
 - [ ] Create health check system
 - [ ] Build metrics collection
 
----
+______________________________________________________________________
 
 ## 12. Key Benefits of Oneiric Architecture
 
 ### 12.1 Universal Resolution System
+
 - **4-tier precedence**: Explicit → Inferred → Stack level → Registration order
 - **Explainable decisions**: Full traceability of why specific backend was chosen
 - **Dynamic rebalancing**: Change priorities without code changes
 
 ### 12.2 Hot-Swappable Components
+
 - **Zero-downtime updates**: Swap backends without restarting
 - **Automatic rollback**: Revert on failure with health checks
 - **Graceful degradation**: Continue operation with degraded functionality
 
 ### 12.3 Domain-Agnostic Bridges
+
 - **Consistent patterns**: Same API for all storage types
 - **Reduced complexity**: No need to learn backend-specific APIs
 - **Type safety**: Full Pydantic validation
 
 ### 12.4 Remote-Ready Architecture
+
 - **Manifest-based delivery**: Load adapters from remote URLs
 - **Signature verification**: Ensure adapter integrity
 - **Cache management**: Automatic caching of remote adapters
 
----
+______________________________________________________________________
 
 ## 13. Conclusion
 
 This architecture provides Akosha with a production-ready, scalable storage foundation built on Oneiric's universal resolution system. Key advantages:
 
 1. **Tiered Storage**: Automatic lifecycle management with cost optimization
-2. **Multi-Cloud Support**: Cross-cloud redundancy with automatic failover
-3. **Performance**: Redis cache + DuckDB vector search + Parquet compression
-4. **Resilience**: Circuit breakers + retry + health checks
-5. **Observability**: Comprehensive metrics with OpenTelemetry
-6. **Flexibility**: Hot-swappable backends via Oneiric lifecycle
+1. **Multi-Cloud Support**: Cross-cloud redundancy with automatic failover
+1. **Performance**: Redis cache + DuckDB vector search + Parquet compression
+1. **Resilience**: Circuit breakers + retry + health checks
+1. **Observability**: Comprehensive metrics with OpenTelemetry
+1. **Flexibility**: Hot-swappable backends via Oneiric lifecycle
 
 The Oneiric integration enables Akosha to scale from 100 to 10,000+ Session-Buddy systems while maintaining optimal performance, cost, and reliability.

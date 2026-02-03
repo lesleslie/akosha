@@ -6,19 +6,18 @@ import asyncio
 import json
 import logging
 import os
-from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from akosha.models import SystemMemoryUpload
 from akosha.models.schemas import (
     SystemMemoryUploadManifest,
     validate_storage_prefix,
     validate_system_id,
     validate_upload_id,
 )
-from akosha.models import SystemMemoryUpload
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator  # noqa: F401
+    from collections.abc import AsyncGenerator
 
     from oneiric.adapters.storage.s3 import S3StorageAdapter  # type: ignore[import]
 
@@ -122,7 +121,9 @@ class IngestionWorker:
             logger.debug("Discovering uploads from cloud storage")
 
             # Feature flag for concurrent discovery (default: true)
-            use_concurrent_discovery = os.getenv("USE_CONCURRENT_DISCOVERY", "true").lower() == "true"
+            use_concurrent_discovery = (
+                os.getenv("USE_CONCURRENT_DISCOVERY", "true").lower() == "true"
+            )
 
             if use_concurrent_discovery:
                 # Concurrent discovery: 20-30x faster
@@ -148,7 +149,7 @@ class IngestionWorker:
             logger.debug("Scanning systems concurrently")
 
             system_prefixes: list[str] = []
-            storage_gen: AsyncGenerator[str, None] = self.storage.list("systems/")  # type: ignore[call-arg, assignment]
+            storage_gen: AsyncGenerator[str] = self.storage.list("systems/")  # type: ignore[call-arg, assignment]
             async for prefix in storage_gen:  # type: ignore[union-attr]
                 system_id_prefix: str = str(prefix)  # type: ignore[union-attr]
                 system_prefixes.append(system_id_prefix)
@@ -166,7 +167,7 @@ class IngestionWorker:
 
             # Limit concurrent scans to prevent resource exhaustion
             scan_tasks = []
-            for system_prefix in system_prefixes[:self.MAX_CONCURRENT_SCANS]:
+            for system_prefix in system_prefixes[: self.MAX_CONCURRENT_SCANS]:
                 # Extract system_id from prefix (systems/<system-id>/)
                 system_id = system_prefix.strip("/").split("/")[-1]
 
@@ -194,12 +195,12 @@ class IngestionWorker:
 
         return uploads
 
-    async def _scan_system(self, system_id: str, system_prefix: str) -> list[SystemMemoryUpload]:
+    async def _scan_system(self, system_id: str, _system_prefix: str) -> list[SystemMemoryUpload]:
         """Scan a single system for uploads.
 
         Args:
             system_id: System identifier
-            system_prefix: Storage prefix for this system
+            _system_prefix: Storage prefix for this system (currently unused, reserved for future)
 
         Returns:
             List of uploads from this system
@@ -212,7 +213,7 @@ class IngestionWorker:
             # List upload prefixes within this system
             upload_prefix = f"systems/{system_id}/"
             obj_prefixes: list[str] = []
-            storage_gen: AsyncGenerator[str, None] = self.storage.list(upload_prefix)  # type: ignore[call-arg, assignment]
+            storage_gen: AsyncGenerator[str] = self.storage.list(upload_prefix)  # type: ignore[call-arg, assignment]
             async for obj in storage_gen:  # type: ignore[union-attr]
                 obj_str: str = str(obj)  # type: ignore[union-attr]
                 obj_prefixes.append(obj_str)
@@ -254,9 +255,7 @@ class IngestionWorker:
                             manifest_dict = json.loads(manifest_data_bytes)
                             manifest = SystemMemoryUploadManifest(**manifest_dict)
                         except Exception as e:
-                            logger.warning(
-                                f"Manifest validation failed for {manifest_path}: {e}"
-                            )
+                            logger.warning(f"Manifest validation failed for {manifest_path}: {e}")
                             continue
 
                         # Validate system_id and upload_id
@@ -265,9 +264,7 @@ class IngestionWorker:
                             validated_upload_id = validate_upload_id(upload_id)
                             validated_storage_prefix = validate_storage_prefix(obj)
                         except ValueError as e:
-                            logger.warning(
-                                f"ID validation failed for {system_id}/{upload_id}: {e}"
-                            )
+                            logger.warning(f"ID validation failed for {system_id}/{upload_id}: {e}")
                             continue
 
                         # Create SystemMemoryUpload object with validated data
@@ -310,7 +307,7 @@ class IngestionWorker:
 
             # Collect system prefixes from async generator
             system_prefixes: list[str] = []
-            storage_gen: AsyncGenerator[str, None] = self.storage.list("systems/")  # type: ignore[call-arg, assignment]
+            storage_gen: AsyncGenerator[str] = self.storage.list("systems/")  # type: ignore[call-arg, assignment]
             async for prefix in storage_gen:  # type: ignore[union-attr]
                 system_id_prefix: str = str(prefix)  # type: ignore[union-attr]
                 system_prefixes.append(system_id_prefix)
@@ -328,7 +325,7 @@ class IngestionWorker:
                 # List upload prefixes within this system
                 upload_prefix = f"systems/{system_id}/"
                 obj_prefixes: list[str] = []
-                storage_gen2: AsyncGenerator[str, None] = self.storage.list(upload_prefix)  # type: ignore[call-arg, assignment]
+                storage_gen2: AsyncGenerator[str] = self.storage.list(upload_prefix)  # type: ignore[call-arg, assignment]
                 async for obj in storage_gen2:  # type: ignore[union-attr]
                     obj_str: str = str(obj)  # type: ignore[union-attr]
                     obj_prefixes.append(obj_str)

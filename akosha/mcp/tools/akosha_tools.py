@@ -211,7 +211,9 @@ def register_embedding_tools(
             384
         """
         # Validate input
-        params = validate_request(GenerateBatchEmbeddingsRequest, texts=texts, batch_size=batch_size)
+        params = validate_request(
+            GenerateBatchEmbeddingsRequest, texts=texts, batch_size=batch_size
+        )
         texts = params.texts
         batch_size = params.batch_size
 

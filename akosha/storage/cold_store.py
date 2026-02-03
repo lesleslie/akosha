@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
+import contextlib
 import json
 import logging
 import os
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -33,7 +33,7 @@ class ColdStore:
         self.bucket = bucket
         self.prefix = prefix
         # TODO: Initialize Oneiric storage adapter
-        self._storage_adapter: Any = None  # Placeholder for Oneiric adapter
+        self._storage_adapter: Any | None = None  # Placeholder for Oneiric adapter
 
     async def export_batch(
         self,
@@ -105,18 +105,20 @@ class ColdStore:
             data["daily_metrics"].append(json.dumps(record.daily_metrics))
 
         # Define schema with proper types
-        schema = pa.schema([
-            ("system_id", pa.string()),
-            ("conversation_id", pa.string()),
-            ("fingerprint", pa.binary()),
-            ("ultra_summary", pa.string()),
-            ("timestamp", pa.timestamp("ns")),
-            ("daily_metrics", pa.string()),  # JSON as string for compatibility
-        ])
+        schema = pa.schema(
+            [
+                ("system_id", pa.string()),
+                ("conversation_id", pa.string()),
+                ("fingerprint", pa.binary()),
+                ("ultra_summary", pa.string()),
+                ("timestamp", pa.timestamp("ns")),
+                ("daily_metrics", pa.string()),  # JSON as string for compatibility
+            ]
+        )
 
         return pa.Table.from_arrays(
             [pa.array(values, type=schema.field(i).type) for i, values in enumerate(data.values())],
-            schema=schema
+            schema=schema,
         )
 
     async def _write_parquet_file(self, table: pa.Table) -> Path:
@@ -146,23 +148,24 @@ class ColdStore:
             suffix=".parquet",
             prefix="akosha_export_",
             dir=str(temp_dir),
-            text=False  # Binary mode
+            text=False,  # Binary mode
         )
         temp_file = Path(temp_path)
 
         # Set explicit permissions (defense in depth)
-        os.chmod(fd, 0o600)  # Owner read/write only
+        # Note: Using os.chmod() with fd is correct for tempfile.mkstemp()
+        os.chmod(fd, 0o600)  # noqa: PTH101  # Owner read/write only
 
         try:
             # Write with compression for efficiency
             # We need to use the file descriptor directly for security
-            with os.fdopen(fd, 'wb') as f:
+            with os.fdopen(fd, "wb") as f:
                 pq.write_table(
                     table,
                     f,
                     compression="snappy",  # Fast compression/decompression
                     write_statistics=True,
-                    use_dictionary=True
+                    use_dictionary=True,
                 )
 
             logger.debug(f"Created secure temporary Parquet file: {temp_file}")
@@ -171,10 +174,8 @@ class ColdStore:
         except Exception as e:
             logger.error(f"Failed to write Parquet file {temp_file}: {e}")
             # Clean up file descriptor and file
-            try:
+            with contextlib.suppress(Exception):
                 os.close(fd)
-            except Exception:
-                pass
             if temp_file.exists():
                 temp_file.unlink()
             raise
@@ -190,16 +191,6 @@ class ColdStore:
             # TODO: Implement Oneiric storage adapter integration
             # For now, just log the operation
             logger.info(f"Would upload {temp_path} to s3://{self.bucket}/{object_key}")
-
-            # Placeholder for actual implementation:
-            # if self._storage_adapter is None:
-            #     raise RuntimeError("Oneiric storage adapter not initialized")
-            #
-            # await self._storage_adapter.upload(
-            #     bucket=self.bucket,
-            #     key=object_key,
-            #     file_path=temp_path
-            # )
 
             # Clean up temp file after successful upload
             if temp_path.exists():

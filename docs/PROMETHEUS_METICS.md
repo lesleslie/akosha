@@ -266,44 +266,53 @@ pytest tests/unit/test_prometheus_metrics.py --cov=akosha/observability/promethe
 ## Label Values
 
 ### System ID
+
 - Dynamic values like `"session-buddy-123"`, `"system-456"`
 
 ### Status
+
 - `"success"`, `"error"`, `"skipped"`
 
 ### Query Type
+
 - `"semantic"`, `"keyword"`, `"hybrid"`, `"graph"`
 
 ### Tier
+
 - `"hot"`, `"warm"`, `"cold"`
 
 ### Cache Tier
+
 - `"L1"` (memory), `"L2"` (Redis)
 
 ### Component
+
 - `"ingestion_worker"`, `"hot_store"`, `"warm_store"`, `"cold_store"`
 - `"vector_indexer"`, `"cache_layer"`, `"query_engine"`
 - `"deduplication"`, `"knowledge_graph"`, `"time_series"`
 - `"mcp_server"`, `"aging_service"`
 
 ### Error Type
+
 - `"database_error"`, `"network_error"`, `"storage_error"`
 - `"validation_error"`, `"timeout_error"`, `"authentication_error"`
 - `"rate_limit_error"`, `"serialization_error"`, `"embedding_error"`
 
 ### Severity
+
 - `"critical"`, `"error"`, `"warning"`
 
 ### Operation
+
 - `"read"`, `"write"`, `"delete"`, `"scan"`
 
 ## Best Practices
 
 1. **Update gauges periodically**: Call gauge update functions (like `update_store_sizes`) on a schedule (e.g., every minute)
-2. **Use context managers**: For operations, use the provided context managers (`observe_search_latency`, `observe_store_operation`)
-3. **Label consistency**: Use consistent label values across your application
-4. **Performance**: Metrics recording is fast (<1ms per operation), but avoid recording in extremely tight loops
-5. **Testing**: Use `reset_all_metrics()` in tests to ensure isolation
+1. **Use context managers**: For operations, use the provided context managers (`observe_search_latency`, `observe_store_operation`)
+1. **Label consistency**: Use consistent label values across your application
+1. **Performance**: Metrics recording is fast (\<1ms per operation), but avoid recording in extremely tight loops
+1. **Testing**: Use `reset_all_metrics()` in tests to ensure isolation
 
 ## Architecture
 
@@ -319,6 +328,7 @@ pytest tests/unit/test_prometheus_metrics.py --cov=akosha/observability/promethe
 ### With Storage Layer
 
 Metrics are automatically recorded when:
+
 - Records are ingested into hot/warm/cold stores
 - Cache hits/misses occur
 - Storage operations (read/write/delete) are performed
@@ -326,6 +336,7 @@ Metrics are automatically recorded when:
 ### With Query Layer
 
 Metrics are recorded for:
+
 - Search latency by query type and tier
 - Result counts
 - Query success/failure rates
@@ -333,6 +344,7 @@ Metrics are recorded for:
 ### With Ingestion Pipeline
 
 Metrics track:
+
 - Throughput (records/second)
 - Bytes processed
 - Ingestion duration by operation type
@@ -340,6 +352,7 @@ Metrics track:
 ### With Error Handling
 
 All errors are tracked with:
+
 - Component identification
 - Error categorization
 - Severity levels

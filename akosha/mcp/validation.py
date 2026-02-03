@@ -140,7 +140,7 @@ class GenerateBatchEmbeddingsRequest(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_batch_size(self) -> "GenerateBatchEmbeddingsRequest":
+    def validate_batch_size(self) -> GenerateBatchEmbeddingsRequest:
         """Validate batch size against text count.
 
         Returns:
@@ -225,7 +225,9 @@ class SearchAllSystemsRequest(BaseModel):
         query_upper = v.upper()
         for pattern in suspicious_patterns:
             if pattern.upper() in query_upper:
-                raise ValueError("Query contains suspicious pattern that may indicate SQL injection")
+                raise ValueError(
+                    "Query contains suspicious pattern that may indicate SQL injection"
+                )
 
         return v
 
@@ -599,7 +601,7 @@ class FindPathRequest(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_different_entities(self) -> "FindPathRequest":
+    def validate_different_entities(self) -> FindPathRequest:
         """Validate source and target are different.
 
         Returns:
@@ -644,21 +646,21 @@ def validate_request(schema: type[BaseModel], **kwargs: Any) -> BaseModel:
 
 
 __all__ = [
+    "AnalyzeTrendsRequest",
+    "CorrelateSystemsRequest",
+    "DetectAnomaliesRequest",
+    "FindPathRequest",
+    "GenerateBatchEmbeddingsRequest",
+    # Embedding tools
+    "GenerateEmbeddingRequest",
+    # Analytics tools
+    "GetSystemMetricsRequest",
+    # Graph tools
+    "QueryKnowledgeGraphRequest",
+    # Search tools
+    "SearchAllSystemsRequest",
     # Exceptions
     "ValidationError",
     # Validation utilities
     "validate_request",
-    # Embedding tools
-    "GenerateEmbeddingRequest",
-    "GenerateBatchEmbeddingsRequest",
-    # Search tools
-    "SearchAllSystemsRequest",
-    # Analytics tools
-    "GetSystemMetricsRequest",
-    "AnalyzeTrendsRequest",
-    "DetectAnomaliesRequest",
-    "CorrelateSystemsRequest",
-    # Graph tools
-    "QueryKnowledgeGraphRequest",
-    "FindPathRequest",
 ]

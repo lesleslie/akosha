@@ -12,18 +12,3 @@ spec:
     requests:
       storage: 10Gi
   storageClassName: fast-ssd  # Assumes storage class named "fast-ssd" exists
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: akosha-cache-pvc
-  namespace: akosha
-  labels:
-    app: akosha-mcp
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 5Gi
-  storageClassName: standard

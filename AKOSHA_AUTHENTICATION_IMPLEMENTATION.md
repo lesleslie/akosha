@@ -13,13 +13,15 @@ Akosha now includes **Bearer token authentication** for protecting aggregation e
 ### Components
 
 1. **Security Module** (`akosha/security.py`)
+
    - Token generation using `secrets.token_urlsafe()`
    - Token validation with constant-time comparison
    - `@require_auth` decorator for protecting tools
    - `AuthenticationMiddleware` for category/tool-based protection
    - Custom exception hierarchy
 
-2. **Protected Endpoints** (8 aggregation tools)
+1. **Protected Endpoints** (8 aggregation tools)
+
    - `search_all_systems` - Cross-system semantic search
    - `get_system_metrics` - System-wide metrics
    - `analyze_trends` - Time-series trend analysis
@@ -137,6 +139,7 @@ pytest tests/unit/test_security.py -v
 ```
 
 **Test Coverage**:
+
 - Token generation (3 tests)
 - Token validation (4 tests)
 - Authentication enabled checks (4 tests)
@@ -185,11 +188,11 @@ async def test_require_auth_denies_with_missing_token():
 ### Security Best Practices
 
 1. **Token Storage**: Always use environment variables (not code)
-2. **Token Generation**: Use `generate_token()` or similar secure method
-3. **Token Rotation**: Change tokens periodically (recommended: quarterly)
-4. **HTTPS Only**: Never transmit tokens over unencrypted connections
-5. **Monitor Access**: Log authentication attempts and failures
-6. **Strong Tokens**: Always use 32+ byte cryptographically random tokens
+1. **Token Generation**: Use `generate_token()` or similar secure method
+1. **Token Rotation**: Change tokens periodically (recommended: quarterly)
+1. **HTTPS Only**: Never transmit tokens over unencrypted connections
+1. **Monitor Access**: Log authentication attempts and failures
+1. **Strong Tokens**: Always use 32+ byte cryptographically random tokens
 
 ## Error Handling
 
@@ -263,6 +266,7 @@ This generates a complete setup guide with a new secure token.
 **Token Validation**: ~1μs per validation (constant-time)
 
 **Key Operations**:
+
 - `generate_token()`: ~10μs
 - `validate_token()`: ~1μs (constant-time)
 - `extract_token_from_headers()`: ~0.5μs
@@ -285,11 +289,11 @@ This generates a complete setup guide with a new secure token.
 ## Next Steps
 
 1. ✅ **COMPLETED**: Core authentication implementation
-2. ✅ **COMPLETED**: Comprehensive test suite (41 tests)
-3. ⏳ **TODO**: Add rate limiting for authentication attempts
-4. ⏳ **TODO**: Implement token rotation mechanism
-5. ⏳ **TODO**: Add authentication metrics to monitoring
-6. ⏳ **TODO**: Document token rotation procedures
+1. ✅ **COMPLETED**: Comprehensive test suite (41 tests)
+1. ⏳ **TODO**: Add rate limiting for authentication attempts
+1. ⏳ **TODO**: Implement token rotation mechanism
+1. ⏳ **TODO**: Add authentication metrics to monitoring
+1. ⏳ **TODO**: Document token rotation procedures
 
 ## Summary
 

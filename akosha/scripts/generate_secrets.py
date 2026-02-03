@@ -10,7 +10,6 @@ Usage:
 
 from __future__ import annotations
 
-import os
 import secrets
 from pathlib import Path
 
@@ -98,9 +97,7 @@ def main() -> None:
     """Main entry point."""
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Generate production secrets for Akosha"
-    )
+    parser = argparse.ArgumentParser(description="Generate production secrets for Akosha")
     parser.add_argument(
         "--output",
         "-o",

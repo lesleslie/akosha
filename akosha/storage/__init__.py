@@ -6,9 +6,9 @@ from akosha.storage.hot_store import HotStore
 from akosha.storage.warm_store import WarmStore
 
 __all__ = [
-    "HotStore",
-    "WarmStore",
-    "ColdStore",
     "AgingService",
+    "ColdStore",
+    "HotStore",
     "MigrationStats",
+    "WarmStore",
 ]

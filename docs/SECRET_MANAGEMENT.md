@@ -13,10 +13,10 @@ Akosha requires several secrets for secure operation:
 ## Security Principles
 
 1. **Never commit secrets to version control**: Production secrets are gitignored
-2. **Use cryptographically secure generation**: All secrets generated with `secrets` module
-3. **Enforce minimum length**: JWT secrets must be ≥32 characters for HS256 algorithm
-4. **Reject placeholders in production**: Startup validation prevents placeholder secrets
-5. **Environment-specific controls**: Development is more permissive, production is strict
+1. **Use cryptographically secure generation**: All secrets generated with `secrets` module
+1. **Enforce minimum length**: JWT secrets must be ≥32 characters for HS256 algorithm
+1. **Reject placeholders in production**: Startup validation prevents placeholder secrets
+1. **Environment-specific controls**: Development is more permissive, production is strict
 
 ## Quick Start
 
@@ -97,8 +97,8 @@ python -m akosha.scripts.generate_secrets \
 
 - ✅ Allows test secrets
 - ✅ No placeholder validation
-- ⚠️  Still enforces minimum length (32 chars)
-- ⚠️  Logs warning if auth disabled
+- ⚠️ Still enforces minimum length (32 chars)
+- ⚠️ Logs warning if auth disabled
 
 ### Production (ENVIRONMENT=production)
 
@@ -204,36 +204,40 @@ print('✅ Secrets validated')
 **Process**:
 
 1. Generate new secret:
+
    ```bash
    python -m akosha.scripts.generate_secrets --output k8s/secret.new.yaml
    ```
 
-2. Apply new secret:
+1. Apply new secret:
+
    ```bash
    kubectl apply -f k8s/secret.new.yaml
    ```
 
-3. Rolling restart pods:
+1. Rolling restart pods:
+
    ```bash
    kubectl rollout restart deployment akosha-mcp -n akosha
    ```
 
-4. Verify new tokens work:
+1. Verify new tokens work:
+
    ```bash
    # Test authentication with new secret
    ```
 
-5. **Important**: Old tokens will become invalid immediately. Plan rotation during low-traffic periods.
+1. **Important**: Old tokens will become invalid immediately. Plan rotation during low-traffic periods.
 
 ### Encryption Key Rotation
 
 For data-at-rest encryption, key rotation is more complex:
 
 1. **Stop ingestion**: Pause data ingestion to avoid mixed encryption
-2. **Re-encrypt data**: Decrypt with old key, encrypt with new key
-3. **Update secret**: Apply new secret to Kubernetes
-4. **Restart services**: Rolling restart all pods
-5. **Verify**: Check data accessibility and encryption
+1. **Re-encrypt data**: Decrypt with old key, encrypt with new key
+1. **Update secret**: Apply new secret to Kubernetes
+1. **Restart services**: Rolling restart all pods
+1. **Verify**: Check data accessibility and encryption
 
 **Recommendation**: Consult security team before rotating encryption keys.
 
@@ -265,6 +269,7 @@ For data-at-rest encryption, key rotation is more complex:
 **Cause**: Missing environment variable or Kubernetes secret.
 
 **Fix**:
+
 ```bash
 # Check if secret exists
 kubectl get secrets -n akosha
@@ -282,6 +287,7 @@ kubectl apply -f k8s/secret.production.yaml
 **Cause**: Secret is less than 32 characters (minimum for HS256).
 
 **Fix**: Regenerate secret with proper length:
+
 ```bash
 python -m akosha.scripts.generate_secrets
 ```
@@ -291,6 +297,7 @@ python -m akosha.scripts.generate_secrets
 **Cause**: Production deployment is using placeholder secret.
 
 **Fix**:
+
 ```bash
 # Generate real secrets
 python -m akosha.scripts.generate_secrets
@@ -307,6 +314,7 @@ kubectl rollout restart deployment akosha-mcp -n akosha
 **Cause**: Different environment variable (`ENVIRONMENT=production`).
 
 **Fix**: Ensure you're using production secrets:
+
 ```bash
 # Check environment
 kubectl get deployment akosha-mcp -n akosha -o yaml | grep ENVIRONMENT

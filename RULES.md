@@ -305,9 +305,9 @@ def test_sql_injection_protection():  # Security test
 ### Import Order
 
 1. Standard library imports
-2. Third-party imports
-3. Local application imports
-4. Each section separated by blank line
+1. Third-party imports
+1. Local application imports
+1. Each section separated by blank line
 
 ```python
 # ✅ Good
@@ -522,13 +522,13 @@ MAX_BATCH_SIZE = int(os.getenv("AKOSHA_MAX_BATCH", "1000"))
 **Key Principles:**
 
 1. **Type Safety**: Comprehensive type hints on all functions
-2. **Error Handling**: Never suppress exceptions, use structured logging
-3. **Async Patterns**: Use async for I/O, executors for blocking work
-4. **Testing**: Comprehensive tests with appropriate markers
-5. **Code Style**: Follow Ruff formatting (100 char line length)
-6. **Security**: Validate inputs, use parameterized queries
-7. **Documentation**: Google-style docstrings with examples
-8. **Performance**: Optimize based on profiling, not speculation
+1. **Error Handling**: Never suppress exceptions, use structured logging
+1. **Async Patterns**: Use async for I/O, executors for blocking work
+1. **Testing**: Comprehensive tests with appropriate markers
+1. **Code Style**: Follow Ruff formatting (100 char line length)
+1. **Security**: Validate inputs, use parameterized queries
+1. **Documentation**: Google-style docstrings with examples
+1. **Performance**: Optimize based on profiling, not speculation
 
 **Quality Gates:**
 

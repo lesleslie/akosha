@@ -6,27 +6,29 @@ endpoints in the Akosha MCP server.
 
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 from datetime import UTC, datetime, timedelta
 from functools import wraps
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
-import logging
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
     "AuthenticationError",
-    "MissingTokenError",
-    "InvalidTokenError",
     "AuthenticationMiddleware",
-    "require_auth",
-    "get_api_token",
-    "generate_jwt_token",
-    "validate_token",
-    "is_auth_enabled",
+    "InvalidTokenError",
+    "MissingTokenError",
     "extract_token_from_headers",
+    "generate_jwt_token",
+    "get_api_token",
+    "is_auth_enabled",
+    "require_auth",
+    "validate_token",
 ]
 
 
@@ -147,10 +149,8 @@ def generate_jwt_token(
         logger.info(f"Generated JWT token for user: {user_id}")
         return token
 
-    except ImportError:
-        raise ValueError(
-            "PyJWT library not installed. Install with: pip install pyjwt"
-        )
+    except ImportError as e:
+        raise ValueError("PyJWT library not installed. Install with: pip install pyjwt") from e
 
 
 def is_auth_enabled() -> bool:
@@ -293,10 +293,12 @@ def require_auth(func: Callable) -> Callable:
         if token:
             if not validate_token(token):
                 logger.warning(f"Access denied to {func.__name__}: invalid token")
-                raise InvalidTokenError({
-                    "tool": func.__name__,
-                    "reason": "invalid_token",
-                })
+                raise InvalidTokenError(
+                    {
+                        "tool": func.__name__,
+                        "reason": "invalid_token",
+                    }
+                )
 
             # Remove token from kwargs before calling the actual function
             kwargs.pop("auth_token", None)
@@ -312,10 +314,12 @@ def require_auth(func: Callable) -> Callable:
         if not context:
             # No context available and no direct token
             logger.warning(f"Access denied to {func.__name__}: no authentication context")
-            raise MissingTokenError({
-                "tool": func.__name__,
-                "reason": "no_context_or_token",
-            })
+            raise MissingTokenError(
+                {
+                    "tool": func.__name__,
+                    "reason": "no_context_or_token",
+                }
+            )
 
         # Extract token from context headers
         headers = getattr(context, "headers", None)
@@ -323,26 +327,32 @@ def require_auth(func: Callable) -> Callable:
         if not headers:
             # Context exists but no headers
             logger.warning(f"Access denied to {func.__name__}: no headers in context")
-            raise MissingTokenError({
-                "tool": func.__name__,
-                "reason": "no_headers",
-            })
+            raise MissingTokenError(
+                {
+                    "tool": func.__name__,
+                    "reason": "no_headers",
+                }
+            )
 
         token = extract_token_from_headers(headers)
 
         if not token:
             logger.warning(f"Access denied to {func.__name__}: missing token")
-            raise MissingTokenError({
-                "tool": func.__name__,
-                "reason": "missing_bearer_token",
-            })
+            raise MissingTokenError(
+                {
+                    "tool": func.__name__,
+                    "reason": "missing_bearer_token",
+                }
+            )
 
         if not validate_token(token):
             logger.warning(f"Access denied to {func.__name__}: invalid token")
-            raise InvalidTokenError({
-                "tool": func.__name__,
-                "reason": "token_validation_failed",
-            })
+            raise InvalidTokenError(
+                {
+                    "tool": func.__name__,
+                    "reason": "token_validation_failed",
+                }
+            )
 
         # Token is valid, proceed with function
         logger.debug(f"Access granted to {func.__name__}")
@@ -411,10 +421,7 @@ class AuthenticationMiddleware:
             return True
 
         # Check tool category
-        if tool_category and tool_category in self.protected_categories:
-            return True
-
-        return False
+        return bool(tool_category and tool_category in self.protected_categories)
 
     async def authenticate_request(
         self,
@@ -452,18 +459,22 @@ class AuthenticationMiddleware:
         token = extract_token_from_headers(headers)
 
         if not token:
-            raise MissingTokenError({
-                "tool": tool_name,
-                "category": tool_category,
-                "reason": "missing_bearer_token",
-            })
+            raise MissingTokenError(
+                {
+                    "tool": tool_name,
+                    "category": tool_category,
+                    "reason": "missing_bearer_token",
+                }
+            )
 
         if not validate_token(token):
-            raise InvalidTokenError({
-                "tool": tool_name,
-                "category": tool_category,
-                "reason": "token_validation_failed",
-            })
+            raise InvalidTokenError(
+                {
+                    "tool": tool_name,
+                    "category": tool_category,
+                    "reason": "token_validation_failed",
+                }
+            )
 
         return True
 

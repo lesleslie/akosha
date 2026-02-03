@@ -5,9 +5,12 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from akosha.config import config
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +50,7 @@ class ShardRouter:
 
         return shard_id
 
-    def get_shard_path(
-        self, system_id: str, base_path: Path | None = None
-    ) -> Path:
+    def get_shard_path(self, system_id: str, base_path: Path | None = None) -> Path:
         """Get database path for a system's shard.
 
         Args:
@@ -71,9 +72,7 @@ class ShardRouter:
 
         # Check for path traversal patterns
         if ".." in system_id or system_id.startswith("/") or system_id.startswith("\\"):
-            raise ValueError(
-                f"Path traversal detected in system_id: '{system_id}'"
-            )
+            raise ValueError(f"Path traversal detected in system_id: '{system_id}'")
 
         # Get shard ID
         shard_id = self.get_shard(system_id)
@@ -93,11 +92,9 @@ class ShardRouter:
 
             # Check that resolved path is within base path
             if not str(resolved_path).startswith(str(resolved_base)):
-                raise ValueError(
-                    f"Resolved path escapes base directory: {db_path}"
-                )
+                raise ValueError(f"Resolved path escapes base directory: {db_path}")
         except Exception as e:
-            raise ValueError(f"Invalid path resolution for system_id '{system_id}': {e}")
+            raise ValueError(f"Invalid path resolution for system_id '{system_id}': {e}") from e
 
         return db_path
 

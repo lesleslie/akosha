@@ -304,7 +304,7 @@ class EmbeddingService:
 
         # Find top-k indices using argpartition (O(n) vs O(n log n) for full sort)
         k = min(limit, len(similarities))
-        top_k_indices = np.argpartition(-similarities, k-1)[:k]
+        top_k_indices = np.argpartition(-similarities, k - 1)[:k]
 
         # Sort the top-k results (only k elements, not all n)
         top_k_indices = top_k_indices[np.argsort(-similarities[top_k_indices])]

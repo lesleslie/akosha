@@ -8,14 +8,16 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import UTC, datetime, timedelta
 from functools import wraps
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import jwt
-from datetime import UTC, datetime, timedelta
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable as CallableType
+    from collections.abc import Callable
+
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -109,13 +111,13 @@ def require_auth(func: Callable) -> Callable:
 
         except jwt.ExpiredSignatureError:
             logger.warning("Expired JWT token")
-            raise MCPAuthError("Token has expired. Please refresh your token.")
+            raise MCPAuthError("Token has expired. Please refresh your token.") from None
         except jwt.InvalidTokenError as e:
             logger.warning(f"Invalid JWT token: {e}")
-            raise MCPAuthError("Invalid token. Please provide a valid JWT token.")
+            raise MCPAuthError("Invalid token. Please provide a valid JWT token.") from None
         except Exception as e:
             logger.error(f"Authentication error: {e}")
-            raise MCPAuthError(f"Authentication failed: {str(e)}")
+            raise MCPAuthError(f"Authentication failed: {e!s}") from e
 
     return wrapper
 
@@ -132,9 +134,7 @@ def _get_jwt_secret() -> str:
     secret = os.getenv("JWT_SECRET")
 
     if not secret:
-        raise ValueError(
-            "JWT_SECRET environment variable required for authentication"
-        )
+        raise ValueError("JWT_SECRET environment variable required for authentication")
 
     # Prevent placeholder secrets in production
     environment = os.getenv("ENVIRONMENT", "development")
@@ -239,7 +239,7 @@ def validate_auth_config() -> bool:
 
 __all__ = [
     "MCPAuthError",
-    "require_auth",
     "generate_jwt_token",
+    "require_auth",
     "validate_auth_config",
 ]

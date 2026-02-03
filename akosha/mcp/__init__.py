@@ -17,5 +17,6 @@ def __getattr__(name: str):
     """Lazy attribute access for http_app."""
     if name == "http_app":
         from akosha.mcp.server import create_app
+
         return create_app().http_app()
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

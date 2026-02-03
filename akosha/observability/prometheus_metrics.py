@@ -129,9 +129,7 @@ ingestion_duration_seconds: Histogram = Histogram(
     name="akosha_ingestion_duration_seconds",
     documentation="Time spent ingesting records in seconds",
     labelnames=["system_id", "operation"],
-    buckets=(
-        0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0
-    ),
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
     registry=get_metrics_registry(),
 )
 
@@ -795,6 +793,7 @@ http_active_requests: Gauge = Gauge(
 # Metrics Endpoint
 # ============================================================================
 
+
 def generate_metrics() -> str:
     """Generate Prometheus metrics exposition format.
 
@@ -856,6 +855,7 @@ def start_metrics_server(port: int = 8000, addr: str = "0.0.0.0") -> None:
 # Utilities
 # ============================================================================
 
+
 def reset_all_metrics() -> None:
     """Reset all metrics to zero.
 
@@ -891,7 +891,37 @@ def _reregister_metrics(registry: CollectorRegistry) -> None:
     Args:
         registry: The new registry to register metrics with
     """
-    global ingestion_throughput, ingestion_bytes_total, ingestion_duration_seconds, search_latency, search_results_total, search_result_count, cache_operations, cache_hit_rate, cache_size_bytes, cache_entry_count, store_size, store_size_bytes, store_operations, store_operation_duration, error_total, error_last_timestamp, operations_total, operation_duration, deduplication_checks, deduplication_duration, embedding_generation_duration, embedding_batch_size, vector_index_size, vector_index_build_duration, knowledge_graph_entities, knowledge_graph_relationships, knowledge_graph_query_duration, http_requests_total, http_request_duration, http_active_requests
+    global \
+        ingestion_throughput, \
+        ingestion_bytes_total, \
+        ingestion_duration_seconds, \
+        search_latency, \
+        search_results_total, \
+        search_result_count, \
+        cache_operations, \
+        cache_hit_rate, \
+        cache_size_bytes, \
+        cache_entry_count, \
+        store_size, \
+        store_size_bytes, \
+        store_operations, \
+        store_operation_duration, \
+        error_total, \
+        error_last_timestamp, \
+        operations_total, \
+        operation_duration, \
+        deduplication_checks, \
+        deduplication_duration, \
+        embedding_generation_duration, \
+        embedding_batch_size, \
+        vector_index_size, \
+        vector_index_build_duration, \
+        knowledge_graph_entities, \
+        knowledge_graph_relationships, \
+        knowledge_graph_query_duration, \
+        http_requests_total, \
+        http_request_duration, \
+        http_active_requests
 
     # Re-create all metrics with new registry
     ingestion_throughput = Gauge(
@@ -910,9 +940,7 @@ def _reregister_metrics(registry: CollectorRegistry) -> None:
         name="akosha_ingestion_duration_seconds",
         documentation="Time spent ingesting records in seconds",
         labelnames=["system_id", "operation"],
-        buckets=(
-            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0
-        ),
+        buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
         registry=registry,
     )
     search_latency = Histogram(
@@ -1161,20 +1189,20 @@ def get_metric_summary() -> dict[str, dict[str, float]]:
     summary: dict[str, dict[str, float]] = {}
 
     # Generate metrics text and parse it
-    metrics_text = exposition.generate_latest(registry).decode('utf-8')
+    metrics_text = exposition.generate_latest(registry).decode("utf-8")
 
-    for line in metrics_text.split('\n'):
+    for line in metrics_text.split("\n"):
         line = line.strip()
-        if not line or line.startswith('#'):
+        if not line or line.startswith("#"):
             continue
 
         # Parse metric line
         # Format: metric_name{labels} value or metric_name value
-        if '{' in line:
+        if "{" in line:
             # Has labels
-            name_part, value_part = line.split('}', 1)
-            metric_name = name_part.split('{', 1)[0]
-            labels = name_part.split('{', 1)[1]
+            name_part, value_part = line.split("}", 1)
+            metric_name = name_part.split("{", 1)[0]
+            labels = name_part.split("{", 1)[1]
             value = float(value_part.strip())
 
             if metric_name not in summary:
@@ -1193,67 +1221,68 @@ def get_metric_summary() -> dict[str, dict[str, float]]:
 
     return summary
 
+
 __all__ = [
+    "cache_entry_count",
+    "cache_hit_rate",
+    "cache_operations",
+    "cache_size_bytes",
+    "deduplication_checks",
+    "deduplication_duration",
+    "embedding_batch_size",
+    # Embeddings
+    "embedding_generation_duration",
+    "error_last_timestamp",
+    "error_total",
+    # Endpoint
+    "generate_metrics",
+    "get_metric_summary",
     # Registry
     "get_metrics_registry",
-    # Ingestion
-    "record_ingestion_record",
-    "update_ingestion_throughput",
-    "ingestion_throughput",
+    "http_active_requests",
+    "http_request_duration",
+    # HTTP/MCP
+    "http_requests_total",
+    # Errors
+    "increment_errors",
     "ingestion_bytes_total",
     "ingestion_duration_seconds",
+    "ingestion_throughput",
+    # Knowledge Graph
+    "knowledge_graph_entities",
+    "knowledge_graph_query_duration",
+    "knowledge_graph_relationships",
+    # Operations
+    "observe_operation",
     # Search
     "observe_search_latency",
-    "search_latency",
-    "search_results_total",
-    "search_result_count",
+    "observe_store_operation",
+    "operation_duration",
+    "operations_total",
     # Cache
     "record_cache_hit",
     "record_cache_miss",
-    "update_cache_hit_rate",
-    "update_cache_size",
-    "update_cache_entry_count",
-    "cache_operations",
-    "cache_hit_rate",
-    "cache_size_bytes",
-    "cache_entry_count",
-    # Storage
-    "update_store_sizes",
-    "observe_store_operation",
-    "store_size",
-    "store_size_bytes",
-    "store_operations",
-    "store_operation_duration",
-    # Errors
-    "increment_errors",
-    "error_total",
-    "error_last_timestamp",
-    # Operations
-    "observe_operation",
-    "operations_total",
-    "operation_duration",
     # Deduplication
     "record_deduplication_check",
-    "deduplication_checks",
-    "deduplication_duration",
-    # Embeddings
-    "embedding_generation_duration",
-    "embedding_batch_size",
-    # Vector Index
-    "vector_index_size",
-    "vector_index_build_duration",
-    # Knowledge Graph
-    "knowledge_graph_entities",
-    "knowledge_graph_relationships",
-    "knowledge_graph_query_duration",
-    # HTTP/MCP
-    "http_requests_total",
-    "http_request_duration",
-    "http_active_requests",
-    # Endpoint
-    "generate_metrics",
-    "start_metrics_server",
+    # Ingestion
+    "record_ingestion_record",
     # Utilities
     "reset_all_metrics",
-    "get_metric_summary",
+    "search_latency",
+    "search_result_count",
+    "search_results_total",
+    "start_metrics_server",
+    "store_operation_duration",
+    "store_operations",
+    "store_size",
+    "store_size_bytes",
+    "update_cache_entry_count",
+    "update_cache_hit_rate",
+    "update_cache_size",
+    "update_ingestion_throughput",
+    # Storage
+    "update_store_sizes",
+    "vector_index_build_duration",
+    # Vector Index
+    "vector_index_size",
 ]

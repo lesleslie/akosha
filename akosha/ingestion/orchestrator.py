@@ -1,8 +1,7 @@
 """Bootstrap orchestrator for autonomous operation when Mahavishnu unavailable."""
 
 import logging
-from datetime import datetime, UTC
-
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -40,14 +39,13 @@ class BootstrapOrchestrator:
             # If we have Mahavishnu client and not already in fallback mode
             if self.mahavishnu_client and not self.fallback_mode:
                 # Try to trigger workflow via Mahavishnu
-                if hasattr(self.mahavishnu_client, 'trigger_workflow'):
+                if hasattr(self.mahavishnu_client, "trigger_workflow"):
                     await self.mahavishnu_client.trigger_workflow(
                         workflow_name="akosha-daily-ingest"
                     )
-                elif hasattr(self.mahavishnu_client, 'call_tool'):
+                elif hasattr(self.mahavishnu_client, "call_tool"):
                     await self.mahavishnu_client.call_tool(
-                        tool_name="workflow-trigger",
-                        arguments={"workflow": "akosha-daily-ingest"}
+                        tool_name="workflow-trigger", arguments={"workflow": "akosha-daily-ingest"}
                     )
 
                 # Update heartbeat on successful contact
@@ -57,16 +55,14 @@ class BootstrapOrchestrator:
 
         except Exception as e:
             self.logger.warning(
-                f"Failed to trigger ingestion via Mahavishnu: {str(e)}. "
-                f"Switching to fallback mode."
+                f"Failed to trigger ingestion via Mahavishnu: {e!s}. Switching to fallback mode."
             )
 
         # Switch to fallback mode if Mahavishnu is unavailable
         if not self.fallback_mode:
             self.fallback_mode = True
             self.logger.warning(
-                "Mahavishnu unavailable. Activating fallback mode for "
-                "autonomous operation."
+                "Mahavishnu unavailable. Activating fallback mode for autonomous operation."
             )
 
         # Return True to allow local scheduling to handle the ingestion
@@ -84,5 +80,5 @@ class BootstrapOrchestrator:
             "status": status,
             "fallback_mode": self.fallback_mode,
             "last_mahavishnu_contact": self.last_heartbeat.isoformat(),
-            "timestamp": datetime.now(UTC).isoformat()
+            "timestamp": datetime.now(UTC).isoformat(),
         }

@@ -5,6 +5,7 @@
 Akosha is a universal memory aggregation system for the Session-Buddy ecosystem, designed to ingest, store, analyze, and serve cross-system intelligence from 100-10,000 Session-Buddy instances.
 
 **Scale Targets**:
+
 - Storage: 10TB - 1PB
 - Embeddings: 100M - 1B vector embeddings
 - Systems: 100 - 10,000 Session-Buddy instances
@@ -48,11 +49,13 @@ graph TB
 **Responsibility**: Pull system memories from cloud storage and ingest into Akosha
 
 **Key Components**:
+
 - `IngestionWorker` - Polls S3/R2 for new uploads
 - `SystemMemoryUploadManifest` - Pydantic validation schema
 - `Orchestrator` - Multi-worker coordinator
 
 **Data Flow**:
+
 ```mermaid
 sequenceDiagram
     participant SB as Session-Buddy
@@ -71,6 +74,7 @@ sequenceDiagram
 ```
 
 **Key Files**:
+
 - `akosha/ingestion/worker.py` - Main worker implementation
 - `akosha/models/schemas.py` - Validation schemas
 - `akosha/ingestion/orchestrator.py` - Multi-worker coordinator
@@ -84,12 +88,14 @@ sequenceDiagram
 **Purpose**: Real-time search, recent analytics
 
 **Characteristics**:
+
 - Full embeddings (FLOAT[384])
 - Sub-100ms latency
 - All conversation content
 - High memory footprint
 
 **Schema**:
+
 ```sql
 CREATE TABLE conversations (
     system_id VARCHAR,
@@ -122,12 +128,14 @@ CREATE INDEX system_timestamp_index ON conversations (system_id, timestamp);
 **Purpose**: Historical analytics, trend analysis
 
 **Characteristics**:
+
 - Compressed embeddings (INT8[384], 75% size reduction)
 - Extractive summaries (3 sentences)
 - 100-500ms latency
 - Lower memory footprint
 
 **Schema**:
+
 ```sql
 CREATE TABLE conversations (
     system_id VARCHAR,
@@ -153,12 +161,14 @@ ON conversations (date_trunc('day', timestamp));
 **Purpose**: Compliance, archival, deep analytics
 
 **Characteristics**:
+
 - MinHash fingerprint (for deduplication)
 - Ultra-compressed summary (1 sentence)
 - No embeddings (cost optimization)
 - S3 Standard/Infrequent Access storage
 
 **Schema** (PyArrow/Parquet):
+
 ```python
 schema = pa.schema([
     ("system_id", pa.string()),
@@ -179,8 +189,9 @@ schema = pa.schema([
 **Module**: `akosha/processing/deduplication.py`
 
 **Strategy**:
+
 1. **Exact deduplication**: SHA-256 content hash
-2. **Fuzzy deduplication**: MinHash LSH (Locality Sensitive Hashing)
+1. **Fuzzy deduplication**: MinHash LSH (Locality Sensitive Hashing)
 
 ```python
 # Exact duplicate check
@@ -198,13 +209,15 @@ similarity = jaccard(fingerprint1, fingerprint2)
 **Technology**: DuckDB HNSW (Hierarchical Navigable Small World)
 
 **Configuration**:
+
 - `M = 16` (connections per node)
 - `ef_construction = 200` (index quality)
 - Dimension: 384 (all-MiniLM-L6-v2)
 
 **Performance**:
+
 - Index build: ~10 minutes for 1M embeddings
-- Query: <50ms for top-10 results
+- Query: \<50ms for top-10 results
 - Recall: >95% for semantic search
 
 #### Time-Series Aggregation
@@ -212,6 +225,7 @@ similarity = jaccard(fingerprint1, fingerprint2)
 **Module**: `akosha/processing/time_series.py`
 
 **Operations**:
+
 - Hourly aggregation (conversation counts, metrics)
 - Daily rollup (trend statistics)
 - Trend detection (anomaly detection)
@@ -232,6 +246,7 @@ hourly_stats = {
 **Purpose**: Entity extraction and relationship linking
 
 **Graph Structure**:
+
 - **Nodes**: conversations, systems, entities
 - **Edges**: references, similarities, temporal relationships
 
@@ -269,17 +284,19 @@ graph LR
 ```
 
 **Flow**:
+
 1. Route query to relevant shards (consistent hashing)
-2. Parallel search across shards
-3. Merge results
-4. Re-rank by global similarity
-5. Return top-K results
+1. Parallel search across shards
+1. Merge results
+1. Re-rank by global similarity
+1. Return top-K results
 
 #### Cache Layer
 
 **Module**: `akosha/cache/layered_cache.py`
 
 **Two-tier caching**:
+
 - **L1**: In-memory cache (1000 entries, 5min TTL)
 - **L2**: Redis cache (100k entries, 1hr TTL)
 
@@ -292,6 +309,7 @@ graph LR
 **Module**: `akosha/mcp/server.py`
 
 **Security**:
+
 - JWT authentication
 - Rate limiting (10 req/s, burst 100)
 - Input validation (Pydantic schemas)
@@ -354,29 +372,33 @@ flowchart TD
 | Metric | Target | Measurement |
 |--------|--------|-------------|
 | Ingestion throughput | 1000 uploads/min | `pytest tests/perf/test_ingestion.py` |
-| Search latency (p50) | <50ms | `pytest tests/perf/test_search.py` |
-| Search latency (p99) | <200ms | Same benchmark |
-| Hot→Warm aging | <1 hr for 1TB | Aging service benchmark |
+| Search latency (p50) | \<50ms | `pytest tests/perf/test_search.py` |
+| Search latency (p99) | \<200ms | Same benchmark |
+| Hot→Warm aging | \<1 hr for 1TB | Aging service benchmark |
 | Cache hit rate | >50% | Production metrics |
 
 ## Technology Evolution Path
 
 ### Phase 1 (Current: 0-100 systems)
+
 - Vector: DuckDB with HNSW
 - Time-Series: DuckDB
 - Knowledge Graph: DuckDB + Redis
 
 ### Phase 2 (100-1,000 systems)
+
 - Vector: Add Milvus for warm tier
 - Time-Series: Add TimescaleDB
 - Knowledge Graph: DuckDB + Redis
 
 ### Phase 3 (1,000-10,000 systems)
+
 - Vector: Milvus cluster
 - Time-Series: TimescaleDB + read replicas
 - Knowledge Graph: Add Neo4j
 
 ### Phase 4 (10,000+ systems)
+
 - Consider cloud-native: AWS OpenSearch, Azure AI Search
 
 ## Security Architecture
@@ -492,8 +514,8 @@ USE_CONCURRENT_DISCOVERY=true
 
 ## Related Documentation
 
-- **[ADR-001: Architecture Decisions](docs/ADR_001_ARCHITECTURE_DECISIONS.md)** - Detailed architectural decision records
-- **[Implementation Guide](docs/IMPLEMENTATION_GUIDE.md)** - Developer setup guide
+- **[ADR-001: Architecture Decisions](ADR_001_ARCHITECTURE_DECISIONS.md)** - Detailed architectural decision records
+- **[Implementation Guide](IMPLEMENTATION_GUIDE.md)** - Developer setup guide
 - **[Session-Buddy](https://github.com/yourorg/session-buddy)** - Client system
 - **[Mahavishnu](https://github.com/yourorg/mahavishnu)** - Workflow orchestration
 - **[Oneiric](https://github.com/yourorg/oneiric)** - Universal storage adapter

@@ -8,11 +8,9 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-
 
 # ============================================================================
 # Ingestion Manifest Schemas
@@ -135,9 +133,7 @@ class SystemMemoryUploadManifest(BaseModel):
             # Check for path traversal
             for pattern in dangerous_patterns:
                 if pattern in filename:
-                    raise ValueError(
-                        f"Filename contains dangerous pattern '{pattern}': {filename}"
-                    )
+                    raise ValueError(f"Filename contains dangerous pattern '{pattern}': {filename}")
 
             # Check for reasonable length
             if len(filename) > 255:
@@ -145,9 +141,7 @@ class SystemMemoryUploadManifest(BaseModel):
 
             # Validate format
             if not allowed_pattern.match(filename):
-                raise ValueError(
-                    f"Filename contains invalid characters: {filename}"
-                )
+                raise ValueError(f"Filename contains invalid characters: {filename}")
 
         return v
 
@@ -169,7 +163,7 @@ class SystemMemoryUploadManifest(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_compression_consistency(self) -> "SystemMemoryUploadManifest":
+    def validate_compression_consistency(self) -> SystemMemoryUploadManifest:
         """Validate that compression format is consistent with compressed flag.
 
         Returns:
@@ -179,14 +173,10 @@ class SystemMemoryUploadManifest(BaseModel):
             ValueError: If compression_format specified but compressed=False
         """
         if self.compression_format is not None and not self.compressed:
-            raise ValueError(
-                "compression_format specified but compressed=False"
-            )
+            raise ValueError("compression_format specified but compressed=False")
 
         if self.compressed and self.compression_format is None:
-            raise ValueError(
-                "compressed=True but compression_format not specified"
-            )
+            raise ValueError("compressed=True but compression_format not specified")
 
         return self
 
@@ -255,9 +245,7 @@ def validate_upload_id(upload_id: str) -> str:
 
     # Check for path traversal
     if ".." in upload_id or upload_id.startswith("/"):
-        raise ValueError(
-            f"Invalid upload_id format: '{upload_id}'. Path traversal detected"
-        )
+        raise ValueError(f"Invalid upload_id format: '{upload_id}'. Path traversal detected")
 
     return upload_id
 
@@ -287,9 +275,7 @@ def validate_storage_prefix(prefix: str) -> str:
 
     # Ensure prefix starts with systems/
     if not prefix.startswith("systems/"):
-        raise ValueError(
-            f"storage_prefix must start with 'systems/': {prefix}"
-        )
+        raise ValueError(f"storage_prefix must start with 'systems/': {prefix}")
 
     # Validate each path component
     components = prefix.split("/")
@@ -299,9 +285,7 @@ def validate_storage_prefix(prefix: str) -> str:
 
         # Check for dangerous patterns
         if component in [".", "~", "*", "?"]:
-            raise ValueError(
-                f"Invalid path component in storage_prefix: '{component}'"
-            )
+            raise ValueError(f"Invalid path component in storage_prefix: '{component}'")
 
     return prefix
 
@@ -309,8 +293,8 @@ def validate_storage_prefix(prefix: str) -> str:
 __all__ = [
     # Ingestion schemas
     "SystemMemoryUploadManifest",
+    "validate_storage_prefix",
     # Validation functions
     "validate_system_id",
     "validate_upload_id",
-    "validate_storage_prefix",
 ]

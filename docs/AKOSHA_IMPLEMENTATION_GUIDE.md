@@ -3,7 +3,7 @@
 **Companion to**: AKOSHA_STORAGE_ARCHITECTURE.md
 **Focus**: Step-by-step implementation with working code examples
 
----
+______________________________________________________________________
 
 ## Quick Start: 5-Minute Setup
 
@@ -392,7 +392,7 @@ async def test_s3_hot_adapter():
     )
 ```
 
----
+______________________________________________________________________
 
 ## Complete Implementation: Vector Embeddings Storage
 
@@ -709,7 +709,7 @@ class VectorEmbeddingStorage:
             self.duckdb_conn = None
 ```
 
----
+______________________________________________________________________
 
 ## Complete Implementation: Redis Cache Layer
 
@@ -873,7 +873,7 @@ def register_redis_adapter(resolver: Resolver) -> None:
     )
 ```
 
----
+______________________________________________________________________
 
 ## Usage Example: End-to-End Workflow
 
@@ -958,7 +958,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
----
+______________________________________________________________________
 
 ## Testing Strategy
 
@@ -1028,7 +1028,7 @@ async def test_batch_storage():
     await storage.close()
 ```
 
----
+______________________________________________________________________
 
 ## Deployment Checklist
 
@@ -1041,18 +1041,18 @@ async def test_batch_storage():
 - [ ] Set up automated tier transition jobs
 - [ ] Implement backup and disaster recovery procedures
 
----
+______________________________________________________________________
 
 ## Next Steps
 
 1. **Read the Architecture**: See `AKOSHA_STORAGE_ARCHITECTURE.md` for complete design
-2. **Implement Core Adapters**: Start with S3, then add Redis, DuckDB
-3. **Test Thoroughly**: Use pytest with async fixtures
-4. **Deploy to Dev**: Test with real S3 buckets
-5. **Monitor Performance**: Use OpenTelemetry metrics
-6. **Scale Gradually**: Start with 100 systems, grow to 10,000+
+1. **Implement Core Adapters**: Start with S3, then add Redis, DuckDB
+1. **Test Thoroughly**: Use pytest with async fixtures
+1. **Deploy to Dev**: Test with real S3 buckets
+1. **Monitor Performance**: Use OpenTelemetry metrics
+1. **Scale Gradually**: Start with 100 systems, grow to 10,000+
 
----
+______________________________________________________________________
 
 ## Support
 

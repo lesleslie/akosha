@@ -37,23 +37,16 @@ class QueryAggregator:
 
         for result in all_results:
             conversation_id = result.get("conversation_id")
-            if conversation_id is not None:
-                if conversation_id not in seen_conversations:
-                    seen_conversations.add(conversation_id)
-                    unique_results.append(result)
+            if conversation_id is not None and conversation_id not in seen_conversations:
+                seen_conversations.add(conversation_id)
+                unique_results.append(result)
 
         # Step 3: Re-rank by similarity score (descending)
         # Only include results that have similarity key
-        results_with_similarity = [
-            result for result in unique_results
-            if "similarity" in result
-        ]
+        results_with_similarity = [result for result in unique_results if "similarity" in result]
 
         # Sort by similarity in descending order
-        results_with_similarity.sort(
-            key=lambda x: x["similarity"],
-            reverse=True
-        )
+        results_with_similarity.sort(key=lambda x: x["similarity"], reverse=True)
 
         # Step 4: Return top N results
         return results_with_similarity[:limit]

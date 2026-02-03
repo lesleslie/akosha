@@ -42,9 +42,9 @@ class AkoshaApplication:
 ## Drain Period Behavior
 
 1. **Workers stop accepting new work**: Sets `_running = False`
-2. **In-flight uploads complete**: Workers finish current `_process_upload()` calls
-3. **30-second timeout**: If work not complete after 30s, force shutdown
-4. **Clean shutdown**: All connections closed, resources released
+1. **In-flight uploads complete**: Workers finish current `_process_upload()` calls
+1. **30-second timeout**: If work not complete after 30s, force shutdown
+1. **Clean shutdown**: All connections closed, resources released
 
 ## Testing Graceful Shutdown
 
@@ -58,6 +58,7 @@ kill -TERM $(pgrep -f "python -m akosha.main")
 ## Monitoring
 
 During shutdown, watch for these log messages:
+
 - `"Received signal 15, initiating graceful shutdown"`
 - `"Stopping Akosha services (30s drain period)"`
 - `"Ingestion worker stopped"` (from each worker)
@@ -66,13 +67,16 @@ During shutdown, watch for these log messages:
 ## Troubleshooting
 
 **Problem**: Shutdown takes longer than 30 seconds
+
 - **Cause**: Long-running uploads not completing
 - **Solution**: Check upload processing times, increase timeout if needed
 
 **Problem**: Workers not stopping
+
 - **Cause**: Deadlock or blocking operation
 - **Solution**: Check worker logs, ensure async/await used correctly
 
 **Problem**: Data loss during shutdown
+
 - **Cause**: Forced timeout before uploads complete
 - **Solution**: Verify `worker.stop()` allows completion of current task
