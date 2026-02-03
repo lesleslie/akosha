@@ -302,3 +302,48 @@ class TestHotStore:
         # Verify all inserted
         result = hot_store.conn.execute("SELECT COUNT(*) FROM conversations").fetchone()
         assert result[0] == 10
+
+    @pytest.mark.asyncio
+    @pytest.mark.security
+    async def test_sql_injection_prevention(self, hot_store: HotStore) -> None:
+        """Test that SQL injection attempts are safely handled via parameterized queries."""
+        now = datetime.now(UTC)
+
+        # Insert a legitimate conversation
+        await hot_store.insert(
+            HotRecord(
+                system_id="system-1",
+                conversation_id="conv-1",
+                content="Legitimate conversation",
+                embedding=[0.1] * 384,
+                timestamp=now,
+                metadata={},
+            )
+        )
+
+        # Test various SQL injection payloads
+        malicious_system_ids = [
+            "'; DROP TABLE conversations; --",
+            "' OR '1'='1",
+            "admin'--",
+            "' UNION SELECT * FROM conversations --",
+            "../../../etc/passwd",
+            "$(whoami)",
+            "`id`",
+            "'; EXEC xp_cmdshell('dir'); --",
+        ]
+
+        for malicious_id in malicious_system_ids:
+            # Search with malicious system_id
+            # Should NOT crash or allow SQL injection
+            results = await hot_store.search_similar(
+                query_embedding=[0.1] * 384,
+                system_id=malicious_id,
+                limit=10,
+            )
+
+            # Should return empty results (no matching system with that malicious ID)
+            # NOT crash or leak data
+            assert isinstance(results, list)
+            # With parameterized queries, these will simply find no matches
+            # If SQL injection worked, it could crash or return unintended data

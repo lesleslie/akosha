@@ -83,6 +83,44 @@ class WarmStore:
                 ],
             )
 
+    async def insert_batch(self, records: list[WarmRecord]) -> None:
+        """Insert multiple conversations into warm store in a single batch.
+
+        Args:
+            records: List of warm records to insert
+        """
+        async with self._lock:
+            if not self.conn:
+                raise RuntimeError("Warm store not initialized")
+
+            if not records:
+                return
+
+            # Prepare batch data
+            data = [
+                (
+                    record.system_id,
+                    record.conversation_id,
+                    record.embedding,
+                    record.summary,
+                    record.timestamp,
+                    record.metadata,
+                    datetime.now(UTC),
+                )
+                for record in records
+            ]
+
+            # Batch insert using DuckDB's executemany
+            self.conn.executemany(
+                """
+                INSERT INTO conversations
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                data,
+            )
+
+            logger.debug(f"Inserted {len(records)} records into warm store")
+
     async def close(self) -> None:
         """Close database connection."""
         async with self._lock:

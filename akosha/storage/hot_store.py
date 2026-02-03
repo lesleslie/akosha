@@ -60,6 +60,37 @@ class HotStore:
             except Exception as e:
                 logger.warning(f"HNSW index creation failed: {e}")
 
+            # Create indexes for filtered queries (performance optimization)
+            try:
+                # Index on system_id for fast filtering
+                self.conn.execute("""
+                    CREATE INDEX IF NOT EXISTS system_id_index
+                    ON conversations (system_id)
+                """)
+                logger.info("Created system_id index")
+            except Exception as e:
+                logger.warning(f"system_id index creation failed: {e}")
+
+            try:
+                # Index on timestamp for aging queries
+                self.conn.execute("""
+                    CREATE INDEX IF NOT EXISTS timestamp_index
+                    ON conversations (timestamp)
+                """)
+                logger.info("Created timestamp index")
+            except Exception as e:
+                logger.warning(f"timestamp index creation failed: {e}")
+
+            try:
+                # Composite index for system_id + timestamp (common query pattern)
+                self.conn.execute("""
+                    CREATE INDEX IF NOT EXISTS system_timestamp_index
+                    ON conversations (system_id, timestamp)
+                """)
+                logger.info("Created composite system_id+timestamp index")
+            except Exception as e:
+                logger.warning(f"Composite index creation failed: {e}")
+
             logger.info("Hot store initialized")
 
     async def insert(self, record: HotRecord) -> None:
@@ -117,23 +148,37 @@ class HotStore:
             with contextlib.suppress(Exception):
                 self.conn.execute("SET hnsw_ef_search = 100")
 
-            # Build query
-            where_clause = f"WHERE system_id = '{system_id}'" if system_id else ""
-            query = f"""
-                SELECT
-                    system_id,
-                    conversation_id,
-                    content,
-                    timestamp,
-                    metadata,
-                    array_cosine_similarity(embedding, ?::FLOAT[384]) as similarity
-                FROM conversations
-                {where_clause}
-                ORDER BY similarity DESC
-                LIMIT ?
-            """
-
-            results = self.conn.execute(query, [query_embedding, limit]).fetchall()
+            # Build query with parameterized WHERE clause (SQL injection prevention)
+            # Note: We use separate queries for each case to ensure proper parameterization
+            if system_id:
+                query = """
+                    SELECT
+                        system_id,
+                        conversation_id,
+                        content,
+                        timestamp,
+                        metadata,
+                        array_cosine_similarity(embedding, ?::FLOAT[384]) as similarity
+                    FROM conversations
+                    WHERE system_id = ?
+                    ORDER BY similarity DESC
+                    LIMIT ?
+                """
+                results = self.conn.execute(query, [query_embedding, system_id, limit]).fetchall()
+            else:
+                query = """
+                    SELECT
+                        system_id,
+                        conversation_id,
+                        content,
+                        timestamp,
+                        metadata,
+                        array_cosine_similarity(embedding, ?::FLOAT[384]) as similarity
+                    FROM conversations
+                    ORDER BY similarity DESC
+                    LIMIT ?
+                """
+                results = self.conn.execute(query, [query_embedding, limit]).fetchall()
 
             # Filter by threshold
             return [

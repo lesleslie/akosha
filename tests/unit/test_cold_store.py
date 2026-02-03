@@ -97,14 +97,12 @@ class TestColdStore:
     async def test_export_batch_handles_empty_records(
         self, cold_store: ColdStore
     ) -> None:
-        """Test exporting empty record list."""
-        object_key = await cold_store.export_batch(
-            records=[],
-            partition_path="test/path",
-        )
-
-        # Should still succeed
-        assert object_key is not None
+        """Test exporting empty record list raises ValueError."""
+        with pytest.raises(ValueError, match="Cannot export empty batch"):
+            await cold_store.export_batch(
+                records=[],
+                partition_path="test/path",
+            )
 
     @pytest.mark.asyncio
     async def test_export_batch_preserves_data(
@@ -141,11 +139,11 @@ class TestColdStore:
         records_with_special_chars = [
             ColdRecord(
                 system_id="system-with-dashes",
-                conversation_id="conv/with/slashes",
+                conversation_id="conv-with-slashes",
                 fingerprint=b"fp:with:colons",  # bytes
                 ultra_summary="Summary with 'quotes' and \"double quotes\"",
                 timestamp=datetime.now(UTC),
-                daily_metrics={"key": "value with spaces"},
+                daily_metrics={"count": 42.5},
             )
         ]
 

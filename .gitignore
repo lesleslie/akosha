@@ -97,3 +97,4 @@ cache/
 *.key
 .secrets/
 credentials.json
+k8s/secret.production.yaml

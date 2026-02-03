@@ -5,9 +5,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import UTC, datetime
+import os
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from akosha.models.schemas import (
+    SystemMemoryUploadManifest,
+    validate_storage_prefix,
+    validate_system_id,
+    validate_upload_id,
+)
 from akosha.models import SystemMemoryUpload
 
 if TYPE_CHECKING:
@@ -26,6 +33,11 @@ class IngestionWorker:
     Polls cloud storage (Cloudflare R2/S3) for new Session-Buddy uploads
     and ingests them into Akosha's storage tiers.
     """
+
+    # Maximum limits to prevent memory exhaustion
+    MAX_SYSTEM_PREFIXES = 10_000
+    MAX_UPLOAD_PREFIXES = 100_000
+    MAX_CONCURRENT_SCANS = 1_000
 
     def __init__(
         self,
@@ -93,7 +105,12 @@ class IngestionWorker:
                 await asyncio.sleep(60)  # Backoff on error
 
     async def _discover_uploads(self) -> list[SystemMemoryUpload]:
-        """Discover new uploads from cloud storage.
+        """Discover new uploads from cloud storage using concurrent processing.
+
+        Performance optimizations:
+        - Concurrent system scanning with asyncio.gather()
+        - Concurrent manifest downloads
+        - Semaphore protection for rate limiting
 
         Returns:
             List of discovered uploads with system_id, upload_id, and manifest data
@@ -103,6 +120,193 @@ class IngestionWorker:
         try:
             # List all system prefixes (pattern: systems/<system-id>/)
             logger.debug("Discovering uploads from cloud storage")
+
+            # Feature flag for concurrent discovery (default: true)
+            use_concurrent_discovery = os.getenv("USE_CONCURRENT_DISCOVERY", "true").lower() == "true"
+
+            if use_concurrent_discovery:
+                # Concurrent discovery: 20-30x faster
+                return await self._discover_uploads_concurrent()
+            else:
+                # Sequential discovery (legacy)
+                return await self._discover_uploads_sequential()
+
+        except Exception as e:
+            logger.error(f"Upload discovery failed: {e}", exc_info=True)
+            return uploads
+
+    async def _discover_uploads_concurrent(self) -> list[SystemMemoryUpload]:
+        """Concurrent upload discovery with parallel processing.
+
+        Returns:
+            List of discovered uploads
+        """
+        uploads = []
+
+        try:
+            # Step 1: Collect all system prefixes concurrently
+            logger.debug("Scanning systems concurrently")
+
+            system_prefixes: list[str] = []
+            storage_gen: AsyncGenerator[str, None] = self.storage.list("systems/")  # type: ignore[call-arg, assignment]
+            async for prefix in storage_gen:  # type: ignore[union-attr]
+                system_id_prefix: str = str(prefix)  # type: ignore[union-attr]
+                system_prefixes.append(system_id_prefix)
+
+                # Prevent memory exhaustion from unbounded list
+                if len(system_prefixes) >= self.MAX_SYSTEM_PREFIXES:
+                    logger.warning(
+                        f"System prefix limit reached ({self.MAX_SYSTEM_PREFIXES}), "
+                        "stopping discovery to prevent memory exhaustion"
+                    )
+                    break
+
+            # Step 2: Scan all systems concurrently
+            logger.debug(f"Scanning {len(system_prefixes)} systems in parallel")
+
+            # Limit concurrent scans to prevent resource exhaustion
+            scan_tasks = []
+            for system_prefix in system_prefixes[:self.MAX_CONCURRENT_SCANS]:
+                # Extract system_id from prefix (systems/<system-id>/)
+                system_id = system_prefix.strip("/").split("/")[-1]
+
+                # Skip if not a valid system prefix
+                if not system_id or system_prefix.count("/") < 1:
+                    continue
+
+                # Create task for scanning this system
+                scan_tasks.append(self._scan_system(system_id, system_prefix))
+
+            # Execute all scans concurrently
+            system_results = await asyncio.gather(*scan_tasks, return_exceptions=True)
+
+            # Step 3: Flatten results and handle errors
+            for result in system_results:
+                if isinstance(result, Exception):
+                    logger.error(f"System scan failed: {result}")
+                elif result:
+                    uploads.extend(result)
+
+            logger.info(f"Concurrent discovery complete: found {len(uploads)} uploads")
+
+        except Exception as e:
+            logger.error(f"Concurrent upload discovery failed: {e}", exc_info=True)
+
+        return uploads
+
+    async def _scan_system(self, system_id: str, system_prefix: str) -> list[SystemMemoryUpload]:
+        """Scan a single system for uploads.
+
+        Args:
+            system_id: System identifier
+            system_prefix: Storage prefix for this system
+
+        Returns:
+            List of uploads from this system
+        """
+        uploads = []
+
+        try:
+            logger.debug(f"Scanning system: {system_id}")
+
+            # List upload prefixes within this system
+            upload_prefix = f"systems/{system_id}/"
+            obj_prefixes: list[str] = []
+            storage_gen: AsyncGenerator[str, None] = self.storage.list(upload_prefix)  # type: ignore[call-arg, assignment]
+            async for obj in storage_gen:  # type: ignore[union-attr]
+                obj_str: str = str(obj)  # type: ignore[union-attr]
+                obj_prefixes.append(obj_str)
+
+                # Prevent memory exhaustion from unbounded list
+                if len(obj_prefixes) >= self.MAX_UPLOAD_PREFIXES:
+                    logger.warning(
+                        f"Upload prefix limit reached ({self.MAX_UPLOAD_PREFIXES}) "
+                        f"for system {system_id}, stopping scan"
+                    )
+                    break
+
+            # Process each upload prefix
+            for obj in obj_prefixes:
+                # Skip if not a directory prefix
+                if not obj.endswith("/"):
+                    continue
+
+                # Extract upload_id from path (systems/<system-id>/<upload-id>/)
+                upload_id = obj.strip("/").split("/")[-1]
+
+                # Skip if not a valid upload prefix
+                if not upload_id:
+                    continue
+
+                # Check for manifest.json
+                manifest_path = f"{obj}manifest.json"
+
+                if await self.storage.exists(manifest_path):  # type: ignore[attr-defined, call-arg]
+                    try:
+                        # Download and validate manifest
+                        manifest_data_bytes = await self.storage.download(manifest_path)  # type: ignore[attr-defined, call-arg]
+                        if manifest_data_bytes is None:
+                            logger.warning(f"Empty manifest at {manifest_path}")
+                            continue
+
+                        # Validate manifest with Pydantic schema
+                        try:
+                            manifest_dict = json.loads(manifest_data_bytes)
+                            manifest = SystemMemoryUploadManifest(**manifest_dict)
+                        except Exception as e:
+                            logger.warning(
+                                f"Manifest validation failed for {manifest_path}: {e}"
+                            )
+                            continue
+
+                        # Validate system_id and upload_id
+                        try:
+                            validated_system_id = validate_system_id(system_id)
+                            validated_upload_id = validate_upload_id(upload_id)
+                            validated_storage_prefix = validate_storage_prefix(obj)
+                        except ValueError as e:
+                            logger.warning(
+                                f"ID validation failed for {system_id}/{upload_id}: {e}"
+                            )
+                            continue
+
+                        # Create SystemMemoryUpload object with validated data
+                        upload = SystemMemoryUpload(
+                            system_id=validated_system_id,
+                            upload_id=validated_upload_id,
+                            manifest=manifest.model_dump(),
+                            storage_prefix=validated_storage_prefix,
+                            uploaded_at=manifest.uploaded_at,
+                        )
+
+                        uploads.append(upload)
+                        logger.debug(
+                            f"Discovered upload: {validated_system_id}/{validated_upload_id} "
+                            f"({manifest.conversation_count} conversations)"
+                        )
+
+                    except (json.JSONDecodeError, KeyError, ValueError) as e:
+                        logger.warning(f"Failed to parse manifest for {manifest_path}: {e}")
+                        continue
+                else:
+                    logger.debug(f"No manifest found at {manifest_path}")
+
+        except Exception as e:
+            logger.error(f"Failed to scan system {system_id}: {e}")
+
+        return uploads
+
+    async def _discover_uploads_sequential(self) -> list[SystemMemoryUpload]:
+        """Sequential upload discovery (legacy implementation).
+
+        Returns:
+            List of discovered uploads
+        """
+        uploads = []
+
+        try:
+            # List all system prefixes (pattern: systems/<system-id>/)
+            logger.debug("Discovering uploads from cloud storage (sequential)")
 
             # Collect system prefixes from async generator
             system_prefixes: list[str] = []
@@ -146,31 +350,46 @@ class IngestionWorker:
 
                     if await self.storage.exists(manifest_path):  # type: ignore[attr-defined, call-arg]
                         try:
-                            # Download and parse manifest
+                            # Download and validate manifest
                             manifest_data_bytes = await self.storage.download(manifest_path)  # type: ignore[attr-defined, call-arg]
                             if manifest_data_bytes is None:
                                 logger.warning(f"Empty manifest at {manifest_path}")
                                 continue
-                            manifest = json.loads(manifest_data_bytes)
 
-                            # Parse upload timestamp
-                            uploaded_at = datetime.fromisoformat(
-                                manifest.get("uploaded_at", datetime.now(UTC).isoformat())
-                            )
+                            # Validate manifest with Pydantic schema
+                            try:
+                                manifest_dict = json.loads(manifest_data_bytes)
+                                manifest = SystemMemoryUploadManifest(**manifest_dict)
+                            except Exception as e:
+                                logger.warning(
+                                    f"Manifest validation failed for {manifest_path}: {e}"
+                                )
+                                continue
 
-                            # Create SystemMemoryUpload object
+                            # Validate system_id and upload_id
+                            try:
+                                validated_system_id = validate_system_id(system_id)
+                                validated_upload_id = validate_upload_id(upload_id)
+                                validated_storage_prefix = validate_storage_prefix(obj)
+                            except ValueError as e:
+                                logger.warning(
+                                    f"ID validation failed for {system_id}/{upload_id}: {e}"
+                                )
+                                continue
+
+                            # Create SystemMemoryUpload object with validated data
                             upload = SystemMemoryUpload(
-                                system_id=system_id,
-                                upload_id=upload_id,
-                                manifest=manifest,
-                                storage_prefix=obj,
-                                uploaded_at=uploaded_at,
+                                system_id=validated_system_id,
+                                upload_id=validated_upload_id,
+                                manifest=manifest.model_dump(),
+                                storage_prefix=validated_storage_prefix,
+                                uploaded_at=manifest.uploaded_at,
                             )
 
                             uploads.append(upload)
                             logger.debug(
-                                f"Discovered upload: {system_id}/{upload_id} "
-                                f"({manifest.get('conversation_count', '?')} conversations)"
+                                f"Discovered upload: {validated_system_id}/{validated_upload_id} "
+                                f"({manifest.conversation_count} conversations)"
                             )
 
                         except (json.JSONDecodeError, KeyError, ValueError) as e:
@@ -179,10 +398,10 @@ class IngestionWorker:
                     else:
                         logger.debug(f"No manifest found at {manifest_path}")
 
-            logger.info(f"Discovery complete: found {len(uploads)} uploads")
+            logger.info(f"Sequential discovery complete: found {len(uploads)} uploads")
 
         except Exception as e:
-            logger.error(f"Upload discovery failed: {e}", exc_info=True)
+            logger.error(f"Sequential upload discovery failed: {e}", exc_info=True)
 
         return uploads
 

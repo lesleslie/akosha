@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from pathlib import Path
 
 from akosha.config import config
 
 logger = logging.getLogger(__name__)
+
+# Pattern for valid system_id (alphanumeric, dash, underscore only)
+VALID_SYSTEM_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
 class ShardRouter:
@@ -54,7 +58,23 @@ class ShardRouter:
 
         Returns:
             Path like: /data/akosha/warm/shard_123/system-001.duckdb
+
+        Raises:
+            ValueError: If system_id contains invalid characters or path traversal
         """
+        # Security validation: prevent path traversal attacks
+        if not VALID_SYSTEM_ID_PATTERN.match(system_id):
+            raise ValueError(
+                f"Invalid system_id format: '{system_id}'. "
+                "Must contain only alphanumeric characters, hyphens, and underscores"
+            )
+
+        # Check for path traversal patterns
+        if ".." in system_id or system_id.startswith("/") or system_id.startswith("\\"):
+            raise ValueError(
+                f"Path traversal detected in system_id: '{system_id}'"
+            )
+
         # Get shard ID
         shard_id = self.get_shard(system_id)
 
@@ -65,6 +85,19 @@ class ShardRouter:
         # Build path: base/shard_XXX/system-id.duckdb
         shard_dir = base_path / f"shard_{shard_id:03d}"
         db_path = shard_dir / f"{system_id}.duckdb"
+
+        # Verify resolved path is within base_path (defense in depth)
+        try:
+            resolved_path = db_path.resolve()
+            resolved_base = base_path.resolve()
+
+            # Check that resolved path is within base path
+            if not str(resolved_path).startswith(str(resolved_base)):
+                raise ValueError(
+                    f"Resolved path escapes base directory: {db_path}"
+                )
+        except Exception as e:
+            raise ValueError(f"Invalid path resolution for system_id '{system_id}': {e}")
 
         return db_path
 

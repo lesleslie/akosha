@@ -1,5 +1,55 @@
-"""Observability module for OpenTelemetry tracing and metrics."""
+"""Observability module for OpenTelemetry tracing and Prometheus metrics."""
 
+from akosha.observability.prometheus_metrics import (
+    cache_entry_count,
+    cache_hit_rate,
+    cache_operations,
+    cache_size_bytes,
+    deduplication_checks,
+    deduplication_duration,
+    embedding_batch_size,
+    embedding_generation_duration,
+    error_last_timestamp,
+    error_total,
+    generate_metrics,
+    get_metric_summary,
+    get_metrics_registry,
+    http_active_requests,
+    http_request_duration,
+    http_requests_total,
+    increment_errors,
+    ingestion_bytes_total,
+    ingestion_duration_seconds,
+    ingestion_throughput,
+    knowledge_graph_entities,
+    knowledge_graph_query_duration,
+    knowledge_graph_relationships,
+    observe_operation,
+    observe_search_latency,
+    observe_store_operation,
+    operation_duration,
+    operations_total,
+    record_cache_hit,
+    record_cache_miss,
+    record_deduplication_check,
+    record_ingestion_record,
+    reset_all_metrics,
+    search_latency,
+    search_result_count,
+    search_results_total,
+    start_metrics_server,
+    store_operation_duration,
+    store_operations,
+    store_size,
+    store_size_bytes,
+    update_cache_entry_count,
+    update_cache_hit_rate,
+    update_cache_size,
+    update_ingestion_throughput,
+    update_store_sizes,
+    vector_index_build_duration,
+    vector_index_size,
+)
 from akosha.observability.tracing import (
     add_span_attributes,
     add_span_event,
@@ -15,6 +65,7 @@ from akosha.observability.tracing import (
 )
 
 __all__ = [
+    # OpenTelemetry Tracing
     "add_span_attributes",
     "add_span_event",
     "get_meter",
@@ -26,4 +77,64 @@ __all__ = [
     "shutdown_telemetry",
     "trace_operation",
     "traced",
+    # Prometheus Metrics - Core
+    "get_metrics_registry",
+    "generate_metrics",
+    "start_metrics_server",
+    "get_metric_summary",
+    "reset_all_metrics",
+    # Ingestion Metrics
+    "record_ingestion_record",
+    "update_ingestion_throughput",
+    "ingestion_throughput",
+    "ingestion_bytes_total",
+    "ingestion_duration_seconds",
+    # Search Metrics
+    "observe_search_latency",
+    "search_latency",
+    "search_results_total",
+    "search_result_count",
+    # Cache Metrics
+    "record_cache_hit",
+    "record_cache_miss",
+    "update_cache_hit_rate",
+    "update_cache_size",
+    "update_cache_entry_count",
+    "cache_operations",
+    "cache_hit_rate",
+    "cache_size_bytes",
+    "cache_entry_count",
+    # Storage Metrics
+    "update_store_sizes",
+    "observe_store_operation",
+    "store_size",
+    "store_size_bytes",
+    "store_operations",
+    "store_operation_duration",
+    # Error Metrics
+    "increment_errors",
+    "error_total",
+    "error_last_timestamp",
+    # General Operation Metrics
+    "observe_operation",
+    "operations_total",
+    "operation_duration",
+    # Deduplication Metrics
+    "record_deduplication_check",
+    "deduplication_checks",
+    "deduplication_duration",
+    # Embedding Metrics
+    "embedding_generation_duration",
+    "embedding_batch_size",
+    # Vector Index Metrics
+    "vector_index_size",
+    "vector_index_build_duration",
+    # Knowledge Graph Metrics
+    "knowledge_graph_entities",
+    "knowledge_graph_relationships",
+    "knowledge_graph_query_duration",
+    # HTTP/MCP Server Metrics
+    "http_requests_total",
+    "http_request_duration",
+    "http_active_requests",
 ]

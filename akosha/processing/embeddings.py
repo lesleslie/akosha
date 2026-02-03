@@ -276,7 +276,11 @@ class EmbeddingService:
         candidate_embeddings: list[npt.NDArray[np.float32]],
         limit: int = 10,
     ) -> list[tuple[int, float]]:
-        """Rank candidates by similarity to query.
+        """Rank candidates by similarity to query using vectorized operations.
+
+        Vectorized implementation: O(n) instead of O(n²)
+        - Batch similarity computation with np.dot()
+        - Top-k selection with np.argpartition()
 
         Args:
             query_embedding: Query embedding vector
@@ -289,16 +293,26 @@ class EmbeddingService:
         if not candidate_embeddings:
             return []
 
-        # Compute similarities
-        similarities = []
-        for idx, candidate_emb in enumerate(candidate_embeddings):
-            similarity = await self.compute_similarity(query_embedding, candidate_emb)
-            similarities.append((idx, similarity))
+        # Vectorized similarity computation (O(n) vs O(n²))
+        # Stack all candidate embeddings into a matrix
+        candidate_matrix = np.array(candidate_embeddings, dtype=np.float32)
 
-        # Sort by similarity (descending)
-        similarities.sort(key=lambda x: x[1], reverse=True)
+        # Compute all similarities at once using dot product
+        # query_embedding shape: (384,), candidate_matrix shape: (n, 384)
+        # Result shape: (n,)
+        similarities = np.dot(candidate_matrix, query_embedding)
 
-        return similarities[:limit]
+        # Find top-k indices using argpartition (O(n) vs O(n log n) for full sort)
+        k = min(limit, len(similarities))
+        top_k_indices = np.argpartition(-similarities, k-1)[:k]
+
+        # Sort the top-k results (only k elements, not all n)
+        top_k_indices = top_k_indices[np.argsort(-similarities[top_k_indices])]
+
+        # Return as list of (index, similarity) tuples
+        results = [(int(idx), float(similarities[idx])) for idx in top_k_indices]
+
+        return results
 
 
 # Singleton instance

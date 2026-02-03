@@ -19,7 +19,7 @@ class TestAkoshaApplication:
         """Create mock ingestion workers."""
         workers = [AsyncMock() for _ in range(3)]
         for worker in workers:
-            worker.stop = MagicMock()  # Synchronous stop
+            worker.stop = AsyncMock()  # Async stop (awaited by application.stop())
             worker.run = AsyncMock()  # Async run
         return workers
 

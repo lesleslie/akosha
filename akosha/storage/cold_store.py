@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -99,7 +101,8 @@ class ColdStore:
             data["fingerprint"].append(record.fingerprint)
             data["ultra_summary"].append(record.ultra_summary)
             data["timestamp"].append(record.timestamp)
-            data["daily_metrics"].append(record.daily_metrics)
+            # Serialize dict to JSON string for Parquet storage
+            data["daily_metrics"].append(json.dumps(record.daily_metrics))
 
         # Define schema with proper types
         schema = pa.schema([
@@ -119,32 +122,59 @@ class ColdStore:
     async def _write_parquet_file(self, table: pa.Table) -> Path:
         """Write PyArrow table to temporary Parquet file.
 
+        Uses secure tempfile creation to prevent symlink attacks:
+        - Cryptographically random filename (unpredictable)
+        - Mode 0600 (owner read/write only)
+        - Atomic file creation
+
         Args:
             table: PyArrow table to write
 
         Returns:
             Path to temporary Parquet file
         """
+        # Create temp directory if it doesn't exist
         temp_dir = Path(tempfile.gettempdir()) / "akosha_cold_export"
-        temp_dir.mkdir(exist_ok=True)
+        temp_dir.mkdir(exist_ok=True, mode=0o700)  # Owner-only directory
 
-        temp_file = temp_dir / f"export_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S_%f')}.parquet"
+        # Use tempfile.mkstemp for secure temporary file creation
+        # This creates a file with:
+        # - Cryptographically random filename (prevents prediction)
+        # - Mode 0600 (owner read/write only, prevents other users from reading)
+        # - Atomic creation (prevents race conditions)
+        fd, temp_path = tempfile.mkstemp(
+            suffix=".parquet",
+            prefix="akosha_export_",
+            dir=str(temp_dir),
+            text=False  # Binary mode
+        )
+        temp_file = Path(temp_path)
+
+        # Set explicit permissions (defense in depth)
+        os.chmod(fd, 0o600)  # Owner read/write only
 
         try:
             # Write with compression for efficiency
-            pq.write_table(
-                table,
-                temp_file,
-                compression="snappy",  # Fast compression/decompression
-                write_statistics=True,
-                use_dictionary=True
-            )
+            # We need to use the file descriptor directly for security
+            with os.fdopen(fd, 'wb') as f:
+                pq.write_table(
+                    table,
+                    f,
+                    compression="snappy",  # Fast compression/decompression
+                    write_statistics=True,
+                    use_dictionary=True
+                )
 
-            logger.debug(f"Created temporary Parquet file: {temp_file}")
+            logger.debug(f"Created secure temporary Parquet file: {temp_file}")
             return temp_file
 
         except Exception as e:
             logger.error(f"Failed to write Parquet file {temp_file}: {e}")
+            # Clean up file descriptor and file
+            try:
+                os.close(fd)
+            except Exception:
+                pass
             if temp_file.exists():
                 temp_file.unlink()
             raise
@@ -171,8 +201,16 @@ class ColdStore:
             #     file_path=temp_path
             # )
 
+            # Clean up temp file after successful upload
+            if temp_path.exists():
+                temp_path.unlink()
+                logger.debug(f"Cleaned up temporary file: {temp_path}")
+
         except Exception as e:
             logger.error(f"Failed to upload {temp_path}: {e}")
+            # Clean up temp file on error too
+            if temp_path.exists():
+                temp_path.unlink()
             raise
 
     async def initialize(self) -> None:
