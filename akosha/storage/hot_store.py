@@ -205,3 +205,182 @@ class HotStore:
             if self.conn:
                 self.conn.close()
                 logger.info("Hot store closed")
+
+    async def initialize_code_graphs_table(self) -> None:
+        """Initialize code_graphs table for cross-repo pattern analysis."""
+        async with self._lock:
+            if not self.conn:
+                raise RuntimeError("Hot store not initialized")
+
+            # Create code_graphs table
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS code_graphs (
+                    repo_path VARCHAR,
+                    commit_hash VARCHAR,
+                    nodes_count INTEGER,
+                    graph_data JSON,
+                    metadata JSON,
+                    ingested_at TIMESTAMP DEFAULT NOW(),
+                    PRIMARY KEY (repo_path, commit_hash)
+                )
+            """)
+
+            # Create indexes for common queries
+            try:
+                self.conn.execute("""
+                    CREATE INDEX IF NOT EXISTS code_graphs_repo_index
+                    ON code_graphs (repo_path)
+                """)
+                logger.info("Created code_graphs repo_path index")
+            except Exception as e:
+                logger.warning(f"code_graphs repo_path index creation failed: {e}")
+
+            try:
+                self.conn.execute("""
+                    CREATE INDEX IF NOT EXISTS code_graphs_nodes_index
+                    ON code_graphs (nodes_count DESC)
+                """)
+                logger.info("Created code_graphs nodes_count index")
+            except Exception as e:
+                logger.warning(f"code_graphs nodes_count index creation failed: {e}")
+
+            try:
+                self.conn.execute("""
+                    CREATE INDEX IF NOT EXISTS code_graphs_ingested_index
+                    ON code_graphs (ingested_at DESC)
+                """)
+                logger.info("Created code_graphs ingested_at index")
+            except Exception as e:
+                logger.warning(f"code_graphs ingested_at index creation failed: {e}")
+
+            logger.info("Code graphs table initialized")
+
+    async def store_code_graph(
+        self,
+        repo_path: str,
+        commit_hash: str,
+        nodes_count: int,
+        graph_data: dict[str, Any],
+        metadata: dict[str, Any],
+    ) -> None:
+        """Store a code graph in the hot store.
+
+        Args:
+            repo_path: Path to the repository
+            commit_hash: Git commit hash
+            nodes_count: Number of nodes in the code graph
+            graph_data: Complete code graph data (nodes, edges, etc.)
+            metadata: Optional metadata dictionary
+        """
+        async with self._lock:
+            if not self.conn:
+                raise RuntimeError("Hot store not initialized")
+
+            import json
+
+            self.conn.execute(
+                """
+                INSERT OR REPLACE INTO code_graphs
+                (repo_path, commit_hash, nodes_count, graph_data, metadata, ingested_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """,
+                [
+                    repo_path,
+                    commit_hash,
+                    nodes_count,
+                    json.dumps(graph_data),
+                    json.dumps(metadata),
+                    datetime.now(UTC),
+                ],
+            )
+
+    async def get_code_graph(
+        self,
+        repo_path: str,
+        commit_hash: str,
+    ) -> dict[str, Any] | None:
+        """Get a code graph by repo path and commit hash.
+
+        Args:
+            repo_path: Path to the repository
+            commit_hash: Git commit hash
+
+        Returns:
+            Code graph data or None if not found
+        """
+        async with self._lock:
+            if not self.conn:
+                raise RuntimeError("Hot store not initialized")
+
+            result = self.conn.execute(
+                """
+                SELECT repo_path, commit_hash, nodes_count, graph_data, metadata, ingested_at
+                FROM code_graphs
+                WHERE repo_path = ? AND commit_hash = ?
+                """,
+                [repo_path, commit_hash],
+            ).fetchone()
+
+            if not result or len(result) < 6:
+                return None
+
+            import json
+
+            return {
+                "repo_path": result[0],
+                "commit_hash": result[1],
+                "nodes_count": result[2],
+                "graph_data": json.loads(result[3]) if result[3] else {},
+                "metadata": json.loads(result[4]) if result[4] else {},
+                "ingested_at": result[5],
+            }
+
+    async def list_code_graphs(
+        self,
+        repo_path: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """List code graphs with optional filtering.
+
+        Args:
+            repo_path: Optional repo path filter
+            limit: Maximum number of results
+
+        Returns:
+            List of code graph summaries
+        """
+        async with self._lock:
+            if not self.conn:
+                raise RuntimeError("Hot store not initialized")
+
+            if repo_path:
+                results = self.conn.execute(
+                    """
+                    SELECT repo_path, commit_hash, nodes_count, ingested_at
+                    FROM code_graphs
+                    WHERE repo_path = ?
+                    ORDER BY ingested_at DESC
+                    LIMIT ?
+                    """,
+                    [repo_path, limit],
+                ).fetchall()
+            else:
+                results = self.conn.execute(
+                    """
+                    SELECT repo_path, commit_hash, nodes_count, ingested_at
+                    FROM code_graphs
+                    ORDER BY ingested_at DESC
+                    LIMIT ?
+                    """,
+                    [limit],
+                ).fetchall()
+
+            return [
+                {
+                    "repo_path": r[0],
+                    "commit_hash": r[1],
+                    "nodes_count": r[2],
+                    "ingested_at": r[3],
+                }
+                for r in results
+            ]

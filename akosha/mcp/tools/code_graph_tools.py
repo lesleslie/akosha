@@ -28,7 +28,8 @@ def register_code_graph_analysis_tools(
         logger.warning("Invalid registry type for code graph tools")
         return
 
-    mcp = registry.app
+    # FastMCPToolRegistry has an 'app' attribute
+    mcp = registry.app  # type: ignore[attr-defined]
 
     @mcp.tool()
     async def list_ingested_code_graphs(
@@ -194,8 +195,13 @@ def register_code_graph_analysis_tools(
             tasks = [compare_graph(g) for g in graphs]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # Filter and sort results
-            similar_repos = [r for r in results if r and not isinstance(r, Exception)]
+            # Filter and sort results (narrow BaseException to Exception)
+            similar_repos: list[dict[str, Any]] = []
+            for r in results:
+                if isinstance(r, Exception):
+                    continue
+                if r:
+                    similar_repos.append(r)  # type: ignore[arg-type]
 
             similar_repos.sort(key=lambda x: x["similarity"], reverse=True)
 
@@ -283,10 +289,15 @@ def register_code_graph_analysis_tools(
             tasks = [search_graph(g) for g in graphs]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # Filter results
-            repos_with_usage = [
-                r for r in results if r and not isinstance(r, Exception) and r["files"]
-            ]
+            # Filter results (narrow BaseException to Exception)
+            repos_with_usage: list[dict[str, Any]] = []
+            for r in results:
+                if isinstance(r, Exception):
+                    continue
+                if not r:
+                    continue
+                if r.get("files"):  # type: ignore[union-attr]
+                    repos_with_usage.append(r)  # type: ignore[arg-type]
 
             return {
                 "status": "success",
@@ -323,13 +334,13 @@ async def _compute_graph_similarity(
         nodes2 = graph2.get("nodes", {})
 
         # Count node types
-        types1 = {}
+        types1: dict[str, int] = {}
         for node in nodes1.values():
             if isinstance(node, dict):
                 node_type = node.get("type", "unknown")
                 types1[node_type] = types1.get(node_type, 0) + 1
 
-        types2 = {}
+        types2: dict[str, int] = {}
         for node in nodes2.values():
             if isinstance(node, dict):
                 node_type = node.get("type", "unknown")
@@ -345,10 +356,10 @@ async def _compute_graph_similarity(
         norm1 = sum(v**2 for v in types1.values()) ** 0.5
         norm2 = sum(v**2 for v in types2.values()) ** 0.5
 
-        if norm1 == 0 or norm2 == 0:
+        if 0.0 in (norm1, norm2):
             return 0.0
 
-        return dot_product / (norm1 * norm2)
+        return float(dot_product / (norm1 * norm2))
 
     except Exception:
         return 0.0

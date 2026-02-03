@@ -108,11 +108,11 @@ class CodeGraphIngester:
                         semaphore = asyncio.Semaphore(self.max_concurrent_ingests)
 
                         async def process_with_semaphore(
-                            graph: dict[str, Any], _sem=semaphore
+                            graph: dict[str, Any], _sem: asyncio.Semaphore = semaphore
                         ) -> None:
                             """Process graph with semaphore limiting."""
                             async with _sem:
-                                return await self._ingest_code_graph(graph)
+                                await self._ingest_code_graph(graph)
 
                         # Create and execute tasks
                         tasks = [process_with_semaphore(graph) for graph in new_graphs]

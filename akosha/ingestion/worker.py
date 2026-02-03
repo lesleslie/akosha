@@ -195,9 +195,7 @@ class IngestionWorker:
 
             # Collect system prefixes from async generator
             storage_gen: AsyncGenerator[str] = self.storage.list("systems/")  # type: ignore[call-arg, assignment]
-            system_prefixes: list[str] = []
-            async for prefix in storage_gen:  # type: ignore[union-attr]
-                system_prefixes.append(prefix)  # type: ignore[union-attr]  # noqa: FURB138  # List comprehension not possible with async gen
+            system_prefixes: list[str] = [prefix async for prefix in storage_gen]  # type: ignore[union-attr]
 
             # Process each system sequentially
             for system_prefix in system_prefixes:
@@ -330,9 +328,7 @@ class IngestionWorker:
         system_id = system_prefix.strip("/").split("/")[-1]
         return system_id or None
 
-    async def _collect_upload_prefixes(
-        self, upload_prefix: str, system_id: str
-    ) -> list[str]:
+    async def _collect_upload_prefixes(self, upload_prefix: str, system_id: str) -> list[str]:
         """Collect upload prefixes for a system with limit protection.
 
         Args:
