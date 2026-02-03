@@ -82,7 +82,7 @@ def require_auth(func: Callable) -> Callable:
 
         # Check for Bearer prefix
         if auth_token.startswith("Bearer "):
-            auth_token = auth_token[7:]  # Remove "Bearer " prefix
+            auth_token = auth_token.removeprefix("Bearer ")
 
         try:
             # Decode and validate JWT

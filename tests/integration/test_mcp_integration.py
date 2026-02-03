@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+from unittest import mock
+
 import pytest
 
 from akosha.processing.analytics import TimeSeriesAnalytics
@@ -123,36 +126,38 @@ class TestMCPIntegration:
         from akosha.mcp.tools.akosha_tools import register_analytics_tools
         from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
 
-        app = create_app()
-        registry = FastMCPToolRegistry(app)
+        # Disable authentication for testing
+        with mock.patch.dict(os.environ, {"AKOSHA_AUTH_ENABLED": "false", "AUTH_ENABLED": "false"}):
+            app = create_app()
+            registry = FastMCPToolRegistry(app)
 
-        analytics_service = TimeSeriesAnalytics()
+            analytics_service = TimeSeriesAnalytics()
 
-        # Add sample data
-        now = datetime.now(UTC)
-        for i in range(20):
-            await analytics_service.add_metric(
+            # Add sample data
+            now = datetime.now(UTC)
+            for i in range(20):
+                await analytics_service.add_metric(
+                    metric_name="test_metric",
+                    value=10.0 + i,
+                    system_id="test-system",
+                    timestamp=now + timedelta(hours=i),
+                )
+
+            register_analytics_tools(registry, analytics_service)
+
+            # Test analyze_trends tool
+            tools = registry.tools
+            assert "analyze_trends" in tools
+
+            result = await tools["analyze_trends"].coroutine(
                 metric_name="test_metric",
-                value=10.0 + i,
                 system_id="test-system",
-                timestamp=now + timedelta(hours=i),
+                time_window_days=1,
             )
 
-        register_analytics_tools(registry, analytics_service)
-
-        # Test analyze_trends tool
-        tools = registry.tools
-        assert "analyze_trends" in tools
-
-        result = await tools["analyze_trends"].coroutine(
-            metric_name="test_metric",
-            system_id="test-system",
-            time_window_days=1,
-        )
-
-        assert result["metric_name"] == "test_metric"
-        assert result["trend_direction"] == "increasing"
-        assert result["trend_strength"] > 0.5
+            assert result["metric_name"] == "test_metric"
+            assert result["trend_direction"] == "increasing"
+            assert result["trend_strength"] > 0.5
 
     @pytest.mark.asyncio
     async def test_graph_tools(self) -> None:
@@ -161,18 +166,20 @@ class TestMCPIntegration:
         from akosha.mcp.tools.akosha_tools import register_graph_tools
         from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
 
-        app = create_app()
-        registry = FastMCPToolRegistry(app)
+        # Disable authentication for testing
+        with mock.patch.dict(os.environ, {"AKOSHA_AUTH_ENABLED": "false", "AUTH_ENABLED": "false"}):
+            app = create_app()
+            registry = FastMCPToolRegistry(app)
 
-        graph_builder = KnowledgeGraphBuilder()
+            graph_builder = KnowledgeGraphBuilder()
 
-        register_graph_tools(registry, graph_builder)
+            register_graph_tools(registry, graph_builder)
 
-        # Test get_graph_statistics tool
-        tools = registry.tools
-        assert "get_graph_statistics" in tools
+            # Test get_graph_statistics tool
+            tools = registry.tools
+            assert "get_graph_statistics" in tools
 
-        result = await tools["get_graph_statistics"].coroutine()
+            result = await tools["get_graph_statistics"].coroutine()
 
-        assert result["total_entities"] == 0
-        assert result["total_edges"] == 0
+            assert result["total_entities"] == 0
+            assert result["total_edges"] == 0

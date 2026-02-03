@@ -1,5 +1,6 @@
 """Query result aggregator for merging cross-tier results."""
 
+import operator
 import typing as t
 
 
@@ -46,7 +47,7 @@ class QueryAggregator:
         results_with_similarity = [result for result in unique_results if "similarity" in result]
 
         # Sort by similarity in descending order
-        results_with_similarity.sort(key=lambda x: x["similarity"], reverse=True)
+        results_with_similarity.sort(key=operator.itemgetter("similarity"), reverse=True)
 
         # Step 4: Return top N results
         return results_with_similarity[:limit]

@@ -151,8 +151,7 @@ class IngestionWorker:
             system_prefixes: list[str] = []
             storage_gen: AsyncGenerator[str] = self.storage.list("systems/")  # type: ignore[call-arg, assignment]
             async for prefix in storage_gen:  # type: ignore[union-attr]
-                system_id_prefix: str = str(prefix)  # type: ignore[union-attr]
-                system_prefixes.append(system_id_prefix)
+                system_prefixes.append(prefix)  # type: ignore[union-attr]
 
                 # Prevent memory exhaustion from unbounded list
                 if len(system_prefixes) >= self.MAX_SYSTEM_PREFIXES:
@@ -215,8 +214,7 @@ class IngestionWorker:
             obj_prefixes: list[str] = []
             storage_gen: AsyncGenerator[str] = self.storage.list(upload_prefix)  # type: ignore[call-arg, assignment]
             async for obj in storage_gen:  # type: ignore[union-attr]
-                obj_str: str = str(obj)  # type: ignore[union-attr]
-                obj_prefixes.append(obj_str)
+                obj_prefixes.append(obj)  # type: ignore[union-attr]
 
                 # Prevent memory exhaustion from unbounded list
                 if len(obj_prefixes) >= self.MAX_UPLOAD_PREFIXES:
@@ -309,8 +307,7 @@ class IngestionWorker:
             system_prefixes: list[str] = []
             storage_gen: AsyncGenerator[str] = self.storage.list("systems/")  # type: ignore[call-arg, assignment]
             async for prefix in storage_gen:  # type: ignore[union-attr]
-                system_id_prefix: str = str(prefix)  # type: ignore[union-attr]
-                system_prefixes.append(system_id_prefix)
+                system_prefixes.append(prefix)  # type: ignore[union-attr]
 
             for system_prefix in system_prefixes:
                 # Extract system_id from prefix (systems/<system-id>/)
@@ -327,8 +324,7 @@ class IngestionWorker:
                 obj_prefixes: list[str] = []
                 storage_gen2: AsyncGenerator[str] = self.storage.list(upload_prefix)  # type: ignore[call-arg, assignment]
                 async for obj in storage_gen2:  # type: ignore[union-attr]
-                    obj_str: str = str(obj)  # type: ignore[union-attr]
-                    obj_prefixes.append(obj_str)
+                    obj_prefixes.append(obj)  # type: ignore[union-attr]
 
                 for obj in obj_prefixes:
                     # Skip if not a directory prefix

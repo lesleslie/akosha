@@ -284,7 +284,7 @@ def validate_storage_prefix(prefix: str) -> str:
             continue  # Allow empty components from trailing slashes
 
         # Check for dangerous patterns
-        if component in [".", "~", "*", "?"]:
+        if component in (".", "~", "*", "?"):
             raise ValueError(f"Invalid path component in storage_prefix: '{component}'")
 
     return prefix

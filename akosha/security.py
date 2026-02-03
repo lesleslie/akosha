@@ -186,7 +186,7 @@ def validate_token(token: str) -> bool:
 
             # Remove Bearer prefix if present
             if token.startswith("Bearer "):
-                token = token[7:]
+                token = token.removeprefix("Bearer ")
 
             # Decode JWT
             payload = jwt.decode(

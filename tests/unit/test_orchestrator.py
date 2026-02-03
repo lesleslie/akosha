@@ -115,11 +115,8 @@ class TestBootstrapOrchestrator:
 
         # Should succeed via fallback mode
         assert result is True
-        # No client means we go directly to fallback mode
-        # Actually, looking at the code, it returns True without setting fallback_mode
-        # if there's no client initially (it only sets fallback_mode on error)
-        # So fallback_mode should remain False
-        assert not orchestrator_no_client.fallback_mode
+        # Fallback mode is activated when no Mahavishnu client is available
+        assert orchestrator_no_client.fallback_mode
 
     @pytest.mark.asyncio
     async def test_report_health_normal_mode(

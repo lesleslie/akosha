@@ -509,7 +509,7 @@ class QueryKnowledgeGraphRequest(BaseModel):
             ValueError: If entity ID format is invalid
         """
         # Check for path traversal attempts
-        if ".." in v or v.startswith("/") or v.startswith("."):
+        if ".." in v or v.startswith(("/", ".")):
             raise ValueError(
                 f"Invalid entity_id format: '{v}'. Path traversal patterns are not allowed"
             )
@@ -586,7 +586,7 @@ class FindPathRequest(BaseModel):
             ValueError: If entity ID format is invalid
         """
         # Check for path traversal attempts
-        if ".." in v or v.startswith("/") or v.startswith("."):
+        if ".." in v or v.startswith(("/", ".")):
             raise ValueError(
                 f"Invalid entity_id format: '{v}'. Path traversal patterns are not allowed"
             )

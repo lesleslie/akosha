@@ -53,13 +53,13 @@ class SecurityLogger:
             message: Human-readable message
             **context: Additional event context
         """
-        event = {
+        base_event = {
             "timestamp": datetime.now(UTC).isoformat(),
             "severity": severity,
             "event_type": event_type,
             "message": message,
-            **context,
         }
+        event = base_event | context
 
         # Log as JSON for SIEM parsing
         self.logger.info(json.dumps(event))

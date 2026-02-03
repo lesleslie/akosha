@@ -71,7 +71,7 @@ class ShardRouter:
             )
 
         # Check for path traversal patterns
-        if ".." in system_id or system_id.startswith("/") or system_id.startswith("\\"):
+        if ".." in system_id or system_id.startswith(("/", "\\")):
             raise ValueError(f"Path traversal detected in system_id: '{system_id}'")
 
         # Get shard ID
