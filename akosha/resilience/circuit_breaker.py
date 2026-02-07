@@ -196,7 +196,7 @@ class CircuitBreaker:
 
             return result
 
-    async def _handle_failure_with_logging(self, reason: str) -> None:
+    async def _handle_failure_with_logging(self, _reason: str) -> None:
         """Handle call failure and update circuit state.
 
         Args:

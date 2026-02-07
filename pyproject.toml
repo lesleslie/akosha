@@ -10,6 +10,7 @@ dependencies = [
     "pydantic-settings>=2.0",
     "duckdb>=0.10.0",
     "oneiric>=0.1.0",
+    "typer>=0.12.0",  # CLI framework
     "uvicorn[standard]>=0.30.0",
     "redis>=5.0.0",
     "structlog>=24.0.0",
@@ -51,6 +52,10 @@ embeddings = [
     "transformers>=4.21.0",
     "sentence-transformers>=2.2.0",
 ]
+
+
+[project.scripts]
+akosha = "akosha.cli:main"
 
 [build-system]
 requires = ["hatchling"]

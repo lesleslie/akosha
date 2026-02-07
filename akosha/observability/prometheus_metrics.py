@@ -77,10 +77,12 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Iterator
 from contextlib import contextmanager
 from threading import Lock
-from typing import Callable, Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
 
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
 

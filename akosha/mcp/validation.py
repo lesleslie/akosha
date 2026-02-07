@@ -624,7 +624,7 @@ class FindPathRequest(BaseModel):
 # ============================================================================
 
 
-def validate_request(schema: type[T], **kwargs: Any) -> T:
+def validate_request(schema: type[T], **kwargs: Any) -> T:  # noqa: UP047  # type[T] is correct for Python 3.9+
     """Validate request parameters against a schema.
 
     Args:

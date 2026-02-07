@@ -2,6 +2,48 @@
   "functions": [
     {
       "complexity": 0,
+      "file_name": "code_graph_ingester.py",
+      "function_name": "CodeGraphIngester::__init__",
+      "path": "akosha/ingestion/code_graph_ingester.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "code_graph_ingester.py",
+      "function_name": "CodeGraphIngester::get_ingestion_status",
+      "path": "akosha/ingestion/code_graph_ingester.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "code_graph_ingester.py",
+      "function_name": "CodeGraphIngester::start",
+      "path": "akosha/ingestion/code_graph_ingester.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "code_graph_ingester.py",
+      "function_name": "CodeGraphIngester::stop",
+      "path": "akosha/ingestion/code_graph_ingester.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "code_graph_ingester.py",
+      "function_name": "CodeGraphIngester::_ingest_code_graph",
+      "path": "akosha/ingestion/code_graph_ingester.py"
+    },
+    {
+      "complexity": 10,
+      "file_name": "code_graph_ingester.py",
+      "function_name": "CodeGraphIngester::_discover_code_graphs",
+      "path": "akosha/ingestion/code_graph_ingester.py"
+    },
+    {
+      "complexity": 19,
+      "file_name": "code_graph_ingester.py",
+      "function_name": "CodeGraphIngester::_polling_loop",
+      "path": "akosha/ingestion/code_graph_ingester.py"
+    },
+    {
+      "complexity": 0,
       "file_name": "orchestrator.py",
       "function_name": "BootstrapOrchestrator::__init__",
       "path": "akosha/ingestion/orchestrator.py"
@@ -85,15 +127,15 @@
       "path": "akosha/ingestion/worker.py"
     },
     {
-      "complexity": 7,
+      "complexity": 6,
       "file_name": "worker.py",
-      "function_name": "IngestionWorker::_process_upload_prefixes",
+      "function_name": "IngestionWorker::_discover_uploads_sequential",
       "path": "akosha/ingestion/worker.py"
     },
     {
-      "complexity": 8,
+      "complexity": 7,
       "file_name": "worker.py",
-      "function_name": "IngestionWorker::_discover_uploads_sequential",
+      "function_name": "IngestionWorker::_process_upload_prefixes",
       "path": "akosha/ingestion/worker.py"
     },
     {
@@ -217,7 +259,7 @@
       "path": "akosha/mcp/server.py"
     },
     {
-      "complexity": 0,
+      "complexity": 2,
       "file_name": "__init__.py",
       "function_name": "register_all_tools",
       "path": "akosha/mcp/tools/__init__.py"
@@ -226,6 +268,12 @@
       "complexity": 0,
       "file_name": "akosha_tools.py",
       "function_name": "register_akosha_tools",
+      "path": "akosha/mcp/tools/akosha_tools.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "akosha_tools.py",
+      "function_name": "register_code_graph_tools",
       "path": "akosha/mcp/tools/akosha_tools.py"
     },
     {
@@ -257,6 +305,18 @@
       "file_name": "akosha_tools.py",
       "function_name": "register_embedding_tools",
       "path": "akosha/mcp/tools/akosha_tools.py"
+    },
+    {
+      "complexity": 16,
+      "file_name": "code_graph_tools.py",
+      "function_name": "_compute_graph_similarity",
+      "path": "akosha/mcp/tools/code_graph_tools.py"
+    },
+    {
+      "complexity": 82,
+      "file_name": "code_graph_tools.py",
+      "function_name": "register_code_graph_analysis_tools",
+      "path": "akosha/mcp/tools/code_graph_tools.py"
     },
     {
       "complexity": 0,
@@ -1375,6 +1435,12 @@
       "path": "akosha/storage/hot_store.py"
     },
     {
+      "complexity": 2,
+      "file_name": "hot_store.py",
+      "function_name": "HotStore::store_code_graph",
+      "path": "akosha/storage/hot_store.py"
+    },
+    {
       "complexity": 4,
       "file_name": "hot_store.py",
       "function_name": "HotStore::initialize",
@@ -1383,7 +1449,25 @@
     {
       "complexity": 5,
       "file_name": "hot_store.py",
+      "function_name": "HotStore::initialize_code_graphs_table",
+      "path": "akosha/storage/hot_store.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "hot_store.py",
+      "function_name": "HotStore::list_code_graphs",
+      "path": "akosha/storage/hot_store.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "hot_store.py",
       "function_name": "HotStore::search_similar",
+      "path": "akosha/storage/hot_store.py"
+    },
+    {
+      "complexity": 9,
+      "file_name": "hot_store.py",
+      "function_name": "HotStore::get_code_graph",
       "path": "akosha/storage/hot_store.py"
     },
     {

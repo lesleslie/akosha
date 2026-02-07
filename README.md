@@ -256,6 +256,45 @@ for pair in correlation.system_pairs:
 
 ______________________________________________________________________
 
+
+## 🛠️ CLI Reference
+
+### Admin Shell
+
+Launch the interactive admin shell for distributed intelligence operations:
+
+```bash
+akosha shell
+```
+
+The admin shell provides:
+
+- **Intelligence Commands**:
+  - `aggregate()` - Aggregate across systems
+  - `search()` - Search distributed memory
+  - `detect()` - Detect anomalies
+  - `graph()` - Query knowledge graph
+  - `trends()` - Analyze trends
+
+- **Session Tracking**: Automatic tracking via Session-Buddy MCP
+- **IPython Features**: Tab completion, magic commands, rich output
+
+See [Admin Shell Documentation](docs/ADMIN_SHELL.md) for details.
+
+### Other Commands
+
+```bash
+# Show version
+akosha version
+
+# Show system information
+akosha info
+
+# Start Akosha server
+akosha start --host 0.0.0.0 --port 8000
+```
+
+
 ## 🏗️ Architecture
 
 ### Three-Tier Storage

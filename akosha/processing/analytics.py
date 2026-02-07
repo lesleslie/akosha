@@ -348,9 +348,7 @@ class TimeSeriesAnalytics:
         correlation_matrix = self._compute_correlation_matrix(aligned_data, sys_list)
 
         # Step 5: Extract significant correlations
-        system_pairs = self._extract_significant_correlations(
-            sys_list, correlation_matrix
-        )
+        system_pairs = self._extract_significant_correlations(sys_list, correlation_matrix)
 
         # Step 6: Build result
         time_range = self._compute_time_range(filtered)
@@ -478,9 +476,7 @@ class TimeSeriesAnalytics:
 
         return correlation_matrix
 
-    def _calculate_pairwise_correlation(
-        self, vals_i: list[float], vals_j: list[float]
-    ) -> float:
+    def _calculate_pairwise_correlation(self, vals_i: list[float], vals_j: list[float]) -> float:
         """Calculate Pearson correlation between two value lists.
 
         Args:
@@ -538,9 +534,7 @@ class TimeSeriesAnalytics:
 
         return system_pairs
 
-    def _compute_time_range(
-        self, filtered: list[DataPoint]
-    ) -> tuple[datetime, datetime]:
+    def _compute_time_range(self, filtered: list[DataPoint]) -> tuple[datetime, datetime]:
         """Compute time range from filtered data points.
 
         Args:

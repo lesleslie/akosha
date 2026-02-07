@@ -326,9 +326,7 @@ class KnowledgeGraphBuilder:
 
         return result
 
-    def _init_bfs_queue(
-        self, start_node: str
-    ) -> tuple[deque[str], dict[str, str | None]]:
+    def _init_bfs_queue(self, start_node: str) -> tuple[deque[str], dict[str, str | None]]:
         """Initialize BFS queue and visited map for a search direction.
 
         Args:
@@ -367,9 +365,7 @@ class KnowledgeGraphBuilder:
         """
         while forward_queue and backward_queue:
             # Expand forward frontier
-            meeting_point = self._expand_frontier(
-                forward_queue, forward_visited, backward_visited
-            )
+            meeting_point = self._expand_frontier(forward_queue, forward_visited, backward_visited)
             if meeting_point is not None:
                 path = self._reconstruct_path(
                     source_id, target_id, meeting_point, forward_visited, backward_visited
@@ -380,9 +376,7 @@ class KnowledgeGraphBuilder:
                     return path
 
             # Expand backward frontier
-            meeting_point = self._expand_frontier(
-                backward_queue, backward_visited, forward_visited
-            )
+            meeting_point = self._expand_frontier(backward_queue, backward_visited, forward_visited)
             if meeting_point is not None:
                 path = self._reconstruct_path(
                     source_id, target_id, meeting_point, forward_visited, backward_visited
