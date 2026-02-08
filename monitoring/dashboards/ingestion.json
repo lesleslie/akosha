@@ -1,0 +1,128 @@
+{
+  "dashboard": {
+    "title": "Akosha Ingestion Dashboard",
+    "tags": ["akosha", "ingestion"],
+    "timezone": "UTC",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Uploads Per Minute",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(akosha_ingestion_requests_total[1m])",
+            "legendFormat": "{{system_id}}",
+            "refId": "ingestionRate"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Uploads / sec",
+            "min": 0
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "P50 Latency",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, akosha_ingestion_duration_seconds)",
+            "legendFormat": "P50",
+            "refId": "p50Latency"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Latency (seconds)",
+            "min": 0
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "P99 Latency",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.99, akosha_ingestion_duration_seconds)",
+            "legendFormat": "P99",
+            "refId": "p99Latency"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Latency (seconds)",
+            "min": 0
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Queue Size",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "akosha_ingestion_queue_size",
+            "legendFormat": "Queue Size",
+            "refId": "queueSize"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Uploads Waiting",
+            "min": 0
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Error Rate",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(akosha_ingestion_errors_total[1m])",
+            "legendFormat": "{{error_type}}",
+            "refId": "errorRate"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Errors / sec",
+            "min": 0
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Success Rate",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(akosha_ingestion_requests_total{status='success'}[1m])) / sum(rate(akosha_ingestion_requests_total[1m]))",
+            "legendFormat": "Success Rate",
+            "refId": "successRate"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "decimals": 2,
+            "min": 0,
+            "max": 100
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,89 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: akosha-api
+  namespace: akosha
+  labels:
+    app: akosha-query
+spec:
+  type: ClusterIP
+  ports:
+  - name: api
+    port: 8000
+    targetPort: 8000
+    protocol: TCP
+  - name: metrics
+    port: 8000
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app: akosha-query
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: akosha-ingestion
+  namespace: akosha
+  labels:
+    app: akosha-ingestion
+spec:
+  type: ClusterIP
+  ports:
+  - name: api
+    port: 8001
+    targetPort: 8001
+    protocol: TCP
+  - name: metrics
+    port: 8000
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app: akosha-ingestion
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: akosha-hot-store
+  namespace: akosha
+  labels:
+    app: akosha-hot-store
+spec:
+  type: ClusterIP
+  ports:
+  - name: api
+    port: 8002
+    targetPort: 8002
+    protocol: TCP
+  - name: metrics
+    port: 8000
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app: akosha-hot-store
+  clusterIP: None  # Headless service for StatefulSet
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: akosha-warm-store
+  namespace: akosha
+  labels:
+    app: akosha-warm-store
+spec:
+  type: ClusterIP
+  ports:
+  - name: api
+    port: 8003
+    targetPort: 8003
+    protocol: TCP
+  - name: metrics
+    port: 8000
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app: akosha-warm-store
+  clusterIP: None  # Headless service for StatefulSet

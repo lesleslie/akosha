@@ -1,0 +1,123 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: akosha-network-policy
+  namespace: akosha
+spec:
+  podSelector:
+    matchLabels:
+      app: akosha-query
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow from ingress controller
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8000
+  # Allow from monitoring (Prometheus)
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow to hot store
+  - to:
+    - podSelector:
+        matchLabels:
+          app: akosha-hot-store
+    ports:
+    - protocol: TCP
+      port: 8002
+  # Allow to warm store
+  - to:
+    - podSelector:
+        matchLabels:
+          app: akosha-warm-store
+    ports:
+    - protocol: TCP
+      port: 8003
+  # Allow to Redis
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Allow to S3/R2 (external)
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: akosha-ingestion-network-policy
+  namespace: akosha
+spec:
+  podSelector:
+    matchLabels:
+      app: akosha-ingestion
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow from monitoring (Prometheus)
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow to S3/R2 (external)
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+  # Allow to hot store
+  - to:
+    - podSelector:
+        matchLabels:
+          app: akosha-hot-store
+    ports:
+    - protocol: TCP
+      port: 8002
+  # Allow to Redis
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379

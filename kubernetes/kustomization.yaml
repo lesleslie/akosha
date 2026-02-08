@@ -1,0 +1,44 @@
+---
+# Kustomization for Akosha deployment
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: akosha
+
+# Resources to deploy
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secrets.yaml
+  - hot-store.yaml
+  - warm-store.yaml
+  - services.yaml
+  - ingestion.yaml
+  - query.yaml
+  - aging.yaml
+  - network-policy.yaml
+  - ingress.yaml
+
+# Common labels applied to all resources
+commonLabels:
+  app.kubernetes.io/name: akosha
+  app.kubernetes.io/version: "0.3.0"
+  app.kubernetes.io/component: core
+  app.kubernetes.io/managed-by: kubectl
+
+# Images to replace
+images:
+  - name: akosha
+    newTag: "0.3.0"
+
+# Replicas override
+replicas:
+  - name: akosha-ingestion
+    count: 2
+  - name: akosha-query
+    count: 2
+
+# Resource patches for different environments
+# Usage:
+#   kustomize build . | kubectl apply -f -
+#   kubectl apply -k . (kubectl 1.14+)

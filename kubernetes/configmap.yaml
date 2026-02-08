@@ -1,0 +1,44 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: akosha-config
+  namespace: akosha
+data:
+  # Storage Paths
+  AKOSHA_HOT_PATH: "/data/hot"
+  AKOSHA_WARM_PATH: "/data/warm"
+
+  # Ingestion Configuration
+  AKOSHA_MAX_CONCURRENT_INGESTS: "10"
+  AKOSHA_INGESTION_TIMEOUT: "300"
+  AKOSHA_DISCOVERY_INTERVAL: "60"
+
+  # Query Configuration
+  AKOSHA_QUERY_TIMEOUT: "30"
+  AKOSHA_MAX_RESULTS: "100"
+  AKOSHA_QUERY_SHARD_TIMEOUT: "5"
+
+  # Cache Configuration
+  AKOSHA_CACHE_ENABLED: "true"
+  AKOSHA_L1_CACHE_SIZE: "1000"
+  AKOSHA_L1_CACHE_TTL: "300"
+  AKOSHA_L2_CACHE_ENABLED: "true"
+  AKOSHA_L2_CACHE_TTL: "3600"
+
+  # Tier Migration
+  AKOSHA_HOT_TIER_DAYS: "7"
+  AKOSHA_WARM_TIER_DAYS: "90"
+  AKOSHA_AGING_SCHEDULE: "0 2 * * *"
+
+  # Monitoring
+  AKOSHA_METRICS_ENABLED: "true"
+  AKOSHA_LOG_LEVEL: "INFO"
+  AKOSHA_LOG_FORMAT: "json"
+
+  # Performance
+  AKOSHA_SHARD_COUNT: "256"
+  AKOSHA_EMBEDDING_DIMENSION: "384"
+  AKOSHA_HNSW_M: "16"
+  AKOSHA_HNSW_EF_CONSTRUCTION: "200"
+  AKOSHA_HNSW_EF_SEARCH: "50"

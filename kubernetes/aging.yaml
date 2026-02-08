@@ -1,0 +1,58 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: akosha-aging
+  namespace: akosha
+spec:
+  schedule: "0 2 * * *"  # Run at 2 AM daily
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid  # Don't run if previous job still running
+  jobTemplate:
+    metadata:
+      labels:
+        app: akosha-aging
+    spec:
+      backoffLimit: 3
+      activeDeadlineSeconds: 7200  # Max 2 hours
+      template:
+        metadata:
+          labels:
+            app: akosha-aging
+        spec:
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          restartPolicy: OnFailure
+          containers:
+          - name: aging
+            image: akosha:0.3.0
+            imagePullPolicy: IfNotPresent
+            command: ["python", "-m", "akosha.storage.aging"]
+            env:
+            - name: AKOSHA_COMPONENT
+              value: "aging_service"
+            envFrom:
+            - configMapRef:
+                name: akosha-config
+            - secretRef:
+                name: akosha-storage-credentials
+            - secretRef:
+                name: akosha-redis-config
+            resources:
+              requests:
+                cpu: "1"
+                memory: "2Gi"
+              limits:
+                cpu: "2"
+                memory: "4Gi"
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop:
+                - ALL

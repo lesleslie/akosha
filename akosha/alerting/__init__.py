@@ -30,7 +30,8 @@ def get_logger():
     import logging
     return logging.getLogger(__name__)
 
-logger = get_logger(__name__, level=LOG_LEVEL)
+logger = get_logger()
+logger.setLevel(LOG_LEVEL)
 
 
 class AlertSeverity(str, Enum):
