@@ -146,6 +146,7 @@ def create_app() -> FastMCP:
         from akosha.processing.analytics import TimeSeriesAnalytics
         from akosha.processing.embeddings import get_embedding_service
         from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
+        from akosha.storage.hot_store import HotStore
 
         embedding_service = get_embedding_service()
         await embedding_service.initialize()
@@ -160,6 +161,11 @@ def create_app() -> FastMCP:
         graph_builder = KnowledgeGraphBuilder()
         logger.info("Knowledge graph builder initialized")
 
+        # Initialize hot store
+        hot_store = HotStore(database_path=":memory:")
+        await hot_store.initialize()
+        logger.info("Hot store initialized")
+
         # Register MCP tools with Phase 2 services
         from akosha.mcp.tools import register_all_tools
 
@@ -168,6 +174,7 @@ def create_app() -> FastMCP:
             embedding_service=embedding_service,
             analytics_service=analytics_service,
             graph_builder=graph_builder,
+            hot_store=hot_store,
         )
 
         yield {

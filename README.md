@@ -171,11 +171,15 @@ Add to `~/.claude/.mcp.json`:
 }
 ```
 
-### Project-Level Configuration
+> **Note**: Replace `/path/to/akosha` with the actual path to your Akosha installation.
 
-Create `.mcp.json` in Akosha directory:
+### Project-Level Configuration (Alternative)
 
-```json
+You can also create a project-level `.mcp.json` in the Akosha directory for development:
+
+```bash
+# Create .mcp.json in Akosha directory
+cat > .mcp.json << 'EOF'
 {
   "mcpServers": {
     "akosha": {
@@ -185,7 +189,10 @@ Create `.mcp.json` in Akosha directory:
     }
   }
 }
+EOF
 ```
+
+> **Note**: Project-level configuration is optional. Use either global or project-level config, not both.
 
 ______________________________________________________________________
 

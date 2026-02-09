@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from fastmcp import FastMCP
 
 from akosha.mcp.tools.akosha_tools import register_akosha_tools, register_code_graph_tools
+from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +42,16 @@ def register_all_tools(
         graph_builder=graph_builder,
     )
 
-    # Register code graph analysis tools if hot_store is available
+    # Register Session-Buddy integration tools if hot_store is available
     if hot_store:
+        register_session_buddy_tools(registry, hot_store)
+        logger.info("Registered Session-Buddy integration tools")
+
+        # Register code graph analysis tools
         register_code_graph_tools(registry, hot_store)
         logger.info("Registered code graph analysis tools")
     else:
-        logger.info("Hot store not provided, skipping code graph tools")
+        logger.info("Hot store not provided, skipping code graph and Session-Buddy tools")
 
     logger.info(f"Registered {len(registry.tools)} Akosha MCP tools")
 
