@@ -1,5 +1,6 @@
 """Session-Buddy integration tools for Akosha MCP server.
 
+from typing import Any
 This module provides MCP tools for direct HTTP-based memory ingestion from
 Session-Buddy instances. This complements the pull-based IngestionWorker by
 providing a push endpoint for real-time sync.
@@ -15,10 +16,9 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from akosha.storage.hot_store import HotStore
-
 if TYPE_CHECKING:
-    from akosha.mcp.tools.tool_registry import FastMCPToolRegistry, ToolCategory, ToolMetadata
+    from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
+    from akosha.storage.hot_store import HotStore
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +135,9 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
                 "id": memory_id,
                 "content": text,
                 "embedding": embedding,
-                "timestamp": metadata.get("created_at", datetime.now(UTC).isoformat()) if metadata else datetime.now(UTC).isoformat(),
+                "timestamp": metadata.get("created_at", datetime.now(UTC).isoformat())
+                if metadata
+                else datetime.now(UTC).isoformat(),
                 "metadata": {
                     "source": source,
                     "original_id": original_id,
@@ -158,7 +160,9 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
                 conversation_id=memory_id,
                 content=text,
                 embedding=embedding,
-                timestamp=metadata.get("created_at", datetime.now(UTC).isoformat()) if metadata else datetime.now(UTC).isoformat(),
+                timestamp=metadata.get("created_at", datetime.now(UTC).isoformat())
+                if metadata
+                else datetime.now(UTC).isoformat(),
                 metadata=conversation_data["metadata"],
             )
 
@@ -289,10 +293,12 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
                     # Validate required fields
                     if not memory_id or not text:
                         failed_count += 1
-                        errors.append({
-                            "memory_id": memory_id,
-                            "error": "Missing required field (memory_id or text)",
-                        })
+                        errors.append(
+                            {
+                                "memory_id": memory_id,
+                                "error": "Missing required field (memory_id or text)",
+                            }
+                        )
                         continue
 
                     # Store using store_memory logic
@@ -307,17 +313,21 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
                         stored_count += 1
                     else:
                         failed_count += 1
-                        errors.append({
-                            "memory_id": memory_id,
-                            "error": result.get("error", "Unknown error"),
-                        })
+                        errors.append(
+                            {
+                                "memory_id": memory_id,
+                                "error": result.get("error", "Unknown error"),
+                            }
+                        )
 
                 except Exception as e:
                     failed_count += 1
-                    errors.append({
-                        "memory_id": memory_dict.get("memory_id", "unknown"),
-                        "error": str(e),
-                    })
+                    errors.append(
+                        {
+                            "memory_id": memory_dict.get("memory_id", "unknown"),
+                            "error": str(e),
+                        }
+                    )
 
             # Determine overall status
             if failed_count == 0:

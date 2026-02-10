@@ -7,6 +7,7 @@ This guide provides step-by-step instructions for implementing the warm tier sto
 ### 1.1 Update Config Files
 
 **Edit `config/lite.yaml`**:
+
 ```yaml
 storage:
   hot:
@@ -22,6 +23,7 @@ storage:
 ```
 
 **Edit `config/standard.yaml`**:
+
 ```yaml
 storage:
   hot:
@@ -39,6 +41,7 @@ storage:
 ### 1.2 Verify .gitignore
 
 Ensure `.gitignore` excludes data directories:
+
 ```bash
 # .gitignore should include:
 data/
@@ -155,10 +158,10 @@ kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80
 ### 5.2 Import Akosha Dashboard
 
 1. Open Grafana: http://localhost:3000 (admin/prom-operator)
-2. Navigate to Dashboards → Import
-3. Paste dashboard JSON from `docs/grafana-dashboard.json`
-4. Select Prometheus data source
-5. Save dashboard
+1. Navigate to Dashboards → Import
+1. Paste dashboard JSON from `docs/grafana-dashboard.json`
+1. Select Prometheus data source
+1. Save dashboard
 
 ## Phase 6: Backup Setup (10 minutes)
 
@@ -299,6 +302,7 @@ fi
 ### Issue: "Permission denied when creating ~/.akosha"
 
 **Solution**:
+
 ```bash
 # Create directory with correct permissions
 mkdir -p ~/.akosha/dev/{warm,wal}
@@ -309,6 +313,7 @@ chmod 755 ~/.akosha/dev/wal
 ### Issue: "Environment variable not taking effect"
 
 **Solution**:
+
 ```bash
 # Ensure environment variable is exported, not just set
 export AKOSHA_WARM_PATH=/custom/path
@@ -318,6 +323,7 @@ python -c "from akosha.config import get_config; print(get_config().warm.path)"
 ### Issue: "Docker volume mount fails"
 
 **Solution**:
+
 ```bash
 # Create host directory before mounting
 mkdir -p ~/.akosha/dev/warm
@@ -331,6 +337,7 @@ docker-compose up --build
 ### Issue: "Kubernetes PVC stuck in Pending state"
 
 **Solution**:
+
 ```bash
 # Check PVC events
 kubectl describe pvc akosha-warm-dev -n akosha-dev
@@ -347,32 +354,34 @@ kubectl patch storageclass standard -p '{"volumeBindingMode":"Immediate"}'
 After completing the quick start:
 
 1. ✅ Read the full strategy document: `docs/WARM_TIER_STORAGE_STRATEGY.md`
-2. ✅ Implement Docker configuration for production
-3. ✅ Set up Kubernetes manifests for staging
-4. ✅ Configure monitoring and alerting
-5. ✅ Implement backup automation
-6. ✅ Test disaster recovery procedures
+1. ✅ Implement Docker configuration for production
+1. ✅ Set up Kubernetes manifests for staging
+1. ✅ Configure monitoring and alerting
+1. ✅ Implement backup automation
+1. ✅ Test disaster recovery procedures
 
 ## Summary
 
 This quick start guide covers:
 
 1. ✅ Configuration updates for dev and prod
-2. ✅ Local development testing
-3. ✅ Docker volume configuration
-4. ✅ Kubernetes PVC setup
-5. ✅ Monitoring with Prometheus/Grafana
-6. ✅ Backup automation
-7. ✅ Migration from old paths
-8. ✅ Troubleshooting common issues
+1. ✅ Local development testing
+1. ✅ Docker volume configuration
+1. ✅ Kubernetes PVC setup
+1. ✅ Monitoring with Prometheus/Grafana
+1. ✅ Backup automation
+1. ✅ Migration from old paths
+1. ✅ Troubleshooting common issues
 
 **Estimated time to complete**: 75 minutes
 
 **Files modified**:
+
 - `/Users/les/Projects/akosha/config/lite.yaml`
 - `/Users/les/Projects/akosha/config/standard.yaml`
 - `/Users/les/Projects/akosha/akosha/config.py`
 
 **Files created**:
+
 - `/Users/les/Projects/akosha/docs/WARM_TIER_STORAGE_STRATEGY.md`
 - `/Users/les/Projects/akosha/docs/WARM_TIER_QUICKSTART.md` (this file)

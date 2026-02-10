@@ -74,7 +74,7 @@ class StoragePathResolver:
                 cgroup = Path("/proc/1/cgroup").read_text()
                 if "/docker/" in cgroup or "/kubepods/" in cgroup:
                     return True
-            except (OSError, IOError):
+            except OSError:
                 pass
 
         return False

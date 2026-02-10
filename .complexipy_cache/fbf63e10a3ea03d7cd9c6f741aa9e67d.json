@@ -2,6 +2,300 @@
   "functions": [
     {
       "complexity": 0,
+      "file_name": "__init__.py",
+      "function_name": "Alert::to_dict",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "__init__.py",
+      "function_name": "AlertDeduplicator::__init__",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "__init__.py",
+      "function_name": "AlertManager::__init__",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "__init__.py",
+      "function_name": "AlertManager::register_webhook",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "__init__.py",
+      "function_name": "AlertManager::set_threshold",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "__init__.py",
+      "function_name": "AlertRouter::__init__",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "__init__.py",
+      "function_name": "AlertRouter::get_webhooks",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "__init__.py",
+      "function_name": "PatternDetector::__init__",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "__init__.py",
+      "function_name": "PatternDetector::_get_severity",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "__init__.py",
+      "function_name": "PatternDetector::set_threshold",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "__init__.py",
+      "function_name": "check_metric_and_alert",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "__init__.py",
+      "function_name": "configure_alert_threshold",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "__init__.py",
+      "function_name": "get_alert_manager",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "__init__.py",
+      "function_name": "get_logger",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "__init__.py",
+      "function_name": "register_alert_webhook",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "__init__.py",
+      "function_name": "send_alert",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "__init__.py",
+      "function_name": "AlertRouter::register_webhook",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "__init__.py",
+      "function_name": "AlertDeduplicator::_cleanup_old_entries",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "__init__.py",
+      "function_name": "AlertManager::check_and_alert",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "__init__.py",
+      "function_name": "AlertDeduplicator::should_send",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "__init__.py",
+      "function_name": "PatternDetector::check_threshold",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "__init__.py",
+      "function_name": "AlertManager::send_alert",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "__init__.py",
+      "function_name": "PatternDetector::_format_message",
+      "path": "akosha/alerting/__init__.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "middleware.py",
+      "function_name": "AuditLogger::__init__",
+      "path": "akosha/api/middleware.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "middleware.py",
+      "function_name": "AuthConfig::from_env",
+      "path": "akosha/api/middleware.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "middleware.py",
+      "function_name": "RBACMiddleware::__init__",
+      "path": "akosha/api/middleware.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "middleware.py",
+      "function_name": "RBACMiddleware::has_permission",
+      "path": "akosha/api/middleware.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "middleware.py",
+      "function_name": "audit_log",
+      "path": "akosha/api/middleware.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "middleware.py",
+      "function_name": "require_permission",
+      "path": "akosha/api/middleware.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "middleware.py",
+      "function_name": "AuthConfig::__init__",
+      "path": "akosha/api/middleware.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "middleware.py",
+      "function_name": "AuditLogger::log",
+      "path": "akosha/api/middleware.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "middleware.py",
+      "function_name": "require_role",
+      "path": "akosha/api/middleware.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "middleware.py",
+      "function_name": "RBACMiddleware::check_permission",
+      "path": "akosha/api/middleware.py"
+    },
+    {
+      "complexity": 10,
+      "file_name": "middleware.py",
+      "function_name": "verify_token",
+      "path": "akosha/api/middleware.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "cli.py",
+      "function_name": "info",
+      "path": "akosha/cli.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "cli.py",
+      "function_name": "main",
+      "path": "akosha/cli.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "cli.py",
+      "function_name": "modes",
+      "path": "akosha/cli.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "cli.py",
+      "function_name": "version",
+      "path": "akosha/cli.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "cli.py",
+      "function_name": "shell",
+      "path": "akosha/cli.py"
+    },
+    {
+      "complexity": 9,
+      "file_name": "cli.py",
+      "function_name": "start",
+      "path": "akosha/cli.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "migrate.py",
+      "function_name": "migrate",
+      "path": "akosha/cli/commands/migrate.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "migrate.py",
+      "function_name": "rollback",
+      "path": "akosha/cli/commands/migrate.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "migrate.py",
+      "function_name": "status",
+      "path": "akosha/cli/commands/migrate.py"
+    },
+    {
+      "complexity": 18,
+      "file_name": "migrate.py",
+      "function_name": "data",
+      "path": "akosha/cli/commands/migrate.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "config.py",
+      "function_name": "HotStorageConfig::resolve_paths",
+      "path": "akosha/config.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "config.py",
+      "function_name": "WarmStorageConfig::resolve_paths",
+      "path": "akosha/config.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "config.py",
+      "function_name": "get_config",
+      "path": "akosha/config.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "config.py",
+      "function_name": "load_config_from_file",
+      "path": "akosha/config.py"
+    },
+    {
+      "complexity": 8,
+      "file_name": "config.py",
+      "function_name": "validate_storage_config",
+      "path": "akosha/config.py"
+    },
+    {
+      "complexity": 0,
       "file_name": "code_graph_ingester.py",
       "function_name": "CodeGraphIngester::__init__",
       "path": "akosha/ingestion/code_graph_ingester.py"
@@ -175,6 +469,12 @@
       "path": "akosha/main.py"
     },
     {
+      "complexity": 4,
+      "file_name": "main.py",
+      "function_name": "AkoshaApplication::_initialize_mode_components",
+      "path": "akosha/main.py"
+    },
+    {
       "complexity": 5,
       "file_name": "main.py",
       "function_name": "AkoshaApplication::stop",
@@ -247,15 +547,15 @@
       "path": "akosha/mcp/rate_limit.py"
     },
     {
-      "complexity": 1,
-      "file_name": "server.py",
-      "function_name": "create_app",
-      "path": "akosha/mcp/server.py"
-    },
-    {
       "complexity": 2,
       "file_name": "server.py",
       "function_name": "__getattr__",
+      "path": "akosha/mcp/server.py"
+    },
+    {
+      "complexity": 16,
+      "file_name": "server.py",
+      "function_name": "create_app",
       "path": "akosha/mcp/server.py"
     },
     {
@@ -317,6 +617,12 @@
       "file_name": "code_graph_tools.py",
       "function_name": "register_code_graph_analysis_tools",
       "path": "akosha/mcp/tools/code_graph_tools.py"
+    },
+    {
+      "complexity": 52,
+      "file_name": "session_buddy_tools.py",
+      "function_name": "register_session_buddy_tools",
+      "path": "akosha/mcp/tools/session_buddy_tools.py"
     },
     {
       "complexity": 0,
@@ -479,6 +785,174 @@
       "file_name": "schemas.py",
       "function_name": "SystemMemoryUploadManifest::validate_filenames",
       "path": "akosha/models/schemas.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "__init__.py",
+      "function_name": "list_modes",
+      "path": "akosha/modes/__init__.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "__init__.py",
+      "function_name": "get_mode",
+      "path": "akosha/modes/__init__.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "base.py",
+      "function_name": "BaseMode::__init__",
+      "path": "akosha/modes/base.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "base.py",
+      "function_name": "BaseMode::__repr__",
+      "path": "akosha/modes/base.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "base.py",
+      "function_name": "BaseMode::get_mode_config",
+      "path": "akosha/modes/base.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "base.py",
+      "function_name": "BaseMode::initialize_cache",
+      "path": "akosha/modes/base.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "base.py",
+      "function_name": "BaseMode::initialize_cold_storage",
+      "path": "akosha/modes/base.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "base.py",
+      "function_name": "BaseMode::requires_external_services",
+      "path": "akosha/modes/base.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "lite.py",
+      "function_name": "LiteMode::__repr__",
+      "path": "akosha/modes/lite.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "lite.py",
+      "function_name": "LiteMode::get_mode_config",
+      "path": "akosha/modes/lite.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "lite.py",
+      "function_name": "LiteMode::initialize_cache",
+      "path": "akosha/modes/lite.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "lite.py",
+      "function_name": "LiteMode::initialize_cold_storage",
+      "path": "akosha/modes/lite.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "lite.py",
+      "function_name": "LiteMode::requires_external_services",
+      "path": "akosha/modes/lite.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "standard.py",
+      "function_name": "StandardMode::__repr__",
+      "path": "akosha/modes/standard.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "standard.py",
+      "function_name": "StandardMode::get_mode_config",
+      "path": "akosha/modes/standard.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "standard.py",
+      "function_name": "StandardMode::requires_external_services",
+      "path": "akosha/modes/standard.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "standard.py",
+      "function_name": "StandardMode::initialize_cache",
+      "path": "akosha/modes/standard.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "standard.py",
+      "function_name": "StandardMode::initialize_cold_storage",
+      "path": "akosha/modes/standard.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "metrics.py",
+      "function_name": "MetricsCollector::collect_system_metrics",
+      "path": "akosha/monitoring/metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "metrics.py",
+      "function_name": "record_cache_hit",
+      "path": "akosha/monitoring/metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "metrics.py",
+      "function_name": "setup_metrics_endpoint",
+      "path": "akosha/monitoring/metrics.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "metrics.py",
+      "function_name": "update_storage_metrics",
+      "path": "akosha/monitoring/metrics.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "metrics.py",
+      "function_name": "record_ingestion_event",
+      "path": "akosha/monitoring/metrics.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "metrics.py",
+      "function_name": "track_migration",
+      "path": "akosha/monitoring/metrics.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "metrics.py",
+      "function_name": "record_query_event",
+      "path": "akosha/monitoring/metrics.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "metrics.py",
+      "function_name": "setup_middleware",
+      "path": "akosha/monitoring/metrics.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "metrics.py",
+      "function_name": "track_ingestion",
+      "path": "akosha/monitoring/metrics.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "metrics.py",
+      "function_name": "track_query",
+      "path": "akosha/monitoring/metrics.py"
     },
     {
       "complexity": 0,
@@ -1304,6 +1778,90 @@
     },
     {
       "complexity": 0,
+      "file_name": "adapter.py",
+      "function_name": "AkoshaShell::__init__",
+      "path": "akosha/shell/adapter.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "adapter.py",
+      "function_name": "AkoshaShell::_add_akasha_namespace",
+      "path": "akosha/shell/adapter.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "adapter.py",
+      "function_name": "AkoshaShell::_aggregate",
+      "path": "akosha/shell/adapter.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "adapter.py",
+      "function_name": "AkoshaShell::_detect",
+      "path": "akosha/shell/adapter.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "adapter.py",
+      "function_name": "AkoshaShell::_get_adapters_info",
+      "path": "akosha/shell/adapter.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "adapter.py",
+      "function_name": "AkoshaShell::_get_banner",
+      "path": "akosha/shell/adapter.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "adapter.py",
+      "function_name": "AkoshaShell::_get_component_name",
+      "path": "akosha/shell/adapter.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "adapter.py",
+      "function_name": "AkoshaShell::_get_component_type",
+      "path": "akosha/shell/adapter.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "adapter.py",
+      "function_name": "AkoshaShell::_graph",
+      "path": "akosha/shell/adapter.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "adapter.py",
+      "function_name": "AkoshaShell::_search",
+      "path": "akosha/shell/adapter.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "adapter.py",
+      "function_name": "AkoshaShell::_trends",
+      "path": "akosha/shell/adapter.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "adapter.py",
+      "function_name": "AkoshaShell::_get_component_version",
+      "path": "akosha/shell/adapter.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "adapter.py",
+      "function_name": "AkoshaShell::stop",
+      "path": "akosha/shell/adapter.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "adapter.py",
+      "function_name": "AkoshaShell::start",
+      "path": "akosha/shell/adapter.py"
+    },
+    {
+      "complexity": 0,
       "file_name": "aging.py",
       "function_name": "AgingService::__init__",
       "path": "akosha/storage/aging.py"
@@ -1469,6 +2027,102 @@
       "file_name": "hot_store.py",
       "function_name": "HotStore::get_code_graph",
       "path": "akosha/storage/hot_store.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "path_resolver.py",
+      "function_name": "StoragePathResolver::get_cold_store_cache_path",
+      "path": "akosha/storage/path_resolver.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "path_resolver.py",
+      "function_name": "StoragePathResolver::get_warm_store_dir",
+      "path": "akosha/storage/path_resolver.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "path_resolver.py",
+      "function_name": "get_config_dir",
+      "path": "akosha/storage/path_resolver.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "path_resolver.py",
+      "function_name": "get_default_resolver",
+      "path": "akosha/storage/path_resolver.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "path_resolver.py",
+      "function_name": "get_warm_store_path",
+      "path": "akosha/storage/path_resolver.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "path_resolver.py",
+      "function_name": "StoragePathResolver::ensure_directories",
+      "path": "akosha/storage/path_resolver.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "path_resolver.py",
+      "function_name": "StoragePathResolver::get_hot_store_wal_path",
+      "path": "akosha/storage/path_resolver.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "path_resolver.py",
+      "function_name": "StoragePathResolver::get_warm_store_path",
+      "path": "akosha/storage/path_resolver.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "path_resolver.py",
+      "function_name": "StoragePathResolver::__init__",
+      "path": "akosha/storage/path_resolver.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "path_resolver.py",
+      "function_name": "StoragePathResolver::_warn_if_legacy",
+      "path": "akosha/storage/path_resolver.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "path_resolver.py",
+      "function_name": "StoragePathResolver::_detect_environment",
+      "path": "akosha/storage/path_resolver.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "path_resolver.py",
+      "function_name": "StoragePathResolver::get_cache_dir",
+      "path": "akosha/storage/path_resolver.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "path_resolver.py",
+      "function_name": "StoragePathResolver::get_config_dir",
+      "path": "akosha/storage/path_resolver.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "path_resolver.py",
+      "function_name": "StoragePathResolver::_resolve_base_path",
+      "path": "akosha/storage/path_resolver.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "path_resolver.py",
+      "function_name": "StoragePathResolver::_get_xdg_data_path",
+      "path": "akosha/storage/path_resolver.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "path_resolver.py",
+      "function_name": "StoragePathResolver::_is_container",
+      "path": "akosha/storage/path_resolver.py"
     },
     {
       "complexity": 0,

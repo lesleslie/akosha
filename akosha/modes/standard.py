@@ -115,7 +115,7 @@ class StandardMode(BaseMode):
 
             backend = self.config.get("cold_storage_backend", "local")
             bucket = self.config.get("cold_bucket", "akosha-cold-data")
-            prefix = self.config.get("cold_prefix", "conversations/")
+            self.config.get("cold_prefix", "conversations/")
 
             logger.info(f"Standard mode: Initializing {backend} cold storage (bucket: {bucket})")
 

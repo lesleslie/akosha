@@ -1,17 +1,14 @@
 {
   "dashboard": {
-    "title": "Akosha Query Dashboard",
-    "tags": ["akosha", "query"],
-    "timezone": "UTC",
-    "schemaVersion": 16,
-    "version": 0,
-    "refresh": "10s",
     "panels": [
       {
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
         "id": 1,
-        "title": "Queries Per Second",
-        "type": "graph",
-        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
         "targets": [
           {
             "expr": "sum(rate(akosha_query_requests_total[1m]))",
@@ -19,6 +16,8 @@
             "refId": "qps"
           }
         ],
+        "title": "Queries Per Second",
+        "type": "graph",
         "yAxes": [
           {
             "label": "Queries / sec",
@@ -27,10 +26,13 @@
         ]
       },
       {
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 0
+        },
         "id": 2,
-        "title": "Query Latency Distribution",
-        "type": "graph",
-        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
         "targets": [
           {
             "expr": "histogram_quantile(0.50, akosha_query_duration_seconds)",
@@ -45,6 +47,8 @@
             "legendFormat": "P99"
           }
         ],
+        "title": "Query Latency Distribution",
+        "type": "graph",
         "yAxes": [
           {
             "label": "Latency (seconds)",
@@ -53,10 +57,13 @@
         ]
       },
       {
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 8
+        },
         "id": 3,
-        "title": "Cache Hit Rate",
-        "type": "graph",
-        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
         "targets": [
           {
             "expr": "sum(rate(akosha_query_cache_hits_total[1m])) by (cache_level) / sum(rate(akosha_query_cache_hits_total[1m]))",
@@ -64,20 +71,25 @@
             "refId": "cacheHitRate"
           }
         ],
+        "title": "Cache Hit Rate",
+        "type": "graph",
         "yAxes": [
           {
             "label": "Cache Hit Rate",
-            "min": 0,
             "max": 1,
+            "min": 0,
             "unit": "percentunit"
           }
         ]
       },
       {
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 8
+        },
         "id": 4,
-        "title": "Average Result Count",
-        "type": "graph",
-        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
         "targets": [
           {
             "expr": "avg(akosha_query_results_size)",
@@ -85,6 +97,8 @@
             "refId": "avgResults"
           }
         ],
+        "title": "Average Result Count",
+        "type": "graph",
         "yAxes": [
           {
             "label": "Average Result Count",
@@ -93,19 +107,23 @@
         ]
       },
       {
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 16
+        },
         "id": 5,
-        "title": "Shard Health",
-        "type": "table",
-        "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
         "targets": [
           {
             "expr": "up{job='akosha-shard'}",
-            "legendFormat": "Shard {{shard}}",
             "format": "table",
             "instant": true,
+            "legendFormat": "Shard {{shard}}",
             "refId": "shardHealth"
           }
         ],
+        "title": "Shard Health",
         "transformations": [
           {
             "id": "organize",
@@ -113,13 +131,17 @@
               "displayMode": "allTables"
             }
           }
-        ]
+        ],
+        "type": "table"
       },
       {
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 16
+        },
         "id": 6,
-        "title": "Query Error Rate",
-        "type": "graph",
-        "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
         "targets": [
           {
             "expr": "sum(rate(akosha_query_requests_total{status='error'}[1m])) / sum(rate(akosha_query_requests_total[1m]))",
@@ -127,15 +149,26 @@
             "refId": "queryErrorRate"
           }
         ],
+        "title": "Query Error Rate",
+        "type": "graph",
         "yAxes": [
           {
             "label": "Error Rate",
-            "min": 0,
             "max": 1,
+            "min": 0,
             "unit": "percentunit"
           }
         ]
       }
-    ]
+    ],
+    "refresh": "10s",
+    "schemaVersion": 16,
+    "tags": [
+      "akosha",
+      "query"
+    ],
+    "timezone": "UTC",
+    "title": "Akosha Query Dashboard",
+    "version": 0
   }
 }

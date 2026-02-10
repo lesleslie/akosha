@@ -45,7 +45,9 @@ class AuthConfig:
 auth_config = AuthConfig.from_env()
 
 
-async def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)) -> dict[str, Any]:
+async def verify_token(
+    credentials: HTTPAuthorizationCredentials = Security(security),
+) -> dict[str, Any]:
     """Verify JWT token and return user claims.
 
     Args:
@@ -63,19 +65,21 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Security(secu
         # Option 1: Verify with auth service
         import aiohttp
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(
                 auth_config.auth_service_url,
                 headers={"Authorization": f"Bearer {token}"},
                 json={"token": token},
-            ) as response:
-                if response.status != 200:
-                    raise HTTPException(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail="Invalid authentication token",
-                    )
+            ) as response,
+        ):
+            if response.status != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid authentication token",
+                )
 
-                claims = await response.json()
+            claims = await response.json()
 
         # Validate required claims are present
         for claim in auth_config.required_claims:
@@ -269,10 +273,7 @@ class RBACMiddleware:
                 break
 
         if not has_permission:
-            logger.warning(
-                f"User {claims.get('sub')} attempted {permission} "
-                f"with roles: {roles}"
-            )
+            logger.warning(f"User {claims.get('sub')} attempted {permission} with roles: {roles}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission denied: {permission}",

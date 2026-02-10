@@ -17,7 +17,7 @@ import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from enum import Enum
+from enum import Enum, StrEnum
 from logging import INFO as LOG_LEVEL
 from typing import Any
 
@@ -28,13 +28,15 @@ from pydantic import BaseModel, Field, HttpUrl
 def get_logger():
     """Get a logger instance."""
     import logging
+
     return logging.getLogger(__name__)
+
 
 logger = get_logger()
 logger.setLevel(LOG_LEVEL)
 
 
-class AlertSeverity(str, Enum):
+class AlertSeverity(StrEnum):
     """Alert severity levels."""
 
     INFO = "info"
@@ -43,7 +45,7 @@ class AlertSeverity(str, Enum):
     CRITICAL = "critical"
 
 
-class AlertType(str, Enum):
+class AlertType(StrEnum):
     """Types of patterns that can trigger alerts."""
 
     # Anomaly detection
@@ -171,11 +173,7 @@ class AlertDeduplicator:
         """Remove old entries from sent alerts tracking."""
         cutoff = datetime.now(UTC) - timedelta(minutes=self.window_minutes * 2)
 
-        old_keys = [
-            key
-            for key, timestamp in self._sent_alerts.items()
-            if timestamp < cutoff
-        ]
+        old_keys = [key for key, timestamp in self._sent_alerts.items() if timestamp < cutoff]
 
         for key in old_keys:
             del self._sent_alerts[key]
@@ -257,9 +255,7 @@ class PatternDetector:
 
         return severity_map.get(alert_type, AlertSeverity.INFO)
 
-    def _format_message(
-        self, alert_type: AlertType, value: float, threshold: float
-    ) -> str:
+    def _format_message(self, alert_type: AlertType, value: float, threshold: float) -> str:
         """Format alert message.
 
         Args:
@@ -346,21 +342,25 @@ class AlertManager:
                     )
                     response.raise_for_status()
 
-                    results.append({
-                        "url": url,
-                        "status": "sent",
-                        "status_code": response.status_code,
-                    })
+                    results.append(
+                        {
+                            "url": url,
+                            "status": "sent",
+                            "status_code": response.status_code,
+                        }
+                    )
 
                     logger.info(f"Alert {alert.id} sent to {url}")
 
                 except httpx.HTTPError as e:
                     logger.error(f"Failed to send alert to {url}: {e}")
-                    results.append({
-                        "url": url,
-                        "status": "failed",
-                        "error": str(e),
-                    })
+                    results.append(
+                        {
+                            "url": url,
+                            "status": "failed",
+                            "error": str(e),
+                        }
+                    )
 
         return {
             "status": "complete",
@@ -417,6 +417,7 @@ def get_alert_manager() -> AlertManager:
 
 
 # Convenience functions for common alert operations
+
 
 async def send_alert(
     alert_type: AlertType,

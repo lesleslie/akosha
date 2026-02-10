@@ -40,6 +40,7 @@ result = aggregate(
 ```
 
 **Parameters:**
+
 - `query` (str): Aggregation query pattern (default: `"*"`)
 - `filters` (dict): Optional filter criteria
 - `limit` (int): Maximum results to return (default: 100)
@@ -63,6 +64,7 @@ results = search(
 ```
 
 **Parameters:**
+
 - `query` (str): Search query string
 - `index` (str): Index to search (default: `"all"`)
 - `limit` (int): Maximum results to return (default: 10)
@@ -86,6 +88,7 @@ anomalies = detect(
 ```
 
 **Parameters:**
+
 - `metric` (str): Metric to analyze (default: `"all"`)
 - `threshold` (float): Anomaly detection threshold 0-1 (default: 0.8)
 - `window` (int): Time window in seconds (default: 300)
@@ -109,6 +112,7 @@ result = graph(
 ```
 
 **Parameters:**
+
 - `query` (str): Graph query pattern
 - `node_type` (str): Optional node type filter
 - `depth` (int): Maximum traversal depth (default: 2)
@@ -132,6 +136,7 @@ trends_data = trends(
 ```
 
 **Parameters:**
+
 - `metric` (str): Metric to analyze (default: `"all"`)
 - `window` (int): Time window in seconds (default: 3600)
 - `granularity` (int): Data granularity in seconds (default: 60)
@@ -176,6 +181,7 @@ The admin shell automatically tracks sessions via Session-Buddy MCP:
 - **Metadata**: Includes component name, type, version, and adapters
 
 Session tracking enables:
+
 - Cross-session history and analytics
 - Collaboration features
 - Audit logging
@@ -384,7 +390,7 @@ self.namespace.update({
 
 3. Update banner to document the command
 
-4. Add tests to `tests/unit/test_shell.py`
+1. Add tests to `tests/unit/test_shell.py`
 
 ## Further Reading
 

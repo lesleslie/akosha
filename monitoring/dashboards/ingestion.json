@@ -1,17 +1,14 @@
 {
   "dashboard": {
-    "title": "Akosha Ingestion Dashboard",
-    "tags": ["akosha", "ingestion"],
-    "timezone": "UTC",
-    "schemaVersion": 16,
-    "version": 0,
-    "refresh": "10s",
     "panels": [
       {
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
         "id": 1,
-        "title": "Uploads Per Minute",
-        "type": "graph",
-        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
         "targets": [
           {
             "expr": "rate(akosha_ingestion_requests_total[1m])",
@@ -19,6 +16,8 @@
             "refId": "ingestionRate"
           }
         ],
+        "title": "Uploads Per Minute",
+        "type": "graph",
         "yAxes": [
           {
             "label": "Uploads / sec",
@@ -27,10 +26,13 @@
         ]
       },
       {
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 0
+        },
         "id": 2,
-        "title": "P50 Latency",
-        "type": "graph",
-        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
         "targets": [
           {
             "expr": "histogram_quantile(0.50, akosha_ingestion_duration_seconds)",
@@ -38,6 +40,8 @@
             "refId": "p50Latency"
           }
         ],
+        "title": "P50 Latency",
+        "type": "graph",
         "yAxes": [
           {
             "label": "Latency (seconds)",
@@ -46,10 +50,13 @@
         ]
       },
       {
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 8
+        },
         "id": 3,
-        "title": "P99 Latency",
-        "type": "graph",
-        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
         "targets": [
           {
             "expr": "histogram_quantile(0.99, akosha_ingestion_duration_seconds)",
@@ -57,6 +64,8 @@
             "refId": "p99Latency"
           }
         ],
+        "title": "P99 Latency",
+        "type": "graph",
         "yAxes": [
           {
             "label": "Latency (seconds)",
@@ -65,10 +74,13 @@
         ]
       },
       {
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 8
+        },
         "id": 4,
-        "title": "Queue Size",
-        "type": "graph",
-        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
         "targets": [
           {
             "expr": "akosha_ingestion_queue_size",
@@ -76,6 +88,8 @@
             "refId": "queueSize"
           }
         ],
+        "title": "Queue Size",
+        "type": "graph",
         "yAxes": [
           {
             "label": "Uploads Waiting",
@@ -84,10 +98,13 @@
         ]
       },
       {
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 16
+        },
         "id": 5,
-        "title": "Error Rate",
-        "type": "graph",
-        "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
         "targets": [
           {
             "expr": "rate(akosha_ingestion_errors_total[1m])",
@@ -95,6 +112,8 @@
             "refId": "errorRate"
           }
         ],
+        "title": "Error Rate",
+        "type": "graph",
         "yAxes": [
           {
             "label": "Errors / sec",
@@ -103,10 +122,21 @@
         ]
       },
       {
+        "fieldConfig": {
+          "defaults": {
+            "decimals": 2,
+            "max": 100,
+            "min": 0,
+            "unit": "percentunit"
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 16
+        },
         "id": 6,
-        "title": "Success Rate",
-        "type": "stat",
-        "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
         "targets": [
           {
             "expr": "sum(rate(akosha_ingestion_requests_total{status='success'}[1m])) / sum(rate(akosha_ingestion_requests_total[1m]))",
@@ -114,15 +144,18 @@
             "refId": "successRate"
           }
         ],
-        "fieldConfig": {
-          "defaults": {
-            "unit": "percentunit",
-            "decimals": 2,
-            "min": 0,
-            "max": 100
-          }
-        }
+        "title": "Success Rate",
+        "type": "stat"
       }
-    ]
+    ],
+    "refresh": "10s",
+    "schemaVersion": 16,
+    "tags": [
+      "akosha",
+      "ingestion"
+    ],
+    "timezone": "UTC",
+    "title": "Akosha Ingestion Dashboard",
+    "version": 0
   }
 }

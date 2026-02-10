@@ -1,17 +1,14 @@
 {
   "dashboard": {
-    "title": "Akosha Storage Dashboard",
-    "tags": ["akosha", "storage"],
-    "timezone": "UTC",
-    "schemaVersion": 16,
-    "version": 0,
-    "refresh": "30s",
     "panels": [
       {
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 0,
+          "y": 0
+        },
         "id": 1,
-        "title": "Hot Store Size",
-        "type": "graph",
-        "gridPos": {"x": 0, "y": 0, "w": 8, "h": 8},
         "targets": [
           {
             "expr": "akosha_hot_store_size_bytes / 1024 / 1024 / 1024",
@@ -19,6 +16,8 @@
             "refId": "hotStoreSize"
           }
         ],
+        "title": "Hot Store Size",
+        "type": "graph",
         "yAxes": [
           {
             "label": "Size (GB)",
@@ -27,10 +26,13 @@
         ]
       },
       {
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 8,
+          "y": 0
+        },
         "id": 2,
-        "title": "Hot Store Record Count",
-        "type": "graph",
-        "gridPos": {"x": 8, "y": 0, "w": 8, "h": 8},
         "targets": [
           {
             "expr": "akosha_hot_store_record_count",
@@ -38,6 +40,8 @@
             "refId": "hotRecordCount"
           }
         ],
+        "title": "Hot Store Record Count",
+        "type": "graph",
         "yAxes": [
           {
             "label": "Record Count",
@@ -46,10 +50,13 @@
         ]
       },
       {
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 16,
+          "y": 0
+        },
         "id": 3,
-        "title": "Warm Store Size",
-        "type": "graph",
-        "gridPos": {"x": 16, "y": 0, "w": 8, "h": 8},
         "targets": [
           {
             "expr": "akosha_warm_store_size_bytes / 1024 / 1024 / 1024",
@@ -57,6 +64,8 @@
             "refId": "warmStoreSize"
           }
         ],
+        "title": "Warm Store Size",
+        "type": "graph",
         "yAxes": [
           {
             "label": "Size (GB)",
@@ -65,10 +74,13 @@
         ]
       },
       {
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 0,
+          "y": 8
+        },
         "id": 4,
-        "title": "Warm Store Record Count",
-        "type": "graph",
-        "gridPos": {"x": 0, "y": 8, "w": 8, "h": 8},
         "targets": [
           {
             "expr": "akosha_warm_store_record_count",
@@ -76,6 +88,8 @@
             "refId": "warmRecordCount"
           }
         ],
+        "title": "Warm Store Record Count",
+        "type": "graph",
         "yAxes": [
           {
             "label": "Record Count",
@@ -84,10 +98,13 @@
         ]
       },
       {
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 8,
+          "y": 8
+        },
         "id": 5,
-        "title": "Cold Store Size",
-        "type": "graph",
-        "gridPos": {"x": 8, "y": 8, "w": 8, "h": 8},
         "targets": [
           {
             "expr": "akosha_cold_store_size_bytes / 1024 / 1024 / 1024",
@@ -95,6 +112,8 @@
             "refId": "coldStoreSize"
           }
         ],
+        "title": "Cold Store Size",
+        "type": "graph",
         "yAxes": [
           {
             "label": "Size (TB)",
@@ -103,10 +122,13 @@
         ]
       },
       {
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 16,
+          "y": 8
+        },
         "id": 6,
-        "title": "Migration Throughput",
-        "type": "graph",
-        "gridPos": {"x": 16, "y": 8, "w": 8, "h": 8},
         "targets": [
           {
             "expr": "rate(akosha_migration_records_total{status='success'}[1m])",
@@ -114,6 +136,8 @@
             "refId": "migrationThroughput"
           }
         ],
+        "title": "Migration Throughput",
+        "type": "graph",
         "yAxes": [
           {
             "label": "Records / sec",
@@ -122,10 +146,19 @@
         ]
       },
       {
+        "fieldConfig": {
+          "defaults": {
+            "decimals": 2,
+            "unit": "currencyUSD"
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 0,
+          "y": 16
+        },
         "id": 7,
-        "title": "Storage Cost Estimate",
-        "type": "stat",
-        "gridPos": {"x": 0, "y": 16, "w": 8, "h": 8},
         "targets": [
           {
             "expr": "(akosha_hot_store_size_bytes * 0.0002 + akosha_warm_store_size_bytes * 0.00005 + akosha_cold_store_size_bytes * 0.00001) / 1024 / 1024 / 1024",
@@ -133,18 +166,17 @@
             "refId": "storageCost"
           }
         ],
-        "fieldConfig": {
-          "defaults": {
-            "unit": "currencyUSD",
-            "decimals": 2
-          }
-        }
+        "title": "Storage Cost Estimate",
+        "type": "stat"
       },
       {
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 8,
+          "y": 16
+        },
         "id": 8,
-        "title": "Migration Duration",
-        "type": "graph",
-        "gridPos": {"x": 8, "y": 16, "w": 8, "h": 8},
         "targets": [
           {
             "expr": "histogram_quantile(0.95, akosha_migration_duration_seconds) / 60",
@@ -152,6 +184,8 @@
             "refId": "migrationDuration"
           }
         ],
+        "title": "Migration Duration",
+        "type": "graph",
         "yAxes": [
           {
             "label": "Duration (minutes)",
@@ -160,22 +194,18 @@
         ]
       },
       {
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 16,
+          "y": 16
+        },
         "id": 9,
-        "title": "Storage Breakdown",
-        "type": "piechart",
-        "gridPos": {"x": 16, "y": 16, "w": 8, "h": 8},
-        "targets": [
-          {
-            "expr": "akosha_hot_store_size_bytes + akosha_warm_store_size_bytes + akosha_cold_store_size_bytes",
-            "legendFormat": "{{tier}}",
-            "refId": "storageBreakdown"
-          }
-        ],
         "options": {
           "legend": {
-            "showLegend": true,
             "displayMode": "table",
             "placement": "right",
+            "showLegend": true,
             "values": [
               {
                 "name": "Hot",
@@ -191,8 +221,26 @@
               }
             ]
           }
-        }
+        },
+        "targets": [
+          {
+            "expr": "akosha_hot_store_size_bytes + akosha_warm_store_size_bytes + akosha_cold_store_size_bytes",
+            "legendFormat": "{{tier}}",
+            "refId": "storageBreakdown"
+          }
+        ],
+        "title": "Storage Breakdown",
+        "type": "piechart"
       }
-    ]
+    ],
+    "refresh": "30s",
+    "schemaVersion": 16,
+    "tags": [
+      "akosha",
+      "storage"
+    ],
+    "timezone": "UTC",
+    "title": "Akosha Storage Dashboard",
+    "version": 0
   }
 }

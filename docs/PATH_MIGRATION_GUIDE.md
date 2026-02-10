@@ -7,6 +7,7 @@ Akosha has been updated to use **environment-aware path resolution** with XDG Ba
 ## What Changed
 
 ### Before (Legacy)
+
 ```
 akosha/
 ├── data/
@@ -15,13 +16,16 @@ akosha/
 │   └── cold/
 │       └── cache/
 ```
+
 **Problems**:
+
 - ❌ Pollutes git repository
 - ❌ Can't have multiple instances per project
 - ❌ Data tracked in git accidentally
 - ❌ Violates container best practices
 
 ### After (XDG-Compliant)
+
 ```
 ~/.local/share/akosha/          # Linux/XDG
 ├── warm/
@@ -40,7 +44,9 @@ akosha/
 ├── wal/
 └── cold/
 ```
+
 **Benefits**:
+
 - ✅ Clean project directory
 - ✅ Industry standard locations
 - ✅ Container-friendly (volume mounting)

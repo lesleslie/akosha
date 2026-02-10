@@ -58,8 +58,12 @@ class AkoshaApplication:
         # Log startup
         logger.info("✅ Akosha application started successfully")
         logger.info(f"   Mode: {self.mode}")
-        logger.info(f"   Redis: {'enabled' if self.mode_instance.mode_config.redis_enabled else 'disabled'}")
-        logger.info(f"   Cold storage: {'enabled' if self.mode_instance.mode_config.cold_storage_enabled else 'disabled'}")
+        logger.info(
+            f"   Redis: {'enabled' if self.mode_instance.mode_config.redis_enabled else 'disabled'}"
+        )
+        logger.info(
+            f"   Cold storage: {'enabled' if self.mode_instance.mode_config.cold_storage_enabled else 'disabled'}"
+        )
 
         # Keep the application running until shutdown
         try:

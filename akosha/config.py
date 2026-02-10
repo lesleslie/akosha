@@ -46,7 +46,7 @@ class HotStorageConfig(BaseModel):
     wal_path: Path | None = None  # Will be resolved by model_validator
 
     @model_validator(mode="after")
-    def resolve_paths(self) -> "HotStorageConfig":
+    def resolve_paths(self) -> HotStorageConfig:
         """Resolve WAL path using StoragePathResolver."""
         if self.wal_path is None:
             resolver = StoragePathResolver()
@@ -68,7 +68,7 @@ class WarmStorageConfig(BaseModel):
     num_partitions: int = 256
 
     @model_validator(mode="after")
-    def resolve_paths(self) -> "WarmStorageConfig":
+    def resolve_paths(self) -> WarmStorageConfig:
         """Resolve warm storage path using StoragePathResolver."""
         if self.path is None:
             resolver = StoragePathResolver()
@@ -157,7 +157,9 @@ class AkoshaConfig(BaseSettings):
 
     # Monitoring
     metrics_enabled: bool = True
-    prometheus_port: int = Field(default_factory=lambda: int(os.getenv("AKOSHA_PROMETHEUS_PORT", "9090")))
+    prometheus_port: int = Field(
+        default_factory=lambda: int(os.getenv("AKOSHA_PROMETHEUS_PORT", "9090"))
+    )
 
     # Environment
     environment: str = Field(default_factory=lambda: os.getenv("AKOSHA_ENVIRONMENT", "development"))

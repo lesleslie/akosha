@@ -2,6 +2,7 @@
 
 if __name__ == "__main__":
     import os
+
     import uvicorn
 
     from akosha.mcp import create_app

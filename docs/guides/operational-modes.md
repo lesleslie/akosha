@@ -139,19 +139,21 @@ storage:
 | **Data Persistence** | No | Yes |
 | **Scalability** | Single machine | Horizontal |
 | **External Deps** | None | Redis, cloud storage |
-| **Startup Time** | <1s | 2-3s |
+| **Startup Time** | \<1s | 2-3s |
 | **Memory Usage** | Low | Medium |
 | **Network I/O** | None | Medium |
 
 ### Performance Considerations
 
 **Lite Mode:**
+
 - Faster startup (no connection overhead)
 - Lower memory usage (no Redis client)
 - Simpler debugging (no distributed state)
 - Limited by single machine resources
 
 **Standard Mode:**
+
 - Distributed caching (shared state)
 - Better cache hit rates (L2 cache)
 - Horizontal scaling capability
@@ -164,6 +166,7 @@ storage:
 To migrate from lite to standard mode:
 
 1. **Install Redis**:
+
    ```bash
    # Docker (recommended)
    docker run -d -p 6379:6379 --name redis redis:alpine
@@ -177,7 +180,8 @@ To migrate from lite to standard mode:
    sudo systemctl start redis
    ```
 
-2. **Configure cloud storage** (optional):
+1. **Configure cloud storage** (optional):
+
    ```bash
    # AWS S3
    export AWS_S3_BUCKET=akosha-cold-data
@@ -194,12 +198,14 @@ To migrate from lite to standard mode:
    export GOOGLE_APPLICATION_CREDENTIALS=/path/to/credentials.json
    ```
 
-3. **Start in standard mode**:
+1. **Start in standard mode**:
+
    ```bash
    akosha start --mode=standard
    ```
 
-4. **Verify configuration**:
+1. **Verify configuration**:
+
    ```bash
    # Check Redis connection
    redis-cli ping
@@ -253,6 +259,7 @@ akosha modes
 ```
 
 Output:
+
 ```
 Available operational modes:
 
@@ -310,6 +317,7 @@ akosha start --mode=standard
 #### Problem: Redis connection refused
 
 **Diagnosis:**
+
 ```bash
 # Check if Redis is running
 redis-cli ping
@@ -331,6 +339,7 @@ akosha start --mode=lite
 #### Problem: Cloud storage permissions error
 
 **Diagnosis:**
+
 ```bash
 # Check AWS credentials
 aws sts get-caller-identity
@@ -340,9 +349,10 @@ aws s3 ls s3://akosha-cold-data
 ```
 
 **Solution:**
+
 1. Verify credentials are set correctly
-2. Check bucket permissions
-3. Ensure bucket exists
+1. Check bucket permissions
+1. Ensure bucket exists
 
 ```bash
 # Create bucket if needed
@@ -355,6 +365,7 @@ aws s3api put-bucket-policy --bucket akosha-cold-data --policy file://policy.jso
 #### Problem: High memory usage
 
 **Diagnosis:**
+
 ```bash
 # Check memory usage
 ps aux | grep akosha
@@ -364,22 +375,23 @@ redis-cli INFO memory
 ```
 
 **Solution:**
+
 1. Reduce Redis max memory:
    ```bash
    redis-cli CONFIG SET maxmemory 1gb
    redis-cli CONFIG SET maxmemory-policy allkeys-lru
    ```
-2. Reduce Akosha cache size in configuration
-3. Scale horizontally with multiple instances
+1. Reduce Akosha cache size in configuration
+1. Scale horizontally with multiple instances
 
 ## Best Practices
 
 ### Development Workflow
 
 1. **Start with lite mode** for rapid prototyping
-2. **Switch to standard mode** when you need persistence
-3. **Use environment variables** for mode-specific config
-4. **Test in both modes** before production deployment
+1. **Switch to standard mode** when you need persistence
+1. **Use environment variables** for mode-specific config
+1. **Test in both modes** before production deployment
 
 ```bash
 # Development
@@ -400,10 +412,10 @@ akosha start --config config/production.yaml
 For production, always use **standard mode** with:
 
 1. **Redis cluster** for high availability
-2. **Cloud storage** for cold tier
-3. **Environment-based configuration**
-4. **Health checks and monitoring**
-5. **Graceful shutdown handling**
+1. **Cloud storage** for cold tier
+1. **Environment-based configuration**
+1. **Health checks and monitoring**
+1. **Graceful shutdown handling**
 
 Example production configuration:
 
@@ -495,8 +507,8 @@ class CustomMode(BaseMode):
 For horizontal scaling:
 
 1. **Use standard mode** with shared Redis
-2. **Configure unique instance IDs**
-3. **Use load balancer** for traffic distribution
+1. **Configure unique instance IDs**
+1. **Use load balancer** for traffic distribution
 
 ```bash
 # Instance 1
@@ -512,6 +524,7 @@ akosha start --mode=standard --port 8684 --instance-id akosha-3
 ### Monitoring and Observability
 
 **Lite mode:**
+
 ```bash
 # Check logs
 tail -f /var/log/akosha/akosha.log
@@ -521,6 +534,7 @@ curl http://localhost:8682/metrics
 ```
 
 **Standard mode:**
+
 ```bash
 # Check Redis metrics
 redis-cli INFO

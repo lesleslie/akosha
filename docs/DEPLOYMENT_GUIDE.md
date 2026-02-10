@@ -9,28 +9,30 @@ This guide provides step-by-step instructions for deploying Akosha to a producti
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
-2. [Architecture Overview](#architecture-overview)
-3. [Environment Setup](#environment-setup)
-4. [Kubernetes Deployment](#kubernetes-deployment)
-5. [Configuration](#configuration)
-6. [Monitoring & Observability](#monitoring--observability)
-7. [Security Hardening](#security-hardening)
-8. [Scaling Guidelines](#scaling-guidelines)
-9. [Troubleshooting](#troubleshooting)
-10. [Runbook](#runbook)
+1. [Architecture Overview](#architecture-overview)
+1. [Environment Setup](#environment-setup)
+1. [Kubernetes Deployment](#kubernetes-deployment)
+1. [Configuration](#configuration)
+1. [Monitoring & Observability](#monitoring--observability)
+1. [Security Hardening](#security-hardening)
+1. [Scaling Guidelines](#scaling-guidelines)
+1. [Troubleshooting](#troubleshooting)
+1. [Runbook](#runbook)
 
----
+______________________________________________________________________
 
 ## Prerequisites
 
 ### Infrastructure Requirements
 
 **Minimum (10 systems pilot):**
+
 - Kubernetes cluster: 3 nodes, 8 vCPU, 32 GB RAM
 - Storage: 100 GB SSD (hot tier), 500 GB SSD (warm tier)
 - Network: 1 Gbps
 
 **Recommended (100 systems):**
+
 - Kubernetes cluster: 6 nodes, 32 vCPU, 128 GB RAM
 - Storage: 500 GB NVMe (hot), 2 TB SSD (warm), 10 TB object storage (cold)
 - Network: 10 Gbps
@@ -50,7 +52,7 @@ This guide provides step-by-step instructions for deploying Akosha to a producti
 - **JWT auth service** (or use built-in fallback)
 - **Mahavishnu MCP** (for workflow orchestration, optional)
 
----
+______________________________________________________________________
 
 ## Architecture Overview
 
@@ -105,7 +107,7 @@ This guide provides step-by-step instructions for deploying Akosha to a producti
 
 **Total**: ~38 vCPU, ~110 GiB RAM, ~2.5 TB storage
 
----
+______________________________________________________________________
 
 ## Environment Setup
 
@@ -152,7 +154,7 @@ kubectl create secret generic akosha-redis-config \
 kubectl apply -f kubernetes/configmap.yaml
 ```
 
----
+______________________________________________________________________
 
 ## Kubernetes Deployment
 
@@ -169,6 +171,7 @@ kubectl get deployments -n akosha
 ```
 
 Expected output:
+
 ```
 NAME                          READY   STATUS    RESTARTS   AGE
 akosha-ingestion-xxx-xxx      1/1     Running   0          2m
@@ -215,7 +218,7 @@ curl http://localhost:8000/health
 curl http://localhost:8000/metrics
 ```
 
----
+______________________________________________________________________
 
 ## Configuration
 
@@ -299,7 +302,7 @@ spec:
         periodSeconds: 60
 ```
 
----
+______________________________________________________________________
 
 ## Monitoring & Observability
 
@@ -308,16 +311,19 @@ spec:
 Akosha exposes metrics at `/metrics` endpoint:
 
 **Ingestion Metrics:**
+
 - `akosha_ingestion_requests_total` - Total ingestion requests
 - `akosha_ingestion_duration_seconds` - Request duration histogram
 - `akosha_ingestion_queue_size` - Current queue size
 
 **Query Metrics:**
+
 - `akosha_query_requests_total` - Total query requests
 - `akosha_query_duration_seconds` - Query latency (P50, P95, P99)
 - `akosha_query_cache_hits_total` - Cache hits by level
 
 **Storage Metrics:**
+
 - `akosha_hot_store_size_bytes` - Hot store size
 - `akosha_warm_store_size_bytes` - Warm store size
 - `akosha_migration_records_total` - Migration records
@@ -327,20 +333,23 @@ Akosha exposes metrics at `/metrics` endpoint:
 Three dashboards are provided:
 
 1. **Ingestion Dashboard** (`monitoring/dashboards/ingestion.json`)
+
    - Uploads per minute
    - P50/P99 latency
    - Queue size
    - Error rate
    - Success rate
 
-2. **Query Dashboard** (`monitoring/dashboards/query.json`)
+1. **Query Dashboard** (`monitoring/dashboards/query.json`)
+
    - Queries per second
    - Latency distribution
    - Cache hit rate
    - Average result count
    - Shard health
 
-3. **Storage Dashboard** (`monitoring/dashboards/storage.json`)
+1. **Storage Dashboard** (`monitoring/dashboards/storage.json`)
+
    - Hot/Warm/Cold store sizes
    - Migration throughput
    - Storage cost estimate
@@ -351,17 +360,19 @@ Three dashboards are provided:
 Critical alerts are configured in `monitoring/alerts.yaml`:
 
 **Critical Alerts:**
+
 - `HighIngestionBacklog` - Queue > 1000 for 5 min
 - `HotStoreSizeCritical` - Hot store > 100 GB for 10 min
 - `HighQueryLatency` - P99 > 2s for 5 min
 
 **Warning Alerts:**
+
 - `HotStoreSizeWarning` - Hot store > 50 GB for 15 min
 - `QueryLatencyDegradation` - P99 > 1s for 5 min
 - `LowIngestionSuccessRate` - Success rate < 95%
 - `LowCacheHitRate` - L1 cache hit rate < 30%
 
----
+______________________________________________________________________
 
 ## Security Hardening
 
@@ -370,6 +381,7 @@ Critical alerts are configured in `monitoring/alerts.yaml`:
 Akosha implements JWT-based authentication with RBAC:
 
 **Roles:**
+
 - `admin` - Full access (ingest, query, delete, migrate, settings)
 - `operator` - Operational access (ingest, query, status)
 - `viewer` - Read-only access (query, status)
@@ -448,13 +460,14 @@ spec:
         - ALL
 ```
 
----
+______________________________________________________________________
 
 ## Scaling Guidelines
 
 ### Vertical Scaling (Resource Limits)
 
 **Ingestion Pods:**
+
 ```yaml
 resources:
   requests:
@@ -466,6 +479,7 @@ resources:
 ```
 
 **Query Pods:**
+
 ```yaml
 resources:
   requests:
@@ -479,16 +493,19 @@ resources:
 ### Horizontal Scaling (HPA)
 
 **Scaling Metrics:**
+
 - CPU utilization: Scale up at 70%, scale down at 30%
 - Memory utilization: Scale up at 80%, scale down at 50%
 - Custom metric: `akosha_ingestion_queue_size` (scale up at 500)
 
 **Scale-Up Strategy:**
+
 - Stabilization window: 60 seconds
 - Max scale-up: 50% per minute
 - Max pods: 20 (ingestion), 10 (query)
 
 **Scale-Down Strategy:**
+
 - Stabilization window: 300 seconds (5 minutes)
 - Max scale-down: 10% per minute
 - Min pods: 2 (ingestion), 2 (query)
@@ -502,7 +519,7 @@ resources:
 | Phase 2 | 1,000 | 20 | 10 | 2 TB | 10 TB |
 | Phase 3 | 10,000 | 50 | 20 | 10 TB | 50 TB |
 
----
+______________________________________________________________________
 
 ## Troubleshooting
 
@@ -511,10 +528,12 @@ resources:
 #### 1. High Ingestion Backlog
 
 **Symptoms:**
+
 - `akosha_ingestion_queue_size` > 1000
 - Uploads taking > 5 minutes
 
 **Diagnosis:**
+
 ```bash
 # Check queue size
 kubectl exec -n akosha akosha-ingestion-xxx -- curl localhost:8000/metrics | grep queue_size
@@ -524,17 +543,20 @@ kubectl top pods -n akosha -l app=akosha-ingestion
 ```
 
 **Solutions:**
+
 1. Scale up ingestion pods: `kubectl scale deployment akosha-ingestion --replicas=10`
-2. Increase `AKOSHA_MAX_CONCURRENT_INGESTS`
-3. Check hot store performance (disk I/O)
+1. Increase `AKOSHA_MAX_CONCURRENT_INGESTS`
+1. Check hot store performance (disk I/O)
 
 #### 2. High Query Latency
 
 **Symptoms:**
+
 - P99 latency > 2 seconds
 - Slow search responses
 
 **Diagnosis:**
+
 ```bash
 # Check cache hit rate
 kubectl exec -n akosha akosha-query-xxx -- curl localhost:8000/metrics | grep cache_hit
@@ -544,18 +566,21 @@ kubectl exec -n akosha akosha-hot-store-xxx -- curl localhost:8000/metrics | gre
 ```
 
 **Solutions:**
+
 1. Check hot store size (> 100 GB triggers aging)
-2. Enable cache warming
-3. Scale up query pods
-4. Check Redis connectivity
+1. Enable cache warming
+1. Scale up query pods
+1. Check Redis connectivity
 
 #### 3. Hot Store Too Large
 
 **Symptoms:**
+
 - `akosha_hot_store_size_bytes` > 100 GB
 - Alert: `HotStoreSizeCritical`
 
 **Diagnosis:**
+
 ```bash
 # Check aging service status
 kubectl get cronjobs -n akosha
@@ -563,17 +588,20 @@ kubectl logs -n akosha -l app=akosha-aging --tail=100
 ```
 
 **Solutions:**
+
 1. Trigger manual aging: `kubectl create job --from=cronjob/akosha-aging manual-aging-$(date +%s)`
-2. Check aging service logs for errors
-3. Verify warm store has sufficient space
+1. Check aging service logs for errors
+1. Verify warm store has sufficient space
 
 #### 4. Pod CrashLoopBackOff
 
 **Symptoms:**
+
 - Pods restarting repeatedly
 - Status: `CrashLoopBackOff`
 
 **Diagnosis:**
+
 ```bash
 # Check pod logs
 kubectl logs -n akosha akosha-ingestion-xxx --previous
@@ -583,42 +611,48 @@ kubectl describe pod -n akosha akosha-ingestion-xxx
 ```
 
 **Common Causes:**
+
 - Missing secrets/configmaps
 - Insufficient resources (OOMKilled)
 - Database connection failures
 - Invalid configuration
 
----
+______________________________________________________________________
 
 ## Runbook
 
 ### Daily Operations
 
 **Morning Checklist (9 AM):**
+
 1. Check Grafana dashboards for anomalies
-2. Review Prometheus alerts (last 24 hours)
-3. Verify pod health: `kubectl get pods -n akosha`
-4. Check error rates in logs
+1. Review Prometheus alerts (last 24 hours)
+1. Verify pod health: `kubectl get pods -n akosha`
+1. Check error rates in logs
 
 **Weekly Tasks (Monday):**
+
 1. Review storage trends (hot/warm/cold)
-2. Check cache hit rates
-3. Validate backup integrity
-4. Review cost projections
+1. Check cache hit rates
+1. Validate backup integrity
+1. Review cost projections
 
 ### Incident Response
 
 **Severity 1 (Critical):**
+
 - Response time: < 15 minutes
 - Examples: Complete outage, data loss
 - Escalation: On-call engineer → Engineering manager → CTO
 
 **Severity 2 (High):**
+
 - Response time: < 1 hour
 - Examples: High latency, partial degradation
 - Escalation: On-call engineer → Tech lead
 
 **Severity 3 (Medium):**
+
 - Response time: < 4 hours
 - Examples: Single pod failure, elevated error rate
 - Escalation: On-call engineer
@@ -626,6 +660,7 @@ kubectl describe pod -n akosha akosha-ingestion-xxx
 ### Rollback Procedures
 
 **Deployment Rollback:**
+
 ```bash
 # Check rollout history
 kubectl rollout history deployment/akosha-ingestion -n akosha
@@ -638,6 +673,7 @@ kubectl rollout status deployment/akosha-ingestion -n akosha
 ```
 
 **Emergency Rollback:**
+
 ```bash
 # Scale to zero (emergency stop)
 kubectl scale deployment/akosha-ingestion --replicas=0 -n akosha
@@ -646,19 +682,19 @@ kubectl scale deployment/akosha-ingestion --replicas=0 -n akosha
 kubectl apply -f kubernetes/backups/akosha-ingestion-v1.2.3.yaml
 ```
 
----
+______________________________________________________________________
 
 ## Next Steps
 
 1. **Pilot Deployment**: Start with 10 systems for 2 weeks
-2. **Monitor Closely**: Check dashboards daily, review alerts
-3. **Gather Metrics**: Validate SLO compliance (P50 <500ms, P99 <2s)
-4. **Scale Gradually**: Add 10 systems per week until 100
-5. **Optimize**: Tune cache sizes, HPA thresholds, aging schedules
+1. **Monitor Closely**: Check dashboards daily, review alerts
+1. **Gather Metrics**: Validate SLO compliance (P50 \<500ms, P99 \<2s)
+1. **Scale Gradually**: Add 10 systems per week until 100
+1. **Optimize**: Tune cache sizes, HPA thresholds, aging schedules
 
 **Support**: For issues or questions, contact the Akosha team at akosha@example.com
 
----
+______________________________________________________________________
 
 **Last Updated**: 2025-02-08
 **Document Version**: 1.0

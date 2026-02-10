@@ -45,9 +45,7 @@ def get_mode(mode_name: str, config: dict[str, Any]) -> BaseMode:
     mode_class = _MODE_REGISTRY.get(mode_name.lower())
     if not mode_class:
         valid_modes = ", ".join(_MODE_REGISTRY.keys())
-        raise ValueError(
-            f"Unknown mode: {mode_name}. Valid modes: {valid_modes}"
-        )
+        raise ValueError(f"Unknown mode: {mode_name}. Valid modes: {valid_modes}")
     return mode_class(config=config)
 
 
@@ -66,8 +64,8 @@ def list_modes() -> list[str]:
 
 __all__ = [
     "BaseMode",
-    "ModeConfig",
     "LiteMode",
+    "ModeConfig",
     "StandardMode",
     "get_mode",
     "list_modes",

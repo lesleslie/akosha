@@ -1,5 +1,6 @@
 """Akosha CLI entry point.
 
+from typing import Any
 Provides command-line interface for Akosha operations including
 starting the admin shell, running services, and managing configuration.
 """
@@ -9,10 +10,9 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import typer
-from typing_extensions import Annotated
 
 # Configure logging
 logging.basicConfig(
@@ -35,9 +35,7 @@ def shell(
     mode: Annotated[
         str, typer.Option("--mode", "-m", help="Operational mode (lite|standard)")
     ] = "lite",
-    verbose: Annotated[
-        bool, typer.Option("--verbose", "-v", help="Enable verbose output")
-    ] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Enable verbose output")] = False,
 ) -> None:
     """Launch Akosha admin shell for distributed intelligence operations.
 
@@ -88,12 +86,8 @@ def start(
     mode: Annotated[
         str, typer.Option("--mode", "-m", help="Operational mode (lite|standard)")
     ] = "lite",
-    config: Annotated[
-        str, typer.Option("--config", "-c", help="Path to configuration file")
-    ] = "",
-    verbose: Annotated[
-        bool, typer.Option("--verbose", "-v", help="Enable verbose output")
-    ] = False,
+    config: Annotated[str, typer.Option("--config", "-c", help="Path to configuration file")] = "",
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Enable verbose output")] = False,
 ) -> None:
     """Start Akosha MCP server in the specified mode.
 
@@ -212,7 +206,7 @@ def info() -> None:
 @app.command()
 def modes() -> None:
     """List available operational modes."""
-    from akosha.modes import list_modes, get_mode
+    from akosha.modes import get_mode, list_modes
 
     typer.echo("Available operational modes:")
     typer.echo("")
@@ -221,10 +215,16 @@ def modes() -> None:
         mode_instance = get_mode(mode_name, config={})
         typer.echo(f"  {mode_name}:")
         typer.echo(f"    Description: {mode_instance.mode_config.description}")
-        typer.echo(f"    Redis: {'Enabled' if mode_instance.mode_config.redis_enabled else 'Disabled'}")
-        typer.echo(f"    Cold Storage: {'Enabled' if mode_instance.mode_config.cold_storage_enabled else 'Disabled'}")
+        typer.echo(
+            f"    Redis: {'Enabled' if mode_instance.mode_config.redis_enabled else 'Disabled'}"
+        )
+        typer.echo(
+            f"    Cold Storage: {'Enabled' if mode_instance.mode_config.cold_storage_enabled else 'Disabled'}"
+        )
         typer.echo(f"    Cache Backend: {mode_instance.mode_config.cache_backend}")
-        typer.echo(f"    External Services: {'Required' if mode_instance.requires_external_services else 'None'}")
+        typer.echo(
+            f"    External Services: {'Required' if mode_instance.requires_external_services else 'None'}"
+        )
         typer.echo("")
 
 

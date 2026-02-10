@@ -5,12 +5,13 @@
 This document provides production-hardened recommendations for managing Akosha's warm tier DuckDB database across development, staging, and production environments.
 
 **Database Characteristics**:
+
 - Size: 10GB-100GB (7-90 days of data)
 - Access pattern: Write-heavy (ingestion) + Read-heavy (analytics)
 - Criticality: High (core to search/analytics functionality)
 - Retention: 83 days in warm tier before aging to cold
 
----
+______________________________________________________________________
 
 ## 1. Recommended Path Structure
 
@@ -19,6 +20,7 @@ This document provides production-hardened recommendations for managing Akosha's
 **Location**: `~/.akosha/dev/warm/`
 
 **Rationale**:
+
 - Isolated from project directory (doesn't pollute git)
 - Survives project directory changes
 - Supports multiple project instances
@@ -66,6 +68,7 @@ def get_warm_path(config_path: str) -> Path:
 **Location**: `/data/akosha/staging/warm/`
 
 **Rationale**:
+
 - Matches production structure
 - Easier to test deployment scripts
 - Realistic performance testing
@@ -84,6 +87,7 @@ storage:
 **Location**: `/data/akosha/prod/warm/`
 
 **Rationale**:
+
 - Standard Linux filesystem hierarchy
 - Easy to mount on dedicated SSD/NVMe
 - Separate from application code
@@ -98,7 +102,7 @@ storage:
     path: "/data/akosha/prod/warm"
 ```
 
----
+______________________________________________________________________
 
 ## 2. Docker Volume Mount Considerations
 
@@ -239,7 +243,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 CMD ["python", "-m", "akosha.mcp"]
 ```
 
----
+______________________________________________________________________
 
 ## 3. Kubernetes Persistent Volume Claim Patterns
 
@@ -451,8 +455,8 @@ spec:
 **Note**: DuckDB doesn't support multi-writer, but you can use StatefulSet for:
 
 1. Stable network identities
-2. Ordered pod startup
-3. Dedicated PVC per pod (for sharding)
+1. Ordered pod startup
+1. Dedicated PVC per pod (for sharding)
 
 ```yaml
 # k8s/prod/statefulset.yaml
@@ -497,7 +501,7 @@ spec:
             storage: 50Gi  # 50Gi per shard
 ```
 
----
+______________________________________________________________________
 
 ## 4. Environment Variable Override Strategy
 
@@ -631,7 +635,7 @@ spec:
                 name: akosha-secrets
 ```
 
----
+______________________________________________________________________
 
 ## 5. CI/CD Pipeline Implications
 
@@ -863,7 +867,7 @@ if __name__ == "__main__":
     asyncio.run(migrate_warm_storage(args.old_path, args.new_path, args.backup_path))
 ```
 
----
+______________________________________________________________________
 
 ## 6. Monitoring and Metrics for Disk Usage
 
@@ -1208,7 +1212,7 @@ async def get_storage_metrics():
     return {"status": "metrics collected"}
 ```
 
----
+______________________________________________________________________
 
 ## 7. Backup Strategy Recommendations
 
@@ -1462,7 +1466,7 @@ metadata:
 
 ### Disaster Recovery Procedure
 
-```markdown
+````markdown
 # Disaster Recovery Runbook
 
 ## Scenario 1: Warm Store Disk Failure
@@ -1478,20 +1482,23 @@ metadata:
    ```bash
    kubectl describe pod akosha-xxx -n akosha-prod
    kubectl get pvc akosha-warm-prod -n akosha-prod
-   ```
+````
 
 2. **Scale down deployment** (2 min)
+
    ```bash
    kubectl scale deployment akosha --replicas=0 -n akosha-prod
    ```
 
-3. **Provision new PV** (15 min)
+1. **Provision new PV** (15 min)
+
    ```bash
    # Create new PVC
    kubectl apply -f k8s/prod/pvc-warm-recovery.yaml
    ```
 
-4. **Restore from latest backup** (30 min)
+1. **Restore from latest backup** (30 min)
+
    ```bash
    # Restore job
    kubectl create job restore-warm-$(date +%s) \
@@ -1500,14 +1507,16 @@ metadata:
      -- restore-backup=$(date +%Y/%m/%d -d "1 day ago")
    ```
 
-5. **Verify restored data** (10 min)
+1. **Verify restored data** (10 min)
+
    ```bash
    kubectl exec -it akosha-xxx -n akosha-prod \
      -- duckdb /data/akosha/warm/warm.db \
      "SELECT COUNT(*) FROM conversations"
    ```
 
-6. **Scale up deployment** (5 min)
+1. **Scale up deployment** (5 min)
+
    ```bash
    kubectl scale deployment akosha --replicas=3 -n akosha-prod
    ```
@@ -1518,6 +1527,7 @@ metadata:
 ## Scenario 2: Database Corruption
 
 ### Detection
+
 - Alert: High error rate in warm store queries
 - Health check: `/health/warm` returns corruption error
 - Logs: "Database file is corrupted"
@@ -1525,11 +1535,13 @@ metadata:
 ### Recovery Steps
 
 1. **Stop all writes** (5 min)
+
    ```bash
    kubectl scale deployment akosha --replicas=0 -n akosha-prod
    ```
 
-2. **Checkpoint and export** (15 min)
+1. **Checkpoint and export** (15 min)
+
    ```bash
    # Export what we can to Parquet
    kubectl create job export-warm -n akosha-prod \
@@ -1537,10 +1549,12 @@ metadata:
      -- python -m akosha.scripts.export_warm_to_parquet
    ```
 
-3. **Restore from backup** (30 min)
+1. **Restore from backup** (30 min)
+
    - Same as Scenario 1, step 4
 
-4. **Replay recent data** (20 min)
+1. **Replay recent data** (20 min)
+
    ```bash
    # Re-import any data since last backup
    kubectl create job replay-warm -n akosha-prod \
@@ -1549,7 +1563,7 @@ metadata:
      --since-backup=$(date -d "1 day ago" +%s)
    ```
 
-5. **Verify and scale up** (10 min)
+1. **Verify and scale up** (10 min)
 
 **Total RTO:** ~80 minutes
 **Total RPO:** Varies (may lose data between backup and corruption)
@@ -1557,6 +1571,7 @@ metadata:
 ## Scenario 3: Accidental Data Deletion
 
 ### Detection
+
 - Alert: Sudden drop in conversation count
 - User report: "Missing conversations"
 - Logs: DELETE executed on conversations table
@@ -1564,27 +1579,32 @@ metadata:
 ### Recovery Steps
 
 1. **IMMEDIATE: Stop all writes** (2 min)
+
    ```bash
    kubectl scale deployment akosha --replicas=0 -n akosha-prod
    ```
 
-2. **Assess damage** (5 min)
+1. **Assess damage** (5 min)
+
    ```bash
    # Check when deletion occurred
    kubectl logs akosha-xxx -n akosha-prod | grep DELETE
    ```
 
-3. **Clone current database** (10 min)
+1. **Clone current database** (10 min)
+
    ```bash
    # Preserve current state for forensics
    cp /data/akosha/warm/warm.db /data/akosha/warm/warm.db.forensic
    ```
 
-4. **Restore from backup before deletion** (30 min)
+1. **Restore from backup before deletion** (30 min)
+
    - Same as Scenario 1, step 4
    - Use backup from before deletion time
 
-5. **Replay WAL up to deletion** (20 min)
+1. **Replay WAL up to deletion** (20 min)
+
    ```bash
    # Replay WAL, excluding the DELETE transaction
    kubectl create job replay-wal -n akosha-prod \
@@ -1593,11 +1613,12 @@ metadata:
      --exclude-txid=<deletion_txid>
    ```
 
-6. **Verify and scale up** (10 min)
+1. **Verify and scale up** (10 min)
 
 **Total RTO:** ~77 minutes
 **Total RPO:** Near-zero (if WAL replay successful)
-```
+
+````
 
 ---
 
@@ -1689,7 +1710,7 @@ metadata:
 # - barrier=0: Disable write barriers (use with battery-backed cache)
 # - largeio: Enable large I/O requests
 # - inode64: Use 64-bit inodes (for large filesystems)
-```
+````
 
 ### DuckDB Configuration
 
@@ -1785,17 +1806,19 @@ maintenance:
         - capacity_planning_review
 ```
 
----
+______________________________________________________________________
 
 ## 10. Troubleshooting Guide
 
 ### Issue: "Database is locked"
 
 **Symptoms**:
+
 - Multiple pods trying to access same PVC
 - ReadWriteOnce access mode violation
 
 **Solution**:
+
 ```bash
 # Check which pod has the mount
 kubectl get pods -n akosha-prod -o wide
@@ -1812,11 +1835,13 @@ kubectl scale deployment akosha --replicas=1 -n akosha-prod
 ### Issue: "Disk is full"
 
 **Symptoms**:
+
 - Alert: `AkoshaWarmStorageCritical`
 - Write operations failing
 - Database corruption risk
 
 **Solution**:
+
 ```bash
 # Check actual usage
 du -sh /data/akosha/warm
@@ -1841,11 +1866,13 @@ kubectl exec -it akosha-xxx -n akosha-prod \
 ### Issue: "Slow query performance"
 
 **Symptoms**:
+
 - p99 latency > 200ms
 - High CPU usage
 - User complaints
 
 **Solution**:
+
 ```bash
 # Check query plan
 kubectl exec -it akosha-xxx -n akosha-prod \
@@ -1869,11 +1896,13 @@ curl http://akosha:9090/metrics | grep akosha_cache
 ### Issue: "Data inconsistency after aging"
 
 **Symptoms**:
+
 - Missing conversations
 - Count mismatch between hot and warm
 - Duplicate records
 
 **Solution**:
+
 ```bash
 # Compare counts
 kubectl exec -it akosha-xxx -n akosha-prod \
@@ -1901,7 +1930,7 @@ kubectl exec -it akosha-xxx -n akosha-prod \
 ./scripts/restore_warm_storage.sh 2025/02/08
 ```
 
----
+______________________________________________________________________
 
 ## Appendix A: Configuration Examples
 
@@ -1981,7 +2010,7 @@ export AKOSHA_PROMETHEUS_PORT=9090
 export AKOSHA_METRICS_ENABLED=true
 ```
 
----
+______________________________________________________________________
 
 ## Appendix B: Performance Benchmarks
 
@@ -2005,21 +2034,22 @@ export AKOSHA_METRICS_ENABLED=true
 | Date range scan (1 day) | 5ms | 25ms | 100ms |
 | Aggregation (COUNT) | 50ms | 200ms | 1000ms |
 
----
+______________________________________________________________________
 
 ## Summary
 
 This document provides a comprehensive DevOps strategy for managing Akosha's warm tier storage across all environments:
 
 1. **Path Structure**: Environment-specific paths with XDG compliance
-2. **Docker**: Named volumes for dev, bind mounts for prod
-3. **Kubernetes**: PVC with StorageClasses, StatefulSet for sharding
-4. **Environment Variables**: Override pattern with clear priority
-5. **CI/CD**: Pipeline integration with pre-flight checks
-6. **Monitoring**: Prometheus metrics, Grafana dashboards, alerting
-7. **Backup**: Daily automated backups with disaster recovery procedures
+1. **Docker**: Named volumes for dev, bind mounts for prod
+1. **Kubernetes**: PVC with StorageClasses, StatefulSet for sharding
+1. **Environment Variables**: Override pattern with clear priority
+1. **CI/CD**: Pipeline integration with pre-flight checks
+1. **Monitoring**: Prometheus metrics, Grafana dashboards, alerting
+1. **Backup**: Daily automated backups with disaster recovery procedures
 
 **Key Takeaways**:
+
 - Never write to project directory (use `~/.akosha` or `/data/akosha`)
 - Use environment variables for deployment flexibility
 - Implement comprehensive monitoring and alerting

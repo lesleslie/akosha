@@ -5,11 +5,13 @@
 Akosha now supports **two operational modes** for different deployment scenarios:
 
 ### Lite Mode (Default)
+
 - **Zero dependencies** - Works out of the box
 - **In-memory storage** - Fastest startup
 - **Perfect for** - Development, testing, learning
 
 ### Standard Mode
+
 - **Redis caching** - Distributed cache layer
 - **Cloud storage** - S3/Azure/GCS support
 - **Perfect for** - Production, scaling
@@ -83,12 +85,14 @@ uv run akosha shell --mode=standard
 ## Which Mode Should I Use?
 
 ### Choose Lite Mode If:
+
 - You're developing locally
 - You're writing tests
 - You're learning Akosha
 - You don't need data persistence
 
 ### Choose Standard Mode If:
+
 - You're deploying to production
 - You need distributed caching
 - You want long-term storage
@@ -117,10 +121,10 @@ A: Yes, cloud storage is optional. You'll get Redis caching without long-term st
 ## Next Steps
 
 1. **Try lite mode**: `uv run akosha start`
-2. **Explore the docs**: [Complete Guide](docs/guides/operational-modes.md)
-3. **Set up Redis**: `docker run -d -p 6379:6379 redis:alpine`
-4. **Try standard mode**: `uv run akosha start --mode=standard`
+1. **Explore the docs**: [Complete Guide](docs/guides/operational-modes.md)
+1. **Set up Redis**: `docker run -d -p 6379:6379 redis:alpine`
+1. **Try standard mode**: `uv run akosha start --mode=standard`
 
----
+______________________________________________________________________
 
 **Questions?** Check the [complete guide](docs/guides/operational-modes.md) or [open an issue](https://github.com/yourusername/akosha/issues).

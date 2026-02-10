@@ -3,9 +3,9 @@
 Provides instrumentation for ingestion, query, and storage operations.
 """
 
-from prometheus_client import Counter, Gauge, Histogram, Summary
-from prometheus_client.utils import INF
 import logging
+
+from prometheus_client import Counter, Gauge, Histogram
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +135,7 @@ system_disk_usage_bytes = Gauge(
 # Metrics Collection Helpers
 # =============================================================================
 
+
 class MetricsCollector:
     """Helper class for collecting system metrics."""
 
@@ -152,13 +153,14 @@ class MetricsCollector:
         system_memory_usage_bytes.set(memory.used)
 
         # Disk usage
-        disk = psutil.disk_usage('/')
+        disk = psutil.disk_usage("/")
         system_disk_usage_bytes.labels(mount_point="/").set(disk.used)
 
 
 # =============================================================================
 # Decorators for automatic instrumentation
 # =============================================================================
+
 
 def track_ingestion(system_id: str = "unknown"):
     """Decorator to track ingestion metrics.
@@ -233,7 +235,7 @@ def track_query(query_type: str = "search"):
 
                 return result
 
-            except Exception as e:
+            except Exception:
                 status = "error"
                 raise
 
@@ -267,13 +269,11 @@ def track_migration(source_tier: str, target_tier: str):
                     source_tier=source_tier,
                     target_tier=target_tier,
                     status=status,
-                ).inc(
-                    amount=getattr(result, "records_migrated", 0)
-                )
+                ).inc(amount=getattr(result, "records_migrated", 0))
 
                 return result
 
-            except Exception as e:
+            except Exception:
                 status = "error"
                 migration_records_total.labels(
                     source_tier=source_tier,
@@ -294,6 +294,7 @@ def track_migration(source_tier: str, target_tier: str):
 from fastapi import FastAPI, Request
 from starlette.responses import Response
 
+
 def setup_metrics_endpoint(app: FastAPI) -> None:
     """Setup /metrics endpoint for Prometheus scraping.
 
@@ -302,7 +303,7 @@ def setup_metrics_endpoint(app: FastAPI) -> None:
         setup_metrics_endpoint(app)
     """
 
-    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
     @app.get("/metrics")
     async def metrics():
@@ -325,14 +326,12 @@ def setup_middleware(app: FastAPI) -> None:
     async def track_requests(request: Request, call_next):
         """Track all HTTP requests."""
         # Record start time
-        start_time = None  # Will be set in histogram
 
         # Process request
         response = await call_next(request)
 
         # Track metrics based on endpoint
         endpoint = request.url.path
-        method = request.method
 
         # Update metrics (example - customize as needed)
         if endpoint.startswith("/ingest/"):
@@ -353,6 +352,7 @@ def setup_middleware(app: FastAPI) -> None:
 # =============================================================================
 # Convenience functions for manual metric updates
 # =============================================================================
+
 
 def record_ingestion_event(system_id: str, status: str, duration: float = 0.0):
     """Record ingestion event manually."""

@@ -198,8 +198,8 @@ scrape_configs:
 Import dashboards from `monitoring/dashboards/`:
 
 1. Login to Grafana
-2. Go to Dashboards → Import
-3. Upload JSON files:
+1. Go to Dashboards → Import
+1. Upload JSON files:
    - `ingestion.json`
    - `query.json`
    - `storage.json`
@@ -298,6 +298,7 @@ Network policies restrict pod-to-pod communication:
 ### Pod Security
 
 All pods run with:
+
 - Non-root user (UID 1000)
 - No privilege escalation
 - Dropped capabilities (all)
@@ -371,10 +372,11 @@ Before deploying to production:
 ## Support
 
 For issues or questions:
+
 - **Documentation**: [../docs/DEPLOYMENT_GUIDE.md](../docs/DEPLOYMENT_GUIDE.md)
 - **Issues**: https://github.com/yourusername/akosha/issues
 - **Email**: akosha@example.com
 
----
+______________________________________________________________________
 
 **Last Updated**: 2025-02-08

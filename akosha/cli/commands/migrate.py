@@ -10,7 +10,8 @@ import shutil
 from pathlib import Path
 
 import click
-from akosha.storage.path_resolver import StoragePathResolver, get_default_resolver
+
+from akosha.storage.path_resolver import get_default_resolver
 
 
 @click.group()
@@ -110,7 +111,7 @@ def data(dry_run: bool, from_path: Path, to_path: Path | None) -> None:
             click.echo(f"❌ Error migrating {subdir.name}/: {e}", err=True)
 
     # Summary
-    click.echo(f"\nMigration complete:")
+    click.echo("\nMigration complete:")
     click.echo(f"  ✅ Migrated: {results['migrated']}")
     click.echo(f"  ⏭️  Skipped: {results['skipped']}")
     click.echo(f"  ❌ Errors: {results['errors']}")
@@ -157,7 +158,7 @@ def rollback(path: Path) -> None:
     resolver = get_default_resolver()
     current_path = resolver.get_warm_store_path().parent
 
-    click.echo(f"Rolling back migration...")
+    click.echo("Rolling back migration...")
     click.echo(f"  From: {current_path}")
     click.echo(f"  To: {path}")
 
@@ -175,7 +176,7 @@ def rollback(path: Path) -> None:
 
     try:
         shutil.copytree(current_path, path, dirs_exist_ok=True)
-        click.echo(f"✅ Rollback complete")
+        click.echo("✅ Rollback complete")
         click.echo(f"  Data copied to: {path}")
     except Exception as e:
         click.echo(f"❌ Rollback failed: {e}", err=True)

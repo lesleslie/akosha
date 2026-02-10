@@ -5,45 +5,50 @@
 **Implementation Time**: 1 hour (as predicted: 1 hour parallel)
 **Date**: 2026-02-05
 
----
+______________________________________________________________________
 
 ## Overview
 
 The Akosha Real-Time Alerting System provides proactive pattern detection and webhook-based alert notifications for the entire ecosystem. It enables automated monitoring and response to critical patterns in aggregated analytics data.
 
----
+______________________________________________________________________
 
 ## Features
 
 ### Core Capabilities
 
 1. **Webhook-Based Alert Notifications**
+
    - Send alerts to any HTTP endpoint
    - Multiple webhooks per alert type
    - Configurable timeout (default: 10s)
 
-2. **Pattern Detection Thresholds**
+1. **Pattern Detection Thresholds**
+
    - Configurable thresholds for each alert type
    - Automatic severity assignment
    - Formatted alert messages with context
 
-3. **Alert Routing**
+1. **Alert Routing**
+
    - Route different alert types to different webhooks
    - Support for multiple destinations per alert type
    - Flexible webhook management
 
-4. **Alert Deduplication**
+1. **Alert Deduplication**
+
    - 5-minute deduplication window (configurable)
    - Hash-based deduplication keys
    - Automatic cleanup of old entries
 
-5. **Multiple Alert Types**
+1. **Multiple Alert Types**
+
    - Anomaly detection
    - Trend analysis
    - System health monitoring
    - Knowledge graph changes
 
----
+______________________________________________________________________
 
 ## Alert Types
 
@@ -69,7 +74,7 @@ The Akosha Real-Time Alerting System provides proactive pattern detection and we
 - **NEW_ENTITY_DETECTED**: New entity discovered
 - **RELATIONSHIP_CHANGE**: Relationship change detected
 
----
+______________________________________________________________________
 
 ## Severity Levels
 
@@ -78,7 +83,7 @@ The Akosha Real-Time Alerting System provides proactive pattern detection and we
 - **ERROR**: Error alerts (e.g., error spike)
 - **CRITICAL**: Critical alerts requiring immediate attention
 
----
+______________________________________________________________________
 
 ## Usage
 
@@ -159,7 +164,7 @@ result = await manager.check_and_alert(
 )
 ```
 
----
+______________________________________________________________________
 
 ## Alert Format
 
@@ -183,7 +188,7 @@ Alerts are sent to webhooks as JSON:
 }
 ```
 
----
+______________________________________________________________________
 
 ## Deduplication
 
@@ -192,8 +197,8 @@ The system prevents duplicate alerts from being sent within a 5-minute window.
 ### How It Works
 
 1. **Deduplication Key**: `{alert_type}:{hash(pattern_data)}`
-2. **Window**: 5 minutes (configurable)
-3. **Cleanup**: Old entries automatically removed
+1. **Window**: 5 minutes (configurable)
+1. **Cleanup**: Old entries automatically removed
 
 ### Example
 
@@ -211,7 +216,7 @@ await check_metric_and_alert(AlertType.HIGH_LATENCY, 2000.0)
 # → Webhook called
 ```
 
----
+______________________________________________________________________
 
 ## Integration Examples
 
@@ -260,7 +265,7 @@ async def handle_alert(request: Request):
     return {"status": "received"}
 ```
 
----
+______________________________________________________________________
 
 ## Configuration
 
@@ -283,7 +288,7 @@ ALERT_DEDUP_WINDOW=5  # minutes
 | SPIKE_IN_ERRORS | 10.0x | > threshold |
 | ANOMALY_DETECTED | 2.0σ | > threshold |
 
----
+______________________________________________________________________
 
 ## Testing
 
@@ -310,17 +315,17 @@ pytest --cov=akosha.alerting --cov-report=html
 - Convenience functions
 - Error handling
 
----
+______________________________________________________________________
 
 ## Architecture
 
 ### Components
 
 1. **Alert**: Dataclass representing an alert notification
-2. **AlertRouter**: Routes alerts to registered webhooks
-3. **AlertDeduplicator**: Prevents duplicate alerts
-4. **PatternDetector**: Detects patterns and creates alerts
-5. **AlertManager**: Main coordination system
+1. **AlertRouter**: Routes alerts to registered webhooks
+1. **AlertDeduplicator**: Prevents duplicate alerts
+1. **PatternDetector**: Detects patterns and creates alerts
+1. **AlertManager**: Main coordination system
 
 ### Data Flow
 
@@ -330,14 +335,14 @@ Metrics → PatternDetector → Alert → AlertRouter → Webhooks
                               AlertDeduplicator
 ```
 
----
+______________________________________________________________________
 
 ## Performance
 
 ### Scalability
 
 - **Throughput**: 1000+ alerts/second
-- **Latency**: <100ms p95 for webhook delivery
+- **Latency**: \<100ms p95 for webhook delivery
 - **Deduplication**: O(1) lookup per alert
 
 ### Reliability
@@ -346,7 +351,7 @@ Metrics → PatternDetector → Alert → AlertRouter → Webhooks
 - **Circuit Breaker**: Automatic webhook failure detection
 - **Dead Letter Queue**: Failed alerts logged for review
 
----
+______________________________________________________________________
 
 ## Best Practices
 
@@ -405,30 +410,30 @@ async def handle_alert(request: Request):
         return {"status": "error"}
 ```
 
----
+______________________________________________________________________
 
 ## Troubleshooting
 
 ### Alerts Not Being Sent
 
 1. Check webhook is registered: `router.get_webhooks(alert_type)`
-2. Check deduplication window (may be too recent)
-3. Check webhook URL is accessible
-4. Check webhook timeout (default: 10s)
+1. Check deduplication window (may be too recent)
+1. Check webhook URL is accessible
+1. Check webhook timeout (default: 10s)
 
 ### Too Many Duplicate Alerts
 
 1. Increase deduplication window: `AlertDeduplicator(window_minutes=10)`
-2. Add more specific metadata to create different deduplication keys
-3. Review threshold settings
+1. Add more specific metadata to create different deduplication keys
+1. Review threshold settings
 
 ### Webhook Timeouts
 
 1. Increase timeout: `AlertManager(_webhook_timeout=30.0)`
-2. Check webhook endpoint performance
-3. Consider using async webhook handlers
+1. Check webhook endpoint performance
+1. Consider using async webhook handlers
 
----
+______________________________________________________________________
 
 ## Future Enhancements
 
@@ -439,7 +444,7 @@ async def handle_alert(request: Request):
 - [ ] Alert history and analytics
 - [ ] UI for alert management
 
----
+______________________________________________________________________
 
 ## Credits
 
@@ -447,7 +452,7 @@ async def handle_alert(request: Request):
 
 **Review**: code-reviewer
 
----
+______________________________________________________________________
 
 ## Status
 
@@ -459,6 +464,6 @@ async def handle_alert(request: Request):
 
 **Tests Created**: 35 tests covering all alerting functionality
 
----
+______________________________________________________________________
 
 **Next**: Continue with Agno adapter completion (Quick Win #5)

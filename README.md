@@ -288,7 +288,6 @@ for pair in correlation.system_pairs:
 
 ______________________________________________________________________
 
-
 ## 🛠️ CLI Reference
 
 ### Admin Shell
@@ -302,6 +301,7 @@ akosha shell
 The admin shell provides:
 
 - **Intelligence Commands**:
+
   - `aggregate()` - Aggregate across systems
   - `search()` - Search distributed memory
   - `detect()` - Detect anomalies
@@ -309,6 +309,7 @@ The admin shell provides:
   - `trends()` - Analyze trends
 
 - **Session Tracking**: Automatic tracking via Session-Buddy MCP
+
 - **IPython Features**: Tab completion, magic commands, rich output
 
 See [Admin Shell Documentation](docs/ADMIN_SHELL.md) for details.
@@ -325,7 +326,6 @@ akosha info
 # Start Akosha server
 akosha start --host 0.0.0.0 --port 8000
 ```
-
 
 ## 🏗️ Architecture
 
@@ -463,7 +463,7 @@ ______________________________________________________________________
 
 - [ ] Deploy to production Kubernetes cluster
 - [ ] Onboard 10 pilot systems
-- [ ] Monitor SLO compliance (P50 <500ms, P99 <2s)
+- [ ] Monitor SLO compliance (P50 \<500ms, P99 \<2s)
 - [ ] Scale to 100 systems
 - [ ] Validate cost projections
 

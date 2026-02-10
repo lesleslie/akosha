@@ -30,11 +30,13 @@ Akosha is designed as a **standalone service** that can operate independently or
 **Integration Type**: MCP Client/Server
 
 **Benefits**:
+
 - Mahavishnu can query Akosha for cross-system insights
 - Akosha can aggregate data from Mahavishnu-managed systems
 - Automated workflow orchestration for analytics tasks
 
 **Configuration**:
+
 ```yaml
 # In Mahavishnu settings
 akosha:
@@ -51,11 +53,13 @@ akosha:
 **Integration Type**: MCP Client
 
 **Benefits**:
+
 - Real-time session data ingestion
 - Cross-system session correlation
 - Memory aggregation across all Session-Buddy instances
 
 **Configuration**:
+
 ```python
 # Akosha automatically discovers Session-Buddy instances via MCP
 # No manual configuration required
@@ -70,11 +74,13 @@ akosha:
 **Integration Type**: External Service
 
 **Benefits**:
+
 - Horizontal scaling for vector search
 - Multi-node deployment
 - Advanced vector similarity algorithms
 
 **Configuration**:
+
 ```bash
 # Environment variables
 AKOSHA_OPENSEARCH_ENABLED=true
@@ -91,11 +97,13 @@ AKOSHA_OPENSEARCH_INDEX=akosha_memories
 **Integration Type**: Cloud Storage
 
 **Benefits**:
+
 - 90+ day data retention at low cost
 - Automatic data tiering
 - Parquet format for efficient querying
 
 **Configuration**:
+
 ```bash
 # Environment variables
 AKOSHA_COLD_BUCKET=your-bucket-name
@@ -193,6 +201,7 @@ mahavishnu start
 **Purpose**: Metrics collection and alerting
 
 **Configuration**:
+
 ```yaml
 # Prometheus scrape config
 scrape_configs:

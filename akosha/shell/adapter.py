@@ -44,7 +44,7 @@ class AkoshaShell(AdminShell):
         >>> shell.start()
     """
 
-    def __init__(self, app: "AkoshaApplication", config: Any | None = None) -> None:
+    def __init__(self, app: AkoshaApplication, config: Any | None = None) -> None:
         """Initialize Akosha admin shell.
 
         Args:
@@ -101,21 +101,11 @@ class AkoshaShell(AdminShell):
         self.namespace.update(
             {
                 # Intelligence commands
-                "aggregate": lambda *args, **kwargs: asyncio.run(
-                    self._aggregate(*args, **kwargs)
-                ),
-                "search": lambda *args, **kwargs: asyncio.run(
-                    self._search(*args, **kwargs)
-                ),
-                "detect": lambda *args, **kwargs: asyncio.run(
-                    self._detect(*args, **kwargs)
-                ),
-                "graph": lambda *args, **kwargs: asyncio.run(
-                    self._graph(*args, **kwargs)
-                ),
-                "trends": lambda *args, **kwargs: asyncio.run(
-                    self._trends(*args, **kwargs)
-                ),
+                "aggregate": lambda *args, **kwargs: asyncio.run(self._aggregate(*args, **kwargs)),
+                "search": lambda *args, **kwargs: asyncio.run(self._search(*args, **kwargs)),
+                "detect": lambda *args, **kwargs: asyncio.run(self._detect(*args, **kwargs)),
+                "graph": lambda *args, **kwargs: asyncio.run(self._graph(*args, **kwargs)),
+                "trends": lambda *args, **kwargs: asyncio.run(self._trends(*args, **kwargs)),
                 # Adapters
                 "adapters": self._get_adapters_info,
                 "version": self._get_component_version,
@@ -196,9 +186,7 @@ class AkoshaShell(AdminShell):
         Returns:
             Anomaly detection results
         """
-        logger.info(
-            f"Detecting anomalies: metric={metric}, threshold={threshold}, window={window}"
-        )
+        logger.info(f"Detecting anomalies: metric={metric}, threshold={threshold}, window={window}")
 
         # TODO: Implement actual anomaly detection
         return {
@@ -308,7 +296,7 @@ Utility:
   %help_shell                         Shell magic commands
 
 Type 'help()' for Python help or '%help_shell' for shell commands
-{'=' * 70}
+{"=" * 70}
 """
 
     async def start(self) -> None:
