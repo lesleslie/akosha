@@ -1,6 +1,6 @@
 [project]
 name = "akosha"
-version = "0.1.0"
+version = "0.2.0"
 description = "Universal Memory Aggregation System - Cross-system intelligence for Session-Buddy"
 readme = "README.md"
 requires-python = ">=3.13"
