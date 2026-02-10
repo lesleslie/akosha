@@ -12,28 +12,42 @@ Usage:
 from __future__ import annotations
 
 import logging
-import os
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from akosha.storage.hot_store import HotStore
-from akosha.utils.error_management import _get_logger
 
 if TYPE_CHECKING:
-    from fastmcp import FastMCP
+    from akosha.mcp.tools.tool_registry import FastMCPToolRegistry, ToolCategory, ToolMetadata
 
-logger = _get_logger()
+logger = logging.getLogger(__name__)
 
 
-def register_session_buddy_tools(mcp: FastMCP, hot_store: HotStore) -> None:
+def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotStore) -> None:
     """Register Session-Buddy integration tools with MCP server.
 
     Args:
-        mcp: FastMCP application instance
+        registry: FastMCP tool registry for registering tools
         hot_store: Hot store instance for memory insertion
     """
 
-    @mcp.tool()
+    from akosha.mcp.tools.tool_registry import ToolCategory, ToolMetadata
+
+    @registry.register(
+        ToolMetadata(
+            name="store_memory",
+            description="Store a memory directly from Session-Buddy via HTTP push endpoint",
+            category=ToolCategory.INGESTION,
+            examples=[
+                {
+                    "memory_id": "mem_123",
+                    "text": "How to implement JWT authentication",
+                    "embedding": [0.1] * 384,
+                    "metadata": {"source": "http://localhost:8678"},
+                }
+            ],
+        )
+    )
     async def store_memory(
         memory_id: str,
         text: str,
@@ -86,14 +100,14 @@ def register_session_buddy_tools(mcp: FastMCP, hot_store: HotStore) -> None:
         """
         try:
             # Validate input
-            if not memory_id or not isinstance(memory_id, str):
+            if not memory_id:
                 return {
                     "status": "failed",
                     "memory_id": memory_id,
                     "error": "Invalid memory_id: must be non-empty string",
                 }
 
-            if not text or not isinstance(text, str):
+            if not text:
                 return {
                     "status": "failed",
                     "memory_id": memory_id,
@@ -168,7 +182,30 @@ def register_session_buddy_tools(mcp: FastMCP, hot_store: HotStore) -> None:
                 "error": str(e),
             }
 
-    @mcp.tool()
+    @registry.register(
+        ToolMetadata(
+            name="batch_store_memories",
+            description="Store multiple memories from Session-Buddy in a single batch",
+            category=ToolCategory.INGESTION,
+            examples=[
+                {
+                    "memories": [
+                        {
+                            "memory_id": "mem_1",
+                            "text": "First memory",
+                            "embedding": [0.1] * 384,
+                            "metadata": {"source": "http://localhost:8678"},
+                        },
+                        {
+                            "memory_id": "mem_2",
+                            "text": "Second memory",
+                            "embedding": [0.3] * 384,
+                        },
+                    ]
+                }
+            ],
+        )
+    )
     async def batch_store_memories(
         memories: list[dict[str, Any]],
     ) -> dict[str, Any]:
@@ -247,7 +284,7 @@ def register_session_buddy_tools(mcp: FastMCP, hot_store: HotStore) -> None:
                     memory_id = memory_dict.get("memory_id")
                     text = memory_dict.get("text")
                     embedding = memory_dict.get("embedding")
-                    metadata = memory_dict.get("metadata")
+                    mem_metadata = memory_dict.get("metadata")
 
                     # Validate required fields
                     if not memory_id or not text:
@@ -263,7 +300,7 @@ def register_session_buddy_tools(mcp: FastMCP, hot_store: HotStore) -> None:
                         memory_id=memory_id,
                         text=text,
                         embedding=embedding,
-                        metadata=metadata,
+                        metadata=mem_metadata,
                     )
 
                     if result["status"] == "stored":

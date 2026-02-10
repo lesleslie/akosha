@@ -1,0 +1,124 @@
+# Akosha Standard Mode Configuration
+# Full production configuration with Redis and cloud storage
+# Best for: Production, scaling, persistent storage
+
+mode: standard
+
+# Storage Configuration
+storage:
+  # Hot store: DuckDB in-memory
+  hot:
+    backend: duckdb-memory
+    path: ":memory:"
+    write_ahead_log: true
+    wal_path: null  # Resolved by StoragePathResolver (/data/akosha/wal in containers)
+
+  # Warm store: DuckDB on-disk (NVMe SSD)
+  warm:
+    backend: duckdb-ssd
+    path: null  # Resolved by StoragePathResolver (/data/akosha/warm in containers)
+    num_partitions: 256  # Full partitioning for scale
+
+  # Cold store: Cloud storage via Oneiric
+  cold:
+    enabled: true
+    backend: "local"  # Options: local, s3, azure, gcs
+    bucket: "akosha-cold-data"
+    prefix: "conversations/"
+    format: "parquet"
+    local_path: "./data/cold"  # For local backend
+
+    # Cloud-specific settings (example for S3)
+    region: "us-west-2"
+    endpoint: null  # Use default endpoint
+
+# Cache Configuration
+cache:
+  backend: redis  # Redis L2 cache
+  host: "localhost"
+  port: 6379
+  db: 0
+  local_ttl_seconds: 60
+  redis_ttl_seconds: 3600
+
+  # Redis pool settings
+  pool_size: 10
+  max_connections: 50
+  socket_timeout: 5
+  socket_connect_timeout: 5
+
+# API Configuration
+api:
+  port: 8682
+  mcp_port: 3002
+  host: "0.0.0.0"  # Listen on all interfaces
+  debug: false
+
+  # CORS settings
+  cors_origins: ["*"]  # Configure for production
+  cors_methods: ["GET", "POST", "OPTIONS"]
+  cors_headers: ["*"]
+
+# Processing Configuration
+processing:
+  ingestion_workers: 3  # Multiple workers for scale
+  max_concurrent_ingests: 100
+  shard_count: 256
+
+  # Batch processing
+  batch_size: 100
+  batch_timeout_seconds: 30
+
+# Monitoring
+monitoring:
+  metrics_enabled: true
+  tracing_enabled: true  # OpenTelemetry tracing
+  health_check_interval: 30
+
+  # Prometheus metrics
+  prometheus_port: 9090
+  prometheus_path: "/metrics"
+
+  # OTLP endpoint
+  otlp_endpoint: "http://localhost:4317"
+  otlp_protocol: "grpc"
+
+# Security
+security:
+  authentication_enabled: true  # JWT auth for production
+  jwt_secret: "${AKOSHA_JWT_SECRET}"  # From environment
+  jwt_expiration_hours: 24
+
+  # Rate limiting
+  rate_limit_enabled: true
+  rate_limit_requests_per_minute: 1000
+
+  # TLS/SSL
+  tls_enabled: false  # Enable for production
+  tls_cert_path: null
+  tls_key_path: null
+
+# Logging
+logging:
+  level: "INFO"
+  format: "json"
+  output: "stdout"
+
+  # Structured logging
+  include_timestamp: true
+  include_level: true
+  include_caller: true
+
+# Observability
+observability:
+  # Alerting
+  alerting_enabled: true
+  alert_webhook_url: "${AKOSHA_ALERT_WEBHOOK_URL}"
+
+  # Status checks
+  status_page_enabled: true
+  status_path: "/status"
+
+# Environment-specific overrides
+# Use environment variables to override these values:
+# AKOSHA_REDIS_HOST, AKOSHA_COLD_BUCKET, AKOSHA_JWT_SECRET, etc.

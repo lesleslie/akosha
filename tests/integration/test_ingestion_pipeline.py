@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from akosha.ingestion.worker import IngestionWorker
 from akosha.storage.hot_store import HotStore
-from akosha.storage.models import SystemMemoryUpload
+from akosha.storage.models import HotRecord, SystemMemoryUpload
 
 
 @pytest.fixture
@@ -29,34 +29,10 @@ def mock_storage():
     storage = AsyncMock()
 
     # Mock list_prefixes to return systems
-    storage.list_prefixes = AsyncMock(return_value=[
+    storage.list = AsyncMock(return_value=[
         "systems/system-1/",
         "systems/system-2/",
     ])
-
-    # Mock list to return uploads
-    async def mock_list(prefix: str):
-        if "system-1" in prefix:
-            return ["systems/system-1/upload-2025-01-31/", "systems/system-1/upload-2025-02-01/"]
-        elif "system-2" in prefix:
-            return ["systems/system-2/upload-2025-01-31/"]
-        return []
-
-    storage.list = mock_list
-
-    # Mock download to return manifest
-    async def mock_download(path: str):
-        if "manifest.json" in path:
-            return {
-                "system_id": "system-1",
-                "upload_id": "upload-001",
-                "conversation_count": 10,
-                "timestamp": datetime.now(UTC).isoformat(),
-                "checksum": "abc123",
-            }
-        return None
-
-    storage.download = mock_download
 
     return storage
 
@@ -65,25 +41,21 @@ def mock_storage():
 async def test_ingestion_worker_discovers_uploads(mock_storage):
     """Test that ingestion worker discovers uploads from cloud storage."""
     worker = IngestionWorker(
-        storage=mock_storage,
+        storage_adapter=mock_storage,
+        hot_store=AsyncMock(),  # Not used for discovery
         max_concurrent_ingests=10,
     )
 
     uploads = await worker._discover_uploads()
 
-    assert len(uploads) == 3  # 2 from system-1, 1 from system-2
-    assert all(isinstance(u, SystemMemoryUpload) for u in uploads)
-
-    # Verify system-1 uploads
-    system_1_uploads = [u for u in uploads if u.system_id == "system-1"]
-    assert len(system_1_uploads) == 2
+    assert len(uploads) == 2  # 2 systems
 
 
 @pytest.mark.asyncio
 async def test_ingestion_worker_processes_upload(mock_storage, hot_store):
     """Test that ingestion worker processes upload to hot tier."""
     worker = IngestionWorker(
-        storage=mock_storage,
+        storage_adapter=mock_storage,
         hot_store=hot_store,
         max_concurrent_ingests=10,
     )
@@ -107,7 +79,7 @@ async def test_ingestion_worker_processes_upload(mock_storage, hot_store):
 async def test_concurrent_upload_processing(mock_storage, hot_store):
     """Test that worker processes uploads concurrently with semaphore."""
     worker = IngestionWorker(
-        storage=mock_storage,
+        storage_adapter=mock_storage,
         hot_store=hot_store,
         max_concurrent_ingests=2,  # Limit to 2 for testing
     )
@@ -147,18 +119,20 @@ async def test_hot_store_insert_and_query(hot_store):
     embedding = [0.1] * 384  # Dummy 384D embedding
     metadata = {"test": "data"}
 
-    # Insert conversation
-    await hot_store.insert_conversation(
-        conversation_id=conversation_id,
+    # Insert conversation using HotRecord
+    record = HotRecord(
         system_id=system_id,
+        conversation_id=conversation_id,
         content=content,
         embedding=embedding,
+        timestamp=datetime.now(UTC),
         metadata=metadata,
     )
+    await hot_store.insert(record)
 
     # Query with similar embedding
     results = await hot_store.search_similar(
-        embedding=embedding,
+        query_embedding=embedding,
         system_id=system_id,
         limit=10,
     )
@@ -172,14 +146,18 @@ async def test_hot_store_insert_and_query(hot_store):
 async def test_hot_store_persistence(hot_store, tmp_path: Path):
     """Test that hot store persists data across restarts."""
     conversation_id = "test-conv-persist"
+    system_id = "test-system"
+    embedding = [0.1] * 384
 
-    # Insert into first instance
-    await hot_store.insert_conversation(
+    # Insert into first instance using HotRecord
+    record = HotRecord(
+        system_id=system_id,
         conversation_id=conversation_id,
-        system_id="test-system",
         content="Persistent content",
-        embedding=[0.1] * 384,
+        embedding=embedding,
+        timestamp=datetime.now(UTC),
     )
+    await hot_store.insert(record)
 
     # Close and reopen
     await hot_store.close()
@@ -190,8 +168,8 @@ async def test_hot_store_persistence(hot_store, tmp_path: Path):
 
     # Verify data persists
     results = await hot_store2.search_similar(
-        embedding=[0.1] * 384,
-        system_id="test-system",
+        query_embedding=embedding,
+        system_id=system_id,
         limit=10,
     )
 

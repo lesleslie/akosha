@@ -47,9 +47,10 @@ def register_all_tools(
         register_session_buddy_tools(registry, hot_store)
         logger.info("Registered Session-Buddy integration tools")
 
-        # Register code graph analysis tools
-        register_code_graph_tools(registry, hot_store)
-        logger.info("Registered code graph analysis tools")
+        # TODO: Fix code_graph_tools.py to use registry API
+        # # Register code graph analysis tools
+        # register_code_graph_tools(registry, hot_store)
+        # logger.info("Registered code graph analysis tools")
     else:
         logger.info("Hot store not provided, skipping code graph and Session-Buddy tools")
 

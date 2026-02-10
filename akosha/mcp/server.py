@@ -45,13 +45,17 @@ APP_NAME: Final = "akosha-mcp"
 APP_VERSION: Final = "0.1.0"
 
 
-def create_app() -> FastMCP:
+def create_app(mode: Any | None = None) -> FastMCP:
     """Create and configure the FastMCP application.
 
     This function initializes the FastMCP server with all necessary services,
     including authentication, telemetry, embedding generation, analytics,
     and knowledge graph capabilities. The server uses a custom lifespan
     manager to handle startup and shutdown sequences.
+
+    Args:
+        mode: Optional mode instance (LiteMode, StandardMode) controlling
+            service initialization behavior. If None, uses default behavior.
 
     The initialization process includes:
     1. Authentication configuration validation
@@ -81,6 +85,9 @@ def create_app() -> FastMCP:
         name=APP_NAME,
         version=APP_VERSION,
     )
+
+    # Capture mode for lifespan closure
+    mode_instance = mode
 
     # Custom lifespan for startup/shutdown
     @asynccontextmanager
@@ -148,6 +155,24 @@ def create_app() -> FastMCP:
         from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
         from akosha.storage.hot_store import HotStore
 
+        # Check if we're in lite mode
+        is_lite_mode = (
+            mode_instance is not None
+            and hasattr(mode_instance, "requires_external_services")
+            and not mode_instance.requires_external_services
+        )
+
+        if is_lite_mode:
+            logger.info("Running in lite mode - using minimal services")
+        else:
+            logger.info("Running in standard mode - using full services")
+
+        # Initialize cache layer based on mode
+        if mode_instance is not None and hasattr(mode_instance, "initialize_cache"):
+            cache_client = await mode_instance.initialize_cache()
+        else:
+            cache_client = None
+
         embedding_service = get_embedding_service()
         await embedding_service.initialize()
         logger.info(
@@ -155,16 +180,27 @@ def create_app() -> FastMCP:
             f"{'real' if embedding_service.is_available() else 'fallback'} mode"
         )
 
-        analytics_service = TimeSeriesAnalytics()
-        logger.info("Time-series analytics service initialized")
+        # In lite mode, skip analytics and knowledge graph
+        if not is_lite_mode:
+            analytics_service = TimeSeriesAnalytics()
+            logger.info("Time-series analytics service initialized")
 
-        graph_builder = KnowledgeGraphBuilder()
-        logger.info("Knowledge graph builder initialized")
+            graph_builder = KnowledgeGraphBuilder()
+            logger.info("Knowledge graph builder initialized")
+        else:
+            analytics_service = None
+            graph_builder = None
 
-        # Initialize hot store
+        # Initialize hot store (always use in-memory for simplicity)
         hot_store = HotStore(database_path=":memory:")
         await hot_store.initialize()
         logger.info("Hot store initialized")
+
+        # Initialize cold storage if available
+        if mode_instance is not None and hasattr(mode_instance, "initialize_cold_storage"):
+            cold_storage = await mode_instance.initialize_cold_storage()
+        else:
+            cold_storage = None
 
         # Register MCP tools with Phase 2 services
         from akosha.mcp.tools import register_all_tools
@@ -183,6 +219,9 @@ def create_app() -> FastMCP:
             "analytics_service": analytics_service,
             "tracer": tracer,
             "meter": meter,
+            "mode": "lite" if is_lite_mode else "standard",
+            "cache_client": cache_client,
+            "cold_storage": cold_storage,
         }
 
         # Shutdown telemetry (synchronous call, no await needed)
