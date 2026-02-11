@@ -22,6 +22,9 @@ from mcp_common.websocket import (
 # Import authentication
 from akosha.websocket.auth import get_authenticator
 
+# Import TLS configuration
+from akosha.websocket.tls_config import load_ssl_context, get_websocket_tls_config
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,6 +54,21 @@ class AkoshaWebSocketServer(WebSocketServer):
         >>> analytics = AnalyticsEngine()
         >>> server = AkoshaWebSocketServer(analytics_engine=analytics)
         >>> await server.start()
+
+    With TLS:
+        >>> server = AkoshaWebSocketServer(
+        ...     analytics_engine=analytics,
+        ...     cert_file="/path/to/cert.pem",
+        ...     key_file="/path/to/key.pem"
+        ... )
+        >>> await server.start()
+
+    With auto-generated development certificate:
+        >>> server = AkoshaWebSocketServer(
+        ...     analytics_engine=analytics,
+        ...     tls_enabled=True
+        ... )
+        >>> await server.start()
     """
 
     def __init__(
@@ -61,6 +79,12 @@ class AkoshaWebSocketServer(WebSocketServer):
         max_connections: int = 1000,
         message_rate_limit: int = 100,
         require_auth: bool = False,
+        cert_file: str | None = None,
+        key_file: str | None = None,
+        ca_file: str | None = None,
+        tls_enabled: bool = False,
+        verify_client: bool = False,
+        auto_cert: bool = False,
     ):
         """Initialize Akosha WebSocket server.
 
@@ -71,8 +95,32 @@ class AkoshaWebSocketServer(WebSocketServer):
             max_connections: Maximum concurrent connections (default: 1000)
             message_rate_limit: Messages per second per connection (default: 100)
             require_auth: Require JWT authentication for connections
+            cert_file: Path to TLS certificate file (PEM format)
+            key_file: Path to TLS private key file (PEM format)
+            ca_file: Path to CA file for client verification
+            tls_enabled: Enable TLS (generates self-signed cert if no cert provided)
+            verify_client: Verify client certificates
+            auto_cert: Auto-generate self-signed certificate for development
         """
         authenticator = get_authenticator()
+
+        # Load TLS configuration if enabled
+        ssl_context = None
+        if tls_enabled or cert_file or key_file:
+            tls_config = load_ssl_context(
+                cert_file=cert_file,
+                key_file=key_file,
+                ca_file=ca_file,
+                verify_client=verify_client,
+            )
+            ssl_context = tls_config["ssl_context"]
+
+        # If TLS enabled but no context yet, check environment
+        if tls_enabled and ssl_context is None:
+            env_config = get_websocket_tls_config()
+            if env_config["tls_enabled"] and env_config["cert_file"]:
+                tls_config = load_ssl_context()
+                ssl_context = tls_config["ssl_context"]
 
         super().__init__(
             host=host,
@@ -81,10 +129,20 @@ class AkoshaWebSocketServer(WebSocketServer):
             message_rate_limit=message_rate_limit,
             authenticator=authenticator,
             require_auth=require_auth,
+            ssl_context=ssl_context,
+            cert_file=cert_file,
+            key_file=key_file,
+            ca_file=ca_file,
+            tls_enabled=tls_enabled,
+            verify_client=verify_client,
+            auto_cert=auto_cert,
         )
 
         self.analytics_engine = analytics_engine
-        logger.info(f"AkoshaWebSocketServer initialized: {host}:{port}")
+        logger.info(
+            f"AkoshaWebSocketServer initialized: {host}:{port} "
+            f"(TLS: {ssl_context is not None})"
+        )
 
     async def on_connect(self, websocket: Any, connection_id: str) -> None:
         """Handle new WebSocket connection.
@@ -106,6 +164,7 @@ class AkoshaWebSocketServer(WebSocketServer):
                 "server": "akosha",
                 "message": "Connected to Akosha pattern detection",
                 "authenticated": user is not None,
+                "secure": self.ssl_context is not None,
             },
         )
         await websocket.send(WebSocketProtocol.encode(welcome))
