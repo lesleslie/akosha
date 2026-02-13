@@ -1,100 +1,142 @@
-# Python-generated files
+# ============================================================================
+# Python - Generated Files
+# ============================================================================
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
+
+# ============================================================================
+# Python - C Extensions
+# ============================================================================
+*.pyc
+*.pyo
+
+# ============================================================================
+# Python - Distribution / Packaging
+# ============================================================================
 build/
 develop-eggs/
 dist/
 downloads/
 eggs/
-.eggs/
 lib/
 lib64/
 parts/
 sdist/
 var/
 wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
+pip-wheel-metadata/
+*.egg-info
+installed.cfg
 *.egg
 MANIFEST
+*.spec
+*.whl
 
-# Virtual environments
+# ============================================================================
+# Python - Unit Test / Coverage Reports
+# ============================================================================
+htmlcov/
+tox/
+.nox/
+coverage
+coverage.*
+nosetests.xml
+coverage.xml
+coverage.json
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# ============================================================================
+# Translations
+# ============================================================================
+*.mo
+*.pot
+
+# ============================================================================
+# Python - Environments
+# ============================================================================
+.env
 .venv
 venv/
-ENV/
 env/
-.ENV/
-.env/
+venv/
+ENV/
+ENV/
+env.bak/
+venv.bak/
 
-# Testing
-.pytest_cache/
-.coverage
-.coverage.*
-htmlcov/
-.tox/
-.nox/
-coverage.xml
-*.cover
-*.log
-.hypothesis/
-
-# Type checking
+# ============================================================================
+# Python - Type Checking & Linting
+# ============================================================================
 .mypy_cache/
 .dmypy.json
 dmypy.json
+.ruff_cache/
 .pyre/
 .pytype/
-ruff_logs/
+.pytype/
 
+# ============================================================================
+# Python - Package Management
+# ============================================================================
+.pdm-python/
+.pdm.toml
+.pyscn/
+.uv/
+.uv-cache/
+
+# ============================================================================
 # IDEs
-.vscode/
+# ============================================================================
 .idea/
+.vscode/
 *.swp
 *.swo
 *~
-.project
-.pydevproject
-.settings/
-*.sublime-project
-*.sublime-workspace
 
-# Jupyter Notebook
-.ipynb_checkpoints
-*.ipynb
+# ============================================================================
+# Logs
+# ============================================================================
+*.log
+logs/
 
-# Documentation
-docs/_build/
-docs/.doctrees/
-site/
-
+# ============================================================================
 # OS
+# ============================================================================
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
-# Database
-*.db
-*.db-journal
-*.sqlite
-*.sqlite3
+# ============================================================================
+# Local Configuration
+# ============================================================================
+settings/local.yaml
+settings/repos.yaml
+settings/ecosystem.yaml
+.envrc.local
 
-# Data and cache
-data/
-cache/
-*.cache
-.cache/
+# ============================================================================
+# Sensitive Configuration Files
+# ============================================================================
+config.yaml
+oneiric.yaml
 
-# Security
-*.pem
-*.key
-.secrets/
-credentials.json
-k8s/secret.production.yaml
+# ============================================================================
+# Crackerjack
+# ============================================================================
+.crackerjack/
+
+# ============================================================================
+# Archived Files
+# ============================================================================
+.archive/
+tests/archived/
+
+# ============================================================================
+# Project-Specific
+# ============================================================================
+# Archived test/debug scripts
+tests/archived/

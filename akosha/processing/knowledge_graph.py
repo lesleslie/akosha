@@ -8,6 +8,12 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+try:
+    from dhruva import generate as generate_ulid
+except ImportError:
+    generate_ulid = None  # Fallback for ULID
+
+
 from akosha.observability import add_span_attributes, record_counter, record_histogram, traced
 
 logger = logging.getLogger(__name__)
@@ -78,7 +84,7 @@ class KnowledgeGraphBuilder:
         if system_id:
             entities.append(
                 GraphEntity(
-                    entity_id=f"system:{system_id}",
+                    entity_id=generate_ulid() if generate_ulid else f"system:{system_id}",
                     entity_type="system",
                     properties={"name": system_id},
                     source_system=system_id,
@@ -91,7 +97,7 @@ class KnowledgeGraphBuilder:
         if user_id:
             entities.append(
                 GraphEntity(
-                    entity_id=f"user:{user_id}",
+                    entity_id=generate_ulid() if generate_ulid else f"user:{user_id}",
                     entity_type="user",
                     properties={"user_id": user_id},
                     source_system=system_id or "unknown",
@@ -103,7 +109,7 @@ class KnowledgeGraphBuilder:
         if project:
             entities.append(
                 GraphEntity(
-                    entity_id=f"project:{project}",
+                    entity_id=generate_ulid() if generate_ulid else f"project:{project}",
                     entity_type="project",
                     properties={"name": project},
                     source_system=system_id or "unknown",

@@ -4,12 +4,12 @@
     "entry_nodes": [
       "configuration"
     ],
-    "node_count": 3,
+    "node_count": 4,
     "nodes": [
       {
         "attempts": 1,
         "depends_on": [],
-        "duration_ms": 11.402660980820656,
+        "duration_ms": 2.4257480108644813,
         "node": "configuration",
         "retry_policy": null,
         "task": "configuration"
@@ -19,7 +19,17 @@
         "depends_on": [
           "configuration"
         ],
-        "duration_ms": 0.4881559871137142,
+        "duration_ms": 35.94888899533544,
+        "node": "documentation_cleanup",
+        "retry_policy": null,
+        "task": "documentation_cleanup"
+      },
+      {
+        "attempts": 1,
+        "depends_on": [
+          "documentation_cleanup"
+        ],
+        "duration_ms": 15572.51337300113,
         "node": "publishing",
         "retry_policy": null,
         "task": "publishing"
@@ -29,14 +39,14 @@
         "depends_on": [
           "publishing"
         ],
-        "duration_ms": 245.76919700484723,
+        "duration_ms": 0.8490229956805706,
         "node": "commit",
         "retry_policy": null,
         "task": "commit"
       }
     ],
-    "recorded_at": "2026-02-08T17:33:35.853607+00:00",
-    "total_duration_ms": 257.6600139727816,
+    "recorded_at": "2026-02-10T10:43:03.687539+00:00",
+    "total_duration_ms": 15611.73703300301,
     "workflow": "crackerjack"
   }
 }
