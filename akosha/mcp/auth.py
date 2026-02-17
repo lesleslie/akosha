@@ -54,7 +54,8 @@ def require_auth(func: Callable) -> Callable:
     @wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         # Check if authentication is enabled via feature flag
-        auth_enabled = os.getenv("AUTH_ENABLED", "true").lower() == "true"
+        # Default to disabled for local development
+        auth_enabled = os.getenv("AUTH_ENABLED", "false").lower() == "true"
 
         if not auth_enabled:
             # Authentication disabled - allow anonymous access
@@ -191,7 +192,8 @@ def validate_auth_config() -> bool:
     Raises:
         ValueError: If configuration is invalid
     """
-    auth_enabled = os.getenv("AUTH_ENABLED", "true").lower() == "true"
+    # Default to disabled for local development, enable only in production
+    auth_enabled = os.getenv("AUTH_ENABLED", "false").lower() == "true"
 
     if auth_enabled:
         # Ensure JWT_SECRET is set

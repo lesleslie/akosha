@@ -165,7 +165,8 @@ def is_auth_enabled() -> bool:
         return True
 
     # Check explicit enable/disable flag
-    enabled = os.getenv("AKOSHA_AUTH_ENABLED", "true").lower()
+    # Default to disabled for local development, enable in production
+    enabled = os.getenv("AKOSHA_AUTH_ENABLED", "false").lower()
     return enabled == "true"
 
 

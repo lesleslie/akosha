@@ -41,6 +41,7 @@ htmlcov/
 tox/
 .nox/
 coverage
+coverage.py
 coverage.*
 nosetests.xml
 coverage.xml
@@ -140,3 +141,20 @@ tests/archived/
 # ============================================================================
 # Archived test/debug scripts
 tests/archived/
+
+# XDG - Cache directories
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.oneiric_cache/
+.complexipy_cache/
+.cache/
+
+# XDG - State directories
+.claude/
+.session-buddy/
+.crackerjack/
+
+# XDG - DELETE candidates
+.obsidian/
+
