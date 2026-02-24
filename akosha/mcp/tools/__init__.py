@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from fastmcp import FastMCP
 
 from akosha.mcp.tools.akosha_tools import register_akosha_tools, register_code_graph_tools
+from akosha.mcp.tools.pycharm_tools import register_pycharm_tools
 from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,10 @@ def register_all_tools(
     if hot_store:
         register_session_buddy_tools(registry, hot_store)
         logger.info("Registered Session-Buddy integration tools")
+
+        # Register PyCharm integration tools
+        register_pycharm_tools(registry, hot_store)
+        logger.info("Registered PyCharm integration tools")
 
         # TODO: Fix code_graph_tools.py to use registry API
         # # Register code graph analysis tools
