@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from fastmcp import FastMCP
 
 from akosha.mcp.tools.akosha_tools import register_akosha_tools, register_code_graph_tools
+from akosha.mcp.tools.health_tools import register_health_tools_akosha
 from akosha.mcp.tools.pycharm_tools import register_pycharm_tools
 from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
 
@@ -42,6 +43,10 @@ def register_all_tools(
         analytics_service=analytics_service,
         graph_builder=graph_builder,
     )
+
+    # Register health check tools (using mcp-common)
+    register_health_tools_akosha(app)
+    logger.info("Registered health check tools")
 
     # Register Session-Buddy integration tools if hot_store is available
     if hot_store:
