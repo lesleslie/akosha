@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "akosha"
 version = "0.3.3"
@@ -162,3 +166,6 @@ exclude_deps = [
     "pytest-asyncio",
     "pytest-cov",
 ]
+
+[tool.setuptools.packages.find]
+include = ["akosha*"]
