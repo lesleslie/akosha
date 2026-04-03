@@ -2,9 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+For a shorter, tool-neutral bootstrap document, start with `AGENTS.md`.
+
 ## Project Overview
 
-This is **Akosha** (आकाश), a universal memory aggregation system for the Session-Buddy ecosystem. It ingests, stores, analyzes, and provides cross-system intelligence from 100-10,000 Session-Buddy instances.
+This is **Akosha** (आकाश), a universal memory aggregation system for the Bodai ecosystem. It ingests, stores, analyzes, and provides cross-system intelligence from 100-10,000 Session-Buddy instances.
 
 **Scale**: 10TB-1PB with 100M-1B vector embeddings
 **Purpose**: Cross-system intelligence, trend analysis, distributed pattern recognition
@@ -410,9 +412,9 @@ All major architectural decisions are documented in:
 
 - **Architecture Decisions**: [ADR-001](docs/ADR_001_ARCHITECTURE_DECISIONS.md)
 - **Implementation Guide**: [IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md)
-- **Session-Buddy**: https://github.com/yourorg/session-buddy
-- **Mahavishnu**: https://github.com/yourorg/mahavishnu
-- **Oneiric**: https://github.com/yourorg/oneiric
+- **Session-Buddy**: https://github.com/lesleslie/session-buddy
+- **Mahavishnu**: https://github.com/lesleslie/mahavishnu
+- **Oneiric**: https://github.com/lesleslie/oneiric
 
 <!-- CRACKERJACK_START -->
 

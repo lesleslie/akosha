@@ -1,21 +1,35 @@
-# Akosha (आकाश) - Universal Memory Aggregation System
+# Akosha
 
-**आकाश (Akosha) - The sky has no limits** 🚀
+[![Code style: crackerjack](https://img.shields.io/badge/code%20style-crackerjack-000042)](https://github.com/lesleslie/crackerjack)
+[![Runtime: oneiric](https://img.shields.io/badge/runtime-oneiric-6e5494)](https://github.com/lesleslie/oneiric)
+[![Framework: FastMCP](https://img.shields.io/badge/framework-FastMCP-0ea5e9)](https://github.com/jlowin/fastmcp)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+[![Python: 3.13+](https://img.shields.io/badge/python-3.13%2B-green)](https://www.python.org/downloads/)
 
-![Production Ready](https://img.shields.io/badge/status-production%20ready-brightgreen)
-![Phase 1 Complete](https://img.shields.io/badge/phase%201-complete-success)
-![Tests Passing](https://img.shields.io/badge/tests-32%2F32%20passing-brightgreen)
+Universal memory aggregation and cross-system analytics for the Bodai ecosystem.
 
-**Version**: 0.3.0 (Phase 1: Production Pilot Ready)
-**Status**: Production Ready for 100-System Pilot
 
-> "Akosha" (आकाश) means "sky" or "space" in Sanskrit - representing infinite, boundless memory aggregation across all your Session-Buddy instances.
+**Version:** 0.3.0
+**Status:** Active pilot deployment for the current phase
 
-______________________________________________________________________
+## Quick Links
 
-## 🚀 What is Akosha?
+- [Overview](#what-is-akosha)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Usage Examples](#usage-examples)
+- [Architecture](#architecture)
+- [Development](#development)
 
-Akosha is a **universal memory aggregation system** that collects, processes, and analyzes memories from multiple Session-Buddy instances (100-100,000 systems). It provides:
+## Quality & CI
+
+Crackerjack is the standard quality-control and CI/CD gate for Akosha changes. Local verification should mirror the Crackerjack workflow used across the ecosystem.
+
+---
+
+## What is Akosha?
+
+Akosha is a universal memory aggregation system that collects, processes, and analyzes memories from multiple Session Buddy instances. It provides:
 
 - **Semantic Search**: Find relevant conversations across all systems using vector embeddings
 - **Time-Series Analytics**: Detect trends, anomalies, and correlations
@@ -28,11 +42,11 @@ Akosha is a **universal memory aggregation system** that collects, processes, an
 ✅ **Scalable**: Handles 100 to 100,000+ Session-Buddy instances
 ✅ **Real-Time Analytics**: Trend detection, anomaly spotting, cross-system correlation
 ✅ **MCP Protocol**: Exposes all capabilities via Model Context Protocol
-✅ **Production Ready**: Comprehensive tests, graceful degradation, type-safe code
+✅ **Operational Baseline**: Tests, graceful degradation, and type-safe code
 
-______________________________________________________________________
+---
 
-## ⚡ Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -45,7 +59,7 @@ ______________________________________________________________________
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/yourusername/akosha.git
+git clone https://github.com/lesleslie/akosha.git
 cd akosha
 
 # 2. Install dependencies
@@ -60,9 +74,9 @@ uv run python -c "from akosha.processing.embeddings import get_embedding_service
 
 That's it! Akosha is now running and ready to aggregate memories.
 
-### 🚀 Production Deployment
+### Production Deployment
 
-For production deployment with Kubernetes, monitoring, and security:
+For deployment details, operational setup, and metrics configuration:
 
 ```bash
 # 1. Review deployment guide
@@ -81,9 +95,9 @@ curl http://localhost:8000/metrics
 
 See [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) for complete production setup.
 
-______________________________________________________________________
+---
 
-## 🔧 Installation
+## Installation
 
 ### Using UV (Recommended)
 
@@ -126,9 +140,9 @@ pip install "akosha[embeddings]"
 
 **Note**: Akosha works without these dependencies using deterministic fallback embeddings. Real embeddings provide better semantic search.
 
-______________________________________________________________________
+---
 
-## ⚙️ Configuration
+## Configuration
 
 ### Environment Variables
 
@@ -148,9 +162,9 @@ AKOSHA_HOT_PATH=/tmp/akosha/hot
 AKOSHA_WARM_PATH=/tmp/akosha/warm
 ```
 
-______________________________________________________________________
+---
 
-## 🔌 MCP Server Setup
+## MCP Server Setup
 
 ### Global Configuration (Recommended)
 
@@ -194,9 +208,9 @@ EOF
 
 > **Note**: Project-level configuration is optional. Use either global or project-level config, not both.
 
-______________________________________________________________________
+---
 
-## 💡 Usage Examples
+## Usage Examples
 
 ### 1. Generate Semantic Embeddings
 
@@ -286,9 +300,9 @@ for pair in correlation.system_pairs:
     print(f"  {pair['system_1']} ↔ {pair['system_2']}: {pair['correlation']:.3f}")
 ```
 
-______________________________________________________________________
+---
 
-## 🛠️ CLI Reference
+## CLI Reference
 
 ### Admin Shell
 
@@ -327,7 +341,7 @@ akosha info
 akosha start --host 0.0.0.0 --port 8000
 ```
 
-## 🏗️ Architecture
+## Architecture
 
 ### Three-Tier Storage
 
@@ -379,14 +393,14 @@ akosha start --host 0.0.0.0 --port 8000
 
 - `get_storage_status` - Storage tier status
 
-______________________________________________________________________
+---
 
-## 🧪 Development
+## Development
 
 ### Code Quality Standards
 
 - **Type Hints**: Required for all functions (modern Python 3.13+ syntax)
-- **Docstrings**: Comprehensive Google-style docstrings
+- **Docstrings**: Google-style docstrings
 - **Testing**: 85%+ code coverage required
 - **Linting**: Ruff with strict settings
 - **Complexity**: Maximum 15 (Ruff default)
@@ -410,9 +424,9 @@ uv run pytest --cov=akosha --cov-report=term-missing
 uv run pytest tests/unit/test_embeddings.py -v
 ```
 
-______________________________________________________________________
+---
 
-## ✅ Testing
+## Testing
 
 ### Current Test Results
 
@@ -430,25 +444,25 @@ Total: 32/32 passing (100% pass rate)
 - **Integration Tests** (8 tests): End-to-end MCP workflows
 - **Coverage**: 76-97% for Phase 2 components
 
-______________________________________________________________________
+---
 
-## 🗺️ Roadmap
+## Roadmap
 
-### ✅ Phase 1: Foundation (COMPLETE)
+### Phase 1: Foundation
 
 - Three-tier storage architecture
 - Basic ingestion pipeline
 - Knowledge graph construction
 - MCP server framework
 
-### ✅ Phase 2: Advanced Features (COMPLETE)
+### Phase 2: Advanced Features
 
 - ONNX embedding service
 - Time-series analytics
 - Cross-system correlation
 - 11 MCP tools integrated
 
-### ✅ Phase 3: Production Hardening (COMPLETE)
+### Phase 3: Production Hardening
 
 - ✅ Integration test suite (end-to-end testing)
 - ✅ Load testing framework (Locust-based)
@@ -459,7 +473,7 @@ ______________________________________________________________________
 - ✅ Kubernetes deployment manifests
 - ✅ Security scanning pipeline
 
-### 🚀 Phase 4: 100-System Pilot (READY TO START)
+### Phase 4: 100-System Pilot
 
 - [ ] Deploy to production Kubernetes cluster
 - [ ] Onboard 10 pilot systems
@@ -471,9 +485,9 @@ ______________________________________________________________________
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for complete details.
 
-______________________________________________________________________
+---
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please follow these guidelines:
 
@@ -496,20 +510,20 @@ We welcome contributions! Please follow these guidelines:
 - **Maximum complexity**: 15 (Ruff)
 - **Coverage**: Maintain 85%+
 
-______________________________________________________________________
+---
 
-## 📄 License
+## License
 
-______________________________________________________________________
+---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - **Session-Buddy**: For the excellent MCP server patterns
 - **Oneiric**: For universal storage adapter framework
 - **FastMCP**: For elegant MCP protocol implementation
 - **Sentence-Transformers**: For all-MiniLM-L6-v2 model
 
-______________________________________________________________________
+---
 
 **Made with ❤️ by the Akosha team**
 

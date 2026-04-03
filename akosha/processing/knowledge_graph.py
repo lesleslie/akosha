@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 try:
-    from dhruva import generate as generate_ulid
+    from druva import generate as generate_ulid
 except ImportError:
     generate_ulid = None  # Fallback for ULID
 

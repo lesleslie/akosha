@@ -86,6 +86,33 @@ def create_app(mode: Any | None = None) -> FastMCP:
         version=APP_VERSION,
     )
 
+    # HTTP health endpoint for Claude Code compatibility
+    @app.custom_route("/health", methods=["GET"])
+    async def health_check(request: Any) -> Any:
+        """HTTP health check endpoint for Claude Code `mcp list` compatibility."""
+        from starlette.responses import JSONResponse
+
+        return JSONResponse({"status": "ok", "service": "akosha", "version": APP_VERSION})
+
+    @app.custom_route("/healthz", methods=["GET"])
+    async def healthz_check(request: Any) -> Any:
+        """Kubernetes-style health check endpoint."""
+        from starlette.responses import JSONResponse
+
+        return JSONResponse({"status": "ok"})
+
+    @app.custom_route("/metrics", methods=["GET"])
+    async def metrics(request: Any) -> Any:
+        """Canonical Prometheus metrics endpoint on the main HTTP port."""
+        from starlette.responses import Response
+
+        from akosha.observability.prometheus_metrics import generate_metrics
+
+        return Response(
+            content=generate_metrics(),
+            media_type="text/plain; version=0.0.4; charset=utf-8",
+        )
+
     # Capture mode for lifespan closure
     mode_instance = mode
 

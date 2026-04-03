@@ -60,7 +60,7 @@ self.edges: list[GraphEdge] = []
 ```
 
 **Observations:**
-- No persistent storage (Dhruva) currently used for graph storage
+- No persistent storage (Druva) currently used for graph storage
 - Graph is built dynamically from conversations
 - No database schema for entities/edges
 - Export/persistence happens via external MCP calls
@@ -95,14 +95,14 @@ def validate_entity_id(cls, v: str) -> str:
 ### Changes Needed for ULID Integration
 
 1. **Entity ID Format:**
-   - Replace `f"system:{id}"` with ULID from Oneiric/Dhruva
+   - Replace `f"system:{id}"` with ULID from Oneiric/Druva
    - Replace `f"user:{id}"` with ULID
-   - Update validation to use `oneiric.core.ulid.is_ulid()` or `dhruva.ulid.is_ulid()`
+   - Update validation to use `oneiric.core.ulid.is_ulid()` or `druva.ulid.is_ulid()`
 
 2. **Graph Storage:**
-   - Integrate Dhruva persistent storage for `entities` and `edges`
-   - Use ULID as primary key in Dhruva BTree for fast lookups
-   - Create Dhruva adapter in `akosha/processing/knowledge_graph.py`
+   - Integrate Druva persistent storage for `entities` and `edges`
+   - Use ULID as primary key in Druva BTree for fast lookups
+   - Create Druva adapter in `akosha/processing/knowledge_graph.py`
 
 3. **Foreign Key References:**
    - `GraphEdge.source_id` → ULID referencing `GraphEntity.entity_id`
@@ -123,14 +123,14 @@ def validate_entity_id(cls, v: str) -> str:
 
 **Migration Complexity:** LOW
 - No existing large database to migrate
-- In-memory storage can be switched to Dhruva incrementally
+- In-memory storage can be switched to Druva incrementally
 - ULID can be generated on-demand for new entities
 
 ## Recommended Migration Strategy
 
 ### Phase 1: Backend (Week 1-2)
-1. Create Dhruva file storage adapter for knowledge graph
-2. Modify `KnowledgeGraphBuilder` to use Dhruva `PersistentDict` for entities
+1. Create Druva file storage adapter for knowledge graph
+2. Modify `KnowledgeGraphBuilder` to use Druva `PersistentDict` for entities
 3. Add ULID generation to entity creation flow
 4. Update entity ID validation in schemas
 
@@ -163,8 +163,8 @@ ALTER TABLE entities DROP COLUMN entity_id;
 ## Next Steps
 
 1. ✅ **COMPLETED:** Analysis of current identifier patterns
-2. **NEXT:** Design Dhruva BTree schema for knowledge graph
-3. **NEXT:** Implement Dhruva storage adapter for Akosha
+2. **NEXT:** Design Druva BTree schema for knowledge graph
+3. **NEXT:** Implement Druva storage adapter for Akosha
 4. **NEXT:** Create migration scripts from custom IDs → ULID
 
 **Status:** Analysis complete, ready for Task 5 (Crackerjack analysis)

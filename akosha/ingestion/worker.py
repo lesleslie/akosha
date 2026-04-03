@@ -216,22 +216,102 @@ class IngestionWorker:
     async def _process_upload(self, upload: SystemMemoryUpload) -> None:
         """Process a single upload.
 
+        Downloads the memory database, extracts conversations with embeddings,
+        deduplicates against hot store, and inserts new records.
+
         Args:
             upload: SystemMemoryUpload object with metadata
         """
+        from datetime import datetime
+
+        from akosha.models import HotRecord
+
         system_id = upload.system_id
         upload_id = upload.upload_id
 
         logger.info(f"Processing upload: {system_id}/{upload_id}")
 
-        # TODO: Implement extraction, deduplication, insertion
-        # 1. Download memory database from storage_prefix
-        # 2. Extract conversations and embeddings
-        # 3. Deduplicate against hot store
-        # 4. Insert new conversations into hot store
-        #
-        # For now, log the manifest metadata
-        logger.debug(f"Upload manifest: {upload.manifest}")
+        try:
+            # 1. Download memory database from storage_prefix
+            db_key = f"{upload.storage_prefix}/memories.json"
+            logger.debug(f"Downloading: {db_key}")
+
+            db_content = await self.storage.get(db_key)
+            if db_content is None:
+                logger.warning(f"No database found at {db_key}")
+                return
+
+            # Parse the JSON database
+            try:
+                db_data = json.loads(db_content)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse database JSON: {e}")
+                return
+
+            # 2. Extract conversations and embeddings
+            conversations = db_data.get("conversations", [])
+            if not conversations:
+                logger.debug(f"No conversations found in upload {upload_id}")
+                return
+
+            logger.info(f"Extracted {len(conversations)} conversations from {upload_id}")
+
+            # 3. Deduplicate against hot store and insert new records
+            new_count = 0
+            duplicate_count = 0
+            error_count = 0
+
+            for conv in conversations:
+                try:
+                    content = conv.get("content", "")
+                    if not content:
+                        continue
+
+                    # Compute content hash for deduplication
+                    content_hash = self.hot_store._compute_content_hash(content)
+
+                    # Check if already exists (deduplication)
+                    # Use the content hash as a quick check
+                    existing = await self.hot_store.search_similar(
+                        query_embedding=conv.get("embedding", []),
+                        limit=1,
+                        threshold=0.99,  # Very high threshold for exact match
+                    )
+
+                    if existing and existing[0].get("content_hash") == content_hash:
+                        duplicate_count += 1
+                        continue
+
+                    # 4. Insert new conversation into hot store
+                    record = HotRecord(
+                        system_id=system_id,
+                        conversation_id=conv.get("id", f"{upload_id}_{new_count}"),
+                        content=content,
+                        embedding=conv.get("embedding", [0.0] * 384),  # Default embedding
+                        timestamp=datetime.fromisoformat(conv.get("timestamp", datetime.now().isoformat())),
+                        metadata={
+                            "upload_id": upload_id,
+                            "source": conv.get("source", "session-buddy"),
+                            "content_hash": content_hash,
+                            **conv.get("metadata", {}),
+                        },
+                    )
+
+                    await self.hot_store.insert(record)
+                    new_count += 1
+
+                except Exception as e:
+                    logger.error(f"Failed to process conversation: {e}")
+                    error_count += 1
+
+            logger.info(
+                f"Upload {upload_id} processed: {new_count} new, "
+                f"{duplicate_count} duplicates, {error_count} errors"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to process upload {upload_id}: {e}", exc_info=True)
+            raise
 
     def stop(self) -> None:
         """Stop the worker."""
