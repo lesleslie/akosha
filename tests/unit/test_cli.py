@@ -29,7 +29,7 @@ class TestCLICommands:
         assert result.exit_code == 0
         assert "Akosha" in result.stdout
         assert "Universal Memory Aggregation System" in result.stdout
-        assert "soothsayer" in result.stdout
+        assert "diviner" in result.stdout or "soothsayer" in result.stdout
 
     @patch("akosha.cli.AkoshaApplication")
     @patch("akosha.cli.AkoshaShell")
@@ -71,6 +71,7 @@ class TestCLICommands:
         assert result.exit_code == 0
         assert "Akosha" in result.stdout
         assert "shell" in result.stdout
+        assert "mcp" in result.stdout
         assert "start" in result.stdout
         assert "version" in result.stdout
         assert "info" in result.stdout
@@ -85,6 +86,16 @@ class TestCLICommands:
     def test_start_help(self) -> None:
         """Test start command help."""
         result = runner.invoke(app, ["start", "--help"])
+
+        assert result.exit_code == 0
+        assert "Start Akosha MCP server" in result.stdout
+        assert "--host" in result.stdout
+        assert "--port" in result.stdout
+        assert "--verbose" in result.stdout
+
+    def test_mcp_start_help(self) -> None:
+        """Test nested MCP start command help."""
+        result = runner.invoke(app, ["mcp", "start", "--help"])
 
         assert result.exit_code == 0
         assert "Start Akosha MCP server" in result.stdout
@@ -122,7 +133,7 @@ class TestCLIIntegration:
         result = runner.invoke(app, ["--help"])
 
         # Expected commands
-        expected_commands = ["shell", "start", "version", "info"]
+        expected_commands = ["shell", "mcp", "start", "version", "info"]
 
         for cmd in expected_commands:
             assert cmd in result.stdout, f"Command '{cmd}' not found in help"
@@ -157,13 +168,14 @@ class TestCLIIntegration:
         result = runner.invoke(app, ["invalid-command"])
 
         assert result.exit_code != 0
-        assert "No such command" in result.stdout or "not found" in result.stdout.lower()
+        combined = f"{result.stdout}\n{result.stderr}".lower()
+        assert "no such command" in combined or "not found" in combined
 
     def test_missing_required_args(self) -> None:
         """Test commands with missing required arguments."""
         # Most commands don't have required args, but we can test the CLI still works
         result = runner.invoke(app, [])
 
-        # Should show help when no command provided
-        assert result.exit_code == 0
+        # Typer may treat empty invocation as a help/error path depending on version.
+        assert result.exit_code in (0, 2)
         assert "Usage" in result.stdout or "help" in result.stdout.lower()

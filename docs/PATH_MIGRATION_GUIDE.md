@@ -1,12 +1,12 @@
-# Akosha Storage Path Migration Guide
+# Akosha Storage Path Guide
 
 ## Summary
 
-Akosha has been updated to use **environment-aware path resolution** with XDG Base Directory compliance. This means data files are no longer stored in the project directory (`./data/`) but in platform-standard locations.
+Akosha uses **environment-aware path resolution**. By default, data files live outside the project directory and are resolved to platform-standard locations.
 
 ## What Changed
 
-### Before (Legacy)
+### Project-Local Layout
 
 ```
 akosha/
@@ -24,10 +24,10 @@ akosha/
 - ❌ Data tracked in git accidentally
 - ❌ Violates container best practices
 
-### After (XDG-Compliant)
+### Current Layout
 
 ```
-~/.local/share/akosha/          # Linux/XDG
+~/.local/share/akosha/          # Linux default
 ├── warm/
 │   └── warm.db
 ├── wal/
@@ -51,7 +51,7 @@ akosha/
 - ✅ Industry standard locations
 - ✅ Container-friendly (volume mounting)
 - ✅ Cross-platform compatibility
-- ✅ Survives project clones/branch switches
+- ✅ Survives project clones and branch switches
 
 ## Paths by Environment
 
@@ -82,7 +82,7 @@ export AKOSHA_ENV=container  # or 'local', 'development', 'test'
 ### Step 1: Check Current Status
 
 ```bash
-# Check if migration is needed
+# Check current storage paths
 python -c "
 from akosha.storage.path_resolver import StoragePathResolver
 resolver = StoragePathResolver()
@@ -93,25 +93,25 @@ print(f'New location: {resolver.base_path}')
 ### Step 2: Migrate Existing Data
 
 ```bash
-# Dry run (preview changes)
+# Dry run to preview changes
 akosha migrate data --dry-run
 
-# Perform migration
+# Move data
 akosha migrate data
 
-# Verify migration
+# Verify current storage paths
 akosha migrate status
 ```
 
-### Step 3: Clean Up Legacy Data
+### Step 3: Remove the Source Directory
 
 ```bash
-# After successful migration, remove old data
+# After verifying the move, remove the source directory if it is no longer needed
 rm -rf ./data/
 
-# Update .gitignore (remove data/ entry if present)
+# Update .gitignore if needed
 git add .gitignore
-git commit -m "chore: migrate to XDG-compliant data paths"
+git commit -m "chore: update data storage paths"
 ```
 
 ## Configuration Files
@@ -193,14 +193,13 @@ spec:
 
 ## Troubleshooting
 
-### Legacy path warnings
+### Project-local data warning
 
-If you see warnings about legacy paths:
+If you see a warning about project-local data:
 
 ```
-⚠️  Legacy data path detected: /path/to/project/data
-    New location: ~/.local/share/akosha
-    Run 'akosha migrate data' to transfer data.
+⚠️  Project-local data detected at: /path/to/project/data
+    Run 'akosha migrate data' to move it to the default storage location.
 ```
 
 **Solution**: Run the migration command to move your data.
@@ -225,7 +224,7 @@ If Akosha can't find your existing database:
 # Check where it's looking
 akosha migrate status
 
-# If using legacy path, set override
+# If you need to force a specific path, set an override
 export AKOSHA_WARM_PATH=./data/warm
 ```
 
@@ -236,17 +235,17 @@ export AKOSHA_WARM_PATH=./data/warm
 - ✅ `akosha/storage/__init__.py` - Updated (exports path resolver)
 - ✅ `config/lite.yaml` - Updated (paths resolved dynamically)
 - ✅ `config/standard.yaml` - Updated (paths resolved dynamically)
-- ✅ `akosha/cli/commands/migrate.py` - New (migration CLI commands)
+- ✅ `akosha/cli/commands/migrate.py` - Migration CLI commands
 
-## Backward Compatibility
+## Compatibility Notes
 
-The old `./data/` paths will continue to work during a transition period, but you'll see warnings. Future versions will remove this support.
+The `./data/` project-local path remains supported during the transition period, but it is no longer the default. Future versions may remove the compatibility path.
 
 ## Questions?
 
 - **Why not use project-relative paths?** See the agent consultation summaries for detailed architectural rationale.
 - **What about Windows?** The path resolver detects Windows and uses `%LOCALAPPDATA%\akosha\`
-- **Can I still use project-local paths?** Yes, set `AKOSHA_ENV=development` to use `.akosha/data/` in project dir
+- **Can I still use a project-local path?** Yes, set `AKOSHA_ENV=development` to use `.akosha/data/` in the project directory
 
 ## Migration CLI Commands
 
@@ -260,6 +259,6 @@ akosha migrate data --dry-run
 # Perform migration
 akosha migrate data
 
-# Rollback if needed
+# Copy data back if needed
 akosha migrate rollback ./data/warm
 ```

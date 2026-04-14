@@ -1,7 +1,7 @@
 """Data migration commands for Akosha.
 
-Provides CLI commands for migrating data from legacy project-local paths
-to XDG-compliant locations.
+Provides CLI commands for moving project-local data into the default
+application storage location.
 """
 
 from __future__ import annotations
@@ -36,13 +36,13 @@ def migrate() -> None:
     "--to-path",
     type=click.Path(path_type=Path),
     default=None,
-    help="Destination path (default: XDG-compliant location)",
+    help="Destination path (default: application storage location)",
 )
 def data(dry_run: bool, from_path: Path, to_path: Path | None) -> None:
-    """Migrate data from project-local to XDG-compliant location.
+    """Move data from a project-local path to the default storage location.
 
-    This command migrates your Akosha data from the legacy ./data/ directory
-    to the standard XDG-compliant location.
+    This command moves Akosha data from the project-local ./data/ directory
+    to the standard application storage location.
 
     Examples:
         akosha migrate data --dry-run
@@ -53,7 +53,7 @@ def data(dry_run: bool, from_path: Path, to_path: Path | None) -> None:
         resolver = get_default_resolver()
         to_path = resolver.base_path
 
-    click.echo(f"{'[DRY RUN] ' if dry_run else ''}Migrating Akosha data...")
+    click.echo(f"{'[DRY RUN] ' if dry_run else ''}Moving Akosha data...")
     click.echo(f"  Source: {from_path}")
     click.echo(f"  Target: {to_path}")
 
@@ -65,7 +65,7 @@ def data(dry_run: bool, from_path: Path, to_path: Path | None) -> None:
     # Check for data in subdirectories
     subdirs = [d for d in from_path.iterdir() if d.is_dir() and any(d.iterdir())]
     if not subdirs:
-        click.echo("⚠️  No data found in source path (already migrated?)")
+        click.echo("⚠️  No project-local data found in the source path.")
         return
 
     # Show what will be migrated
@@ -111,13 +111,15 @@ def data(dry_run: bool, from_path: Path, to_path: Path | None) -> None:
             click.echo(f"❌ Error migrating {subdir.name}/: {e}", err=True)
 
     # Summary
-    click.echo("\nMigration complete:")
+    click.echo("\nMove complete:")
     click.echo(f"  ✅ Migrated: {results['migrated']}")
     click.echo(f"  ⏭️  Skipped: {results['skipped']}")
     click.echo(f"  ❌ Errors: {results['errors']}")
 
     if results["errors"] == 0:
-        click.echo(f"\n✅ You can now safely delete: {from_path}")
+        click.echo(
+            f"\n✅ You can now remove the source directory if you no longer need it: {from_path}"
+        )
 
 
 @migrate.command()
@@ -127,7 +129,7 @@ def data(dry_run: bool, from_path: Path, to_path: Path | None) -> None:
     help="Check if migration is needed",
 )
 def status(check: bool) -> None:
-    """Check migration status and show current paths."""
+    """Check storage status and show current paths."""
     resolver = get_default_resolver()
 
     click.echo("Akosha Storage Paths:")
@@ -138,19 +140,19 @@ def status(check: bool) -> None:
     click.echo(f"  Config dir: {resolver.get_config_dir()}")
     click.echo(f"  Cache dir: {resolver.get_cache_dir()}")
 
-    # Check for legacy data
+    # Check for project-local data
     legacy_path = Path.cwd() / "data"
     if legacy_path.exists() and any(legacy_path.iterdir()):
-        click.echo(f"\n⚠️  Legacy data detected at: {legacy_path}")
-        click.echo("    Run 'akosha migrate data' to migrate to XDG-compliant location")
+        click.echo(f"\n⚠️  Project-local data detected at: {legacy_path}")
+        click.echo("    Run 'akosha migrate data' to move it to the default storage location")
     else:
-        click.echo("\n✅ No legacy data found")
+        click.echo("\n✅ No project-local data found")
 
 
 @migrate.command()
 @click.argument("path", type=click.Path(path_type=Path))
 def rollback(path: Path) -> None:
-    """Rollback migration to legacy path.
+    """Copy data back to a project-local path.
 
     Examples:
         akosha migrate rollback ./data/warm

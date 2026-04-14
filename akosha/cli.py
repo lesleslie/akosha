@@ -14,6 +14,21 @@ from typing import Annotated, Any
 
 import typer
 
+try:
+    from akosha.main import AkoshaApplication
+except Exception:  # pragma: no cover - optional for test patching
+    AkoshaApplication = None  # type: ignore[assignment]
+
+try:
+    from akosha.shell import AkoshaShell
+except Exception:  # pragma: no cover - optional for test patching
+    AkoshaShell = None  # type: ignore[assignment]
+
+try:
+    from akosha.mcp import create_app
+except Exception:  # pragma: no cover - import is validated in command paths
+    create_app = None  # type: ignore[assignment]
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -26,7 +41,20 @@ app = typer.Typer(
     name="akosha",
     help="Akosha - Universal Memory Aggregation System for distributed intelligence",
     add_completion=False,
+    no_args_is_help=True,
 )
+
+# Match the ecosystem convention: `python -m <package> mcp start`
+mcp_app = typer.Typer(help="MCP server lifecycle management")
+app.add_typer(mcp_app, name="mcp")
+
+
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context) -> None:
+    """Root CLI callback that shows help when invoked without a subcommand."""
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
+        raise typer.Exit()
 
 
 @app.command()
@@ -79,8 +107,7 @@ def shell(
         sys.exit(1)
 
 
-@app.command()
-def start(
+def _start_server(
     host: Annotated[str, typer.Option("--host", "-h", help="Host to bind to")] = "127.0.0.1",
     port: Annotated[int, typer.Option("--port", "-p", help="Port to bind to")] = 8682,
     mode: Annotated[
@@ -174,6 +201,34 @@ def start(
     logger.info(f"   External services required: {mode_instance.requires_external_services}")
 
     app_instance.run(transport="streamable-http", host=host, port=port, path="/mcp")
+
+
+@app.command()
+def start(
+    host: Annotated[str, typer.Option("--host", "-h", help="Host to bind to")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", "-p", help="Port to bind to")] = 8682,
+    mode: Annotated[
+        str, typer.Option("--mode", "-m", help="Operational mode (lite|standard)")
+    ] = "lite",
+    config: Annotated[str, typer.Option("--config", "-c", help="Path to configuration file")] = "",
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Enable verbose output")] = False,
+) -> None:
+    """Start Akosha MCP server in the specified mode."""
+    _start_server(host=host, port=port, mode=mode, config=config, verbose=verbose)
+
+
+@mcp_app.command("start")
+def mcp_start(
+    host: Annotated[str, typer.Option("--host", "-h", help="Host to bind to")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", "-p", help="Port to bind to")] = 8682,
+    mode: Annotated[
+        str, typer.Option("--mode", "-m", help="Operational mode (lite|standard)")
+    ] = "lite",
+    config: Annotated[str, typer.Option("--config", "-c", help="Path to configuration file")] = "",
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Enable verbose output")] = False,
+) -> None:
+    """Start Akosha MCP server in the specified mode."""
+    _start_server(host=host, port=port, mode=mode, config=config, verbose=verbose)
 
 
 @app.command()

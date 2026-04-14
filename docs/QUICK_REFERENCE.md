@@ -2,7 +2,7 @@
 
 ## TL;DR
 
-**Akosha** = Universal memory aggregation system using **Oneiric's universal resolution layer** for pluggable, hot-swappable storage backends with automatic tier management.
+**Akosha** = Universal memory aggregation system using **Oneiric's platform layer** (adapter resolution, lifecycle management, storage adapters) for pluggable, hot-swappable storage backends with automatic tier management.
 
 ## Key Design Decisions
 

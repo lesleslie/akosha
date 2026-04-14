@@ -36,19 +36,7 @@ def register_code_graph_analysis_tools(
         repo_path: str | None = None,
         limit: int = 100,
     ) -> dict[str, Any]:
-        """List all code graphs ingested from Session-Buddy.
-
-        Args:
-            repo_path: Optional filter by repository path
-            limit: Maximum number of results
-
-        Returns:
-            Dict with list of code graphs and metadata
-
-        Example:
-            >>> result = await list_ingested_code_graphs(repo_path="/path/to/repo")
-            >>> print(f"Found {result['count']} code graphs")
-        """
+        """List all code graphs ingested from Session-Buddy."""
         try:
             graphs = await hot_store.list_code_graphs(repo_path=repo_path, limit=limit)
 
@@ -72,22 +60,7 @@ def register_code_graph_analysis_tools(
         repo_path: str,
         commit_hash: str,
     ) -> dict[str, Any]:
-        """Get detailed code graph data including nodes and edges.
-
-        Args:
-            repo_path: Path to the repository
-            commit_hash: Git commit hash
-
-        Returns:
-            Dict with full code graph data or error message
-
-        Example:
-            >>> graph = await get_code_graph_details(
-            ...     repo_path="/path/to/repo",
-            ...     commit_hash="abc123"
-            ... )
-            >>> print(f"Graph has {graph['nodes_count']} nodes")
-        """
+        """Get detailed code graph data including nodes and edges."""
         try:
             graph = await hot_store.get_code_graph(repo_path, commit_hash)
 
@@ -115,28 +88,7 @@ def register_code_graph_analysis_tools(
         min_similarity: float = 0.3,
         limit: int = 10,
     ) -> dict[str, Any]:
-        """Find repositories with similar code structure.
-
-        This tool compares code graphs across repositories to find
-        similar implementations, architectural patterns, or potential
-        code duplication.
-
-        Args:
-            repo_path: Path to the reference repository
-            min_similarity: Minimum similarity threshold (0-1)
-            limit: Maximum number of results
-
-        Returns:
-            Dict with list of similar repositories and similarity scores
-
-        Example:
-            >>> similar = await find_similar_repositories(
-            ...     repo_path="/path/to/mahavishnu",
-            ...     min_similarity=0.4
-            ... )
-            >>> for repo in similar['repositories']:
-            ...     print(f"{repo['repo_path']}: {repo['similarity']:.2f}")
-        """
+        """Find repositories with similar code structure."""
         try:
             # Get the reference graph
             graphs = await hot_store.list_code_graphs(limit=1000)
@@ -226,23 +178,7 @@ def register_code_graph_analysis_tools(
         function_name: str,
         limit: int = 20,
     ) -> dict[str, Any]:
-        """Find usage of a function across all indexed repositories.
-
-        This tool searches code graphs to find where a specific function
-        is called, imported, or referenced across the entire codebase.
-
-        Args:
-            function_name: Name of the function to search for
-            limit: Maximum number of results
-
-        Returns:
-            Dict with list of repositories and files using the function
-
-        Example:
-            >>> usage = await get_cross_repo_function_usage("parse_config")
-            >>> for repo in usage['repositories']:
-            ...     print(f"{repo['repo_path']}: {len(repo['files'])} files")
-        """
+        """Find usage of a function across all indexed repositories."""
         try:
             graphs = await hot_store.list_code_graphs(limit=1000)
 

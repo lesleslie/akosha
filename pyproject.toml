@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "akosha"
-version = "0.4.0"
+version = "0.4.1"
 description = "Universal Memory Aggregation System - Cross-system intelligence for Session-Buddy"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -32,6 +32,7 @@ dependencies = [
     "pybreaker>=1.0.0",
     "pyjwt>=2.9.0",  # JWT authentication support
     "dhara>=0.8.2",
+    "pyarrow>=16.0.0",
 ]
 
 [project.optional-dependencies]
@@ -169,3 +170,8 @@ exclude_deps = [
 
 [tool.setuptools.packages.find]
 include = ["akosha*"]
+
+[dependency-groups]
+dev = [
+    "crackerjack>=0.54.5",
+]

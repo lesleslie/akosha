@@ -34,9 +34,6 @@ class StoragePathResolver:
         self.project_dir = project_dir or Path.cwd()
         self.base_path = self._resolve_base_path()
 
-        # Warn if using legacy path
-        self._warn_if_legacy()
-
     def _detect_environment(self) -> str:
         """Auto-detect deployment environment.
 
@@ -138,17 +135,6 @@ class StoragePathResolver:
             return Path(xdg_data) / "akosha"
         # Standard XDG fallback
         return Path.home() / ".local" / "share" / "akosha"
-
-    def _warn_if_legacy(self) -> None:
-        """Warn if legacy project-local data path is detected."""
-        legacy_path = self.project_dir / "data"
-        if legacy_path.exists() and any(legacy_path.iterdir()):
-            logger.warning(
-                f"⚠️  Legacy data path detected: {legacy_path}\n"
-                f"    New location: {self.base_path}\n"
-                f"    Run 'akosha migrate' to transfer data.\n"
-                f"    Legacy path will be ignored in future versions."
-            )
 
     def get_warm_store_path(self) -> Path:
         """Get warm store database path.
