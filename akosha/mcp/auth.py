@@ -109,5 +109,4 @@ __all__ = [
     "generate_jwt_token",
     "require_auth",
     "validate_auth_config",
-    "_reset_config",
 ]
