@@ -1,5 +1,13 @@
 """Pytest configuration and fixtures for Akosha tests."""
 
+import sys
+import os
+
+# Fix import path for akosha modules
+_akosha_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _akosha_root not in sys.path:
+    sys.path.insert(0, _akosha_root)
+
 import pytest
 
 
@@ -13,16 +21,15 @@ def setup_telemetry():
     The session scope means this runs once for all tests, which is
     more efficient and avoids event loop conflicts.
     """
-    from akosha.observability.tracing import setup_telemetry
+    try:
+        from akosha.observability.tracing import setup_telemetry as setup_otel
 
-    # Setup telemetry with test configuration
-    setup_telemetry(
-        service_name="akosha-test",
-        enable_console_export=False,  # Disable console export for cleaner test output
-        otlp_endpoint=None,  # No external OTLP collector for tests
-    )
+        setup_otel(
+            service_name="akosha-test",
+            enable_console_export=False,
+            otlp_endpoint=None,
+        )
+    except ImportError:
+        pass
 
     yield
-
-    # No explicit shutdown needed - process cleanup handles it
-    # Calling shutdown_telemetry() here would conflict with pytest-asyncio's event loop
