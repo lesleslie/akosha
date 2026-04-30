@@ -39,6 +39,10 @@ def require_auth(
 ) -> Callable:
     if callable(func_or_permission):
         return _make_wrapper(func_or_permission, Permission.READ)
+    if not isinstance(func_or_permission, Permission):
+        raise TypeError(
+            f"require_auth expects a Permission or callable, got {type(func_or_permission).__name__!r}"
+        )
     permission = func_or_permission
 
     def decorator(func: Callable) -> Callable:
@@ -77,15 +81,12 @@ def _make_wrapper(func: Callable, permission: Permission) -> Callable:
 
 
 def validate_auth_config() -> bool:
-    try:
-        cfg = _get_config()
-        if cfg.enabled:
-            logger.info("Authentication configuration validated")
-        else:
-            logger.warning("Authentication disabled (no secret configured)")
-        return True
-    except ValueError as exc:
-        raise ValueError(str(exc)) from exc
+    cfg = _get_config()
+    if cfg.enabled:
+        logger.info("Authentication configuration validated")
+    else:
+        logger.warning("Authentication disabled (no secret configured)")
+    return True
 
 
 def generate_jwt_token(
