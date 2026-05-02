@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 import pytest
 
@@ -184,9 +184,7 @@ class TestKnowledgeGraphBuilder:
         assert entities[0].source_system == "unknown"
 
     @pytest.mark.asyncio
-    async def test_extract_user_project_relationship(
-        self, graph: KnowledgeGraphBuilder
-    ) -> None:
+    async def test_extract_user_project_relationship(self, graph: KnowledgeGraphBuilder) -> None:
         """Test extracting user-worked_on-project relationship."""
         conversation = {
             "system_id": "system-1",
@@ -203,17 +201,13 @@ class TestKnowledgeGraphBuilder:
         assert len(edges) == 2  # user-worked_on-project, system-contains-project
 
         # Check user-worked_on-project edge
-        user_worked_edge = next(
-            (e for e in edges if e.edge_type == "worked_on"), None
-        )
+        user_worked_edge = next((e for e in edges if e.edge_type == "worked_on"), None)
         assert user_worked_edge is not None
         assert user_worked_edge.source_id == "user:alice"
         assert user_worked_edge.target_id == "project:mahavishnu"
 
     @pytest.mark.asyncio
-    async def test_extract_system_contains_relationship(
-        self, graph: KnowledgeGraphBuilder
-    ) -> None:
+    async def test_extract_system_contains_relationship(self, graph: KnowledgeGraphBuilder) -> None:
         """Test extracting system-contains-project relationship."""
         conversation = {
             "system_id": "system-1",
@@ -340,9 +334,7 @@ class TestKnowledgeGraphBuilder:
         """Test getting neighbors with limit."""
         entities = [
             GraphEntity(entity_id="user:alice", entity_type="user"),
-        ] + [
-            GraphEntity(entity_id=f"project:{i}", entity_type="project") for i in range(5)
-        ]
+        ] + [GraphEntity(entity_id=f"project:{i}", entity_type="project") for i in range(5)]
         edges = [
             GraphEdge(
                 source_id="user:alice",
@@ -390,9 +382,7 @@ class TestKnowledgeGraphBuilder:
         assert path == ["a"]
 
     @pytest.mark.asyncio
-    async def test_find_shortest_path_direct_connection(
-        self, graph: KnowledgeGraphBuilder
-    ) -> None:
+    async def test_find_shortest_path_direct_connection(self, graph: KnowledgeGraphBuilder) -> None:
         """Test finding direct path between connected nodes."""
         entities = [
             GraphEntity(entity_id="a", entity_type="node"),
@@ -453,11 +443,9 @@ class TestKnowledgeGraphBuilder:
     @pytest.mark.asyncio
     async def test_find_shortest_path_max_hops(self, graph: KnowledgeGraphBuilder) -> None:
         """Test path finding with max_hops limit."""
-        entities = [
-            GraphEntity(entity_id=f"node{i}", entity_type="node") for i in range(5)
-        ]
+        entities = [GraphEntity(entity_id=f"node{i}", entity_type="node") for i in range(5)]
         edges = [
-            GraphEdge(source_id=f"node{i}", target_id=f"node{i+1}", edge_type="connected")
+            GraphEdge(source_id=f"node{i}", target_id=f"node{i + 1}", edge_type="connected")
             for i in range(4)
         ]
 

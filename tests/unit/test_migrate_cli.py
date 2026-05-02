@@ -7,7 +7,6 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-
 runner = CliRunner()
 MIGRATE_PATH = Path(__file__).resolve().parents[2] / "akosha" / "cli" / "commands" / "migrate.py"
 
@@ -35,5 +34,8 @@ def test_migrate_status_uses_neutral_language(tmp_path: Path, monkeypatch) -> No
     result = runner.invoke(migrate, ["status"])
 
     assert result.exit_code == 0
-    assert "project-local data" in result.stdout.lower() or "no project-local data" in result.stdout.lower()
+    assert (
+        "project-local data" in result.stdout.lower()
+        or "no project-local data" in result.stdout.lower()
+    )
     assert "legacy" not in result.stdout.lower()

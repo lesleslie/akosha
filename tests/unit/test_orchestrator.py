@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -22,24 +21,16 @@ class TestBootstrapOrchestrator:
         return client
 
     @pytest.fixture
-    def orchestrator(
-        self, mock_mahavishnu_client: AsyncMock
-    ) -> BootstrapOrchestrator:
+    def orchestrator(self, mock_mahavishnu_client: AsyncMock) -> BootstrapOrchestrator:
         """Create orchestrator with mocked Mahavishnu client."""
-        return BootstrapOrchestrator(
-            mahavishnu_client=mock_mahavishnu_client
-        )
+        return BootstrapOrchestrator(mahavishnu_client=mock_mahavishnu_client)
 
     @pytest.fixture
     def orchestrator_no_client(self) -> BootstrapOrchestrator:
         """Create orchestrator without Mahavishnu client."""
-        return BootstrapOrchestrator(
-            mahavishnu_client=None
-        )
+        return BootstrapOrchestrator(mahavishnu_client=None)
 
-    def test_initialization_with_client(
-        self, orchestrator: BootstrapOrchestrator
-    ) -> None:
+    def test_initialization_with_client(self, orchestrator: BootstrapOrchestrator) -> None:
         """Test orchestrator initialization with Mahavishnu client."""
         assert orchestrator.mahavishnu_client is not None
         assert not orchestrator.fallback_mode
@@ -55,9 +46,7 @@ class TestBootstrapOrchestrator:
         assert orchestrator_no_client.last_heartbeat is not None
 
     @pytest.mark.asyncio
-    async def test_trigger_ingestion_success(
-        self, orchestrator: BootstrapOrchestrator
-    ) -> None:
+    async def test_trigger_ingestion_success(self, orchestrator: BootstrapOrchestrator) -> None:
         """Test successful ingestion trigger via Mahavishnu."""
         # Mock successful trigger
         orchestrator.mahavishnu_client.trigger_workflow = AsyncMock(
@@ -119,9 +108,7 @@ class TestBootstrapOrchestrator:
         assert orchestrator_no_client.fallback_mode
 
     @pytest.mark.asyncio
-    async def test_report_health_normal_mode(
-        self, orchestrator: BootstrapOrchestrator
-    ) -> None:
+    async def test_report_health_normal_mode(self, orchestrator: BootstrapOrchestrator) -> None:
         """Test health reporting in normal mode."""
         health = await orchestrator.report_health()
 
@@ -132,9 +119,7 @@ class TestBootstrapOrchestrator:
         assert "timestamp" in health
 
     @pytest.mark.asyncio
-    async def test_report_health_fallback_mode(
-        self, orchestrator: BootstrapOrchestrator
-    ) -> None:
+    async def test_report_health_fallback_mode(self, orchestrator: BootstrapOrchestrator) -> None:
         """Test health reporting in fallback mode."""
         # Activate fallback mode
         orchestrator.mahavishnu_client.trigger_workflow = AsyncMock(
@@ -147,9 +132,7 @@ class TestBootstrapOrchestrator:
         assert health["fallback_mode"] is True
 
     @pytest.mark.asyncio
-    async def test_heartbeat_updated_on_success(
-        self, orchestrator: BootstrapOrchestrator
-    ) -> None:
+    async def test_heartbeat_updated_on_success(self, orchestrator: BootstrapOrchestrator) -> None:
         """Test that heartbeat is updated on successful trigger."""
         initial_heartbeat = orchestrator.last_heartbeat
 
@@ -166,9 +149,7 @@ class TestBootstrapOrchestrator:
         assert orchestrator.last_heartbeat > initial_heartbeat
 
     @pytest.mark.asyncio
-    async def test_multiple_trigger_calls(
-        self, orchestrator: BootstrapOrchestrator
-    ) -> None:
+    async def test_multiple_trigger_calls(self, orchestrator: BootstrapOrchestrator) -> None:
         """Test multiple trigger calls."""
         orchestrator.mahavishnu_client.trigger_workflow = AsyncMock(
             return_value={"status": "triggered"}

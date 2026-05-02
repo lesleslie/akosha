@@ -18,11 +18,10 @@ MINIMAL_REGISTRATIONS: list[str] = [
     "register_health_tools_akosha",
 ]
 
-STANDARD_REGISTRATIONS: list[str] = MINIMAL_REGISTRATIONS + [
-    "register_akosha_tools",
-]
+STANDARD_REGISTRATIONS: list[str] = [*MINIMAL_REGISTRATIONS, "register_akosha_tools"]
 
-FULL_REGISTRATIONS: list[str] = STANDARD_REGISTRATIONS + [
+FULL_REGISTRATIONS: list[str] = [
+    *STANDARD_REGISTRATIONS,
     "register_session_buddy_tools",
     "register_pycharm_tools",
 ]
@@ -42,17 +41,30 @@ REGISTRATION_DESCRIPTIONS: dict[str, str] = {
 
 REGISTRATION_TOOLS: dict[str, list[str]] = {
     "register_health_tools_akosha": [
-        "get_liveness", "get_readiness", "health_check_service",
-        "health_check_all", "wait_for_dependency", "wait_for_all_dependencies",
+        "get_liveness",
+        "get_readiness",
+        "health_check_service",
+        "health_check_all",
+        "wait_for_dependency",
+        "wait_for_all_dependencies",
     ],
     "register_akosha_tools": [
-        "generate_embedding", "generate_batch_embeddings", "search_all_systems",
-        "detect_anomalies", "analyze_trends", "correlate_systems",
-        "query_knowledge_graph", "get_system_metrics",
+        "generate_embedding",
+        "generate_batch_embeddings",
+        "search_all_systems",
+        "detect_anomalies",
+        "analyze_trends",
+        "correlate_systems",
+        "query_knowledge_graph",
+        "get_system_metrics",
     ],
     "register_session_buddy_tools": ["ingest_session_memory", "get_cross_system_summary"],
     "register_pycharm_tools": [
-        "get_ide_diagnostics", "search_code", "get_symbol_info", "find_usages", "pycharm_health",
+        "get_ide_diagnostics",
+        "search_code",
+        "get_symbol_info",
+        "find_usages",
+        "pycharm_health",
     ],
 }
 
@@ -63,7 +75,11 @@ def get_active_profile(env_var: str = "AKOSHA_TOOL_PROFILE") -> ToolProfile:
 
 
 __all__ = [
-    "FULL_REGISTRATIONS", "MINIMAL_REGISTRATIONS", "PROFILE_REGISTRATIONS",
-    "REGISTRATION_DESCRIPTIONS", "REGISTRATION_TOOLS", "STANDARD_REGISTRATIONS",
+    "FULL_REGISTRATIONS",
+    "MINIMAL_REGISTRATIONS",
+    "PROFILE_REGISTRATIONS",
+    "REGISTRATION_DESCRIPTIONS",
+    "REGISTRATION_TOOLS",
+    "STANDARD_REGISTRATIONS",
     "get_active_profile",
 ]

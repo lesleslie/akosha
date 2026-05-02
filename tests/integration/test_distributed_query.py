@@ -4,12 +4,12 @@ Tests fan-out queries across shards with timeout protection.
 """
 
 import asyncio
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from akosha.query.aggregator import QueryAggregator
 from akosha.query.distributed import DistributedQueryEngine
 from akosha.storage.sharding import ShardRouter
-from akosha.query.aggregator import QueryAggregator
 
 
 @pytest.fixture
@@ -21,6 +21,7 @@ def shard_router():
 @pytest.fixture
 def mock_shard_query():
     """Mock single shard query execution."""
+
     async def mock_query(shard_id, query_embedding, limit):
         await asyncio.sleep(0.1)  # Simulate network latency
         return [
@@ -64,6 +65,7 @@ async def test_distributed_query_fans_out_to_all_shards(shard_router, mock_shard
 @pytest.mark.asyncio
 async def test_distributed_query_handles_partial_shard_failures(shard_router):
     """Test that query engine handles shard failures gracefully."""
+
     async def failing_query(shard_id, query_embedding, limit):
         # Every 3rd shard fails
         if shard_id % 3 == 0:
@@ -92,6 +94,7 @@ async def test_distributed_query_handles_partial_shard_failures(shard_router):
 @pytest.mark.asyncio
 async def test_distributed_query_enforces_timeout(shard_router):
     """Test that per-shard timeout is enforced."""
+
     async def slow_query(shard_id, query_embedding, limit):
         await asyncio.sleep(10.0)  # Too slow, should timeout
         return []
@@ -132,9 +135,7 @@ async def test_query_aggregator_merges_and_deduplicates():
         {"conversation_id": "conv-5", "similarity": 0.65},
     ]
 
-    merged = QueryAggregator.merge_results(
-        results=[shard_1_results, shard_2_results]
-    )
+    merged = QueryAggregator.merge_results(results=[shard_1_results, shard_2_results])
 
     # Should deduplicate by conversation_id
     conversation_ids = [r["conversation_id"] for r in merged]

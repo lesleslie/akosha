@@ -3,16 +3,15 @@
 Tests JWT authentication and token management for WebSocket connections.
 """
 
-import pytest
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from akosha.websocket.auth import (
+    AUTH_ENABLED,
     JWT_SECRET,
     TOKEN_EXPIRY,
-    AUTH_ENABLED,
-    get_authenticator,
     generate_token,
+    get_authenticator,
     verify_token,
 )
 
@@ -36,11 +35,14 @@ class TestWebsocketAuthConstants:
 
     def test_constants_are_configurable(self):
         """Test that constants can be configured via environment."""
-        with patch.dict(os.environ, {
-            'AKOSHA_JWT_SECRET': 'test-secret',
-            'AKOSHA_TOKEN_EXPIRY': '7200',
-            'AKOSHA_AUTH_ENABLED': 'true'
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "AKOSHA_JWT_SECRET": "test-secret",
+                "AKOSHA_TOKEN_EXPIRY": "7200",
+                "AKOSHA_AUTH_ENABLED": "true",
+            },
+        ):
             # Values should be updated (reload needed for actual test)
             pass
 
@@ -50,8 +52,8 @@ class TestWebsocketAuthAuthenticator:
 
     def test_get_authenticator_enabled(self):
         """Test getting authenticator when auth is enabled."""
-        with patch.dict(os.environ, {'AKOSHA_AUTH_ENABLED': 'true'}):
-            with patch('akosha.websocket.auth.WebSocketAuthenticator') as MockAuthenticator:
+        with patch("akosha.websocket.auth.AUTH_ENABLED", True):
+            with patch("akosha.websocket.auth.WebSocketAuthenticator") as MockAuthenticator:
                 mock_auth = MockAuthenticator.return_value
                 mock_auth.configure.return_value = None
 
@@ -62,7 +64,7 @@ class TestWebsocketAuthAuthenticator:
 
     def test_get_authenticator_disabled(self):
         """Test getting authenticator when auth is disabled."""
-        with patch.dict(os.environ, {'AKOSHA_AUTH_ENABLED': 'false'}):
+        with patch("akosha.websocket.auth.AUTH_ENABLED", False):
             result = get_authenticator()
             assert result is None
 
@@ -201,26 +203,24 @@ class TestWebsocketAuthErrorHandling:
 
     def test_auth_disabled_handling(self):
         """Test behavior when authentication is disabled."""
-        with patch.dict(os.environ, {'AKOSHA_AUTH_ENABLED': 'false'}):
+        with patch("akosha.websocket.auth.AUTH_ENABLED", False):
             result = get_authenticator()
             assert result is None
 
     def test_empty_jwt_secret_handling(self):
         """Test behavior with empty JWT secret."""
-        with patch.dict(os.environ, {
-            'AKOSHA_JWT_SECRET': '',
-            'AKOSHA_AUTH_ENABLED': 'true'
-        }):
-            result = get_authenticator()
+        with patch("akosha.websocket.auth.AUTH_ENABLED", True):
+            with patch("akosha.websocket.auth.JWT_SECRET", ""):
+                result = get_authenticator()
             assert result is not None
 
     def test_verification_error_handling(self):
         """Test error handling during token verification."""
         test_cases = [
             None,  # None token
-            123,   # Non-string token
-            [],    # List token
-            {},    # Dict token
+            123,  # Non-string token
+            [],  # List token
+            {},  # Dict token
         ]
 
         for case in test_cases:
@@ -277,19 +277,17 @@ class TestWebsocketAuthConfiguration:
     def test_configuration_validation(self):
         """Test configuration validation."""
         valid_configs = [
-            {'secret': 'valid-secret', 'expiry': '3600', 'enabled': 'true'},
-            {'secret': 'another-secret', 'expiry': '7200', 'enabled': 'false'},
-            {'secret': '', 'expiry': '3600', 'enabled': 'true'},
+            {"secret": "valid-secret", "expiry": "3600", "enabled": True},
+            {"secret": "another-secret", "expiry": "7200", "enabled": False},
+            {"secret": "", "expiry": "3600", "enabled": True},
         ]
 
         for config in valid_configs:
-            with patch.dict(os.environ, {
-                'AKOSHA_JWT_SECRET': config['secret'],
-                'AKOSHA_TOKEN_EXPIRY': str(config['expiry']),
-                'AKOSHA_AUTH_ENABLED': config['enabled']
-            }):
-                result = get_authenticator()
-                assert result is not None or config['enabled'] == 'false'
+            with patch("akosha.websocket.auth.AUTH_ENABLED", config["enabled"]):
+                with patch("akosha.websocket.auth.JWT_SECRET", config["secret"]):
+                    with patch("akosha.websocket.auth.TOKEN_EXPIRY", config["expiry"]):
+                        result = get_authenticator()
+                        assert result is not None or not config["enabled"]
 
     def test_secure_configuration(self):
         """Test secure configuration practices."""

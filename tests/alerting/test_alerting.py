@@ -3,8 +3,8 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 import httpx
+import pytest
 
 from akosha.alerting import (
     Alert,
@@ -16,9 +16,18 @@ from akosha.alerting import (
     PatternDetector,
     check_metric_and_alert,
     configure_alert_threshold,
+    get_alert_manager,
     register_alert_webhook,
     send_alert,
 )
+
+
+def _make_async_httpx_mock(**post_kwargs):
+    """Create an AsyncMock that works as an async context manager for httpx.AsyncClient."""
+    mock = AsyncMock(**post_kwargs)
+    mock.__aenter__ = AsyncMock(return_value=mock)
+    mock.__aexit__ = AsyncMock(return_value=False)
+    return mock
 
 
 class TestAlert:
@@ -167,9 +176,9 @@ class TestAlertDeduplicator:
 
         # Simulate time passing beyond window
         old_time = datetime.now(UTC) - timedelta(minutes=10)
-        deduplicator._sent_alerts[
-            f"{alert.alert_type.value}:{hash(str(alert.pattern_data))}"
-        ] = old_time
+        deduplicator._sent_alerts[f"{alert.alert_type.value}:{hash(str(alert.pattern_data))}"] = (
+            old_time
+        )
 
         # Should send again
         assert deduplicator.should_send(alert) is True
@@ -364,7 +373,7 @@ class TestAlertManager:
         mock_response.status_code = 200
         mock_response.raise_for_status = MagicMock()
 
-        mock_client = AsyncMock()
+        mock_client = _make_async_httpx_mock()
         mock_client.post = AsyncMock(return_value=mock_response)
 
         with patch("httpx.AsyncClient", return_value=mock_client):
@@ -385,8 +394,7 @@ class TestAlertManager:
             message="Test alert",
         )
 
-        # Mock HTTP client with error
-        mock_client = AsyncMock()
+        mock_client = _make_async_httpx_mock()
         mock_client.post.side_effect = httpx.HTTPError("Connection failed")
 
         with patch("httpx.AsyncClient", return_value=mock_client):
@@ -417,7 +425,7 @@ class TestAlertManager:
         mock_response.status_code = 200
         mock_response.raise_for_status = MagicMock()
 
-        mock_client = AsyncMock()
+        mock_client = _make_async_httpx_mock()
         mock_client.post = AsyncMock(return_value=mock_response)
 
         with patch("httpx.AsyncClient", return_value=mock_client):
@@ -438,69 +446,95 @@ class TestConvenienceFunctions:
     @pytest.mark.asyncio
     async def test_send_alert_convenience(self):
         """Test send_alert convenience function."""
-        # Mock webhook
-        mock_response = AsyncMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status = MagicMock()
+        # Reset global singleton for test isolation
+        import akosha.alerting as alerting_mod
+        from akosha.alerting import get_alert_manager
 
-        mock_client = AsyncMock()
-        mock_client.post = AsyncMock(return_value=mock_response)
+        original = alerting_mod._alert_manager
+        try:
+            alerting_mod._alert_manager = AlertManager()
 
-        # Register webhook
-        manager = AlertManager()
-        manager.register_webhook(AlertType.HIGH_LATENCY, "http://example.com/webhook")
+            # Mock webhook
+            mock_response = AsyncMock()
+            mock_response.status_code = 200
+            mock_response.raise_for_status = MagicMock()
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
-            result = await send_alert(
-                alert_type=AlertType.HIGH_LATENCY,
-                message="Test alert",
-                severity=AlertSeverity.WARNING,
-                metadata={"service": "api"},
-                pattern_data={"latency_ms": 1500},
+            mock_client = _make_async_httpx_mock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+
+            # Register webhook on global instance
+            get_alert_manager().register_webhook(
+                AlertType.HIGH_LATENCY, "http://example.com/webhook"
             )
 
-        assert result["status"] == "complete"
+            with patch("httpx.AsyncClient", return_value=mock_client):
+                result = await send_alert(
+                    alert_type=AlertType.HIGH_LATENCY,
+                    message="Test alert",
+                    severity=AlertSeverity.WARNING,
+                    metadata={"service": "api"},
+                    pattern_data={"latency_ms": 1500},
+                )
+
+            assert result["status"] == "complete"
+        finally:
+            alerting_mod._alert_manager = original
 
     @pytest.mark.asyncio
     async def test_check_metric_and_alert_convenience(self):
         """Test check_metric_and_alert convenience function."""
-        # Mock webhook
-        mock_response = AsyncMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status = MagicMock()
+        import akosha.alerting as alerting_mod
+        from akosha.alerting import get_alert_manager
 
-        mock_client = AsyncMock()
-        mock_client.post = AsyncMock(return_value=mock_response)
-
-        # Register webhook
-        manager = AlertManager()
-        manager.register_webhook(AlertType.HIGH_LATENCY, "http://example.com/webhook")
-
-        with patch("httpx.AsyncClient", return_value=mock_client):
-            result = await check_metric_and_alert(
-                alert_type=AlertType.HIGH_LATENCY,
-                value=1500.0,
-                metadata={"service": "api"},
+        original = alerting_mod._alert_manager
+        try:
+            alerting_mod._alert_manager = AlertManager()
+            get_alert_manager().register_webhook(
+                AlertType.HIGH_LATENCY, "http://example.com/webhook"
             )
 
-        assert result is not None
-        assert result["status"] == "complete"
+            mock_response = AsyncMock()
+            mock_response.status_code = 200
+            mock_response.raise_for_status = MagicMock()
+            mock_client = _make_async_httpx_mock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+
+            with patch("httpx.AsyncClient", return_value=mock_client):
+                result = await check_metric_and_alert(
+                    alert_type=AlertType.HIGH_LATENCY,
+                    value=1500.0,
+                    metadata={"service": "api"},
+                )
+
+            assert result is not None
+            assert result["status"] == "complete"
+        finally:
+            alerting_mod._alert_manager = original
 
     def test_configure_alert_threshold_convenience(self):
         """Test configure_alert_threshold convenience function."""
-        configure_alert_threshold(AlertType.HIGH_LATENCY, 2000.0)
+        import akosha.alerting as alerting_mod
 
-        manager = AlertManager()
-        # Check threshold was set globally
-        assert manager.detector.thresholds[AlertType.HIGH_LATENCY] == 2000.0
+        original = alerting_mod._alert_manager
+        try:
+            alerting_mod._alert_manager = AlertManager()
+            configure_alert_threshold(AlertType.HIGH_LATENCY, 2000.0)
+            assert get_alert_manager().detector.thresholds[AlertType.HIGH_LATENCY] == 2000.0
+        finally:
+            alerting_mod._alert_manager = original
 
     def test_register_alert_webhook_convenience(self):
         """Test register_alert_webhook convenience function."""
-        register_alert_webhook(
-            AlertType.HIGH_LATENCY,
-            "http://example.com/webhook",
-        )
+        import akosha.alerting as alerting_mod
 
-        manager = AlertManager()
-        webhooks = manager.router.get_webhooks(AlertType.HIGH_LATENCY)
-        assert len(webhooks) == 1
+        original = alerting_mod._alert_manager
+        try:
+            alerting_mod._alert_manager = AlertManager()
+            register_alert_webhook(
+                AlertType.HIGH_LATENCY,
+                "http://example.com/webhook",
+            )
+            webhooks = get_alert_manager().router.get_webhooks(AlertType.HIGH_LATENCY)
+            assert len(webhooks) == 1
+        finally:
+            alerting_mod._alert_manager = original

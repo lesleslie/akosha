@@ -1,7 +1,7 @@
 """Tests for Akosha authentication module."""
 
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -403,10 +403,7 @@ class TestAuthenticationErrors:
 
     def test_authentication_error_to_dict(self):
         """Test converting AuthenticationError to dictionary."""
-        error = AuthenticationError(
-            "Test error",
-            details={"key": "value"}
-        )
+        error = AuthenticationError("Test error", details={"key": "value"})
         result = error.to_dict()
         assert result == {
             "error": "authentication_error",

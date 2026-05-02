@@ -3,24 +3,24 @@
 Tests the core functionality of Akosha tools including registration and basic operations.
 """
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from typing import Any
 
 from akosha.mcp.tools.akosha_tools import (
     register_akosha_tools,
-    register_embedding_tools,
-    register_search_tools,
     register_analytics_tools,
-    register_graph_tools,
-    register_system_tools,
     register_code_graph_tools,
+    register_embedding_tools,
+    register_graph_tools,
+    register_search_tools,
+    register_system_tools,
 )
-from akosha.processing.embeddings import EmbeddingService
+from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
 from akosha.processing.analytics import TimeSeriesAnalytics
+from akosha.processing.embeddings import EmbeddingService
 from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
 from akosha.storage.hot_store import HotStore
-from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
 
 
 class TestToolRegistration:
@@ -49,11 +49,18 @@ class TestToolRegistration:
     @pytest.fixture
     def mock_hot_store(self):
         """Create mock hot store."""
-        return MagicMock(spec=HotStore)
+        store = MagicMock(spec=HotStore)
+        store.list_code_graphs = AsyncMock(return_value=[])
+        store.get_code_graph = AsyncMock(return_value=None)
+        return store
 
-    def test_register_akosha_tools_with_services(self, mock_registry, mock_embedding_service, mock_analytics_service, mock_graph_builder):
+    def test_register_akosha_tools_with_services(
+        self, mock_registry, mock_embedding_service, mock_analytics_service, mock_graph_builder
+    ):
         """Test registration of all Akosha tools with services."""
-        register_akosha_tools(mock_registry, mock_embedding_service, mock_analytics_service, mock_graph_builder)
+        register_akosha_tools(
+            mock_registry, mock_embedding_service, mock_analytics_service, mock_graph_builder
+        )
 
         # Should register multiple tools
         assert mock_registry.register.call_count > 0
@@ -102,10 +109,16 @@ class TestToolRegistration:
 
     def test_register_code_graph_tools(self, mock_registry, mock_hot_store):
         """Test code graph tools registration."""
+        # code_graph_tools checks isinstance(registry, FastMCPToolRegistry)
+        # and uses registry.app — our mock has spec=FastMCPToolRegistry but
+        # needs an app attribute
+        mock_registry.app = MagicMock()
+        mock_registry.app.tool = MagicMock(return_value=lambda fn: fn)
+
         register_code_graph_tools(mock_registry, mock_hot_store)
 
-        # Should register code graph tools
-        assert mock_registry.register.call_count > 0
+        # Should register code graph tools via @mcp.tool()
+        assert mock_registry.app.tool.call_count > 0
 
 
 class TestServiceAvailability:
@@ -115,6 +128,11 @@ class TestServiceAvailability:
     def mock_registry(self):
         """Create mock tool registry."""
         return MagicMock(spec=FastMCPToolRegistry)
+
+    @pytest.fixture
+    def mock_embedding_service(self):
+        """Create mock embedding service."""
+        return MagicMock(spec=EmbeddingService)
 
     def test_registration_with_failed_services(self, mock_registry):
         """Test registration with service failures."""
@@ -130,8 +148,9 @@ class TestServiceAvailability:
 
     def test_registration_with_invalid_registry(self, mock_embedding_service):
         """Test registration with invalid registry."""
-        # Should handle None registry (graceful failure)
-        register_embedding_tools(None, mock_embedding_service)
+        # None registry will raise AttributeError on registry.register()
+        with pytest.raises(AttributeError):
+            register_embedding_tools(None, mock_embedding_service)
 
     def test_registration_with_invalid_services(self, mock_registry):
         """Test registration with invalid services."""
@@ -153,35 +172,35 @@ class TestToolCategories:
     def mock_services(self):
         """Create mock services."""
         return {
-            'embedding': MagicMock(spec=EmbeddingService),
-            'analytics': MagicMock(spec=TimeSeriesAnalytics),
-            'graph': MagicMock(spec=KnowledgeGraphBuilder),
+            "embedding": MagicMock(spec=EmbeddingService),
+            "analytics": MagicMock(spec=TimeSeriesAnalytics),
+            "graph": MagicMock(spec=KnowledgeGraphBuilder),
         }
 
     def test_embedding_tools_category(self, mock_registry, mock_services):
         """Test embedding tools category."""
-        register_embedding_tools(mock_registry, mock_services['embedding'])
+        register_embedding_tools(mock_registry, mock_services["embedding"])
 
         # Check that embedding tools were registered
         assert mock_registry.register.call_count > 0
 
     def test_search_tools_category(self, mock_registry, mock_services):
         """Test search tools category."""
-        register_search_tools(mock_registry, mock_services['embedding'])
+        register_search_tools(mock_registry, mock_services["embedding"])
 
         # Check that search tools were registered
         assert mock_registry.register.call_count > 0
 
     def test_analytics_tools_category(self, mock_registry, mock_services):
         """Test analytics tools category."""
-        register_analytics_tools(mock_registry, mock_services['analytics'])
+        register_analytics_tools(mock_registry, mock_services["analytics"])
 
         # Check that analytics tools were registered
         assert mock_registry.register.call_count > 0
 
     def test_graph_tools_category(self, mock_registry, mock_services):
         """Test graph tools category."""
-        register_graph_tools(mock_registry, mock_services['graph'])
+        register_graph_tools(mock_registry, mock_services["graph"])
 
         # Check that graph tools were registered
         assert mock_registry.register.call_count > 0
@@ -196,10 +215,15 @@ class TestToolCategories:
     def test_code_graph_tools_category(self, mock_registry):
         """Test code graph tools category."""
         mock_hot_store = MagicMock(spec=HotStore)
+        mock_hot_store.list_code_graphs = AsyncMock(return_value=[])
+        mock_hot_store.get_code_graph = AsyncMock(return_value=None)
+        mock_registry.app = MagicMock()
+        mock_registry.app.tool = MagicMock(return_value=lambda fn: fn)
+
         register_code_graph_tools(mock_registry, mock_hot_store)
 
         # Check that code graph tools were registered
-        assert mock_registry.register.call_count > 0
+        assert mock_registry.app.tool.call_count > 0
 
 
 class TestIntegration:
@@ -214,24 +238,30 @@ class TestIntegration:
     def mock_services(self):
         """Create mock services."""
         return {
-            'embedding': MagicMock(spec=EmbeddingService),
-            'analytics': MagicMock(spec=TimeSeriesAnalytics),
-            'graph': MagicMock(spec=KnowledgeGraphBuilder),
-            'hot_store': MagicMock(spec=HotStore),
+            "embedding": MagicMock(spec=EmbeddingService),
+            "analytics": MagicMock(spec=TimeSeriesAnalytics),
+            "graph": MagicMock(spec=KnowledgeGraphBuilder),
+            "hot_store": MagicMock(spec=HotStore),
         }
 
     def test_all_tools_registration(self, mock_registry, mock_services):
         """Test registration of all tool categories."""
+        # Set up mock for code_graph_tools
+        mock_services["hot_store"].list_code_graphs = AsyncMock(return_value=[])
+        mock_services["hot_store"].get_code_graph = AsyncMock(return_value=None)
+        mock_registry.app = MagicMock()
+        mock_registry.app.tool = MagicMock(return_value=lambda fn: fn)
+
         # Reset call count
         mock_registry.reset_mock()
 
         # Register all tool categories
-        register_embedding_tools(mock_registry, mock_services['embedding'])
-        register_search_tools(mock_registry, mock_services['embedding'])
-        register_analytics_tools(mock_registry, mock_services['analytics'])
-        register_graph_tools(mock_registry, mock_services['graph'])
+        register_embedding_tools(mock_registry, mock_services["embedding"])
+        register_search_tools(mock_registry, mock_services["embedding"])
+        register_analytics_tools(mock_registry, mock_services["analytics"])
+        register_graph_tools(mock_registry, mock_services["graph"])
         register_system_tools(mock_registry)
-        register_code_graph_tools(mock_registry, mock_services['hot_store'])
+        register_code_graph_tools(mock_registry, mock_services["hot_store"])
 
         # Should register multiple tools across all categories
         assert mock_registry.register.call_count > 5  # At least 6 categories
@@ -242,8 +272,8 @@ class TestIntegration:
         # For now, just test that registration doesn't interfere
         original_call_count = mock_registry.register.call_count
 
-        register_embedding_tools(mock_registry, mock_services['embedding'])
-        register_analytics_tools(mock_registry, mock_services['analytics'])
+        register_embedding_tools(mock_registry, mock_services["embedding"])
+        register_analytics_tools(mock_registry, mock_services["analytics"])
 
         # Should have registered tools from both categories
         assert mock_registry.register.call_count > original_call_count
@@ -256,6 +286,15 @@ class TestErrorHandling:
     def mock_registry(self):
         """Create mock tool registry."""
         return MagicMock(spec=FastMCPToolRegistry)
+
+    @pytest.fixture
+    def mock_services(self):
+        """Create mock services."""
+        return {
+            "embedding": MagicMock(spec=EmbeddingService),
+            "analytics": MagicMock(spec=TimeSeriesAnalytics),
+            "graph": MagicMock(spec=KnowledgeGraphBuilder),
+        }
 
     def test_service_error_handling(self, mock_registry):
         """Test handling of service errors."""
@@ -272,21 +311,20 @@ class TestErrorHandling:
         """Test handling of registry errors."""
         # Should handle invalid registry gracefully
         try:
-            register_embedding_tools(None, mock_services['embedding'])
+            register_embedding_tools(None, mock_services["embedding"])
             # Should not raise exception
             assert True
-        except Exception:
-            # If it raises, it should be handled gracefully
+        except AttributeError:
+            # AttributeError is expected when registry is None
             assert True
 
     def test_concurrent_registration(self, mock_services):
         """Test concurrent tool registration."""
         import threading
-        import time
 
         def register_tools():
             mock_registry = MagicMock(spec=FastMCPToolRegistry)
-            register_embedding_tools(mock_registry, mock_services['embedding'])
+            register_embedding_tools(mock_registry, mock_services["embedding"])
             return mock_registry.register.call_count
 
         # Create multiple threads registering tools
@@ -322,9 +360,9 @@ class TestPerformance:
     def mock_services(self):
         """Create mock services."""
         return {
-            'embedding': MagicMock(spec=EmbeddingService),
-            'analytics': MagicMock(spec=TimeSeriesAnalytics),
-            'graph': MagicMock(spec=KnowledgeGraphBuilder),
+            "embedding": MagicMock(spec=EmbeddingService),
+            "analytics": MagicMock(spec=TimeSeriesAnalytics),
+            "graph": MagicMock(spec=KnowledgeGraphBuilder),
         }
 
     def test_registration_performance(self, mock_registry, mock_services):
@@ -332,9 +370,9 @@ class TestPerformance:
         import time
 
         start_time = time.time()
-        register_embedding_tools(mock_registry, mock_services['embedding'])
-        register_analytics_tools(mock_registry, mock_services['analytics'])
-        register_graph_tools(mock_registry, mock_services['graph'])
+        register_embedding_tools(mock_registry, mock_services["embedding"])
+        register_analytics_tools(mock_registry, mock_services["analytics"])
+        register_graph_tools(mock_registry, mock_services["graph"])
         end_time = time.time()
 
         # Should be fast
@@ -342,11 +380,13 @@ class TestPerformance:
 
     def test_large_scale_registration(self, mock_services):
         """Test large scale tool registration performance."""
+        import time
+
         mock_registry = MagicMock(spec=FastMCPToolRegistry)
 
         start_time = time.time()
         for i in range(10):
-            register_embedding_tools(mock_registry, mock_services['embedding'])
+            register_embedding_tools(mock_registry, mock_services["embedding"])
         end_time = time.time()
 
         # Should handle multiple registrations efficiently
@@ -362,11 +402,20 @@ class TestConfiguration:
         """Create mock tool registry."""
         return MagicMock(spec=FastMCPToolRegistry)
 
+    @pytest.fixture
+    def mock_services(self):
+        """Create mock services."""
+        return {
+            "embedding": MagicMock(spec=EmbeddingService),
+            "analytics": MagicMock(spec=TimeSeriesAnalytics),
+            "graph": MagicMock(spec=KnowledgeGraphBuilder),
+        }
+
     def test_tools_configuration(self, mock_services):
         """Test that tools are properly configured."""
         # Test that all required services can be imported
-        from akosha.processing.embeddings import EmbeddingService
         from akosha.processing.analytics import TimeSeriesAnalytics
+        from akosha.processing.embeddings import EmbeddingService
         from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
         from akosha.storage.hot_store import HotStore
 
@@ -380,12 +429,12 @@ class TestConfiguration:
         # Should be able to import all required modules
         from akosha.mcp.tools.akosha_tools import (
             register_akosha_tools,
-            register_embedding_tools,
-            register_search_tools,
             register_analytics_tools,
-            register_graph_tools,
-            register_system_tools,
             register_code_graph_tools,
+            register_embedding_tools,
+            register_graph_tools,
+            register_search_tools,
+            register_system_tools,
         )
 
         assert callable(register_akosha_tools)

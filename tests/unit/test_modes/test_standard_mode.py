@@ -12,7 +12,10 @@ def test_standard_mode_config():
     mode = StandardMode(config={})
 
     assert mode.mode_config.name == "standard"
-    assert mode.mode_config.description == "Standard mode: Full production configuration with Redis and cloud storage"
+    assert (
+        mode.mode_config.description
+        == "Standard mode: Full production configuration with Redis and cloud storage"
+    )
     assert mode.mode_config.redis_enabled is True
     assert mode.mode_config.cold_storage_enabled is True
     assert mode.mode_config.cache_backend == "redis"
@@ -56,9 +59,9 @@ async def test_standard_mode_initialize_cold_storage_fallback():
     """Test standard mode cold storage initialization without credentials (fallback)."""
     mode = StandardMode(config={"cold_bucket": None})
 
-    # Should return None but not raise exception
+    # Falls back to local storage adapter when no cold bucket configured
     storage = await mode.initialize_cold_storage()
-    assert storage is None  # Cold storage unavailable
+    assert storage is not None
 
 
 def test_standard_mode_repr():

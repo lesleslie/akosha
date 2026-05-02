@@ -3,12 +3,33 @@
 Tests HTTP-based memory ingestion from Session-Buddy instances via MCP tools.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import UTC, datetime
 
-# Test the registration function and the internal logic
+import pytest
+
 from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
+
+
+def _make_registry_and_capture():
+    """Create a mock registry that captures both metadata and functions.
+
+    The real registry.register(metadata) returns a decorator. We need the
+    decorator to be an identity function so that the original async functions
+    are preserved in closures (e.g. batch_store captures store_memory).
+    """
+    registry = MagicMock()
+    captured = []
+
+    def _tracking_decorator(metadata):
+        def _decorator(func):
+            captured.append(func)
+            return func
+
+        return _decorator
+
+    registry.register.side_effect = _tracking_decorator
+    registry._captured_funcs = captured
+    return registry, captured
 
 
 class TestSessionBuddyToolsRegistration:
@@ -17,32 +38,29 @@ class TestSessionBuddyToolsRegistration:
     @pytest.mark.asyncio
     async def test_register_tools_success(self):
         """Test successful tool registration."""
-        mock_registry = MagicMock()
+        mock_registry, captured = _make_registry_and_capture()
         mock_hot_store = AsyncMock()
 
-        # Should not raise exceptions
         register_session_buddy_tools(mock_registry, mock_hot_store)
 
-        # Verify register was called twice (for both tools)
         assert mock_registry.register.call_count == 2
-
-        # Verify tool metadata
-        calls = mock_registry.register.call_args_list
-        assert len(calls) == 2
+        assert len(captured) == 2
 
         # First tool should be store_memory
-        first_call = calls[0]
-        tool_info = first_call[0][0]  # First argument
-        assert tool_info.name == "store_memory"
-        assert "Store a memory" in tool_info.description
-        assert hasattr(first_call[0][1], '__code__')  # Async function
+        first_call = mock_registry.register.call_args_list[0]
+        metadata = first_call[0][0]
+        store_func = captured[0]
+        assert metadata.name == "store_memory"
+        assert "Store a memory" in metadata.description
+        assert hasattr(store_func, "__code__")
 
         # Second tool should be batch_store_memories
-        second_call = calls[1]
-        tool_info = second_call[0][0]  # First argument
-        assert tool_info.name == "batch_store_memories"
-        assert "Store multiple memories" in tool_info.description
-        assert hasattr(second_call[0][1], '__code__')  # Async function
+        second_call = mock_registry.register.call_args_list[1]
+        metadata = second_call[0][0]
+        batch_func = captured[1]
+        assert metadata.name == "batch_store_memories"
+        assert "Store multiple memories" in metadata.description
+        assert hasattr(batch_func, "__code__")
 
 
 class TestStoreMemoryLogic:
@@ -51,97 +69,82 @@ class TestStoreMemoryLogic:
     @pytest.mark.asyncio
     async def test_store_memory_validation(self):
         """Test memory validation logic."""
-        # Test cases from original implementation
         test_cases = [
-            # Valid cases
             {
                 "memory_id": "valid-id",
                 "text": "valid text",
                 "embedding": [0.1] * 384,
                 "metadata": {"source": "test"},
-                "should_succeed": True
+                "should_succeed": True,
             },
             {
                 "memory_id": "valid-id",
                 "text": "valid text",
                 "embedding": None,
                 "metadata": None,
-                "should_succeed": True
+                "should_succeed": True,
             },
-            # Invalid cases
-            {
-                "memory_id": "",
-                "text": "valid text",
-                "should_succeed": False
-            },
-            {
-                "memory_id": "valid-id",
-                "text": "",
-                "should_succeed": False
-            },
+            {"memory_id": "", "text": "valid text", "should_succeed": False},
+            {"memory_id": "valid-id", "text": "", "should_succeed": False},
         ]
 
         for case in test_cases:
-            # Mock HotRecord and hot_store
-            with patch('akosha.mcp.tools.session_buddy_tools.HotRecord') as mock_record_class:
+            with patch("akosha.models.HotRecord") as mock_record_class:
                 mock_record = MagicMock()
                 mock_record_class.return_value = mock_record
 
-                # Mock hot_store
+                mock_registry, captured = _make_registry_and_capture()
                 mock_hot_store = AsyncMock()
                 mock_hot_store.insert = AsyncMock()
 
-                # Extract parameters
-                kwargs = {
-                    "memory_id": case["memory_id"],
-                    "text": case["text"]
-                }
+                register_session_buddy_tools(mock_registry, mock_hot_store)
+                store_func = captured[0]
+
+                kwargs = {"memory_id": case["memory_id"], "text": case["text"]}
                 if "embedding" in case:
                     kwargs["embedding"] = case["embedding"]
                 if "metadata" in case:
                     kwargs["metadata"] = case["metadata"]
 
-                # Import the function directly
-                from akosha.mcp.tools.session_buddy_tools import store_memory
-                result = await store_memory(**kwargs)
+                result = await store_func(**kwargs)
 
                 if case["should_succeed"]:
                     assert result["status"] == "stored"
                     assert result["memory_id"] == case["memory_id"]
                     if "embedding" in case and case["embedding"] is not None:
                         assert result["embedding_dim"] == 384
-                    # Verify database operations
                     mock_record_class.assert_called_once()
                     mock_hot_store.insert.assert_called_once()
                 else:
                     assert result["status"] == "failed"
                     assert result["memory_id"] == case["memory_id"]
                     assert "error" in result
-                    # Should not have called database operations
                     mock_record_class.assert_not_called()
                     mock_hot_store.insert.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_store_memory_embedding_dimensions(self):
         """Test embedding dimension handling."""
-        test_dims = [256, 384, 768]  # Common embedding dimensions
+        test_dims = [256, 384, 768]
 
         for dim in test_dims:
-            with patch('akosha.mcp.tools.session_buddy_tools.HotRecord') as mock_record_class:
+            with patch("akosha.models.HotRecord") as mock_record_class:
                 mock_record = MagicMock()
                 mock_record_class.return_value = mock_record
 
+                mock_registry, captured = _make_registry_and_capture()
                 mock_hot_store = AsyncMock()
                 mock_hot_store.insert = AsyncMock()
 
-                from akosha.mcp.tools.session_buddy_tools import store_memory
-                result = await store_memory(
+                register_session_buddy_tools(mock_registry, mock_hot_store)
+                store_func = captured[0]
+
+                result = await store_func(
                     memory_id=f"test-{dim}",
                     text=f"Test text with {dim} dimensions",
-                    embedding=[0.1] * dim
+                    embedding=[0.1] * dim,
                 )
 
-                # Should store successfully
                 assert result["status"] == "stored"
                 assert result["embedding_dim"] == dim
 
@@ -150,44 +153,48 @@ class TestStoreMemoryLogic:
         """Test metadata extraction and storage."""
         test_metadata = [
             {
-                "input": {"source": "http://localhost:8678", "original_id": "orig-123", "type": "insight"},
+                "input": {
+                    "source": "http://localhost:8678",
+                    "original_id": "orig-123",
+                    "type": "insight",
+                },
                 "expected_source": "http://localhost:8678",
                 "expected_original_id": "orig-123",
-                "expected_type": "insight"
+                "expected_type": "insight",
             },
             {
                 "input": {"source": "http://localhost:8678"},
                 "expected_source": "http://localhost:8678",
                 "expected_original_id": None,
-                "expected_type": "session_memory"
+                "expected_type": "session_memory",
             },
             {
                 "input": None,
                 "expected_source": "unknown",
                 "expected_original_id": None,
-                "expected_type": "session_memory"
-            }
+                "expected_type": "session_memory",
+            },
         ]
 
         for case in test_metadata:
-            with patch('akosha.mcp.tools.session_buddy_tools.HotRecord') as mock_record_class:
+            with patch("akosha.models.HotRecord") as mock_record_class:
                 mock_record = MagicMock()
                 mock_record_class.return_value = mock_record
 
+                mock_registry, captured = _make_registry_and_capture()
                 mock_hot_store = AsyncMock()
                 mock_hot_store.insert = AsyncMock()
 
-                from akosha.mcp.tools.session_buddy_tools import store_memory
-                result = await store_memory(
-                    memory_id="test-metadata",
-                    text="Test metadata handling",
-                    metadata=case["input"]
+                register_session_buddy_tools(mock_registry, mock_hot_store)
+                store_func = captured[0]
+
+                result = await store_func(
+                    memory_id="test-metadata", text="Test metadata handling", metadata=case["input"]
                 )
 
                 assert result["status"] == "stored"
                 assert result["source"] == case["expected_source"]
 
-                # Check HotRecord metadata
                 call_args = mock_record_class.call_args
                 metadata = call_args.kwargs["metadata"]
                 assert metadata["source"] == case["expected_source"]
@@ -202,24 +209,36 @@ class TestBatchStoreMemoriesLogic:
     @pytest.mark.asyncio
     async def test_batch_validation_logic(self):
         """Test batch size validation."""
-        from akosha.mcp.tools.session_buddy_tools import batch_store_memories
+        mock_registry, captured = _make_registry_and_capture()
+        mock_hot_store = AsyncMock()
+
+        register_session_buddy_tools(mock_registry, mock_hot_store)
+        batch_func = captured[1]
 
         # Test oversized batch
         large_batch = [{"memory_id": f"mem{i}", "text": f"Text{i}"} for i in range(1001)]
-        result = await batch_store_memories(large_batch)
+        result = await batch_func(large_batch)
 
         assert result["status"] == "failed"
         assert result["total"] == 1001
         assert "exceeds maximum" in result["error"]
 
         # Test valid batch size
-        valid_batch = [{"memory_id": f"mem{i}", "text": f"Text{i}"} for i in range(1000)]
-        with patch('akosha.mcp.tools.session_buddy_tools.store_memory') as mock_store:
-            mock_store.return_value = {"status": "stored", "memory_id": "test"}
-            result = await batch_store_memories(valid_batch)
+        mock_registry2, captured2 = _make_registry_and_capture()
+        mock_hot_store2 = AsyncMock()
+
+        with patch("akosha.models.HotRecord") as mock_hot_record:
+            mock_record_instance = MagicMock()
+            mock_hot_record.return_value = mock_record_instance
+
+            register_session_buddy_tools(mock_registry2, mock_hot_store2)
+            batch_func2 = captured2[1]
+
+            valid_batch = [{"memory_id": f"mem{i}", "text": f"Text{i}"} for i in range(1000)]
+            result = await batch_func2(valid_batch)
 
             assert result["status"] == "completed"
-            assert mock_store.call_count == 1000
+            assert result["stored"] == 1000
 
     @pytest.mark.asyncio
     async def test_batch_processing_logic(self):
@@ -229,53 +248,48 @@ class TestBatchStoreMemoriesLogic:
                 "name": "all_success",
                 "memories": [
                     {"memory_id": "mem1", "text": "Text1"},
-                    {"memory_id": "mem2", "text": "Text2"}
-                ],
-                "store_results": [
-                    {"status": "stored", "memory_id": "mem1"},
-                    {"status": "stored", "memory_id": "mem2"}
+                    {"memory_id": "mem2", "text": "Text2"},
                 ],
                 "expected_status": "completed",
-                "expected_stored": 2
+                "expected_stored": 2,
             },
             {
                 "name": "partial_success",
                 "memories": [
                     {"memory_id": "mem1", "text": "Text1"},
                     {"memory_id": "", "text": "Invalid"},
-                    {"memory_id": "mem2", "text": ""}
-                ],
-                "store_results": [
-                    {"status": "stored", "memory_id": "mem1"},
-                    {"status": "failed", "memory_id": "", "error": "No ID"},
-                    {"status": "failed", "memory_id": "mem2", "error": "No text"}
+                    {"memory_id": "mem2", "text": ""},
                 ],
                 "expected_status": "partial",
-                "expected_stored": 1
+                "expected_stored": 1,
             },
             {
                 "name": "all_fail",
                 "memories": [
                     {"memory_id": "", "text": "Invalid"},
-                    {"memory_id": "mem2", "text": ""}
-                ],
-                "store_results": [
-                    {"status": "failed", "memory_id": ""},
-                    {"status": "failed", "memory_id": "mem2"}
+                    {"memory_id": "mem2", "text": ""},
                 ],
                 "expected_status": "failed",
-                "expected_stored": 0
-            }
+                "expected_stored": 0,
+            },
         ]
 
         for case in test_cases:
-            with patch('akosha.mcp.tools.session_buddy_tools.store_memory') as mock_store:
-                mock_store.side_effect = case["store_results"]
+            mock_registry, captured = _make_registry_and_capture()
+            mock_hot_store = AsyncMock()
 
-                from akosha.mcp.tools.session_buddy_tools import batch_store_memories
-                result = await batch_store_memories(case["memories"])
+            with patch("akosha.models.HotRecord") as mock_hot_record:
+                mock_record_instance = MagicMock()
+                mock_hot_record.return_value = mock_record_instance
 
-                assert result["status"] == case["expected_status"]
+                register_session_buddy_tools(mock_registry, mock_hot_store)
+                batch_func = captured[1]
+
+                result = await batch_func(case["memories"])
+
+                assert result["status"] == case["expected_status"], (
+                    f"Case '{case['name']}': expected {case['expected_status']}, got {result['status']}"
+                )
                 assert result["stored"] == case["expected_stored"]
                 assert result["total"] == len(case["memories"])
                 assert result["failed"] == len(case["memories"]) - case["expected_stored"]
@@ -283,23 +297,29 @@ class TestBatchStoreMemoriesLogic:
     @pytest.mark.asyncio
     async def test_batch_error_handling(self):
         """Test batch error collection."""
-        from akosha.mcp.tools.session_buddy_tools import batch_store_memories
+        mock_registry, captured = _make_registry_and_capture()
+        mock_hot_store = AsyncMock()
 
-        memories = [
-            {"memory_id": "mem1", "text": "Text1"},
-            {"memory_id": "mem2", "text": "Text2"},
-            {"memory_id": "mem3", "text": "Text3"}
-        ]
+        call_count = 0
 
-        # Mix of successful and failed with exceptions
-        with patch('akosha.mcp.tools.session_buddy_tools.store_memory') as mock_store:
-            mock_store.side_effect = [
-                {"status": "stored", "memory_id": "mem1"},
-                Exception("Database error"),
-                {"status": "stored", "memory_id": "mem3"},
+        def hot_record_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                raise Exception("Database error")
+            return MagicMock()
+
+        with patch("akosha.models.HotRecord", side_effect=hot_record_side_effect):
+            register_session_buddy_tools(mock_registry, mock_hot_store)
+            batch_func = captured[1]
+
+            memories = [
+                {"memory_id": "mem1", "text": "Text1"},
+                {"memory_id": "mem2", "text": "Text2"},
+                {"memory_id": "mem3", "text": "Text3"},
             ]
 
-            result = await batch_store_memories(memories)
+            result = await batch_func(memories)
 
             assert result["status"] == "partial"
             assert result["stored"] == 2
@@ -317,26 +337,26 @@ class TestMemoryPersistence:
     @pytest.mark.asyncio
     async def test_memory_record_creation(self):
         """Test HotRecord creation details."""
-        with patch('akosha.mcp.tools.session_buddy_tools.HotRecord') as mock_record_class:
+        with patch("akosha.models.HotRecord") as mock_record_class:
             mock_record = MagicMock()
             mock_record_class.return_value = mock_record
 
+            mock_registry, captured = _make_registry_and_capture()
             mock_hot_store = AsyncMock()
             mock_hot_store.insert = AsyncMock()
 
-            from akosha.mcp.tools.session_buddy_tools import store_memory
+            register_session_buddy_tools(mock_registry, mock_hot_store)
+            store_func = captured[0]
 
-            # Test with timestamp
             test_timestamp = "2026-02-08T12:00:00Z"
-            result = await store_memory(
+            result = await store_func(
                 memory_id="timestamp-test",
                 text="Test with timestamp",
-                metadata={"created_at": test_timestamp}
+                metadata={"created_at": test_timestamp},
             )
 
             assert result["status"] == "stored"
 
-            # Verify timestamp handling
             call_args = mock_record_class.call_args
             assert call_args.kwargs["timestamp"] == test_timestamp
             mock_hot_store.insert.assert_called_once_with(mock_record)
@@ -344,24 +364,25 @@ class TestMemoryPersistence:
     @pytest.mark.asyncio
     async def test_default_timestamp(self):
         """Test default timestamp generation."""
-        with patch('akosha.mcp.tools.session_buddy_tools.HotRecord') as mock_record_class:
+        with patch("akosha.models.HotRecord") as mock_record_class:
             mock_record = MagicMock()
             mock_record_class.return_value = mock_record
 
+            mock_registry, captured = _make_registry_and_capture()
             mock_hot_store = AsyncMock()
             mock_hot_store.insert = AsyncMock()
 
-            from akosha.mcp.tools.session_buddy_tools import store_memory
-            from datetime import datetime, UTC
+            register_session_buddy_tools(mock_registry, mock_hot_store)
+            store_func = captured[0]
 
-            result = await store_memory(
-                memory_id="default-time-test",
-                text="Test with default timestamp"
+            from datetime import UTC, datetime
+
+            result = await store_func(
+                memory_id="default-time-test", text="Test with default timestamp"
             )
 
             assert result["status"] == "stored"
 
-            # Verify default timestamp is recent
             call_args = mock_record_class.call_args
             stored_timestamp = call_args.kwargs["timestamp"]
             now = datetime.now(UTC).isoformat()

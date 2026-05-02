@@ -23,7 +23,7 @@ SERVICE_START_TIME = time.time()
 
 # Default dependencies for Akosha
 # These can be overridden via environment variables:
-# AKOSHA_HEALTH__DEPENDENCIES__SESSION_BUDDY__HOST=remote-host
+# AKOSHA_HEALTH__DEPENDENCIES__SESSION_BUDDY__HOST=remote-host  # noqa: ERA001
 DEFAULT_DEPENDENCIES: dict[str, DependencyConfig] = {
     "session_buddy": DependencyConfig(
         host="localhost",

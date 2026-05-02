@@ -636,7 +636,11 @@ def validate_request(schema: type[T], **kwargs: Any) -> T:  # noqa: UP047  # typ
 
     Raises:
         ValidationError: If validation fails
+        TypeError: If schema is None
     """
+    if schema is None:
+        raise TypeError("Schema cannot be None")
+
     try:
         return schema(**kwargs)
     except Exception as e:

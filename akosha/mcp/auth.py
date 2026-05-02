@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from functools import wraps
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mcp_common.auth.config import AuthConfig
-from mcp_common.auth.core import create_service_token, verify_token as _verify_token
+from mcp_common.auth.core import create_service_token
+from mcp_common.auth.core import verify_token as _verify_token
 from mcp_common.auth.exceptions import AuthError
 from mcp_common.auth.permissions import Permission
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +62,9 @@ def _make_wrapper(func: Callable, permission: Permission) -> Callable:
             kwargs["authenticated_user_id"] = "anonymous"
             return await func(*args, **kwargs)
 
-        token_str = kwargs.pop("__auth_token__", None) or kwargs.pop("__request_context__", {}).get("auth_token")
+        token_str = kwargs.pop("__auth_token__", None) or kwargs.pop("__request_context__", {}).get(
+            "auth_token"
+        )
         if not token_str:
             raise MCPAuthError("Authentication required. Please provide a valid JWT token.")
 
@@ -90,9 +95,9 @@ def validate_auth_config() -> bool:
 
 
 def generate_jwt_token(
-    user_id: str,
+    user_id: str,  # noqa: ARG001
     expiration_minutes: int | None = None,
-    additional_claims: dict[str, Any] | None = None,
+    additional_claims: dict[str, Any] | None = None,  # noqa: ARG001
 ) -> str:
     cfg = _get_config()
     ttl = (expiration_minutes or 60) * 60

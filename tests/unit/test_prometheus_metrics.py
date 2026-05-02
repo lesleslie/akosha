@@ -5,7 +5,6 @@ from __future__ import annotations
 import time
 
 import pytest
-from prometheus_client import REGISTRY as DEFAULT_REGISTRY
 
 from akosha.observability import prometheus_metrics
 
@@ -105,9 +104,7 @@ class TestSearchMetrics:
         latency_samples = metrics["akosha_search_latency_milliseconds_bucket"]
 
         # Verify we have samples for all tiers
-        tier_labels = [
-            labels for labels in latency_samples.keys() if "tier=" in labels
-        ]
+        tier_labels = [labels for labels in latency_samples.keys() if "tier=" in labels]
         assert len(tier_labels) >= 3
 
     def test_search_result_count_tracking(self):

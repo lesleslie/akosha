@@ -272,10 +272,10 @@ All success criteria have been met:
 
 1. **Archive Additional Historical Files**: Consider moving these to archive:
    - `COMPREHENSIVE_ARCHITECTURE_REVIEW_2025-01-31.md` → `docs/archive/reviews/`
-   - `CRITICAL_PATH_EXECUTION_SUMMARY.md` → `docs/archive/reports/`
+   - `CRITICAL_PATH_EXECUTION_SUMMARY.md` → `docs/archive/completion-reports/`
    - `DISTRIBUTED_SYSTEMS_INTEGRATION_REVIEW.md` → `docs/archive/reviews/`
-   - `INTEGRATION_REVIEW_SUMMARY.md` → `docs/archive/reviews/`
-   - `POST_AUDIT_ACTION_PLAN.md` → `docs/archive/plans/`
+   - `INTEGRATION_REVIEW_SUMMARY.md` → `docs/archive/analysis/`
+   - `POST_AUDIT_ACTION_PLAN.md` → `docs/archive/implementation-plans/`
    - `ZUBAN_ATTACK_PLAN.md` → `docs/archive/plans/`
 
 2. **Create API Reference**: Consolidate API documentation into a single reference guide

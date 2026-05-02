@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime
-from pathlib import Path
 
-import pytest
 import pyarrow as pa
+import pytest
 
 from akosha.models import ColdRecord
 from akosha.storage.cold_store import ColdStore
@@ -28,14 +26,16 @@ class TestSecureTempFileCreation:
     async def test_temp_file_has_random_name(self, cold_store: ColdStore) -> None:
         """Test that temp files have cryptographically random names."""
         # Create a simple PyArrow table
-        table = pa.Table.from_pydict({
-            "system_id": ["system-1"],
-            "conversation_id": ["conv-1"],
-            "fingerprint": [b"test_fingerprint"],
-            "ultra_summary": ["Test summary"],
-            "timestamp": [datetime.now(UTC)],
-            "daily_metrics": [{"count": 1.0}],
-        })
+        table = pa.Table.from_pydict(
+            {
+                "system_id": ["system-1"],
+                "conversation_id": ["conv-1"],
+                "fingerprint": [b"test_fingerprint"],
+                "ultra_summary": ["Test summary"],
+                "timestamp": [datetime.now(UTC)],
+                "daily_metrics": [{"count": 1.0}],
+            }
+        )
 
         # Create two temp files
         temp_file1 = await cold_store._write_parquet_file(table)
@@ -58,14 +58,16 @@ class TestSecureTempFileCreation:
     async def test_temp_file_mode_0600(self, cold_store: ColdStore) -> None:
         """Test that temp files are created with mode 0600 (owner only)."""
         # Create a simple PyArrow table
-        table = pa.Table.from_pydict({
-            "system_id": ["system-1"],
-            "conversation_id": ["conv-1"],
-            "fingerprint": [b"test_fingerprint"],
-            "ultra_summary": ["Test summary"],
-            "timestamp": [datetime.now(UTC)],
-            "daily_metrics": [{"count": 1.0}],
-        })
+        table = pa.Table.from_pydict(
+            {
+                "system_id": ["system-1"],
+                "conversation_id": ["conv-1"],
+                "fingerprint": [b"test_fingerprint"],
+                "ultra_summary": ["Test summary"],
+                "timestamp": [datetime.now(UTC)],
+                "daily_metrics": [{"count": 1.0}],
+            }
+        )
 
         # Create temp file
         temp_file = await cold_store._write_parquet_file(table)
@@ -114,14 +116,16 @@ class TestSecureTempFileCreation:
     async def test_temp_file_cleanup_on_error(self, cold_store: ColdStore) -> None:
         """Test that temp files are cleaned up even when export fails."""
         # Create a simple table
-        table = pa.Table.from_pydict({
-            "system_id": ["system-1"],
-            "conversation_id": ["conv-1"],
-            "fingerprint": [b"test_fingerprint"],
-            "ultra_summary": ["Test summary"],
-            "timestamp": [datetime.now(UTC)],
-            "daily_metrics": [{"count": 1.0}],
-        })
+        table = pa.Table.from_pydict(
+            {
+                "system_id": ["system-1"],
+                "conversation_id": ["conv-1"],
+                "fingerprint": [b"test_fingerprint"],
+                "ultra_summary": ["Test summary"],
+                "timestamp": [datetime.now(UTC)],
+                "daily_metrics": [{"count": 1.0}],
+            }
+        )
 
         # Create temp file
         temp_file = await cold_store._write_parquet_file(table)
@@ -146,14 +150,16 @@ class TestSecureTempFileCreation:
     async def test_temp_dir_has_restricted_permissions(self, cold_store: ColdStore) -> None:
         """Test that temp directory has restricted permissions (0700)."""
         # Trigger temp dir creation by writing a file
-        table = pa.Table.from_pydict({
-            "system_id": ["system-1"],
-            "conversation_id": ["conv-1"],
-            "fingerprint": [b"test_fingerprint"],
-            "ultra_summary": ["Test summary"],
-            "timestamp": [datetime.now(UTC)],
-            "daily_metrics": [{"count": 1.0}],
-        })
+        table = pa.Table.from_pydict(
+            {
+                "system_id": ["system-1"],
+                "conversation_id": ["conv-1"],
+                "fingerprint": [b"test_fingerprint"],
+                "ultra_summary": ["Test summary"],
+                "timestamp": [datetime.now(UTC)],
+                "daily_metrics": [{"count": 1.0}],
+            }
+        )
 
         temp_file = await cold_store._write_parquet_file(table)
 
@@ -174,14 +180,16 @@ class TestSecureTempFileCreation:
     async def test_temp_file_not_predictable(self, cold_store: ColdStore) -> None:
         """Test that temp filenames cannot be predicted by an attacker."""
         # Create a simple PyArrow table
-        table = pa.Table.from_pydict({
-            "system_id": ["system-1"],
-            "conversation_id": ["conv-1"],
-            "fingerprint": [b"test_fingerprint"],
-            "ultra_summary": ["Test summary"],
-            "timestamp": [datetime.now(UTC)],
-            "daily_metrics": [{"count": 1.0}],
-        })
+        table = pa.Table.from_pydict(
+            {
+                "system_id": ["system-1"],
+                "conversation_id": ["conv-1"],
+                "fingerprint": [b"test_fingerprint"],
+                "ultra_summary": ["Test summary"],
+                "timestamp": [datetime.now(UTC)],
+                "daily_metrics": [{"count": 1.0}],
+            }
+        )
 
         # Create multiple temp files in quick succession
         temp_files = []
@@ -241,14 +249,16 @@ class TestSymlinkAttackPrevention:
         New implementation uses random filenames from mkstemp.
         """
         # Create a simple PyArrow table
-        table = pa.Table.from_pydict({
-            "system_id": ["system-1"],
-            "conversation_id": ["conv-1"],
-            "fingerprint": [b"test_fingerprint"],
-            "ultra_summary": ["Test summary"],
-            "timestamp": [datetime.now(UTC)],
-            "daily_metrics": [{"count": 1.0}],
-        })
+        table = pa.Table.from_pydict(
+            {
+                "system_id": ["system-1"],
+                "conversation_id": ["conv-1"],
+                "fingerprint": [b"test_fingerprint"],
+                "ultra_summary": ["Test summary"],
+                "timestamp": [datetime.now(UTC)],
+                "daily_metrics": [{"count": 1.0}],
+            }
+        )
 
         # Create temp file
         temp_file = await cold_store._write_parquet_file(table)
@@ -276,14 +286,16 @@ class TestSymlinkAttackPrevention:
         import stat
 
         # Create a simple PyArrow table
-        table = pa.Table.from_pydict({
-            "system_id": ["system-1"],
-            "conversation_id": ["conv-1"],
-            "fingerprint": [b"test_fingerprint"],
-            "ultra_summary": ["Test summary"],
-            "timestamp": [datetime.now(UTC)],
-            "daily_metrics": [{"count": 1.0}],
-        })
+        table = pa.Table.from_pydict(
+            {
+                "system_id": ["system-1"],
+                "conversation_id": ["conv-1"],
+                "fingerprint": [b"test_fingerprint"],
+                "ultra_summary": ["Test summary"],
+                "timestamp": [datetime.now(UTC)],
+                "daily_metrics": [{"count": 1.0}],
+            }
+        )
 
         # Create temp file
         temp_file = await cold_store._write_parquet_file(table)
@@ -299,7 +311,7 @@ class TestSymlinkAttackPrevention:
             assert not (file_mode & stat.S_IROTH), "File should not be world-readable"
 
             # Owner should have read permission (bit 0-2)
-            assert (file_mode & stat.S_IRUSR), "File should be owner-readable"
+            assert file_mode & stat.S_IRUSR, "File should be owner-readable"
 
         finally:
             # Cleanup

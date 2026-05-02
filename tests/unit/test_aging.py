@@ -62,26 +62,20 @@ class TestAgingService:
         return warm_store
 
     @pytest.fixture
-    def aging_service(
-        self, mock_hot_store: MagicMock, mock_warm_store: AsyncMock
-    ) -> AgingService:
+    def aging_service(self, mock_hot_store: MagicMock, mock_warm_store: AsyncMock) -> AgingService:
         """Create aging service with mocked dependencies."""
         return AgingService(
             hot_store=mock_hot_store,
             warm_store=mock_warm_store,
         )
 
-    def test_initialization(
-        self, aging_service: AgingService
-    ) -> None:
+    def test_initialization(self, aging_service: AgingService) -> None:
         """Test aging service initialization."""
         assert aging_service.hot_store is not None
         assert aging_service.warm_store is not None
 
     @pytest.mark.asyncio
-    async def test_migrate_hot_to_warm_success(
-        self, aging_service: AgingService
-    ) -> None:
+    async def test_migrate_hot_to_warm_success(self, aging_service: AgingService) -> None:
         """Test successful hot->warm migration."""
         stats = await aging_service.migrate_hot_to_warm(cutoff_days=7)
 
@@ -93,9 +87,7 @@ class TestAgingService:
         assert stats.end_time is not None
 
     @pytest.mark.asyncio
-    async def test_migrate_compresses_embeddings(
-        self, aging_service: AgingService
-    ) -> None:
+    async def test_migrate_compresses_embeddings(self, aging_service: AgingService) -> None:
         """Test that embeddings are compressed during migration."""
         await aging_service.migrate_hot_to_warm(cutoff_days=7)
 
@@ -113,9 +105,7 @@ class TestAgingService:
             assert all(isinstance(x, int) for x in warm_record.embedding)
 
     @pytest.mark.asyncio
-    async def test_migrate_deletes_from_hot(
-        self, aging_service: AgingService
-    ) -> None:
+    async def test_migrate_deletes_from_hot(self, aging_service: AgingService) -> None:
         """Test that records are deleted from hot store after migration."""
         await aging_service.migrate_hot_to_warm(cutoff_days=7)
 
@@ -123,9 +113,7 @@ class TestAgingService:
         assert aging_service.hot_store.conn.executemany.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_migrate_generates_summaries(
-        self, aging_service: AgingService
-    ) -> None:
+    async def test_migrate_generates_summaries(self, aging_service: AgingService) -> None:
         """Test that summaries are generated during migration."""
         await aging_service.migrate_hot_to_warm(cutoff_days=7)
 
@@ -140,9 +128,7 @@ class TestAgingService:
             assert len(warm_record.summary) > 0
 
     @pytest.mark.asyncio
-    async def test_migrate_with_cutoff_days(
-        self, aging_service: AgingService
-    ) -> None:
+    async def test_migrate_with_cutoff_days(self, aging_service: AgingService) -> None:
         """Test migration with different cutoff days."""
         # Test with 30-day cutoff (our test records are 10 days old)
         stats = await aging_service.migrate_hot_to_warm(cutoff_days=30)
@@ -154,9 +140,7 @@ class TestAgingService:
         assert stats.records_migrated == 5
 
     @pytest.mark.asyncio
-    async def test_migrate_handles_empty_hot_store(
-        self, aging_service: AgingService
-    ) -> None:
+    async def test_migrate_handles_empty_hot_store(self, aging_service: AgingService) -> None:
         """Test migration when hot store is empty."""
         # Mock no old records by returning empty result
         mock_result = MagicMock()
@@ -169,14 +153,10 @@ class TestAgingService:
         assert stats.errors == 0
 
     @pytest.mark.asyncio
-    async def test_migrate_handles_errors_gracefully(
-        self, aging_service: AgingService
-    ) -> None:
+    async def test_migrate_handles_errors_gracefully(self, aging_service: AgingService) -> None:
         """Test that migration errors are handled gracefully."""
         # Mock warm store to raise error on insert_batch
-        aging_service.warm_store.insert_batch = AsyncMock(
-            side_effect=RuntimeError("Insert failed")
-        )
+        aging_service.warm_store.insert_batch = AsyncMock(side_effect=RuntimeError("Insert failed"))
 
         stats = await aging_service.migrate_hot_to_warm(cutoff_days=7)
 
@@ -184,9 +164,7 @@ class TestAgingService:
         assert stats.errors > 0
 
     @pytest.mark.asyncio
-    async def test_migrate_stats_tracking(
-        self, aging_service: AgingService
-    ) -> None:
+    async def test_migrate_stats_tracking(self, aging_service: AgingService) -> None:
         """Test that migration stats are tracked correctly."""
         stats = await aging_service.migrate_hot_to_warm(cutoff_days=7)
 
@@ -196,9 +174,7 @@ class TestAgingService:
         assert stats.end_time > stats.start_time
 
     @pytest.mark.asyncio
-    async def test_migrate_converts_timestamps(
-        self, aging_service: AgingService
-    ) -> None:
+    async def test_migrate_converts_timestamps(self, aging_service: AgingService) -> None:
         """Test that timestamps are preserved during migration."""
         await aging_service.migrate_hot_to_warm(cutoff_days=7)
 
@@ -212,9 +188,7 @@ class TestAgingService:
             assert isinstance(warm_record.timestamp, datetime)
 
     @pytest.mark.asyncio
-    async def test_migrate_preserves_system_ids(
-        self, aging_service: AgingService
-    ) -> None:
+    async def test_migrate_preserves_system_ids(self, aging_service: AgingService) -> None:
         """Test that system IDs are preserved during migration."""
         await aging_service.migrate_hot_to_warm(cutoff_days=7)
 
@@ -228,9 +202,7 @@ class TestAgingService:
         assert "system-4" in system_ids
 
     @pytest.mark.asyncio
-    async def test_migrate_preserves_conversation_ids(
-        self, aging_service: AgingService
-    ) -> None:
+    async def test_migrate_preserves_conversation_ids(self, aging_service: AgingService) -> None:
         """Test that conversation IDs are preserved during migration."""
         await aging_service.migrate_hot_to_warm(cutoff_days=7)
 

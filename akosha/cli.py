@@ -59,7 +59,7 @@ def main(ctx: typer.Context) -> None:
 
 @app.command()
 def shell(
-    ctx: typer.Context,
+    _ctx: typer.Context,
     mode: Annotated[
         str, typer.Option("--mode", "-m", help="Operational mode (lite|standard)")
     ] = "lite",
@@ -184,11 +184,11 @@ def _start_server(
         logger.info(f"Initialized {mode} mode: {mode_instance}")
     except ValueError as e:
         typer.echo(f"❌ {e}", err=True)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
     except Exception as e:
         typer.echo(f"❌ Failed to initialize mode: {e}", err=True)
         logger.exception("Mode initialization failed")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
     # Import the MCP app
     from akosha.mcp import create_app
@@ -283,10 +283,10 @@ def modes() -> None:
         typer.echo("")
 
 
-def main() -> None:
+def main_cli() -> None:
     """Main CLI entry point."""
     app()
 
 
 if __name__ == "__main__":
-    main()
+    main_cli()

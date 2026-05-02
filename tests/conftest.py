@@ -1,7 +1,7 @@
 """Pytest configuration and fixtures for Akosha tests."""
 
-import sys
 import os
+import sys
 
 # Fix import path for akosha modules
 _akosha_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

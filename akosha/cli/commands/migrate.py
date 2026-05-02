@@ -128,7 +128,7 @@ def data(dry_run: bool, from_path: Path, to_path: Path | None) -> None:
     is_flag=True,
     help="Check if migration is needed",
 )
-def status(check: bool) -> None:
+def status(check: bool) -> None:  # noqa: ARG001
     """Check storage status and show current paths."""
     resolver = get_default_resolver()
 
@@ -182,4 +182,4 @@ def rollback(path: Path) -> None:
         click.echo(f"  Data copied to: {path}")
     except Exception as e:
         click.echo(f"❌ Rollback failed: {e}", err=True)
-        raise click.ClickException(1)
+        raise click.ClickException(1)  # noqa: B904

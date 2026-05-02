@@ -3,10 +3,10 @@
 Tests ingestion throughput, latency, and resource usage under load.
 """
 
-from locust import HttpUser, task, between, events
-from datetime import datetime
-import json
 import random
+from datetime import datetime
+
+from locust import HttpUser, between, events, task
 
 
 class AkoshaIngestionUser(HttpUser):
@@ -29,14 +29,10 @@ class AkoshaIngestionUser(HttpUser):
             "metadata": {
                 "timestamp": datetime.now().isoformat(),
                 "source": "session-buddy",
-            }
+            },
         }
 
-        with self.client.post(
-            "/ingest/upload",
-            json=conversation,
-            catch_response=True
-        ) as response:
+        with self.client.post("/ingest/upload", json=conversation, catch_response=True) as response:
             if response.status_code != 200:
                 events.request_failure.fire(
                     request_type="upload",
@@ -65,11 +61,7 @@ class AkoshaQueryUser(HttpUser):
             "limit": 10,
         }
 
-        with self.client.post(
-            "/query/search",
-            json=query,
-            catch_response=True
-        ) as response:
+        with self.client.post("/query/search", json=query, catch_response=True) as response:
             if response.status_code == 200:
                 data = response.json()
                 events.request_success.fire(
@@ -124,7 +116,7 @@ class SpikeUser(HttpUser):
                     "content": "Spike test",
                     "embedding": [random.random() for _ in range(384)],
                 },
-                catch_response=True
+                catch_response=True,
             )
             # Minimal wait between spike requests
 
@@ -136,12 +128,22 @@ if __name__ == "__main__":
     print("=" * 50)
     print("\nUsage:")
     print("1. Baseline test (10 users, spawn rate 1/s):")
-    print("   locust -f test_ingestion_load.py --host=http://localhost:8000 --users=10 --spawn-rate=1")
+    print(
+        "   locust -f test_ingestion_load.py --host=http://localhost:8000 --users=10 --spawn-rate=1"
+    )
     print("\n2. Target test (100 users, spawn rate 10/s):")
-    print("   locust -f test_ingestion_load.py --host=http://localhost:8000 --users=100 --spawn-rate=10")
+    print(
+        "   locust -f test_ingestion_load.py --host=http://localhost:8000 --users=100 --spawn-rate=10"
+    )
     print("\n3. Spike test (50 users, spawn rate 50/s):")
-    print("   locust -f test_ingestion_load.py --host=http://localhost:8000 --users=50 --spawn-rate=50")
+    print(
+        "   locust -f test_ingestion_load.py --host=http://localhost:8000 --users=50 --spawn-rate=50"
+    )
     print("\n4. Run specific user classes:")
-    print("   locust -f test_ingestion_load.py --host=http://localhost:8000 --users=20 AkoshaQueryUser")
+    print(
+        "   locust -f test_ingestion_load.py --host=http://localhost:8000 --users=20 AkoshaQueryUser"
+    )
     print("\n5. With HTML results:")
-    print("   locust -f test_ingestion_load.py --host=http://localhost:8000 --users=10 --html results.html")
+    print(
+        "   locust -f test_ingestion_load.py --host=http://localhost:8000 --users=10 --html results.html"
+    )

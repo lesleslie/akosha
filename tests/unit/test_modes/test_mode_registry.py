@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from akosha.modes import get_mode, list_modes, LiteMode, StandardMode
+from akosha.modes import LiteMode, StandardMode, get_mode, list_modes
 
 
 def test_list_modes():

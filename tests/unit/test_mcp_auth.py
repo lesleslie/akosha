@@ -9,12 +9,14 @@ SECRET = "akosha-test-secret-that-is-at-least-32-chars"
 def _reset_auth_config():
     try:
         from akosha.mcp.auth import _reset_config
+
         _reset_config()
     except (ImportError, AttributeError):
         pass
     yield
     try:
         from akosha.mcp.auth import _reset_config
+
         _reset_config()
     except (ImportError, AttributeError):
         pass

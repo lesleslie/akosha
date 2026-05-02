@@ -46,7 +46,7 @@ auth_config = AuthConfig.from_env()
 
 
 async def verify_token(
-    credentials: HTTPAuthorizationCredentials = Security(security),
+    credentials: HTTPAuthorizationCredentials = Security(security),  # noqa: B008
 ) -> dict[str, Any]:
     """Verify JWT token and return user claims.
 
@@ -99,7 +99,7 @@ async def verify_token(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token verification failed",
-        )
+        ) from e
 
 
 class Role:
@@ -123,7 +123,7 @@ async def require_role(required_role: str) -> None:
             ...
     """
 
-    def dependency(claims: dict = Depends(verify_token)) -> dict:
+    def dependency(claims: dict = Depends(verify_token)) -> dict:  # noqa: B008
         """Check if user has required role."""
         roles = claims.get("roles", [])
 
@@ -175,7 +175,7 @@ class AuditLogger:
         }
 
         try:
-            with open(self.log_file, "a") as f:
+            with open(self.log_file, "a") as f:  # noqa: PTH123
                 f.write(json.dumps(audit_entry) + "\n")
         except Exception as e:
             logger.error(f"Failed to write audit log: {e}")
@@ -191,7 +191,7 @@ class AuditLogger:
 audit_logger = AuditLogger()
 
 
-def audit_log(action: str, resource_type: str):
+def audit_log(action: str, resource_type: str):  # noqa: ARG001
     """Create FastAPI dependency for audit logging.
 
     Usage:
@@ -205,7 +205,7 @@ def audit_log(action: str, resource_type: str):
             return {"status": "success"}
     """
 
-    def dependency(claims: dict = Depends(verify_token)) -> AuditLogger:
+    def dependency(claims: dict = Depends(verify_token)) -> AuditLogger:  # noqa: ARG001, B008
         """Dependency that logs audit event on completion."""
         return audit_logger
 
@@ -296,7 +296,7 @@ def require_permission(permission: str):
             ...
     """
 
-    async def dependency(claims: dict = Depends(verify_token)) -> dict:
+    async def dependency(claims: dict = Depends(verify_token)) -> dict:  # noqa: B008
         """Check permission and raise if denied."""
         await rbac.check_permission(claims, permission)
         return claims
@@ -308,7 +308,6 @@ def require_permission(permission: str):
 require_admin = require_role(Role.ADMIN)
 require_operator = require_role(Role.OPERATOR)
 require_viewer = require_role(Role.VIEWER)
-
 
 # Common permission dependencies
 require_ingest_upload = require_permission("ingest:upload")

@@ -19,13 +19,15 @@ def shard_router():
 def mock_hot_store():
     """Create mock hot store."""
     store = MagicMock()
-    store.search_similar = AsyncMock(return_value=[
-        {
-            "conversation_id": "conv-1",
-            "content": "Test content",
-            "similarity": 0.9,
-        }
-    ])
+    store.search_similar = AsyncMock(
+        return_value=[
+            {
+                "conversation_id": "conv-1",
+                "content": "Test content",
+                "similarity": 0.9,
+            }
+        ]
+    )
     return store
 
 
@@ -74,6 +76,7 @@ async def test_search_all_shards_all_shards(distributed_engine):
 @pytest.mark.asyncio
 async def test_search_shard_timeout(shard_router, mock_hot_store):
     """Test timeout handling for shard queries."""
+
     # Make search_similar timeout
     async def slow_search(*args, **kwargs):
         await asyncio.sleep(10)

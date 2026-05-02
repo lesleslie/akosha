@@ -3,14 +3,13 @@
 Tests the Akosha WebSocket server implementation for real-time pattern detection and analytics.
 """
 
-import pytest
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch, Mock
-from datetime import UTC, datetime
-from typing import Any, Optional
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from mcp_common.websocket import MessageType, WebSocketMessage
 
 from akosha.websocket.server import AkoshaWebSocketServer
-from akosha.processing.analytics import TimeSeriesAnalytics
 
 
 class TestWebsocketServerInitialization:
@@ -18,24 +17,22 @@ class TestWebsocketServerInitialization:
 
     def test_server_init_basic(self):
         """Test basic server initialization."""
-        mock_analytics = MagicMock()
+        mock_analytics = AsyncMock()
         server = AkoshaWebSocketServer(analytics_engine=mock_analytics)
 
-        assert hasattr(server, 'logger')
-        assert hasattr(server, 'connections')
-        assert hasattr(server, 'lock')
+        assert hasattr(server, "connections")
         assert server.max_connections == 1000
         assert server.message_rate_limit == 100
 
     def test_server_init_with_custom_params(self):
         """Test server initialization with custom parameters."""
-        mock_analytics = MagicMock()
+        mock_analytics = AsyncMock()
         server = AkoshaWebSocketServer(
             analytics_engine=mock_analytics,
             host="0.0.0.0",
             port=8080,
             max_connections=500,
-            message_rate_limit=50
+            message_rate_limit=50,
         )
 
         assert server.host == "0.0.0.0"
@@ -45,12 +42,8 @@ class TestWebsocketServerInitialization:
 
     def test_server_init_with_defaults(self):
         """Test server initialization with default parameters."""
-        mock_analytics = MagicMock()
-        server = AkoshaWebSocketServer(
-            analytics_engine=mock_analytics,
-            host="127.0.0.1",
-            port=8692
-        )
+        mock_analytics = AsyncMock()
+        server = AkoshaWebSocketServer(analytics_engine=mock_analytics, host="127.0.0.1", port=8692)
 
         assert server.host == "127.0.0.1"
         assert server.port == 8692
@@ -59,15 +52,14 @@ class TestWebsocketServerInitialization:
 
     def test_server_attributes(self):
         """Test server attributes."""
-        mock_analytics = MagicMock()
+        mock_analytics = AsyncMock()
         server = AkoshaWebSocketServer(analytics_engine=mock_analytics)
 
         # Should have required attributes
-        assert hasattr(server, 'logger')
-        assert hasattr(server, 'connections')
-        assert hasattr(server, 'lock')
-        assert hasattr(server, 'max_connections')
-        assert hasattr(server, 'message_rate_limit')
+        assert hasattr(server, "connections")
+        assert hasattr(server, "max_connections")
+        assert hasattr(server, "message_rate_limit")
+        assert hasattr(server, "analytics_engine")
 
 
 class TestWebsocketServerConnection:
@@ -76,20 +68,27 @@ class TestWebsocketServerConnection:
     @pytest.fixture
     def server(self):
         """Create WebSocket server fixture."""
-        mock_analytics = MagicMock()
+        mock_analytics = AsyncMock()
         return AkoshaWebSocketServer(analytics_engine=mock_analytics)
 
     @pytest.mark.asyncio
     async def test_on_connect_basic(self, server):
-        """Test basic connection handling."""
-        mock_websocket = MagicMock()
+        """Test basic connection handling.
+
+        The AkoshaWebSocketServer.on_connect sends a welcome message.
+        The base class handler adds to server.connections AFTER calling on_connect,
+        so we don't expect the connection to be in server.connections yet.
+        """
+        mock_websocket = AsyncMock()
         connection_id = "test-connection-id"
 
         await server.on_connect(mock_websocket, connection_id)
 
-        # Should add connection to tracking
-        assert connection_id in server.connections
-        assert server.connections[connection_id] == mock_websocket
+        # on_connect sends a welcome message via websocket.send
+        mock_websocket.send.assert_awaited_once()
+        sent_data = mock_websocket.send.call_args[0][0]
+        # Verify it's an encoded welcome message
+        assert isinstance(sent_data, str)
 
     @pytest.mark.asyncio
     async def test_on_connect_max_connections(self, server):
@@ -97,34 +96,49 @@ class TestWebsocketServerConnection:
         server.max_connections = 1
 
         # Add one connection
-        mock_websocket1 = MagicMock()
+        mock_websocket1 = AsyncMock()
         await server.on_connect(mock_websocket1, "conn1")
 
         # Try to add second connection (should be handled gracefully)
-        mock_websocket2 = MagicMock()
+        mock_websocket2 = AsyncMock()
         await server.on_connect(mock_websocket2, "conn2")
+
+        # Both should get welcome messages (max_connections is enforced by the
+        # base class handler, not by on_connect itself)
+        assert mock_websocket1.send.await_count == 1
+        assert mock_websocket2.send.await_count == 1
 
     @pytest.mark.asyncio
     async def test_on_disconnect_basic(self, server):
-        """Test basic disconnection handling."""
-        mock_websocket = MagicMock()
+        """Test basic disconnection handling.
+
+        The AkoshaWebSocketServer.on_disconnect calls leave_all_rooms.
+        The base class handler removes from server.connections AFTER calling on_disconnect,
+        so we pre-populate connections and verify on_disconnect calls leave_all_rooms.
+        """
+        mock_websocket = AsyncMock()
         connection_id = "test-connection-id"
 
-        # Add connection first
+        # Add connection first (simulating what base class handler does)
         server.connections[connection_id] = mock_websocket
+
+        # Also add the connection to a room so leave_all_rooms has something to do
+        server.connection_rooms["test-room"] = {connection_id}
+        server.room_connections[connection_id] = "test-room"
 
         await server.on_disconnect(mock_websocket, connection_id)
 
-        # Should remove connection from tracking
-        assert connection_id not in server.connections
+        # leave_all_rooms should have removed the room membership
+        assert connection_id not in server.room_connections
+        assert connection_id not in server.connection_rooms.get("test-room", set())
 
     @pytest.mark.asyncio
     async def test_on_disconnect_nonexistent(self, server):
         """Test disconnection handling for non-existent connection."""
-        mock_websocket = MagicMock()
+        mock_websocket = AsyncMock()
         connection_id = "nonexistent-connection"
 
-        # Should handle gracefully
+        # Should handle gracefully (leave_all_rooms on non-existent is a no-op)
         await server.on_disconnect(mock_websocket, connection_id)
 
 
@@ -134,61 +148,58 @@ class TestWebsocketServerMessage:
     @pytest.fixture
     def server(self):
         """Create WebSocket server fixture."""
-        mock_analytics = MagicMock()
+        mock_analytics = AsyncMock()
         return AkoshaWebSocketServer(analytics_engine=mock_analytics)
 
     @pytest.mark.asyncio
     async def test_on_message_basic(self, server):
-        """Test basic message handling."""
-        mock_websocket = MagicMock()
-        connection_id = "test-connection"
+        """Test basic message handling for a REQUEST message."""
+        mock_websocket = AsyncMock()
+        mock_websocket.id = "test-conn-id"
+        mock_websocket.user = None  # No authenticated user
 
-        # Mock the authenticate method
-        with patch.object(server, '_authenticate') as mock_auth:
-            mock_auth.return_value = True
+        # Create a proper WebSocketMessage for a request
+        mock_message = MagicMock(spec=WebSocketMessage)
+        mock_message.type = MessageType.REQUEST
+        mock_message.event = "subscribe"
+        mock_message.data = {"channel": "test-channel"}
+        mock_message.correlation_id = "corr-1"
 
-            # Mock the message
-            mock_message = MagicMock()
-            mock_message.type = "request"
-            mock_message.content = {"action": "test"}
+        await server.on_message(mock_websocket, mock_message)
 
-            await server.on_message(mock_websocket, mock_message)
-
-            # Should process the message
-            # (Actual processing would depend on the specific implementation)
+        # Should send a response (subscribe handled via _handle_request)
+        mock_websocket.send.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_on_message_unauthenticated(self, server):
-        """Test message handling for unauthenticated client."""
-        mock_websocket = MagicMock()
-        mock_message = MagicMock()
+    async def test_on_message_event_type(self, server):
+        """Test message handling for an EVENT message."""
+        mock_websocket = AsyncMock()
 
-        with patch.object(server, '_authenticate') as mock_auth:
-            mock_auth.return_value = False
+        # Create a proper WebSocketMessage for an event
+        mock_message = MagicMock(spec=WebSocketMessage)
+        mock_message.type = MessageType.EVENT
+        mock_message.event = "some_event"
 
-            # Should handle unauthenticated message gracefully
-            try:
-                await server.on_message(mock_websocket, mock_message)
-            except Exception:
-                # Acceptable for this test
-                pass
+        # Should handle event message gracefully (just logs)
+        await server.on_message(mock_websocket, mock_message)
+
+        # No response sent for events
+        mock_websocket.send.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_on_message_invalid_message(self, server):
-        """Test message handling for invalid message."""
-        mock_websocket = MagicMock()
-        mock_message = MagicMock()
-        mock_message.type = "invalid_type"
+        """Test message handling for unhandled message type."""
+        mock_websocket = AsyncMock()
 
-        with patch.object(server, '_authenticate') as mock_auth:
-            mock_auth.return_value = True
+        # Use a message type that on_message doesn't handle
+        mock_message = MagicMock(spec=WebSocketMessage)
+        mock_message.type = MessageType.RESPONSE
 
-            # Should handle invalid message gracefully
-            try:
-                await server.on_message(mock_websocket, mock_message)
-            except Exception:
-                # Acceptable for this test
-                pass
+        # Should handle gracefully (logs warning, no crash)
+        await server.on_message(mock_websocket, mock_message)
+
+        # No response sent for unhandled types
+        mock_websocket.send.assert_not_awaited()
 
 
 class TestWebsocketServerAuthentication:
@@ -197,35 +208,31 @@ class TestWebsocketServerAuthentication:
     @pytest.fixture
     def server(self):
         """Create WebSocket server fixture."""
-        mock_analytics = MagicMock()
+        mock_analytics = AsyncMock()
         return AkoshaWebSocketServer(analytics_engine=mock_analytics)
 
     @pytest.mark.asyncio
     async def test_authenticate_valid(self, server):
-        """Test authentication of valid token."""
-        with patch.object(server, '_authenticate') as mock_auth:
-            mock_auth.return_value = True
-
-            result = server._authenticate("valid_token")
-            assert result is True
+        """Test authentication of valid token via authenticate_websocket."""
+        mock_user = {"user_id": "test-user", "permissions": ["akosha:read"]}
+        with patch.object(server, "authenticate_websocket", return_value=mock_user):
+            result = server.authenticate_websocket("valid_token")
+            assert result is not None
+            assert result["user_id"] == "test-user"
 
     @pytest.mark.asyncio
     async def test_authenticate_invalid(self, server):
-        """Test authentication of invalid token."""
-        with patch.object(server, '_authenticate') as mock_auth:
-            mock_auth.return_value = False
-
-            result = server._authenticate("invalid_token")
-            assert result is False
+        """Test authentication of invalid token via authenticate_websocket."""
+        with patch.object(server, "authenticate_websocket", return_value=None):
+            result = server.authenticate_websocket("invalid_token")
+            assert result is None
 
     @pytest.mark.asyncio
     async def test_authenticate_none(self, server):
-        """Test authentication with no token."""
-        with patch.object(server, '_authenticate') as mock_auth:
-            mock_auth.return_value = False
-
-            result = server._authenticate(None)
-            assert result is False
+        """Test authentication with no token via authenticate_websocket."""
+        with patch.object(server, "authenticate_websocket", return_value=None):
+            result = server.authenticate_websocket(None)
+            assert result is None
 
 
 class TestWebsocketServerSubscription:
@@ -234,29 +241,39 @@ class TestWebsocketServerSubscription:
     @pytest.fixture
     def server(self):
         """Create WebSocket server fixture."""
-        mock_analytics = MagicMock()
+        mock_analytics = AsyncMock()
         return AkoshaWebSocketServer(analytics_engine=mock_analytics)
 
     def test_can_subscribe_basic(self, server):
         """Test basic subscription permission."""
         user = {"user_id": "test-user", "permissions": ["akosha:read"]}
-        channel = "patterns"
+        channel = "pattern:test"
 
-        # This would test the subscription logic
-        # For now, just test that the method exists
-        assert hasattr(server, '_can_subscribe_to_channel')
+        # The method checks channel prefixes like "pattern:", "anomaly:", "insight:"
+        assert hasattr(server, "_can_subscribe_to_channel")
+        result = server._can_subscribe_to_channel(user, channel)
+        assert result is True
 
     def test_can_subscribe_different_channels(self, server):
         """Test subscription permission for different channels."""
         test_cases = [
-            ({"user_id": "user1", "permissions": ["akosha:read"]}, "patterns", True),
-            ({"user_id": "user2", "permissions": ["akosha:read"]}, "anomalies", True),
-            ({"user_id": "user3", "permissions": []}, "patterns", False),
+            # akosha:read permission allows prefixed channels
+            ({"user_id": "user1", "permissions": ["akosha:read"]}, "pattern:test", True),
+            ({"user_id": "user2", "permissions": ["akosha:read"]}, "anomaly:test", True),
+            # No permissions denies access
+            ({"user_id": "user3", "permissions": []}, "pattern:test", False),
+            # Admin can subscribe to any channel
+            ({"user_id": "user4", "permissions": ["admin"]}, "pattern:test", True),
+            ({"user_id": "user5", "permissions": ["akosha:admin"]}, "anomaly:test", True),
+            # Unknown channel prefix defaults to deny
+            ({"user_id": "user6", "permissions": ["akosha:read"]}, "unknown:channel", False),
         ]
 
         for user, channel, expected in test_cases:
-            # Test subscription logic (would depend on implementation)
-            pass
+            result = server._can_subscribe_to_channel(user, channel)
+            assert result == expected, (
+                f"Expected {expected} for user {user['user_id']} on channel {channel}, got {result}"
+            )
 
 
 class TestWebsocketServerBroadcast:
@@ -265,73 +282,89 @@ class TestWebsocketServerBroadcast:
     @pytest.fixture
     def server(self):
         """Create WebSocket server fixture."""
-        mock_analytics = MagicMock()
+        mock_analytics = AsyncMock()
         return AkoshaWebSocketServer(analytics_engine=mock_analytics)
 
     @pytest.mark.asyncio
     async def test_broadcast_pattern_detected(self, server):
         """Test pattern detection broadcast."""
-        pattern_data = {
-            "id": "pattern-1",
-            "type": "code_pattern",
-            "description": "Test pattern",
-            "timestamp": datetime.now(UTC).isoformat()
-        }
+        # Mock broadcast_to_room (the method actually called)
+        with patch.object(server, "broadcast_to_room", new_callable=AsyncMock) as mock_broadcast:
+            await server.broadcast_pattern_detected(
+                pattern_id="pattern-1",
+                pattern_type="code_pattern",
+                description="Test pattern",
+                confidence=0.95,
+                metadata={"source": "test"},
+            )
 
-        # Mock broadcast method
-        with patch.object(server, 'broadcast') as mock_broadcast:
-            await server.broadcast_pattern_detected(pattern_data)
-
-            # Should broadcast the pattern
-            mock_broadcast.assert_called_once()
+            # Should broadcast to the correct room
+            mock_broadcast.assert_awaited_once()
+            room_id = mock_broadcast.call_args[0][0]
+            assert room_id == "patterns:code_pattern"
+            event = mock_broadcast.call_args[0][1]
+            assert event.data["pattern_id"] == "pattern-1"
+            assert event.data["pattern_type"] == "code_pattern"
+            assert event.data["confidence"] == 0.95
 
     @pytest.mark.asyncio
     async def test_broadcast_anomaly_detected(self, server):
         """Test anomaly detection broadcast."""
-        anomaly_data = {
-            "id": "anomaly-1",
-            "type": "performance_anomaly",
-            "severity": "high",
-            "timestamp": datetime.now(UTC).isoformat()
-        }
+        with patch.object(server, "broadcast_to_room", new_callable=AsyncMock) as mock_broadcast:
+            await server.broadcast_anomaly_detected(
+                anomaly_id="anomaly-1",
+                anomaly_type="performance_anomaly",
+                severity="high",
+                description="Test anomaly",
+                metrics={"cpu": 95},
+            )
 
-        with patch.object(server, 'broadcast') as mock_broadcast:
-            await server.broadcast_anomaly_detected(anomaly_data)
-
-            # Should broadcast the anomaly
-            mock_broadcast.assert_called_once()
+            # Should broadcast to the anomalies room
+            mock_broadcast.assert_awaited_once()
+            room_id = mock_broadcast.call_args[0][0]
+            assert room_id == "anomalies"
+            event = mock_broadcast.call_args[0][1]
+            assert event.data["anomaly_id"] == "anomaly-1"
+            assert event.data["severity"] == "high"
 
     @pytest.mark.asyncio
     async def test_broadcast_insight_generated(self, server):
         """Test insight generation broadcast."""
-        insight_data = {
-            "id": "insight-1",
-            "type": "code_insight",
-            "summary": "Test insight",
-            "timestamp": datetime.now(UTC).isoformat()
-        }
+        with patch.object(server, "broadcast_to_room", new_callable=AsyncMock) as mock_broadcast:
+            await server.broadcast_insight_generated(
+                insight_id="insight-1",
+                insight_type="code_insight",
+                title="Test insight",
+                description="A test insight",
+                data={"key": "value"},
+            )
 
-        with patch.object(server, 'broadcast') as mock_broadcast:
-            await server.broadcast_insight_generated(insight_data)
-
-            # Should broadcast the insight
-            mock_broadcast.assert_called_once()
+            # Should broadcast to the insights room
+            mock_broadcast.assert_awaited_once()
+            room_id = mock_broadcast.call_args[0][0]
+            assert room_id == "insights"
+            event = mock_broadcast.call_args[0][1]
+            assert event.data["insight_id"] == "insight-1"
+            assert event.data["title"] == "Test insight"
 
     @pytest.mark.asyncio
     async def test_broadcast_aggregation_completed(self, server):
         """Test aggregation completion broadcast."""
-        aggregation_data = {
-            "id": "agg-1",
-            "type": "metrics_aggregation",
-            "system": "all_systems",
-            "timestamp": datetime.now(UTC).isoformat()
-        }
+        with patch.object(server, "broadcast_to_room", new_callable=AsyncMock) as mock_broadcast:
+            await server.broadcast_aggregation_completed(
+                aggregation_id="agg-1",
+                aggregation_type="metrics_aggregation",
+                record_count=100,
+                summary={"systems": ["all"]},
+            )
 
-        with patch.object(server, 'broadcast') as mock_broadcast:
-            await server.broadcast_aggregation_completed(aggregation_data)
-
-            # Should broadcast the aggregation
-            mock_broadcast.assert_called_once()
+            # Should broadcast to the metrics room
+            mock_broadcast.assert_awaited_once()
+            room_id = mock_broadcast.call_args[0][0]
+            assert room_id == "metrics"
+            event = mock_broadcast.call_args[0][1]
+            assert event.data["aggregation_id"] == "agg-1"
+            assert event.data["record_count"] == 100
 
 
 class TestWebsocketServerErrorHandling:
@@ -340,53 +373,58 @@ class TestWebsocketServerErrorHandling:
     @pytest.fixture
     def server(self):
         """Create WebSocket server fixture."""
-        mock_analytics = MagicMock()
+        mock_analytics = AsyncMock()
         return AkoshaWebSocketServer(analytics_engine=mock_analytics)
 
     @pytest.mark.asyncio
     async def test_connection_error_handling(self, server):
         """Test error handling during connection."""
-        mock_websocket = MagicMock()
-        mock_websocket.connect.side_effect = Exception("Connection failed")
+        mock_websocket = AsyncMock()
+        mock_websocket.send.side_effect = Exception("Connection failed")
 
-        # Should handle connection errors gracefully
-        try:
+        # on_connect tries to send a welcome message - should propagate
+        with pytest.raises(Exception, match="Connection failed"):
             await server.on_connect(mock_websocket, "test-connection")
-        except Exception:
-            # Acceptable for this test
-            pass
 
     @pytest.mark.asyncio
     async def test_message_error_handling(self, server):
-        """Test error handling during message processing."""
-        mock_websocket = MagicMock()
-        mock_message = MagicMock()
-        mock_message.process.side_effect = Exception("Message processing failed")
+        """Test error handling during message processing with unknown request."""
+        mock_websocket = AsyncMock()
+        mock_websocket.id = "test-conn-id"
+        mock_websocket.user = None  # No authenticated user
 
-        with patch.object(server, '_authenticate') as mock_auth:
-            mock_auth.return_value = True
+        # Create a message with an unknown event - will get UNKNOWN_REQUEST error response
+        mock_message = MagicMock(spec=WebSocketMessage)
+        mock_message.type = MessageType.REQUEST
+        mock_message.event = "unknown_event"
+        mock_message.data = {}
+        mock_message.correlation_id = "corr-1"
 
-            # Should handle message processing errors gracefully
-            try:
-                await server.on_message(mock_websocket, mock_message)
-            except Exception:
-                # Acceptable for this test
-                pass
+        # Should handle gracefully - sends error response, doesn't crash
+        await server.on_message(mock_websocket, mock_message)
+
+        # Should have sent an error response
+        mock_websocket.send.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_broadcast_error_handling(self, server):
         """Test error handling during broadcast."""
-        pattern_data = {"id": "pattern-1", "type": "test"}
-
-        with patch.object(server, 'broadcast') as mock_broadcast:
-            mock_broadcast.side_effect = Exception("Broadcast failed")
-
-            # Should handle broadcast errors gracefully
-            try:
-                await server.broadcast_pattern_detected(pattern_data)
-            except Exception:
-                # Acceptable for this test
-                pass
+        # Mock broadcast_to_room to raise an exception
+        with patch.object(
+            server,
+            "broadcast_to_room",
+            new_callable=AsyncMock,
+            side_effect=Exception("Broadcast failed"),
+        ):
+            # Should propagate the error
+            with pytest.raises(Exception, match="Broadcast failed"):
+                await server.broadcast_pattern_detected(
+                    pattern_id="pattern-1",
+                    pattern_type="test",
+                    description="test",
+                    confidence=0.5,
+                    metadata={},
+                )
 
 
 class TestWebsocketServerPerformance:
@@ -395,7 +433,7 @@ class TestWebsocketServerPerformance:
     @pytest.fixture
     def server(self):
         """Create WebSocket server fixture."""
-        mock_analytics = MagicMock()
+        mock_analytics = AsyncMock()
         return AkoshaWebSocketServer(analytics_engine=mock_analytics)
 
     @pytest.mark.asyncio
@@ -403,7 +441,7 @@ class TestWebsocketServerPerformance:
         """Test connection handling performance."""
         import time
 
-        mock_websocket = MagicMock()
+        mock_websocket = AsyncMock()
 
         start_time = time.time()
 
@@ -421,38 +459,45 @@ class TestWebsocketServerPerformance:
         """Test message handling performance."""
         import time
 
-        mock_websocket = MagicMock()
-        mock_message = MagicMock()
-        mock_message.type = "request"
-        mock_message.content = {"action": "test"}
+        mock_websocket = AsyncMock()
+        mock_websocket.id = "test-conn-id"
+        mock_websocket.user = None  # No authenticated user
 
-        with patch.object(server, '_authenticate') as mock_auth:
-            mock_auth.return_value = True
+        # Create a proper message for subscribe request
+        mock_message = MagicMock(spec=WebSocketMessage)
+        mock_message.type = MessageType.REQUEST
+        mock_message.event = "subscribe"
+        mock_message.data = {"channel": "test-channel"}
+        mock_message.correlation_id = "corr-1"
 
-            start_time = time.time()
+        start_time = time.time()
 
-            # Handle multiple messages
-            for i in range(50):
-                await server.on_message(mock_websocket, mock_message)
+        # Handle multiple messages
+        for i in range(50):
+            await server.on_message(mock_websocket, mock_message)
 
-            end_time = time.time()
+        end_time = time.time()
 
-            # Should be fast (less than 1 second for 50 messages)
-            assert (end_time - start_time) < 1.0
+        # Should be fast (less than 1 second for 50 messages)
+        assert (end_time - start_time) < 1.0
 
     @pytest.mark.asyncio
     async def test_broadcast_performance(self, server):
         """Test broadcast performance."""
         import time
 
-        pattern_data = {"id": "pattern-1", "type": "test"}
-
-        with patch.object(server, 'broadcast') as mock_broadcast:
+        with patch.object(server, "broadcast_to_room", new_callable=AsyncMock):
             start_time = time.time()
 
             # Handle multiple broadcasts
             for i in range(20):
-                await server.broadcast_pattern_detected(pattern_data)
+                await server.broadcast_pattern_detected(
+                    pattern_id=f"pattern-{i}",
+                    pattern_type="test",
+                    description="test",
+                    confidence=0.5,
+                    metadata={},
+                )
 
             end_time = time.time()
 
@@ -466,40 +511,48 @@ class TestWebsocketServerIntegration:
     @pytest.fixture
     def server(self):
         """Create WebSocket server fixture."""
-        mock_analytics = MagicMock()
+        mock_analytics = AsyncMock()
         return AkoshaWebSocketServer(analytics_engine=mock_analytics)
 
     @pytest.mark.asyncio
     async def test_full_connection_cycle(self, server):
-        """Test complete connection lifecycle."""
-        mock_websocket = MagicMock()
+        """Test complete connection lifecycle.
+
+        In the real server, the base class handler:
+        1. Calls on_connect
+        2. Adds to connections
+        3. On disconnect, calls on_disconnect
+        4. Removes from connections
+
+        Here we simulate that full cycle.
+        """
+        mock_websocket = AsyncMock()
         connection_id = "test-connection"
 
-        # Connect
+        # Simulate what the base class handler does: call on_connect then add
         await server.on_connect(mock_websocket, connection_id)
+        server.connections[connection_id] = mock_websocket
+
         assert connection_id in server.connections
 
-        # Disconnect
+        # Simulate disconnect: call on_disconnect then remove
         await server.on_disconnect(mock_websocket, connection_id)
+        del server.connections[connection_id]
+
         assert connection_id not in server.connections
 
     @pytest.mark.asyncio
     async def test_concurrent_connections(self, server):
         """Test concurrent connection handling."""
-        import threading
-
         results = []
 
-        def connection_worker(worker_id):
-            async def connect():
-                mock_websocket = MagicMock()
-                connection_id = f"worker-{worker_id}-conn"
-                await server.on_connect(mock_websocket, connection_id)
-                results.append(connection_id)
-                await asyncio.sleep(0.1)
-                await server.on_disconnect(mock_websocket, connection_id)
-
-            return connect()
+        async def connection_worker(worker_id):
+            mock_websocket = AsyncMock()
+            connection_id = f"worker-{worker_id}-conn"
+            await server.on_connect(mock_websocket, connection_id)
+            results.append(connection_id)
+            await asyncio.sleep(0.1)
+            await server.on_disconnect(mock_websocket, connection_id)
 
         # Create multiple concurrent connections
         tasks = []
@@ -515,26 +568,32 @@ class TestWebsocketServerIntegration:
     @pytest.mark.asyncio
     async def test_mixed_message_types(self, server):
         """Test handling of different message types."""
-        mock_websocket = MagicMock()
+        mock_websocket = AsyncMock()
+        mock_websocket.id = "test-connection"
+        mock_websocket.user = None  # No authenticated user
         connection_id = "test-connection"
 
         await server.on_connect(mock_websocket, connection_id)
 
-        message_types = ["request", "event", "response", "error"]
+        # Test the three message types that on_message handles:
+        # REQUEST -> calls _handle_request
+        # EVENT -> calls _handle_event
+        # Any other type (RESPONSE, ERROR, etc.) -> logs warning, no action
+        message_types = [MessageType.REQUEST, MessageType.EVENT, MessageType.RESPONSE]
 
         for msg_type in message_types:
-            mock_message = MagicMock()
+            mock_message = MagicMock(spec=WebSocketMessage)
             mock_message.type = msg_type
-            mock_message.content = {"test": "data"}
+            mock_message.event = "test_event"
+            mock_message.data = {"test": "data"}
+            mock_message.correlation_id = "corr-1"
 
-            with patch.object(server, '_authenticate') as mock_auth:
-                mock_auth.return_value = True
-
-                try:
-                    await server.on_message(mock_websocket, mock_message)
-                except Exception:
-                    # Acceptable for this test
-                    pass
+            # Should handle gracefully for all types
+            try:
+                await server.on_message(mock_websocket, mock_message)
+            except Exception:
+                # Acceptable for integration test
+                pass
 
         await server.on_disconnect(mock_websocket, connection_id)
 
@@ -544,7 +603,7 @@ class TestWebsocketServerConfiguration:
 
     def test_default_configuration(self):
         """Test default server configuration."""
-        mock_analytics = MagicMock()
+        mock_analytics = AsyncMock()
         server = AkoshaWebSocketServer(analytics_engine=mock_analytics)
 
         assert server.host == "127.0.0.1"
@@ -554,13 +613,13 @@ class TestWebsocketServerConfiguration:
 
     def test_custom_configuration(self):
         """Test custom server configuration."""
-        mock_analytics = MagicMock()
+        mock_analytics = AsyncMock()
         server = AkoshaWebSocketServer(
             analytics_engine=mock_analytics,
             host="0.0.0.0",
             port=9000,
             max_connections=2000,
-            message_rate_limit=200
+            message_rate_limit=200,
         )
 
         assert server.host == "0.0.0.0"
@@ -577,7 +636,8 @@ class TestWebsocketServerConfiguration:
         ]
 
         for config in test_configs:
-            server = AkoshaWebSocketServer(**config)
+            mock_analytics = AsyncMock()
+            server = AkoshaWebSocketServer(analytics_engine=mock_analytics, **config)
             assert server.host == config["host"]
             assert server.port == config["port"]
             assert server.max_connections == config["max_connections"]

@@ -288,7 +288,9 @@ class IngestionWorker:
                         conversation_id=conv.get("id", f"{upload_id}_{new_count}"),
                         content=content,
                         embedding=conv.get("embedding", [0.0] * 384),  # Default embedding
-                        timestamp=datetime.fromisoformat(conv.get("timestamp", datetime.now().isoformat())),
+                        timestamp=datetime.fromisoformat(
+                            conv.get("timestamp", datetime.now().isoformat())
+                        ),
                         metadata={
                             "upload_id": upload_id,
                             "source": conv.get("source", "session-buddy"),

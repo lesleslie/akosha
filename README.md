@@ -8,7 +8,6 @@
 
 Universal memory aggregation and cross-system analytics for the Bodai ecosystem.
 
-
 **Version:** 0.3.0
 **Status:** Active pilot deployment for the current phase
 
@@ -25,7 +24,7 @@ Universal memory aggregation and cross-system analytics for the Bodai ecosystem.
 
 Crackerjack is the standard quality-control and CI/CD gate for Akosha changes. Local verification should mirror the Crackerjack workflow used across the ecosystem.
 
----
+______________________________________________________________________
 
 ## What is Akosha?
 
@@ -44,7 +43,7 @@ Akosha is a universal memory aggregation system that collects, processes, and an
 ✅ **MCP Protocol**: Exposes all capabilities via Model Context Protocol
 ✅ **Operational Baseline**: Tests, graceful degradation, and type-safe code
 
----
+______________________________________________________________________
 
 ## Quick Start
 
@@ -95,7 +94,7 @@ curl http://localhost:8000/metrics
 
 See [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) for complete production setup.
 
----
+______________________________________________________________________
 
 ## Installation
 
@@ -140,7 +139,7 @@ pip install "akosha[embeddings]"
 
 **Note**: Akosha works without these dependencies using deterministic fallback embeddings. Real embeddings provide better semantic search.
 
----
+______________________________________________________________________
 
 ## Configuration
 
@@ -162,7 +161,7 @@ AKOSHA_HOT_PATH=/tmp/akosha/hot
 AKOSHA_WARM_PATH=/tmp/akosha/warm
 ```
 
----
+______________________________________________________________________
 
 ## MCP Server Setup
 
@@ -208,7 +207,7 @@ EOF
 
 > **Note**: Project-level configuration is optional. Use either global or project-level config, not both.
 
----
+______________________________________________________________________
 
 ## Usage Examples
 
@@ -300,7 +299,7 @@ for pair in correlation.system_pairs:
     print(f"  {pair['system_1']} ↔ {pair['system_2']}: {pair['correlation']:.3f}")
 ```
 
----
+______________________________________________________________________
 
 ## CLI Reference
 
@@ -393,7 +392,7 @@ akosha start --host 0.0.0.0 --port 8000
 
 - `get_storage_status` - Storage tier status
 
----
+______________________________________________________________________
 
 ## Development
 
@@ -424,7 +423,7 @@ uv run pytest --cov=akosha --cov-report=term-missing
 uv run pytest tests/unit/test_embeddings.py -v
 ```
 
----
+______________________________________________________________________
 
 ## Testing
 
@@ -444,7 +443,7 @@ Total: 32/32 passing (100% pass rate)
 - **Integration Tests** (8 tests): End-to-end MCP workflows
 - **Coverage**: 76-97% for Phase 2 components
 
----
+______________________________________________________________________
 
 ## Roadmap
 
@@ -485,7 +484,7 @@ Total: 32/32 passing (100% pass rate)
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for complete details.
 
----
+______________________________________________________________________
 
 ## Contributing
 
@@ -510,11 +509,11 @@ We welcome contributions! Please follow these guidelines:
 - **Maximum complexity**: 15 (Ruff)
 - **Coverage**: Maintain 85%+
 
----
+______________________________________________________________________
 
 ## License
 
----
+______________________________________________________________________
 
 ## Acknowledgments
 
@@ -523,7 +522,7 @@ We welcome contributions! Please follow these guidelines:
 - **FastMCP**: For elegant MCP protocol implementation
 - **Sentence-Transformers**: For all-MiniLM-L6-v2 model
 
----
+______________________________________________________________________
 
 **Made with ❤️ by the Akosha team**
 

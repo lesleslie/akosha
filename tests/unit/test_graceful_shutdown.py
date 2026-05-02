@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import signal
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -36,9 +36,7 @@ class TestAkoshaApplication:
         assert isinstance(application.shutdown_event, asyncio.Event)
         assert application.ingestion_workers is not None
 
-    def test_shutdown_handler_sets_event(
-        self, application: AkoshaApplication
-    ) -> None:
+    def test_shutdown_handler_sets_event(self, application: AkoshaApplication) -> None:
         """Test that shutdown handler sets the shutdown event."""
         # Initially not set
         assert not application.shutdown_event.is_set()
@@ -49,26 +47,20 @@ class TestAkoshaApplication:
         # Event should be set
         assert application.shutdown_event.is_set()
 
-    def test_shutdown_handler_handles_sigint(
-        self, application: AkoshaApplication
-    ) -> None:
+    def test_shutdown_handler_handles_sigint(self, application: AkoshaApplication) -> None:
         """Test that SIGINT is handled correctly."""
         application._handle_shutdown(signal.SIGINT, None)
 
         assert application.shutdown_event.is_set()
 
-    def test_shutdown_handler_handles_sigterm(
-        self, application: AkoshaApplication
-    ) -> None:
+    def test_shutdown_handler_handles_sigterm(self, application: AkoshaApplication) -> None:
         """Test that SIGTERM is handled correctly."""
         application._handle_shutdown(signal.SIGTERM, None)
 
         assert application.shutdown_event.is_set()
 
     @pytest.mark.asyncio
-    async def test_stop_calls_worker_stop(
-        self, application: AkoshaApplication
-    ) -> None:
+    async def test_stop_calls_worker_stop(self, application: AkoshaApplication) -> None:
         """Test that stop() calls stop() on all workers."""
         await application.stop()
 
@@ -77,9 +69,7 @@ class TestAkoshaApplication:
             worker.stop.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_stop_waits_for_shutdown_event(
-        self, application: AkoshaApplication
-    ) -> None:
+    async def test_stop_waits_for_shutdown_event(self, application: AkoshaApplication) -> None:
         """Test that stop() waits for shutdown event."""
         # Don't set the event initially
         stop_task = asyncio.create_task(application.stop())
@@ -96,13 +86,11 @@ class TestAkoshaApplication:
         # Now stop() should complete
         try:
             await asyncio.wait_for(stop_task, timeout=1.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail("stop() did not complete when event was set")
 
     @pytest.mark.asyncio
-    async def test_stop_timeout_after_30_seconds(
-        self, application: AkoshaApplication
-    ) -> None:
+    async def test_stop_timeout_after_30_seconds(self, application: AkoshaApplication) -> None:
         """Test that stop() times out after 30 seconds."""
         # Don't set shutdown event
         stop_task = asyncio.create_task(application.stop())
@@ -111,14 +99,12 @@ class TestAkoshaApplication:
         try:
             await asyncio.wait_for(stop_task, timeout=1.0)
             pytest.fail("Expected timeout")
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Expected - stop() is waiting for event
             stop_task.cancel()
 
     @pytest.mark.asyncio
-    async def test_multiple_shutdown_signals(
-        self, application: AkoshaApplication
-    ) -> None:
+    async def test_multiple_shutdown_signals(self, application: AkoshaApplication) -> None:
         """Test handling multiple shutdown signals."""
         # Send multiple signals
         application._handle_shutdown(signal.SIGTERM, None)
@@ -137,9 +123,7 @@ class TestAkoshaApplication:
         await app.stop()
 
     @pytest.mark.asyncio
-    async def test_shutdown_event_coordinate_workers(
-        self, application: AkoshaApplication
-    ) -> None:
+    async def test_shutdown_event_coordinate_workers(self, application: AkoshaApplication) -> None:
         """Test that shutdown event coordinates worker shutdown."""
         # Set shutdown event before calling stop
         application.shutdown_event.set()
@@ -152,9 +136,7 @@ class TestAkoshaApplication:
             worker.stop.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_concurrent_shutdown_calls(
-        self, application: AkoshaApplication
-    ) -> None:
+    async def test_concurrent_shutdown_calls(self, application: AkoshaApplication) -> None:
         """Test handling concurrent calls to stop()."""
         # Call stop() multiple times concurrently
         tasks = [application.stop() for _ in range(3)]
@@ -181,10 +163,9 @@ class TestAkoshaApplication:
         # 3. Workers can be stopped (tested in async tests above)
 
     @pytest.mark.asyncio
-    async def test_worker_cleanup_on_shutdown(
-        self, application: AkoshaApplication
-    ) -> None:
+    async def test_worker_cleanup_on_shutdown(self, application: AkoshaApplication) -> None:
         """Test that workers are cleaned up properly on shutdown."""
+
         # Simulate workers doing work
         async def mock_run():
             await asyncio.sleep(0.1)

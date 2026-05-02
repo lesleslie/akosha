@@ -152,7 +152,7 @@ class PyCharmMCPAdapter:
         self,
         pattern: str,
         file_pattern: str | None,
-        scope: str,
+        scope: str,  # noqa: ARG002
     ) -> list[SearchResult]:
         if not self._mcp:
             return []
@@ -260,9 +260,7 @@ class PyCharmMCPAdapter:
             return False
         if ".." in file_path:
             return False
-        if "\x00" in file_path:
-            return False
-        return True
+        return "\x00" not in file_path
 
     async def _execute_with_circuit_breaker(
         self,
@@ -395,27 +393,31 @@ def register_pycharm_tools(
                             if isinstance(node, dict):
                                 source = node.get("source", "")
                                 if source and re.search(pattern, source):
-                                    code_graph_results.append({
-                                        "repo_path": graph_summary["repo_path"],
-                                        "file_path": node.get("file_path", "unknown"),
-                                        "line_number": node.get("start_line", 0),
-                                        "match_text": source[:100],
-                                        "source": "code_graph",
-                                    })
+                                    code_graph_results.append(
+                                        {
+                                            "repo_path": graph_summary["repo_path"],
+                                            "file_path": node.get("file_path", "unknown"),
+                                            "line_number": node.get("start_line", 0),
+                                            "match_text": source[:100],
+                                            "source": "code_graph",
+                                        }
+                                    )
 
             # Combine and deduplicate results
             all_results = []
 
             for r in pycharm_results[:limit]:
-                all_results.append({
-                    "file_path": r.file_path,
-                    "line_number": r.line_number,
-                    "column": r.column,
-                    "match_text": r.match_text,
-                    "context_before": r.context_before,
-                    "context_after": r.context_after,
-                    "source": "pycharm_index",
-                })
+                all_results.append(
+                    {
+                        "file_path": r.file_path,
+                        "line_number": r.line_number,
+                        "column": r.column,
+                        "match_text": r.match_text,
+                        "context_before": r.context_before,
+                        "context_after": r.context_after,
+                        "source": "pycharm_index",
+                    }
+                )
 
             for r in code_graph_results[:limit]:
                 all_results.append(r)
@@ -446,7 +448,7 @@ def register_pycharm_tools(
     async def get_code_problems(
         repo_path: str | None = None,
         severity: str = "ERROR",
-        category: str | None = None,
+        category: str | None = None,  # noqa: ARG001
         limit: int = 50,
     ) -> dict[str, Any]:
         """Get code problems (diagnostics) across indexed repositories.
@@ -494,18 +496,23 @@ def register_pycharm_tools(
                             for prob in node_problems:
                                 if severity == "ERROR" and prob.get("severity") != "ERROR":
                                     continue
-                                if severity == "WARNING" and prob.get("severity") not in ("ERROR", "WARNING"):
+                                if severity == "WARNING" and prob.get("severity") not in (
+                                    "ERROR",
+                                    "WARNING",
+                                ):
                                     continue
 
-                                problems.append({
-                                    "repo_path": graph_summary["repo_path"],
-                                    "file_path": node.get("file_path", "unknown"),
-                                    "line_number": node.get("start_line", 0),
-                                    "message": prob.get("message", "Unknown issue"),
-                                    "severity": prob.get("severity", "UNKNOWN"),
-                                    "category": prob.get("category", "GENERAL"),
-                                    "source": "code_graph",
-                                })
+                                problems.append(
+                                    {
+                                        "repo_path": graph_summary["repo_path"],
+                                        "file_path": node.get("file_path", "unknown"),
+                                        "line_number": node.get("start_line", 0),
+                                        "message": prob.get("message", "Unknown issue"),
+                                        "severity": prob.get("severity", "UNKNOWN"),
+                                        "category": prob.get("category", "GENERAL"),
+                                        "source": "code_graph",
+                                    }
+                                )
 
             # Sort by severity
             severity_order = {"ERROR": 0, "WARNING": 1, "INFO": 2}
@@ -586,14 +593,16 @@ def register_pycharm_tools(
                             node_type = node.get("type", "")
 
                             # Match function definitions, calls, and imports
-                            if function_name.lower() in node_name.lower():
+                            if function_name.lower() in node_name.lower():  # nosec SIM102  # noqa: SIM102
                                 if node_type in ("function", "method", "call", "import"):
-                                    matching_files.append({
-                                        "file": node.get("file_path", "unknown"),
-                                        "node_type": node_type,
-                                        "line": node.get("start_line", 0),
-                                        "name": node_name,
-                                    })
+                                    matching_files.append(
+                                        {
+                                            "file": node.get("file_path", "unknown"),
+                                            "node_type": node_type,
+                                            "line": node.get("start_line", 0),
+                                            "name": node_name,
+                                        }
+                                    )
 
                     if matching_files:
                         return {
@@ -618,14 +627,18 @@ def register_pycharm_tools(
 
             # Add PyCharm results
             for usage in pycharm_usages:
-                all_usages.append({
-                    "repo_path": "pycharm_index",
-                    "files": [{
-                        "file": usage.get("file_path", "unknown"),
-                        "line": usage.get("line", 0),
-                        "node_type": usage.get("type", "usage"),
-                    }],
-                })
+                all_usages.append(
+                    {
+                        "repo_path": "pycharm_index",
+                        "files": [
+                            {
+                                "file": usage.get("file_path", "unknown"),
+                                "line": usage.get("line", 0),
+                                "node_type": usage.get("type", "usage"),
+                            }
+                        ],
+                    }
+                )
 
             return {
                 "status": "success",
@@ -712,11 +725,13 @@ def register_pycharm_tools(
 
                         unused = imports - usages
                         for imp in unused:
-                            results.append({
-                                "repo_path": graph_summary["repo_path"],
-                                "import": imp,
-                                "type": "unused_import",
-                            })
+                            results.append(
+                                {
+                                    "repo_path": graph_summary["repo_path"],
+                                    "import": imp,
+                                    "type": "unused_import",
+                                }
+                            )
 
                     elif analysis_type == "circular":
                         # Detect potential circular imports
@@ -724,7 +739,7 @@ def register_pycharm_tools(
                         import_graph: dict[str, set[str]] = {}
 
                         for edge in edges:
-                            if isinstance(edge, dict):
+                            if isinstance(edge, dict):  # nosec SIM102  # noqa: SIM102
                                 if edge.get("type") == "imports":
                                     src = edge.get("source", "")
                                     tgt = edge.get("target", "")
@@ -735,11 +750,13 @@ def register_pycharm_tools(
                         for node, deps in import_graph.items():
                             for dep in deps:
                                 if dep in import_graph and node in import_graph[dep]:
-                                    results.append({
-                                        "repo_path": graph_summary["repo_path"],
-                                        "cycle": [node, dep],
-                                        "type": "circular_import",
-                                    })
+                                    results.append(
+                                        {
+                                            "repo_path": graph_summary["repo_path"],
+                                            "cycle": [node, dep],
+                                            "type": "circular_import",
+                                        }
+                                    )
 
                     elif analysis_type == "patterns":
                         # Find common import patterns
@@ -755,12 +772,14 @@ def register_pycharm_tools(
                             key=lambda x: x[1],
                             reverse=True,
                         )[:10]:
-                            results.append({
-                                "repo_path": graph_summary["repo_path"],
-                                "import": imp,
-                                "count": count,
-                                "type": "import_pattern",
-                            })
+                            results.append(
+                                {
+                                    "repo_path": graph_summary["repo_path"],
+                                    "import": imp,
+                                    "count": count,
+                                    "type": "import_pattern",
+                                }
+                            )
 
             return {
                 "status": "success",
@@ -819,9 +838,9 @@ def register_pycharm_tools(
 
 
 __all__ = [
-    "register_pycharm_tools",
-    "PyCharmMCPAdapter",
     "CircuitBreakerState",
+    "PyCharmMCPAdapter",
     "SearchResult",
     "get_pycharm_adapter",
+    "register_pycharm_tools",
 ]

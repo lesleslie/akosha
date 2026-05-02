@@ -6,7 +6,6 @@ import pytest
 
 from akosha.mcp.validation import (
     AnalyzeTrendsRequest,
-    CorrelateSystemsRequest,
     DetectAnomaliesRequest,
     FindPathRequest,
     GenerateBatchEmbeddingsRequest,

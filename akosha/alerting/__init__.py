@@ -12,22 +12,22 @@ Features:
 
 from __future__ import annotations
 
-import asyncio
-import json
+import asyncio  # noqa: F401
+import json  # noqa: F401
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from enum import Enum, StrEnum
+from enum import Enum, StrEnum  # noqa: F401
 from logging import INFO as LOG_LEVEL
+from logging import logging
 from typing import Any
 
 import httpx
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl  # noqa: F401
 
 
 def get_logger():
     """Get a logger instance."""
-    import logging
 
     return logging.getLogger(__name__)
 
@@ -246,7 +246,6 @@ class PatternDetector:
             Severity level
         """
         severity_map = {
-            AlertType.CRITICAL: AlertSeverity.CRITICAL,
             AlertType.HIGH_LATENCY: AlertSeverity.WARNING,
             AlertType.LOW_HIT_RATE: AlertSeverity.WARNING,
             AlertType.SPIKE_IN_ERRORS: AlertSeverity.ERROR,
@@ -273,7 +272,7 @@ class PatternDetector:
         elif alert_type == AlertType.SPIKE_IN_ERRORS:
             return f"Error rate spike: {value:.1f}x (threshold: {threshold:.1f}x)"
         elif alert_type == AlertType.ANOMALY_DETECTED:
-            return f"Anomaly detected: {value:.2f}σ (threshold: {threshold:.2f}σ)"
+            return f"Anomaly detected: {value:.2f}σ (threshold: {threshold:.2f}σ)"  # noqa: RUF001
         else:
             return f"Alert triggered: {alert_type.value} (value: {value}, threshold: {threshold})"
 

@@ -7,10 +7,13 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
+    from mcp_common.tools import ToolProfile
 
-from mcp_common.tools import ToolProfile
 
-from akosha.mcp.tools.akosha_tools import register_akosha_tools, register_code_graph_tools
+from akosha.mcp.tools.akosha_tools import (  # noqa: F401
+    register_akosha_tools,
+    register_code_graph_tools,
+)
 from akosha.mcp.tools.health_tools import register_health_tools_akosha
 from akosha.mcp.tools.profiles import (
     FULL_REGISTRATIONS,

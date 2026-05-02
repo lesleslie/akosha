@@ -3,22 +3,22 @@
 Tests essential validation functionality that can run without external dependencies.
 """
 
-import pytest
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from akosha.mcp.validation import (
-    validate_request,
-    GenerateEmbeddingRequest,
-    GenerateBatchEmbeddingsRequest,
-    SearchAllSystemsRequest,
-    GetSystemMetricsRequest,
     AnalyzeTrendsRequest,
-    DetectAnomaliesRequest,
     CorrelateSystemsRequest,
-    QueryKnowledgeGraphRequest,
+    DetectAnomaliesRequest,
     FindPathRequest,
+    GenerateBatchEmbeddingsRequest,
+    GenerateEmbeddingRequest,
+    GetSystemMetricsRequest,
+    QueryKnowledgeGraphRequest,
+    SearchAllSystemsRequest,
     ValidationError,
+    validate_request,
 )
 
 
@@ -48,9 +48,7 @@ class TestEmbeddingValidation:
 
     def test_generate_embedding_request_valid(self):
         """Test valid generate embedding request."""
-        request_data = {
-            "text": "Hello world"
-        }
+        request_data = {"text": "Hello world"}
 
         result = validate_request(GenerateEmbeddingRequest, **request_data)
 
@@ -65,10 +63,7 @@ class TestEmbeddingValidation:
 
     def test_generate_batch_embeddings_request_valid(self):
         """Test valid batch embeddings request."""
-        request_data = {
-            "texts": ["hello", "world"],
-            "batch_size": 16
-        }
+        request_data = {"texts": ["hello", "world"], "batch_size": 16}
 
         result = validate_request(GenerateBatchEmbeddingsRequest, **request_data)
 
@@ -87,7 +82,7 @@ class TestEmbeddingValidation:
         """Test batch embeddings with invalid batch size."""
         request_data = {
             "texts": ["hello", "world"],
-            "batch_size": 0  # Invalid
+            "batch_size": 0,  # Invalid
         }
 
         with pytest.raises(ValidationError):
@@ -103,7 +98,7 @@ class TestSearchValidation:
             "query": "test search",
             "limit": 10,
             "threshold": 0.7,
-            "system_id": "system-1"
+            "system_id": "system-1",
         }
 
         result = validate_request(SearchAllSystemsRequest, **request_data)
@@ -124,7 +119,7 @@ class TestSearchValidation:
         """Test search with invalid limit."""
         request_data = {
             "query": "test",
-            "limit": -1  # Invalid
+            "limit": -1,  # Invalid
         }
 
         with pytest.raises(ValidationError):
@@ -134,7 +129,7 @@ class TestSearchValidation:
         """Test search with invalid threshold."""
         request_data = {
             "query": "test",
-            "threshold": 1.5  # Invalid, should be 0-1
+            "threshold": 1.5,  # Invalid, should be 0-1
         }
 
         with pytest.raises(ValidationError):
@@ -164,7 +159,7 @@ class TestAnalyticsValidation:
         request_data = {
             "metric_name": "conversation_count",
             "system_id": "system-1",
-            "time_window_days": 7
+            "time_window_days": 7,
         }
 
         result = validate_request(AnalyzeTrendsRequest, **request_data)
@@ -175,21 +170,14 @@ class TestAnalyticsValidation:
 
     def test_analyze_trends_request_empty_metric_name(self):
         """Test analyze trends with empty metric name."""
-        request_data = {
-            "metric_name": "",
-            "time_window_days": 7
-        }
+        request_data = {"metric_name": "", "time_window_days": 7}
 
         with pytest.raises(ValidationError):
             validate_request(AnalyzeTrendsRequest, **request_data)
 
     def test_detect_anomalies_request_valid(self):
         """Test valid detect anomalies request."""
-        request_data = {
-            "metric_name": "error_rate",
-            "time_window_days": 7,
-            "threshold_std": 3.0
-        }
+        request_data = {"metric_name": "error_rate", "time_window_days": 7, "threshold_std": 3.0}
 
         result = validate_request(DetectAnomaliesRequest, **request_data)
 
@@ -201,7 +189,7 @@ class TestAnalyticsValidation:
         """Test detect anomalies with invalid threshold."""
         request_data = {
             "metric_name": "error_rate",
-            "threshold_std": 0.5  # Too low
+            "threshold_std": 0.5,  # Too low
         }
 
         with pytest.raises(ValidationError):
@@ -209,10 +197,7 @@ class TestAnalyticsValidation:
 
     def test_correlate_systems_request_valid(self):
         """Test valid correlate systems request."""
-        request_data = {
-            "metric_name": "quality_score",
-            "time_window_days": 7
-        }
+        request_data = {"metric_name": "quality_score", "time_window_days": 7}
 
         result = validate_request(CorrelateSystemsRequest, **request_data)
 
@@ -225,11 +210,7 @@ class TestGraphValidation:
 
     def test_query_knowledge_graph_request_valid(self):
         """Test valid query knowledge graph request."""
-        request_data = {
-            "entity_id": "user:alice",
-            "edge_type": "worked_on",
-            "limit": 50
-        }
+        request_data = {"entity_id": "user:alice", "edge_type": "worked_on", "limit": 50}
 
         result = validate_request(QueryKnowledgeGraphRequest, **request_data)
 
@@ -246,11 +227,7 @@ class TestGraphValidation:
 
     def test_find_path_request_valid(self):
         """Test valid find path request."""
-        request_data = {
-            "source_id": "user:alice",
-            "target_id": "project:myapp",
-            "max_hops": 3
-        }
+        request_data = {"source_id": "user:alice", "target_id": "project:myapp", "max_hops": 3}
 
         result = validate_request(FindPathRequest, **request_data)
 
@@ -260,11 +237,7 @@ class TestGraphValidation:
 
     def test_find_path_request_same_entities(self):
         """Test find path with same source and target - should fail."""
-        request_data = {
-            "source_id": "user:alice",
-            "target_id": "user:alice",
-            "max_hops": 3
-        }
+        request_data = {"source_id": "user:alice", "target_id": "user:alice", "max_hops": 3}
 
         # Same entities should fail validation
         with pytest.raises(ValidationError):
@@ -275,7 +248,7 @@ class TestGraphValidation:
         request_data = {
             "source_id": "user:alice",
             "target_id": "project:myapp",
-            "max_hops": 1  # Too small
+            "max_hops": 0,  # Invalid (ge=1)
         }
 
         # Should raise ValidationError for invalid max_hops
@@ -293,8 +266,8 @@ class TestErrorHandling:
         try:
             validate_request(GenerateEmbeddingRequest, **request_data)
         except ValidationError as e:
-            assert hasattr(e, 'message')
-            assert hasattr(e, 'details')
+            assert hasattr(e, "message")
+            assert hasattr(e, "details")
             assert isinstance(e.details, dict)
             assert "schema" in e.details
             assert "error" in e.details

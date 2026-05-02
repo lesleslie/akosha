@@ -49,9 +49,7 @@ class TestDistributedQueryEngine:
             get_shard_store=lambda shard_id: mock_get_shard_store,
         )
 
-    def test_initialization(
-        self, distributed_engine: DistributedQueryEngine
-    ) -> None:
+    def test_initialization(self, distributed_engine: DistributedQueryEngine) -> None:
         """Test distributed query engine initialization."""
         assert distributed_engine.shard_router is not None
         assert distributed_engine.get_shard_store is not None
@@ -89,9 +87,7 @@ class TestDistributedQueryEngine:
         assert len(results) > 0
 
     @pytest.mark.asyncio
-    async def test_search_respects_limit(
-        self, distributed_engine: DistributedQueryEngine
-    ) -> None:
+    async def test_search_respects_limit(self, distributed_engine: DistributedQueryEngine) -> None:
         """Test that limit parameter is respected."""
         results = await distributed_engine.search_all_shards(
             query_embedding=[0.1] * 384,
@@ -108,15 +104,15 @@ class TestDistributedQueryEngine:
         self, distributed_engine: DistributedQueryEngine
     ) -> None:
         """Test that shard queries timeout correctly."""
+
         # Mock slow shard
         async def slow_search(*args, **kwargs):
             import asyncio
+
             await asyncio.sleep(10)  # Sleep longer than timeout
             return []
 
-        distributed_engine.get_shard_store = lambda shard_id: AsyncMock(
-            search_similar=slow_search
-        )
+        distributed_engine.get_shard_store = lambda shard_id: AsyncMock(search_similar=slow_search)
 
         # Should complete within timeout
         results = await distributed_engine.search_all_shards(
@@ -134,12 +130,14 @@ class TestDistributedQueryEngine:
         self, distributed_engine: DistributedQueryEngine
     ) -> None:
         """Test that shard query errors are handled gracefully."""
+
         # Mock failing shard
         async def failing_search(*args, **kwargs):
             raise RuntimeError("Shard query failed")
 
         # First shard fails, others succeed
         call_count = [0]
+
         async def conditional_search(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
@@ -167,12 +165,11 @@ class TestDistributedQueryEngine:
         assert len(results) > 0
 
     @pytest.mark.asyncio
-    async def test_search_merges_results(
-        self, distributed_engine: DistributedQueryEngine
-    ) -> None:
+    async def test_search_merges_results(self, distributed_engine: DistributedQueryEngine) -> None:
         """Test that results from multiple shards are merged."""
         # Mock different results per shard
         call_count = [0]
+
         async def per_shard_results(*args, **kwargs):
             call_count[0] += 1
             return [
@@ -217,9 +214,7 @@ class TestDistributedQueryEngine:
             query_times.append(time.time() - start)
             return [{"conversation_id": "conv-1", "similarity": 0.9}]
 
-        distributed_engine.get_shard_store = lambda shard_id: AsyncMock(
-            search_similar=timed_search
-        )
+        distributed_engine.get_shard_store = lambda shard_id: AsyncMock(search_similar=timed_search)
 
         start = time.time()
         await distributed_engine.search_all_shards(
@@ -235,9 +230,7 @@ class TestDistributedQueryEngine:
         assert total_time < sum(query_times)
 
     @pytest.mark.asyncio
-    async def test_search_empty_results(
-        self, distributed_engine: DistributedQueryEngine
-    ) -> None:
+    async def test_search_empty_results(self, distributed_engine: DistributedQueryEngine) -> None:
         """Test search when no results found."""
         # Mock empty results
         distributed_engine.get_shard_store = lambda shard_id: AsyncMock(

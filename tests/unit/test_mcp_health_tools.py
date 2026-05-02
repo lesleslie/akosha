@@ -3,17 +3,17 @@
 Tests the health tools implementation using mcp-common health infrastructure.
 """
 
-import pytest
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, UTC
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from akosha.mcp.tools.health_tools import (
-    register_health_tools_akosha,
-    SERVICE_NAME,
-    SERVICE_VERSION,
-    SERVICE_START_TIME,
     DEFAULT_DEPENDENCIES,
+    SERVICE_NAME,
+    SERVICE_START_TIME,
+    SERVICE_VERSION,
+    register_health_tools_akosha,
 )
 
 
@@ -90,7 +90,7 @@ class TestHealthToolsIntegration:
     async def test_register_with_error_handling(self, mock_app):
         """Test that registration handles import errors gracefully."""
         # Mock mcp_common to raise exception
-        with patch('akosha.mcp.tools.health_tools.register_health_tools') as mock_register:
+        with patch("akosha.mcp.tools.health_tools.register_health_tools") as mock_register:
             mock_register.side_effect = ImportError("mcp-common not available")
 
             # Should handle the error gracefully
@@ -108,7 +108,7 @@ class TestHealthToolsIntegration:
         try:
             register_health_tools_akosha(mock_app)
             assert True
-        except Exception as e:
+        except Exception:
             # Should handle dependency errors gracefully
             assert True
 
@@ -126,7 +126,7 @@ class TestHealthToolsConfiguration:
         # This would test environment variable handling if implemented
         # For now, just test that the default config is as expected
         assert len(DEFAULT_DEPENDENCIES) == 2
-        assert all(hasattr(dep, 'host') for dep in DEFAULT_DEPENDENCIES.values())
+        assert all(hasattr(dep, "host") for dep in DEFAULT_DEPENDENCIES.values())
 
 
 class TestHealthToolsEdgeCases:
@@ -152,7 +152,7 @@ class TestHealthToolsEdgeCases:
 
     def test_registration_timeout_handling(self, mock_app):
         """Test registration timeout handling."""
-        with patch('akosha.mcp.tools.health_tools.register_health_tools') as mock_register:
+        with patch("akosha.mcp.tools.health_tools.register_health_tools") as mock_register:
             # Simulate slow registration
             mock_register.side_effect = TimeoutError("Registration timeout")
 
@@ -176,7 +176,6 @@ class TestPerformance:
     @pytest.mark.asyncio
     async def test_registration_performance(self, mock_app):
         """Test registration performance."""
-        import time
 
         start_time = time.time()
         try:

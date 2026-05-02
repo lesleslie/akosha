@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -47,6 +47,10 @@ class TestIngestionWorker:
             "version": "1.0",
         }
         storage.download = AsyncMock(return_value=_to_json_bytes(valid_manifest))
+
+        # Mock get() for memory database downloads (used by _process_upload)
+        valid_db = {"conversations": [{"content": "test memory"}]}
+        storage.get = AsyncMock(return_value=_to_json_bytes(valid_db))
         return storage
 
     @pytest.fixture
@@ -58,9 +62,7 @@ class TestIngestionWorker:
         return hot_store
 
     @pytest.fixture
-    def worker(
-        self, mock_storage: AsyncMock, mock_hot_store: AsyncMock
-    ) -> IngestionWorker:
+    def worker(self, mock_storage: AsyncMock, mock_hot_store: AsyncMock) -> IngestionWorker:
         """Create ingestion worker with mocked dependencies."""
         return IngestionWorker(
             storage_adapter=mock_storage,  # type: ignore
@@ -98,10 +100,12 @@ class TestIngestionWorker:
     @pytest.mark.asyncio
     async def test_discover_uploads_empty(self, worker: IngestionWorker) -> None:
         """Test upload discovery when no uploads available."""
+
         # Mock empty async generator that yields nothing
         async def mock_empty(prefix: str):
             return
             yield  # Make this an async generator function (never executed)
+
         worker.storage.list = mock_empty
 
         uploads = await worker._discover_uploads()
@@ -189,7 +193,7 @@ class TestIngestionWorker:
         # Wait for task to complete
         try:
             await asyncio.wait_for(task, timeout=2.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail("Worker did not stop within timeout")
 
         assert not worker._running
@@ -214,16 +218,14 @@ class TestIngestionWorker:
 
         try:
             await asyncio.wait_for(task, timeout=2.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pytest.fail("Worker did not stop within timeout")
 
         # Worker should have stopped (uploads may or may not have completed)
         assert not worker._running
 
     @pytest.mark.asyncio
-    async def test_discovery_handles_malformed_manifests(
-        self, worker: IngestionWorker
-    ) -> None:
+    async def test_discovery_handles_malformed_manifests(self, worker: IngestionWorker) -> None:
         """Test that discovery handles malformed manifests gracefully."""
         # Mock download to return invalid JSON
         worker.storage.download = AsyncMock(return_value="invalid json{")
@@ -235,9 +237,7 @@ class TestIngestionWorker:
         assert uploads == []
 
     @pytest.mark.asyncio
-    async def test_process_upload_handles_errors(
-        self, worker: IngestionWorker
-    ) -> None:
+    async def test_process_upload_handles_errors(self, worker: IngestionWorker) -> None:
         """Test that upload processing errors are handled gracefully."""
         upload = SystemMemoryUpload(
             system_id="system-error",

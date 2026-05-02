@@ -4,26 +4,26 @@ Tests the integration between server components including auth, validation,
 and tool registration.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from fastapi import FastAPI
 
 from akosha.mcp.server import create_app
-from akosha.mcp.auth import JWTAuthHandler
-from akosha.mcp.validation import validate_request, GenerateEmbeddingRequest
-from akosha.security import ValidationError
+from akosha.mcp.validation import GenerateEmbeddingRequest, ValidationError, validate_request
 
 
 class TestServerIntegration:
     """Test server integration components."""
 
-    def test_create_app_fastapi_instance(self):
-        """Test that create_app returns a FastAPI instance."""
+    def test_create_app_instance(self):
+        """Test that create_app returns a FastMCP instance."""
+        from fastmcp import FastMCP
+
         app = create_app()
 
-        assert isinstance(app, FastAPI)
-        assert app.title == "Akosha MCP Server"
-        assert app.version == "0.4.0"
+        assert isinstance(app, FastMCP)
+        assert app.name == "akosha-mcp"
+        assert app.version == "0.1.0"
 
     def test_app_with_custom_configuration(self):
         """Test app creation with custom configuration."""
@@ -31,8 +31,7 @@ class TestServerIntegration:
         app = create_app()
 
         # Verify app has expected configuration
-        assert hasattr(app, 'routes')
-        assert len(app.routes) > 0
+        assert app is not None
 
 
 class TestToolRegistrationIntegration:
@@ -63,19 +62,23 @@ class TestToolRegistrationIntegration:
         return builder
 
     @pytest.mark.asyncio
-    async def test_tool_registration_with_services(self, mock_embedding_service, mock_analytics_service, mock_graph_builder):
+    async def test_tool_registration_with_services(
+        self, mock_embedding_service, mock_analytics_service, mock_graph_builder
+    ):
         """Test tool registration with all services."""
         app = create_app()
 
         # Mock FastMCP and tool registration
-        with patch('akosha.mcp.server.FastMCP') as mock_fastmcp:
+        with patch("akosha.mcp.server.FastMCP") as mock_fastmcp:
             mock_registry = MagicMock()
             mock_fastmcp.return_value = mock_registry
 
             # Test that all tool categories can be registered
             from akosha.mcp.tools.akosha_tools import register_akosha_tools
 
-            register_akosha_tools(mock_registry, mock_embedding_service, mock_analytics_service, mock_graph_builder)
+            register_akosha_tools(
+                mock_registry, mock_embedding_service, mock_analytics_service, mock_graph_builder
+            )
 
             # Verify tools were registered
             assert mock_registry.register.call_count > 0
@@ -85,7 +88,7 @@ class TestToolRegistrationIntegration:
         """Test tool registration with error handling."""
         app = create_app()
 
-        with patch('akosha.mcp.server.FastMCP') as mock_fastmcp:
+        with patch("akosha.mcp.server.FastMCP") as mock_fastmcp:
             mock_registry = MagicMock()
             mock_fastmcp.return_value = mock_registry
 
@@ -106,26 +109,39 @@ class TestAuthValidationIntegration:
     """Test authentication and validation integration."""
 
     @pytest.fixture
-    def auth_handler(self):
-        """Create auth handler."""
-        return JWTAuthHandler()
+    def auth_env(self, monkeypatch):
+        """Set up JWT_SECRET for auth tests."""
+        monkeypatch.setenv("JWT_SECRET", "test-secret-key-for-testing-that-is-long-enough-32chars")
+        monkeypatch.setenv("ENVIRONMENT", "development")
 
-    @pytest.mark.asyncio
-    async def test_authenticated_request_validation(self, auth_handler):
+    def test_generate_jwt_token(self, auth_env):
+        """Test JWT token generation."""
+        from akosha.security import generate_jwt_token
+
+        token = generate_jwt_token("user123")
+        assert isinstance(token, str)
+        assert len(token) > 0
+
+    def test_validate_jwt_token(self, auth_env):
+        """Test JWT token validation."""
+
+        from akosha.security import generate_jwt_token, validate_token
+
+        token = generate_jwt_token("user123")
+        is_valid = validate_token(token)
+        assert is_valid is True
+
+    def test_authenticated_request_validation(self, auth_env):
         """Test request validation with authentication."""
-        # Generate token
-        token = auth_handler.generate_token("user123")
+        from akosha.security import generate_jwt_token
 
-        # Validate token
-        decoded = auth_handler.validate_token(token)
-        assert decoded["user_id"] == "user123"
+        token = generate_jwt_token("user123")
 
         # Validate request with authenticated user
-        request_data = {"text": "hello world", "user_id": decoded["user_id"]}
+        request_data = {"text": "hello world"}
         result = validate_request(GenerateEmbeddingRequest, **request_data)
 
-        assert result["text"] == "hello world"
-        assert result["user_id"] == "user123"
+        assert result.text == "hello world"
 
     @pytest.mark.asyncio
     async def test_unauthenticated_request(self):
@@ -136,7 +152,7 @@ class TestAuthValidationIntegration:
         # Should still validate data structure
         result = validate_request(GenerateEmbeddingRequest, **request_data)
 
-        assert result["text"] == "hello world"
+        assert result.text == "hello world"
 
 
 class TestErrorHandlingIntegration:
@@ -151,27 +167,24 @@ class TestErrorHandlingIntegration:
             validate_request(GenerateEmbeddingRequest, **request_data)
 
     @pytest.mark.asyncio
-    async def test_middleware_error_handling(self, mock_embedding_service):
-        """Test middleware error handling."""
-        app = create_app()
+    async def test_middleware_error_handling(self):
+        """Test rate limiting works correctly."""
+        from akosha.mcp.rate_limit import RateLimiter
 
-        # Mock middleware that raises exception
-        with patch('akosha.mcp.server.FastMCP') as mock_fastmcp:
-            mock_registry = MagicMock()
-            mock_fastmcp.return_value = mock_registry
+        # Use burst_limit=2 to reliably test allow + deny behavior
+        rate_limiter = RateLimiter(requests_per_second=100.0, burst_limit=2)
 
-            # Should handle middleware errors gracefully
-            from akosha.mcp.auth import RateLimiter
+        # First request should be allowed
+        result = await rate_limiter.is_allowed("user123")
+        assert result is True
 
-            rate_limiter = RateLimiter(rate_limit=1, time_window=60)
+        # Second request should also be allowed (burst_limit=2)
+        result = await rate_limiter.is_allowed("user123")
+        assert result is True
 
-            # Test rate limiting
-            result = await rate_limiter.check_limit("user123")
-            assert result["allowed"] is True
-
-            # Second request should be blocked
-            result = await rate_limiter.check_limit("user123")
-            assert result["allowed"] is False
+        # Third request should be blocked (bucket empty)
+        result = await rate_limiter.is_allowed("user123")
+        assert result is False
 
     def test_app_startup_error_handling(self):
         """Test app startup error handling."""
@@ -180,11 +193,18 @@ class TestErrorHandlingIntegration:
 
         # App should be created despite any internal issues
         assert app is not None
-        assert hasattr(app, 'routes')
 
 
 class TestPerformanceIntegration:
     """Test performance of integrated components."""
+
+    @pytest.fixture
+    def mock_embedding_service(self):
+        """Create mock embedding service."""
+        service = MagicMock()
+        service.generate_embedding.return_value = [0.1] * 384
+        service.is_available.return_value = True
+        return service
 
     @pytest.mark.asyncio
     async def test_request_validation_performance(self):
@@ -206,7 +226,7 @@ class TestPerformanceIntegration:
         """Test tool registration performance."""
         import time
 
-        with patch('akosha.mcp.server.FastMCP') as mock_fastmcp:
+        with patch("akosha.mcp.server.FastMCP") as mock_fastmcp:
             mock_registry = MagicMock()
             mock_fastmcp.return_value = mock_registry
 
@@ -229,8 +249,8 @@ class TestConfigurationIntegration:
         app = create_app()
 
         # Verify server configuration
-        assert app.title == "Akosha MCP Server"
-        assert app.version == "0.4.0"
+        assert app.name == "akosha-mcp"
+        assert app.version == "0.1.0"
 
 
 class TestLoadIntegration:
@@ -252,22 +272,24 @@ class TestLoadIntegration:
         # All requests should succeed
         assert len(results) == 10
         for result in results:
-            assert result["text"] == "hello world"
+            assert result.text == "hello world"
 
     @pytest.mark.asyncio
     async def test_rate_limiting_under_load(self):
         """Test rate limiting under load."""
-        from akosha.mcp.auth import RateLimiter
+        import asyncio
 
-        rate_limiter = RateLimiter(rate_limit=5, time_window=60)
+        from akosha.mcp.rate_limit import RateLimiter
+
+        rate_limiter = RateLimiter(requests_per_second=100.0, burst_limit=5)
 
         async def make_request(user_id):
-            return await rate_limiter.check_limit(user_id)
+            return await rate_limiter.is_allowed(user_id)
 
-        # Make many requests
+        # Make many requests concurrently
         tasks = [make_request("user123") for _ in range(10)]
         results = await asyncio.gather(*tasks)
 
-        # First 5 should be allowed, rest blocked
-        allowed_count = sum(1 for r in results if r["allowed"])
+        # Due to token bucket, at most burst_limit (5) should be allowed
+        allowed_count = sum(1 for r in results if r is True)
         assert allowed_count == 5

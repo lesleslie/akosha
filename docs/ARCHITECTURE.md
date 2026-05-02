@@ -532,7 +532,7 @@ Components delivered:
 - ✅ Sharding layer (256 shards, consistent hashing)
 - ✅ Tier aging service (Hot→Warm→Cold)
 
-**Documentation**: [Critical Path Execution Summary](CRITICAL_PATH_EXECUTION_SUMMARY.md)
+**Documentation**: [Critical Path Execution Summary](archive/completion-reports/CRITICAL_PATH_EXECUTION_SUMMARY.md)
 
 ### ✅ Phase 2: Advanced Features (COMPLETE)
 

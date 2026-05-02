@@ -6,6 +6,5 @@ which are launched via `python -m <package> mcp start`.
 
 from akosha.cli import main
 
-
 if __name__ == "__main__":
     main()

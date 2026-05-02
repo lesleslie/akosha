@@ -88,21 +88,21 @@ def create_app(mode: Any | None = None) -> FastMCP:
 
     # HTTP health endpoint for Claude Code compatibility
     @app.custom_route("/health", methods=["GET"])
-    async def health_check(request: Any) -> Any:
+    async def health_check(request: Any) -> Any:  # noqa: ARG001
         """HTTP health check endpoint for Claude Code `mcp list` compatibility."""
         from starlette.responses import JSONResponse
 
         return JSONResponse({"status": "ok", "service": "akosha", "version": APP_VERSION})
 
     @app.custom_route("/healthz", methods=["GET"])
-    async def healthz_check(request: Any) -> Any:
+    async def healthz_check(request: Any) -> Any:  # noqa: ARG001
         """Kubernetes-style health check endpoint."""
         from starlette.responses import JSONResponse
 
         return JSONResponse({"status": "ok"})
 
     @app.custom_route("/metrics", methods=["GET"])
-    async def metrics(request: Any) -> Any:
+    async def metrics(request: Any) -> Any:  # noqa: ARG001
         """Canonical Prometheus metrics endpoint on the main HTTP port."""
         from starlette.responses import Response
 

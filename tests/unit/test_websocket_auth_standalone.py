@@ -3,21 +3,20 @@
 Tests JWT authentication without importing the full akosha package.
 """
 
-import pytest
 import os
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 # Add current directory to path
-sys.path.insert(0, '.')
+sys.path.insert(0, ".")
 
 # Import directly from the module
 from akosha.websocket.auth import (
+    AUTH_ENABLED,
     JWT_SECRET,
     TOKEN_EXPIRY,
-    AUTH_ENABLED,
-    get_authenticator,
     generate_token,
+    get_authenticator,
     verify_token,
 )
 
@@ -39,10 +38,10 @@ class TestWebsocketAuthStandalone:
         """Test auth enabled constant."""
         assert isinstance(AUTH_ENABLED, bool)
 
-    @patch.dict(os.environ, {'AKOSHA_AUTH_ENABLED': 'true'})
+    @patch("akosha.websocket.auth.AUTH_ENABLED", True)
     def test_get_authenticator_enabled(self):
         """Test getting authenticator when auth is enabled."""
-        with patch('akosha.websocket.auth.WebSocketAuthenticator') as MockAuthenticator:
+        with patch("akosha.websocket.auth.WebSocketAuthenticator") as MockAuthenticator:
             mock_auth = MockAuthenticator.return_value
             mock_auth.configure.return_value = None
 
@@ -51,7 +50,7 @@ class TestWebsocketAuthStandalone:
             assert result is not None
             MockAuthenticator.assert_called_once()
 
-    @patch.dict(os.environ, {'AKOSHA_AUTH_ENABLED': 'false'})
+    @patch.dict(os.environ, {"AKOSHA_AUTH_ENABLED": "false"})
     def test_get_authenticator_disabled(self):
         """Test getting authenticator when auth is disabled."""
         result = get_authenticator()

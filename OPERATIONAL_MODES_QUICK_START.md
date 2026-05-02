@@ -102,7 +102,7 @@ uv run akosha shell --mode=standard
 
 - [Complete Guide](docs/guides/operational-modes.md) - Full documentation
 - [Implementation Plan](OPERATIONAL_MODES_PLAN.md) - Design decisions
-- [Completion Report](OPERATIONAL_MODES_COMPLETE.md) - Implementation details
+- Completion Report - Implementation details
 
 ## FAQ
 

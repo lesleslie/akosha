@@ -259,7 +259,7 @@ class IngestionWorker:
 5. **tests/unit/test_hot_store.py** (265 lines) - Hot store tests
 6. **tests/unit/test_warm_store.py** (235 lines) - Warm store tests
 7. **docs/CHECKPOINT_2025-01-27.md** - Session checkpoint
-8. **docs/PHASE_2_COMPLETE_SUMMARY.md** - Phase 2 summary
+8. **docs/archive/completion-reports/PHASE_2_COMPLETE_SUMMARY.md** - Phase 2 summary
 9. **Additional documentation** - ADRs, roadmaps, etc.
 
 ### Modified Files (3):

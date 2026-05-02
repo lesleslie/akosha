@@ -186,7 +186,7 @@ def load_config_from_file(config_path: str) -> dict[str, Any]:
         return {}
 
     try:
-        with open(path) as f:
+        with open(path) as f:  # noqa: PTH123
             config = yaml.safe_load(f) or {}
         logger.info(f"Loaded configuration from {config_path}")
         return config

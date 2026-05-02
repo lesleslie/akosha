@@ -4,10 +4,11 @@ Tests Session-Buddy upload flow through ingestion worker to hot tier storage.
 """
 
 import asyncio
-import pytest
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from akosha.ingestion.worker import IngestionWorker
 from akosha.storage.hot_store import HotStore
@@ -29,10 +30,12 @@ def mock_storage():
     storage = AsyncMock()
 
     # Mock list_prefixes to return systems
-    storage.list = AsyncMock(return_value=[
-        "systems/system-1/",
-        "systems/system-2/",
-    ])
+    storage.list = AsyncMock(
+        return_value=[
+            "systems/system-1/",
+            "systems/system-2/",
+        ]
+    )
 
     return storage
 
@@ -69,7 +72,7 @@ async def test_ingestion_worker_processes_upload(mock_storage, hot_store):
     )
 
     # Mock the actual processing
-    with patch.object(worker, '_process_conversations', return_value=10):
+    with patch.object(worker, "_process_conversations", return_value=10):
         processed = await worker._process_upload(upload)
 
     assert processed == 10  # 10 conversations processed
@@ -100,7 +103,7 @@ async def test_concurrent_upload_processing(mock_storage, hot_store):
         await asyncio.sleep(0.1)  # Simulate work
         return 1
 
-    with patch.object(worker, '_process_upload', side_effect=mock_process):
+    with patch.object(worker, "_process_upload", side_effect=mock_process):
         start = asyncio.get_event_loop().time()
         results = await worker.run(uploads)
         duration = asyncio.get_event_loop().time() - start

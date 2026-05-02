@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -90,9 +89,7 @@ class TestIntelligenceCommands:
     @pytest.mark.asyncio
     async def test_aggregate_command(self, akosha_shell):
         """Test aggregate command executes."""
-        result = await akosha_shell._aggregate(
-            query="*", filters={"source": "test"}, limit=10
-        )
+        result = await akosha_shell._aggregate(query="*", filters={"source": "test"}, limit=10)
         assert result is not None
         assert "status" in result
         assert "query" in result
@@ -128,9 +125,7 @@ class TestIntelligenceCommands:
     @pytest.mark.asyncio
     async def test_trends_command(self, akosha_shell):
         """Test trends command executes."""
-        result = await akosha_shell._trends(
-            metric="all", window=3600, granularity=60
-        )
+        result = await akosha_shell._trends(metric="all", window=3600, granularity=60)
         assert result is not None
         assert "status" in result
         assert "metric" in result
@@ -157,9 +152,9 @@ class TestSessionTracking:
     async def test_session_end_methods_exist(self, akosha_shell):
         """Test shell has session tracking methods."""
         # Verify session tracker has required methods
-        assert hasattr(akosha_shell.session_tracker, 'emit_session_start')
-        assert hasattr(akosha_shell.session_tracker, 'emit_session_end')
-        assert hasattr(akosha_shell.session_tracker, '_check_availability')
+        assert hasattr(akosha_shell.session_tracker, "emit_session_start")
+        assert hasattr(akosha_shell.session_tracker, "emit_session_end")
+        assert hasattr(akosha_shell.session_tracker, "_check_availability")
 
 
 class TestCLIIntegration:
@@ -182,10 +177,10 @@ class TestCLIIntegration:
         result = runner.invoke(app, ["info"])
         assert result.exit_code == 0
         assert "Akosha" in result.stdout
-        assert "soothsayer" in result.stdout
+        assert "diviner" in result.stdout
 
-    @patch("akosha.cli.AkoshaShell")
-    @patch("akosha.cli.AkoshaApplication")
+    @patch("akosha.shell.AkoshaShell")
+    @patch("akosha.main.AkoshaApplication")
     def test_cli_shell_launch(self, MockApp, MockShell):
         """Test CLI launches shell correctly."""
         # Mock application and shell

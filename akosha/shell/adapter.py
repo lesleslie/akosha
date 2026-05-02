@@ -321,7 +321,7 @@ Type 'help()' for Python help or '%help_shell' for shell commands
             except Exception as e:
                 logger.warning(f"⚠️ Failed to emit session start event: {e}")
         else:
-            logger.info("ℹ️ Session-Buddy MCP unavailable - session tracking disabled")
+            logger.info("ℹ️ Session-Buddy MCP unavailable - session tracking disabled")  # noqa: RUF001
 
         # Call parent start method
         super().start()

@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Any, Optional
+from typing import Any
 
 from mcp_common.websocket import (
     EventTypes,
@@ -23,7 +23,7 @@ from mcp_common.websocket import (
 from akosha.websocket.auth import get_authenticator
 
 # Import TLS configuration
-from akosha.websocket.tls_config import load_ssl_context, get_websocket_tls_config
+from akosha.websocket.tls_config import get_websocket_tls_config, load_ssl_context
 
 logger = logging.getLogger(__name__)
 
@@ -140,8 +140,7 @@ class AkoshaWebSocketServer(WebSocketServer):
 
         self.analytics_engine = analytics_engine
         logger.info(
-            f"AkoshaWebSocketServer initialized: {host}:{port} "
-            f"(TLS: {ssl_context is not None})"
+            f"AkoshaWebSocketServer initialized: {host}:{port} (TLS: {ssl_context is not None})"
         )
 
     async def on_connect(self, websocket: Any, connection_id: str) -> None:
@@ -169,7 +168,7 @@ class AkoshaWebSocketServer(WebSocketServer):
         )
         await websocket.send(WebSocketProtocol.encode(welcome))
 
-    async def on_disconnect(self, websocket: Any, connection_id: str) -> None:
+    async def on_disconnect(self, websocket: Any, connection_id: str) -> None:  # noqa: ARG002
         """Handle WebSocket disconnection.
 
         Args:
@@ -193,9 +192,7 @@ class AkoshaWebSocketServer(WebSocketServer):
         else:
             logger.warning(f"Unhandled message type: {message.type}")
 
-    async def _handle_request(
-        self, websocket: Any, message: WebSocketMessage
-    ) -> None:
+    async def _handle_request(self, websocket: Any, message: WebSocketMessage) -> None:
         """Handle request message (expects response).
 
         Args:
@@ -223,8 +220,7 @@ class AkoshaWebSocketServer(WebSocketServer):
                 await self.join_room(channel, connection_id)
 
                 response = WebSocketProtocol.create_response(
-                    message,
-                    {"status": "subscribed", "channel": channel}
+                    message, {"status": "subscribed", "channel": channel}
                 )
                 await websocket.send(WebSocketProtocol.encode(response))
 
@@ -235,8 +231,7 @@ class AkoshaWebSocketServer(WebSocketServer):
                 await self.leave_room(channel, connection_id)
 
                 response = WebSocketProtocol.create_response(
-                    message,
-                    {"status": "unsubscribed", "channel": channel}
+                    message, {"status": "unsubscribed", "channel": channel}
                 )
                 await websocket.send(WebSocketProtocol.encode(response))
 
@@ -260,7 +255,7 @@ class AkoshaWebSocketServer(WebSocketServer):
             )
             await websocket.send(WebSocketProtocol.encode(error))
 
-    async def _handle_event(self, websocket: Any, message: WebSocketMessage) -> None:
+    async def _handle_event(self, websocket: Any, message: WebSocketMessage) -> None:  # noqa: ARG002
         """Handle event message (no response expected).
 
         Args:
@@ -298,10 +293,10 @@ class AkoshaWebSocketServer(WebSocketServer):
         if channel == "metrics":
             return "akosha:read" in permissions
 
-        # Default: deny
+        # Default: deny  # noqa: ERA001
         return False
 
-    async def _get_patterns(self, category: Optional[str]) -> dict:
+    async def _get_patterns(self, category: str | None) -> dict:
         """Get detected patterns from analytics engine.
 
         Args:

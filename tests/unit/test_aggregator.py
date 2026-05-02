@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from akosha.query.aggregator import QueryAggregator
 
 
@@ -86,10 +84,7 @@ class TestQueryAggregator:
     def test_limit_respected(self) -> None:
         """Test that limit parameter is respected."""
         result_sets = [
-            [
-                {"conversation_id": f"conv-{i}", "similarity": 1.0 - (i * 0.1)}
-                for i in range(10)
-            ]
+            [{"conversation_id": f"conv-{i}", "similarity": 1.0 - (i * 0.1)} for i in range(10)]
         ]
 
         merged = QueryAggregator.merge_results(result_sets, limit=5)

@@ -291,8 +291,8 @@ def track_migration(source_tier: str, target_tier: str):
 # FastAPI integration
 # =============================================================================
 
-from fastapi import FastAPI, Request
-from starlette.responses import Response
+from fastapi import FastAPI, Request  # noqa: E402
+from starlette.responses import Response  # noqa: E402
 
 
 def setup_metrics_endpoint(app: FastAPI) -> None:

@@ -158,9 +158,9 @@ async def test_cold_storage() -> bool:
         # Test read
         retrieved = await storage.read(key)
         if retrieved == test_data:
-            print(f"✅ Data verification: PASSED")
+            print("✅ Data verification: PASSED")
         else:
-            print(f"❌ Data verification: FAILED")
+            print("❌ Data verification: FAILED")
             return False
 
         # Test list
@@ -169,7 +169,7 @@ async def test_cold_storage() -> bool:
 
         # Cleanup
         await storage.delete(key)
-        print(f"✅ Cleaned up test file")
+        print("✅ Cleaned up test file")
 
         print("\n✅ COLD STORAGE TEST: PASSED")
         return True
@@ -204,9 +204,9 @@ async def test_redis_cache() -> bool:
         retrieved = r.get(test_key)
 
         if retrieved == test_value:
-            print(f"✅ Redis cache read/write: PASSED")
+            print("✅ Redis cache read/write: PASSED")
         else:
-            print(f"❌ Redis cache read/write: FAILED")
+            print("❌ Redis cache read/write: FAILED")
             return False
 
         # Cleanup

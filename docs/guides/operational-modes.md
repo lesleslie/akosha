@@ -576,6 +576,6 @@ A: Lite mode doesn't support backup. Use standard mode with cloud storage for au
 
 - [Architecture Guide](../ADR_001_ARCHITECTURE_DECISIONS.md)
 - [Deployment Guide](../DEPLOYMENT_GUIDE.md)
-- [Configuration Reference](../CONFIGURATION_REFERENCE.md)
-- [API Documentation](../API.md)
-- [Troubleshooting](../TROUBLESHOOTING.md)
+- Configuration Reference
+- API Documentation
+- Troubleshooting

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import os
+
 import pytest
 
 from akosha.security import (
-    AuthenticationError,
     InvalidTokenError,
     MissingTokenError,
     generate_jwt_token,
@@ -256,7 +256,7 @@ class TestRequireAuthDecorator:
     @pytest.mark.asyncio
     async def test_protected_function_with_invalid_token(self) -> None:
         """Test that protected function rejects invalid token."""
-        from akosha.security import require_auth, InvalidTokenError
+        from akosha.security import require_auth
 
         @require_auth
         async def protected_function(param: str) -> dict:
@@ -269,7 +269,7 @@ class TestRequireAuthDecorator:
     @pytest.mark.asyncio
     async def test_protected_function_without_token(self) -> None:
         """Test that protected function requires token."""
-        from akosha.security import require_auth, MissingTokenError
+        from akosha.security import require_auth
 
         @require_auth
         async def protected_function(param: str) -> dict:
