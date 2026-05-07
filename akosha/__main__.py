@@ -4,7 +4,7 @@ This keeps Akosha aligned with the rest of the ecosystem MCP services,
 which are launched via `python -m <package> mcp start`.
 """
 
-from akosha.cli import main
+from akosha.cli import app
 
 if __name__ == "__main__":
-    main()
+    app()

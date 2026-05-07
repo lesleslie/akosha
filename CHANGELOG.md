@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Address code quality issues in Akosha MCP auth wrapper
-- auth: Remove _reset_config from __all__ — private helpers not exported
+- auth: Remove \_reset_config from __all__ — private helpers not exported
 
 ## [0.4.1] - 2026-04-14
 
