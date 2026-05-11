@@ -1,0 +1,50 @@
+# Akosha Server Configuration
+# Oneiric pattern: layered loading (defaults -> YAML -> env vars)
+
+server_name: "Akosha Seer"
+server_description: "Cross-system intelligence and embeddings for the Bodai ecosystem"
+
+# Operational mode (lite, standard)
+mode: lite
+
+# Storage configurations
+hot:
+  backend: duckdb-memory
+  path: ":memory:"
+  write_ahead_log: true
+
+warm:
+  backend: duckdb-ssd
+  num_partitions: 256
+
+cold:
+  backend: local
+  bucket: akosha-cold-data
+  prefix: conversations/
+  format: parquet
+  region: us-west-2
+
+cache:
+  backend: redis
+  host: localhost
+  port: 6379
+  db: 0
+  local_ttl_seconds: 60
+  redis_ttl_seconds: 3600
+
+# API configuration
+api_port: 8682
+mcp_port: 3002
+debug: false
+
+# Processing configuration
+ingestion_workers: 3
+max_concurrent_ingests: 100
+shard_count: 256
+
+# Monitoring configuration
+metrics_enabled: true
+prometheus_port: 9090
+
+# Environment
+environment: development

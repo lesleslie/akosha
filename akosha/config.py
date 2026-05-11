@@ -1,17 +1,20 @@
-"""Akosha configuration management with environment variable overrides.
+"""Akosha configuration management using Oneiric MCPBaseSettings pattern.
 
-This module provides centralized configuration management with support for:
-- Environment variable overrides (highest priority)
-- YAML config file loading
-- Pydantic validation
-- Path resolution with StoragePathResolver (XDG-compliant)
-- Multi-environment support (dev, staging, prod)
+This module provides centralized configuration management following the
+Oneiric pattern with layered configuration loading:
+- Defaults in field definitions
+- settings/akosha.yaml (committed)
+- settings/local.yaml (gitignored)
+- Environment variables AKOSHA_*
 
-Priority order for configuration values:
-1. Environment variables (AKOSHA_*)
-2. YAML config file
-3. StoragePathResolver for paths
-4. Pydantic defaults (lowest priority)
+Configuration loading order (later overrides earlier):
+1. Default values in field definitions
+2. settings/akosha.yaml (committed, for production defaults)
+3. settings/local.yaml (gitignored, for development)
+4. Environment variables AKOSHA_{FIELD}
+
+For nested storage configs (HotStorageConfig, etc.), environment variables
+use AKOSHA_{FIELD}__{SUBFIELD} format.
 """
 
 from __future__ import annotations
@@ -21,9 +24,13 @@ import os
 from pathlib import Path
 from typing import Any
 
-import yaml
 from pydantic import BaseModel, Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+
+try:
+    from mcp_common.config.base import MCPBaseSettings
+except ImportError:
+    # Fallback if mcp-common is not installed
+    from pydantic import BaseModel as MCPBaseSettings
 
 from akosha.storage.path_resolver import StoragePathResolver
 
@@ -114,15 +121,17 @@ class CacheConfig(BaseModel):
     redis_ttl_seconds: int = 3600
 
 
-class AkoshaConfig(BaseSettings):
-    """Main Akosha configuration.
+class AkoshaConfig(MCPBaseSettings):
+    """Main Akosha configuration using Oneiric MCPBaseSettings pattern.
 
-    This class loads configuration from multiple sources:
-    1. Environment variables (AKOSHA_*)
-    2. YAML config file (if AKOSHA_CONFIG is set)
-    3. Pydantic defaults
+    Configuration loading order (later overrides earlier):
+    1. Default values in field definitions
+    2. settings/akosha.yaml (committed, for production defaults)
+    3. settings/local.yaml (gitignored, for development)
+    4. Environment variables AKOSHA_{FIELD}
 
     Attributes:
+        server_name: Display name for the MCP server
         mode: Operational mode (lite, standard)
         hot: Hot storage configuration
         warm: Warm storage configuration
@@ -135,6 +144,15 @@ class AkoshaConfig(BaseSettings):
         max_concurrent_ingests: Maximum concurrent ingestions
         shard_count: Number of shards for distributed queries
     """
+
+    server_name: str = Field(
+        default="Akosha Seer",
+        description="Display name for Akosha server",
+    )
+    server_description: str = Field(
+        default="Cross-system intelligence and embeddings for the Bodai ecosystem",
+        description="Brief description of server functionality",
+    )
 
     # Mode
     mode: str = Field(default_factory=lambda: os.getenv("AKOSHA_MODE", "lite"))
@@ -164,11 +182,7 @@ class AkoshaConfig(BaseSettings):
     # Environment
     environment: str = Field(default_factory=lambda: os.getenv("AKOSHA_ENVIRONMENT", "development"))
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_nested_delimiter="__",
-        env_prefix="akosha_",
-    )
+    model_config = {"arbitrary_types_allowed": True}
 
 
 def load_config_from_file(config_path: str) -> dict[str, Any]:
@@ -180,6 +194,8 @@ def load_config_from_file(config_path: str) -> dict[str, Any]:
     Returns:
         Configuration dictionary
     """
+    import yaml
+
     path = Path(config_path).expanduser()
     if not path.exists():
         logger.warning(f"Config file not found: {config_path}")
@@ -246,21 +262,17 @@ def validate_storage_config(config: AkoshaConfig) -> dict[str, bool]:
 def get_config(config_path: str | None = None) -> AkoshaConfig:
     """Get configuration instance.
 
+    Uses the MCPBaseSettings.load() pattern for layered configuration.
+    For backward compatibility, supports loading from explicit config path.
+
     Args:
-        config_path: Optional path to YAML config file
+        config_path: Optional path to YAML config file (for backward compatibility)
 
     Returns:
         AkoshaConfig instance
     """
-    # Load from file if provided
-    if config_path:
-        file_config = load_config_from_file(config_path)
-        # Merge with environment variables
-        # (Pydantic will handle env vars with higher priority)
-        return AkoshaConfig(**file_config)
-
-    # Use default loading (env vars + defaults)
-    return AkoshaConfig()
+    # Use MCPBaseSettings.load() pattern
+    return AkoshaConfig.load("akosha", config_path=Path(config_path) if config_path else None)
 
 
 # Global configuration instance
