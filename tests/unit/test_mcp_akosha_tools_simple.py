@@ -14,7 +14,6 @@ from akosha.mcp.tools.akosha_tools import (
     register_embedding_tools,
     register_graph_tools,
     register_search_tools,
-    register_system_tools,
 )
 from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
 from akosha.processing.analytics import TimeSeriesAnalytics
@@ -98,13 +97,6 @@ class TestToolRegistration:
         register_graph_tools(mock_registry, mock_graph_builder)
 
         # Should register graph tools
-        assert mock_registry.register.call_count > 0
-
-    def test_register_system_tools(self, mock_registry):
-        """Test system tools registration."""
-        register_system_tools(mock_registry)
-
-        # Should register system tools
         assert mock_registry.register.call_count > 0
 
     def test_register_code_graph_tools(self, mock_registry, mock_hot_store):
@@ -205,13 +197,6 @@ class TestToolCategories:
         # Check that graph tools were registered
         assert mock_registry.register.call_count > 0
 
-    def test_system_tools_category(self, mock_registry):
-        """Test system tools category."""
-        register_system_tools(mock_registry)
-
-        # Check that system tools were registered
-        assert mock_registry.register.call_count > 0
-
     def test_code_graph_tools_category(self, mock_registry):
         """Test code graph tools category."""
         mock_hot_store = MagicMock(spec=HotStore)
@@ -260,7 +245,6 @@ class TestIntegration:
         register_search_tools(mock_registry, mock_services["embedding"])
         register_analytics_tools(mock_registry, mock_services["analytics"])
         register_graph_tools(mock_registry, mock_services["graph"])
-        register_system_tools(mock_registry)
         register_code_graph_tools(mock_registry, mock_services["hot_store"])
 
         # Should register multiple tools across all categories
@@ -385,7 +369,7 @@ class TestPerformance:
         mock_registry = MagicMock(spec=FastMCPToolRegistry)
 
         start_time = time.time()
-        for i in range(10):
+        for _i in range(10):
             register_embedding_tools(mock_registry, mock_services["embedding"])
         end_time = time.time()
 
@@ -411,7 +395,7 @@ class TestConfiguration:
             "graph": MagicMock(spec=KnowledgeGraphBuilder),
         }
 
-    def test_tools_configuration(self, mock_services):
+    def test_tools_configuration(self):
         """Test that tools are properly configured."""
         # Test that all required services can be imported
         from akosha.processing.analytics import TimeSeriesAnalytics
@@ -424,7 +408,7 @@ class TestConfiguration:
         assert KnowledgeGraphBuilder is not None
         assert HotStore is not None
 
-    def test_imports_work(self, mock_services):
+    def test_imports_work(self):
         """Test that all required imports work."""
         # Should be able to import all required modules
         from akosha.mcp.tools.akosha_tools import (
@@ -434,7 +418,6 @@ class TestConfiguration:
             register_embedding_tools,
             register_graph_tools,
             register_search_tools,
-            register_system_tools,
         )
 
         assert callable(register_akosha_tools)
@@ -442,5 +425,4 @@ class TestConfiguration:
         assert callable(register_search_tools)
         assert callable(register_analytics_tools)
         assert callable(register_graph_tools)
-        assert callable(register_system_tools)
         assert callable(register_code_graph_tools)

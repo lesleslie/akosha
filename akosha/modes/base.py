@@ -31,7 +31,7 @@ class BaseMode(ABC):
 
     Each mode defines how Akosha initializes its components:
     - Cache layer (in-memory or Redis)
-    - Cold storage (disabled or cloud storage)
+    - Cold storage (disabled or optional derived-data storage)
     - External service dependencies
 
     Attributes:

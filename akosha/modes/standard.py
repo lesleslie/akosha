@@ -1,4 +1,4 @@
-"""Standard mode: Full production configuration with Redis and cloud storage."""
+"""Standard mode: Full production configuration with Redis and optional cold storage."""
 
 from __future__ import annotations
 
@@ -15,10 +15,10 @@ class StandardMode(BaseMode):
 
     Standard mode characteristics:
     - Redis cache for improved performance
-    - Cloud storage for cold tier (S3/Azure/GCS)
+    - Optional cold storage for derived data and exports
     - Production-ready scalability
-    - Persistent storage
-    - Requires external services
+    - Persistent storage when configured
+    - May require external services depending on storage backend
 
     Graceful degradation:
     - Falls back to in-memory cache if Redis unavailable
@@ -41,7 +41,7 @@ class StandardMode(BaseMode):
         """
         return ModeConfig(
             name="standard",
-            description="Standard mode: Full production configuration with Redis and cloud storage",
+            description="Standard mode: Full production configuration with Redis and optional cold storage",
             redis_enabled=True,
             cold_storage_enabled=True,
             cache_backend="redis",

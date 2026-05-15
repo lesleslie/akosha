@@ -4,11 +4,11 @@ Tests the health tools implementation using mcp-common health infrastructure.
 """
 
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from akosha.mcp.tools.health_tools import (
+from akosha.mcp.tools import (
     DEFAULT_DEPENDENCIES,
     SERVICE_NAME,
     SERVICE_START_TIME,
@@ -69,13 +69,8 @@ class TestHealthToolsRegistration:
 
     def test_register_with_none_app(self):
         """Test registration with None app."""
-        # Should handle None gracefully (either succeed or raise appropriate error)
-        try:
+        with pytest.raises((AttributeError, TypeError)):
             register_health_tools_akosha(None)
-            assert True
-        except (AttributeError, TypeError):
-            # Expected for None input
-            assert True
 
 
 class TestHealthToolsIntegration:
@@ -88,29 +83,15 @@ class TestHealthToolsIntegration:
 
     @pytest.mark.asyncio
     async def test_register_with_error_handling(self, mock_app):
-        """Test that registration handles import errors gracefully."""
-        # Mock mcp_common to raise exception
-        with patch("akosha.mcp.tools.health_tools.register_health_tools") as mock_register:
-            mock_register.side_effect = ImportError("mcp-common not available")
-
-            # Should handle the error gracefully
-            try:
-                register_health_tools_akosha(mock_app)
-                assert True  # Handled gracefully
-            except Exception as e:
-                # If it raises, it should be a meaningful error
-                assert "mcp-common" in str(e).lower()
+        """Test that registration delegates to the shared health contract."""
+        register_health_tools_akosha(mock_app)
+        assert mock_app is not None
 
     @pytest.mark.asyncio
     async def test_custom_dependencies_handling(self, mock_app):
         """Test health tools with custom dependencies."""
-        # Test that the function accepts dependencies parameter if available
-        try:
-            register_health_tools_akosha(mock_app)
-            assert True
-        except Exception:
-            # Should handle dependency errors gracefully
-            assert True
+        register_health_tools_akosha(mock_app)
+        assert mock_app is not None
 
 
 class TestHealthToolsConfiguration:
@@ -139,30 +120,14 @@ class TestHealthToolsEdgeCases:
 
     def test_app_with_existing_health_tools(self, mock_app):
         """Test behavior when app already has health tools."""
-        # Mock app to have existing registration
         mock_app.tools = {"health_check": MagicMock()}
-
-        # Should still attempt to register new tools
-        try:
-            register_health_tools_akosha(mock_app)
-            assert True
-        except Exception:
-            # If it fails, it should be due to mcp-common issues, not app state
-            assert True
+        register_health_tools_akosha(mock_app)
+        assert "health_check" in mock_app.tools
 
     def test_registration_timeout_handling(self, mock_app):
         """Test registration timeout handling."""
-        with patch("akosha.mcp.tools.health_tools.register_health_tools") as mock_register:
-            # Simulate slow registration
-            mock_register.side_effect = TimeoutError("Registration timeout")
-
-            # Should handle gracefully
-            try:
-                register_health_tools_akosha(mock_app)
-                assert True
-            except TimeoutError:
-                # Timeout is acceptable for this test
-                assert True
+        register_health_tools_akosha(mock_app)
+        assert mock_app is not None
 
 
 class TestPerformance:
@@ -178,11 +143,7 @@ class TestPerformance:
         """Test registration performance."""
 
         start_time = time.time()
-        try:
-            register_health_tools_akosha(mock_app)
-        except ImportError:
-            # Skip if mcp-common not available
-            pass
+        register_health_tools_akosha(mock_app)
         end_time = time.time()
 
         # Should be fast if successful

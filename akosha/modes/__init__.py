@@ -2,7 +2,7 @@
 
 Provides different operational modes for Akosha:
 - Lite mode: Zero external dependencies, in-memory only
-- Standard mode: Full production configuration with Redis and cloud storage
+- Standard mode: Full production configuration with Redis and optional cold storage
 """
 
 from __future__ import annotations

@@ -23,6 +23,25 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _build_memory_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    """Build normalized metadata for stored memories."""
+    metadata = metadata or {}
+    source = metadata.get("source", "unknown")
+    original_id = metadata.get("original_id")
+    memory_type = metadata.get("type", "session_memory")
+    correlation_id = metadata.get("correlation_id")
+
+    built = {
+        "source": source,
+        "original_id": original_id,
+        "type": memory_type,
+        "ingestion_method": "http_push",
+    }
+    if correlation_id:
+        built["correlation_id"] = correlation_id
+    return built
+
+
 def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotStore) -> None:
     """Register Session-Buddy integration tools with MCP server.
 
@@ -127,24 +146,8 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
 
             # Extract source from metadata
             source = metadata.get("source", "unknown") if metadata else "unknown"
-            original_id = metadata.get("original_id") if metadata else None
             memory_type = metadata.get("type", "session_memory") if metadata else "session_memory"
-
-            # Prepare database record
-            conversation_data = {
-                "id": memory_id,
-                "content": text,
-                "embedding": embedding,
-                "timestamp": metadata.get("created_at", datetime.now(UTC).isoformat())
-                if metadata
-                else datetime.now(UTC).isoformat(),
-                "metadata": {
-                    "source": source,
-                    "original_id": original_id,
-                    "type": memory_type,
-                    "ingestion_method": "http_push",  # Track push vs pull
-                },
-            }
+            normalized_metadata = _build_memory_metadata(metadata)
 
             # Insert into hot store
             logger.info(
@@ -163,7 +166,7 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
                 timestamp=metadata.get("created_at", datetime.now(UTC).isoformat())
                 if metadata
                 else datetime.now(UTC).isoformat(),
-                metadata=conversation_data["metadata"],
+                metadata=normalized_metadata,
             )
 
             await hot_store.insert(record)

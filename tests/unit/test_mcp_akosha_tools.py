@@ -15,7 +15,6 @@ from akosha.mcp.tools.akosha_tools import (
     register_embedding_tools,
     register_graph_tools,
     register_search_tools,
-    register_system_tools,
 )
 from akosha.processing.analytics import (
     TimeSeriesAnalytics,
@@ -255,26 +254,6 @@ class TestGraphTools:
         assert "statistics" in metadata.description.lower()
 
 
-class TestSystemTools:
-    """Test system tools."""
-
-    @pytest.fixture
-    def registry(self):
-        """Create mock tool registry."""
-        return MagicMock()
-
-    @pytest.mark.asyncio
-    async def test_register_system_tools(self, registry):
-        """Test system tools registration."""
-        register_system_tools(registry)
-
-        assert registry.register.call_count == 1
-        tool_call = registry.register.call_args_list[0]
-        metadata = tool_call[0][0]
-        assert metadata.name == "get_storage_status"
-        assert "storage tiers" in metadata.description.lower()
-
-
 class TestCodeGraphTools:
     """Test code graph tools (placeholder tests since implementation is in separate module)."""
 
@@ -314,8 +293,8 @@ class TestIntegration:
 
         register_akosha_tools(registry, mock_embedding, mock_analytics, mock_graph)
 
-        # Should register 11 tools total (2 + 1 + 4 + 3 + 1)
-        assert registry.register.call_count == 11
+        # Should register 10 tools total (2 + 1 + 4 + 3)
+        assert registry.register.call_count == 10
 
         # Verify all expected tool names are present
         tool_names = [call[0][0].name for call in registry.register.call_args_list]
@@ -330,7 +309,6 @@ class TestIntegration:
             "query_knowledge_graph",
             "find_path",
             "get_graph_statistics",
-            "get_storage_status",
         ]
         assert all(name in tool_names for name in expected_tools)
 

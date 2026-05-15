@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
     from mcp_common.tools import ToolProfile
 
+from mcp_common.health import DependencyConfig, register_health_tools
 
 from akosha.mcp.tools.akosha_tools import (  # noqa: F401
     register_akosha_tools,
     register_code_graph_tools,
 )
-from akosha.mcp.tools.health_tools import register_health_tools_akosha
 from akosha.mcp.tools.profiles import (
     FULL_REGISTRATIONS,
     PROFILE_REGISTRATIONS,
@@ -27,13 +28,42 @@ from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
 
 logger = logging.getLogger(__name__)
 
+SERVICE_NAME = "akosha"
+SERVICE_VERSION = "0.1.0"
+SERVICE_START_TIME = time.time()
+
+DEFAULT_DEPENDENCIES: dict[str, DependencyConfig] = {
+    "session_buddy": DependencyConfig(
+        host="localhost",
+        port=8678,
+        required=False,
+        timeout_seconds=10,
+    ),
+    "mahavishnu": DependencyConfig(
+        host="localhost",
+        port=8680,
+        required=False,
+        timeout_seconds=10,
+    ),
+}
+
 # Map registration names to callables for profile-driven dispatch
 _ALL_REGISTERS: dict[str, Any] = {
-    "register_health_tools_akosha": register_health_tools_akosha,
     "register_akosha_tools": register_akosha_tools,
     "register_session_buddy_tools": register_session_buddy_tools,
     "register_pycharm_tools": register_pycharm_tools,
 }
+
+
+def register_health_tools_akosha(app: Any) -> None:
+    """Register Akosha health tools through the shared MCP-common contract."""
+    register_health_tools(
+        mcp=app,
+        service_name=SERVICE_NAME,
+        version=SERVICE_VERSION,
+        start_time=SERVICE_START_TIME,
+        dependencies=DEFAULT_DEPENDENCIES,
+    )
 
 
 def register_all_tools(

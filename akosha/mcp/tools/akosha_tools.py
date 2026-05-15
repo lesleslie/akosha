@@ -75,7 +75,6 @@ def register_akosha_tools(
     register_search_tools(registry, embedding_service)
     register_analytics_tools(registry, analytics_service)
     register_graph_tools(registry, graph_builder)
-    register_system_tools(registry)
 
 
 def register_embedding_tools(
@@ -994,68 +993,6 @@ def register_graph_tools(
         logger.info("Getting graph statistics")
 
         return graph_builder.get_statistics()
-
-
-def register_system_tools(registry: FastMCPToolRegistry) -> None:
-    """Register system tools.
-
-    Registers tools for system status and health checks. These tools provide
-    visibility into the state of Akosha's storage tiers and services.
-
-    Args:
-        registry: FastMCP tool registry instance
-
-    Tools registered:
-        - get_storage_status: Get status of all storage tiers
-    """
-    from akosha.mcp.tools.tool_registry import ToolCategory, ToolMetadata
-
-    logger = logging.getLogger(__name__)
-
-    @registry.register(
-        ToolMetadata(
-            name="get_storage_status",
-            description="Get status of Akosha storage tiers",
-            category=ToolCategory.SYSTEM,
-        )
-    )
-    async def get_storage_status() -> dict[str, Any]:
-        """Get storage tier status.
-
-        Returns the current status of all three storage tiers (hot, warm, cold)
-        including conversation counts and health indicators. Useful for
-        monitoring and capacity planning.
-
-        Note: Currently returns placeholder status information. Full
-        implementation will connect to actual storage backends.
-
-        Returns:
-            dict[str, Any]: Storage status containing:
-                - hot_store (dict): Hot tier status (0-7 days):
-                    - status (str): Health status ("unknown", "healthy", "degraded")
-                    - conversation_count (int): Number of conversations
-                - warm_store (dict): Warm tier status (7-90 days):
-                    - status (str): Health status
-                    - conversation_count (int): Number of conversations
-                - cold_store (dict): Cold tier status (90+ days):
-                    - status (str): Health status
-                    - conversation_count (int): Number of conversations
-
-        Example:
-            >>> status = await get_storage_status()
-            >>> status["hot_store"]["conversation_count"]
-            1250
-            >>> status["warm_store"]["status"]
-            'healthy'
-        """
-        logger.info("Getting storage status")
-
-        # TODO: Implement actual status checks
-        return {
-            "hot_store": {"status": "unknown", "conversation_count": 0},
-            "warm_store": {"status": "unknown", "conversation_count": 0},
-            "cold_store": {"status": "unknown", "conversation_count": 0},
-        }
 
 
 def register_code_graph_tools(

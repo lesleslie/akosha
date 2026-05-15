@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "akosha"
-version = "0.5.0"
+version = "0.6.0"
 description = "Universal Memory Aggregation System - Cross-system intelligence for Session-Buddy"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -54,7 +54,7 @@ dev = [
 ]
 
 embeddings = [
-    "onnxruntime>=1.17.0,<1.21.0",
+    "onnxruntime>=1.23.2",
 ]
 
 [tool.ruff]
@@ -174,4 +174,5 @@ include = ["akosha*"]
 [dependency-groups]
 dev = [
     "crackerjack>=0.54.5",
+    "session-buddy>=0.18.0",
 ]

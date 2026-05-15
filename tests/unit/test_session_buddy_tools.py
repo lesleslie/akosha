@@ -64,7 +64,10 @@ class TestStoreMemory:
 
             memory_id = "test-mem-no-embedding"
             text = "Memory without embedding"
-            metadata = {"source": "http://localhost:8678"}
+            metadata = {
+                "source": "http://localhost:8678",
+                "correlation_id": "corr-123",
+            }
 
             result = await store_memory(memory_id=memory_id, text=text, metadata=metadata)
 
@@ -73,6 +76,11 @@ class TestStoreMemory:
             assert result["memory_id"] == memory_id
             assert result["embedding_dim"] is None
             assert result["source"] == "http://localhost:8678"
+            assert mock_record_class.call_args is not None
+            assert (
+                mock_record_class.call_args.kwargs["metadata"]["correlation_id"]
+                == "corr-123"
+            )
 
     @pytest.mark.asyncio
     async def test_store_memory_invalid_id(self, registry_and_store):

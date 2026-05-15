@@ -31,26 +31,29 @@ class TestStoreMemory:
         registry = _make_registry()
         hot_store = AsyncMock()
 
-        with patch("akosha.models.HotRecord", MagicMock):
+        with patch("akosha.models.HotRecord") as mock_record_class:
             register_session_buddy_tools(registry, hot_store)
 
-        store_func = registry.tools["store_memory"].decorated
-        result = await store_func(
-            memory_id="mem_123",
-            text="test content",
-            embedding=[0.1] * 384,
-            metadata={
-                "source": "http://localhost:8678",
-                "original_id": "orig_1",
-                "type": "session_memory",
-            },
-        )
+            store_func = registry.tools["store_memory"].decorated
+            result = await store_func(
+                memory_id="mem_123",
+                text="test content",
+                embedding=[0.1] * 384,
+                metadata={
+                    "source": "http://localhost:8678",
+                    "original_id": "orig_1",
+                    "type": "session_memory",
+                    "correlation_id": "corr-123",
+                },
+            )
 
         assert result["status"] == "stored"
         assert result["memory_id"] == "mem_123"
         assert result["embedding_dim"] == 384
         assert result["source"] == "http://localhost:8678"
         hot_store.insert.assert_called_once()
+        assert mock_record_class.call_args is not None
+        assert mock_record_class.call_args.kwargs["metadata"]["correlation_id"] == "corr-123"
 
     @pytest.mark.asyncio
     async def test_store_empty_memory_id(self):

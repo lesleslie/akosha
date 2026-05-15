@@ -82,7 +82,7 @@ class AkoshaApplication:
         else:
             logger.info("✓ Using in-memory cache")
 
-        # Initialize cold storage
+        # Initialize optional cold storage for derived data/export paths
         cold_storage = await self.mode_instance.initialize_cold_storage()
         if cold_storage:
             logger.info("✓ Cold storage initialized")

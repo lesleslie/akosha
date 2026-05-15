@@ -14,7 +14,7 @@ def test_standard_mode_config():
     assert mode.mode_config.name == "standard"
     assert (
         mode.mode_config.description
-        == "Standard mode: Full production configuration with Redis and cloud storage"
+        == "Standard mode: Full production configuration with Redis and optional cold storage"
     )
     assert mode.mode_config.redis_enabled is True
     assert mode.mode_config.cold_storage_enabled is True
