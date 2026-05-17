@@ -9,7 +9,9 @@ class QueryAggregator:
 
     @staticmethod
     def merge_results(
-        result_sets: list[list[dict[str, t.Any]]],
+        result_sets: list[list[dict[str, t.Any]]] | None = None,
+        *,
+        results: list[list[dict[str, t.Any]]] | None = None,
         limit: int = 10,
     ) -> list[dict[str, t.Any]]:
         """Merge and re-rank results from multiple sources.
@@ -27,24 +29,35 @@ class QueryAggregator:
         Returns:
             Merged and re-ranked results with highest similarity scores
         """
+        if result_sets is None:
+            result_sets = results or []
+
         # Step 1: Flatten results from all sources
         all_results: list[dict[str, t.Any]] = []
         for result_set in result_sets:
             all_results.extend(result_set)
 
         # Step 2: Deduplicate by conversation_id
-        seen_conversations: set[str] = set()
-        unique_results: list[dict[str, t.Any]] = []
+        unique_results: dict[str, dict[str, t.Any]] = {}
 
         for result in all_results:
             conversation_id = result.get("conversation_id")
-            if conversation_id is not None and conversation_id not in seen_conversations:
-                seen_conversations.add(conversation_id)
-                unique_results.append(result)
+            if conversation_id is None:
+                continue
+
+            existing = unique_results.get(conversation_id)
+            if existing is None:
+                unique_results[conversation_id] = result
+                continue
+
+            if result.get("similarity", float("-inf")) > existing.get("similarity", float("-inf")):
+                unique_results[conversation_id] = result
 
         # Step 3: Re-rank by similarity score (descending)
         # Only include results that have similarity key
-        results_with_similarity = [result for result in unique_results if "similarity" in result]
+        results_with_similarity = [
+            result for result in unique_results.values() if "similarity" in result
+        ]
 
         # Sort by similarity in descending order
         results_with_similarity.sort(key=operator.itemgetter("similarity"), reverse=True)

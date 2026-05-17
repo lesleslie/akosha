@@ -21,16 +21,25 @@ class DistributedQueryEngine:
     def __init__(
         self,
         shard_router: ShardRouter,
-        get_shard_store: Callable[[int], HotStore],
+        get_shard_store: Callable[[int], HotStore] | None = None,
+        shard_query: Callable[[int, list[float], int], Any] | None = None,
+        num_shards: int | None = None,
+        timeout_per_shard: float = 5.0,
     ) -> None:
         """Initialize distributed query engine.
 
         Args:
             shard_router: Shard router for determining target shards
             get_shard_store: Function to get HotStore for a shard ID
+            shard_query: Direct shard query callback used in tests and adapters
+            num_shards: Optional explicit shard count override
+            timeout_per_shard: Default per-shard timeout
         """
         self.shard_router = shard_router
         self.get_shard_store = get_shard_store
+        self.shard_query = shard_query
+        self.num_shards = num_shards if num_shards is not None else shard_router.num_shards
+        self.timeout_per_shard = timeout_per_shard
         logger.info(f"DistributedQueryEngine initialized with {shard_router.num_shards} shards")
 
     async def search_all_shards(
@@ -38,7 +47,8 @@ class DistributedQueryEngine:
         query_embedding: list[float],
         system_id: str | None = None,
         limit: int = 10,
-        timeout: float = 5.0,
+        timeout: float | None = None,
+        timeout_per_shard: float | None = None,
     ) -> list[dict[str, Any]]:
         """Search across all relevant shards.
 
@@ -64,8 +74,19 @@ class DistributedQueryEngine:
             List of search results ranked by similarity score
         """
         # Step 1: Determine target shards
-        target_shards = self.shard_router.get_target_shards(system_id)
+        if self.shard_query is not None and self.num_shards is not None:
+            target_shards = list(range(self.num_shards))
+        else:
+            target_shards = self.shard_router.get_target_shards(system_id)
         logger.info(f"Querying {len(target_shards)} shards (system_id={system_id or 'all'})")
+
+        effective_timeout = (
+            timeout_per_shard
+            if timeout_per_shard is not None
+            else timeout
+            if timeout is not None
+            else self.timeout_per_shard
+        )
 
         # Step 2: Fan-out queries concurrently
         tasks = [
@@ -74,7 +95,7 @@ class DistributedQueryEngine:
                 query_embedding=query_embedding,
                 system_id=system_id,
                 limit=limit,
-                timeout=timeout,
+                timeout=effective_timeout,
             )
             for shard_id in target_shards
         ]
@@ -175,7 +196,13 @@ class DistributedQueryEngine:
         Returns:
             List of search results from this shard
         """
+        if self.shard_query is not None:
+            return await self.shard_query(shard_id, query_embedding, limit)
+
         # Get HotStore for this shard
+        if self.get_shard_store is None:
+            raise RuntimeError("Shard store callback not configured")
+
         shard_store = self.get_shard_store(shard_id)
 
         # Execute search on the shard

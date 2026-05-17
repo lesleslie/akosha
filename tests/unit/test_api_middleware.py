@@ -1,6 +1,8 @@
 """Tests for Akosha API authentication and authorization middleware."""
 
 import json
+import sys
+from types import ModuleType
 from unittest.mock import MagicMock
 
 import pytest
@@ -93,33 +95,158 @@ class TestVerifyToken:
             "roles": ["admin"],
         }
 
-    @pytest.mark.skip(
-        reason="aiohttp async context manager mocking requires deeper integration test setup"
-    )
-    @pytest.mark.asyncio
-    async def test_valid_token_returns_claims(self, mock_credentials, valid_claims):
-        pass
+    class _FakeResponse:
+        def __init__(self, status: int, payload: object | None = None) -> None:
+            self.status = status
+            self._payload = payload
 
-    @pytest.mark.skip(
-        reason="aiohttp async context manager mocking requires deeper integration test setup"
-    )
-    @pytest.mark.asyncio
-    async def test_invalid_token_returns_401(self, mock_credentials):
-        pass
+        async def __aenter__(self) -> object:
+            return self
 
-    @pytest.mark.skip(
-        reason="aiohttp async context manager mocking requires deeper integration test setup"
-    )
-    @pytest.mark.asyncio
-    async def test_auth_service_unreachable_returns_401(self, mock_credentials):
-        pass
+        async def __aexit__(self, exc_type, exc, tb) -> bool:
+            return False
 
-    @pytest.mark.skip(
-        reason="aiohttp async context manager mocking requires deeper integration test setup"
-    )
+        async def json(self) -> object:
+            assert self._payload is not None
+            return self._payload
+
+    @staticmethod
+    def _install_fake_aiohttp(
+        monkeypatch: pytest.MonkeyPatch,
+        response: object | None = None,
+        post_exc: Exception | None = None,
+    ) -> object:
+        class _FakeSession:
+            def __init__(self, response_obj: object | None, post_exception: Exception | None) -> None:
+                self._response = response_obj
+                self._post_exception = post_exception
+                self.post_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+            async def __aenter__(self) -> object:
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            def post(self, *args: object, **kwargs: object) -> object:
+                self.post_calls.append((args, kwargs))
+                if self._post_exception is not None:
+                    raise self._post_exception
+                assert self._response is not None
+                return self._response
+
+        fake_module = ModuleType("aiohttp")
+        session = _FakeSession(response, post_exc)
+        fake_module.ClientSession = lambda: session  # type: ignore[assignment]
+        monkeypatch.setitem(sys.modules, "aiohttp", fake_module)
+        return session
+
     @pytest.mark.asyncio
-    async def test_missing_required_claim_returns_403(self, mock_credentials):
-        pass
+    async def test_valid_token_returns_claims(
+        self,
+        mock_credentials,
+        valid_claims,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        import akosha.api.middleware as middleware_module
+
+        response = self._FakeResponse(200, valid_claims)
+        session = self._install_fake_aiohttp(monkeypatch, response=response)
+        monkeypatch.setattr(
+            middleware_module,
+            "auth_config",
+            AuthConfig(
+                auth_service_url="https://auth.example.com/verify",
+                required_claims=["sub", "email", "roles"],
+            ),
+        )
+
+        claims = await middleware_module.verify_token(mock_credentials)
+
+        assert claims == valid_claims
+        assert session.post_calls == [
+            (
+                ("https://auth.example.com/verify",),
+                {
+                    "headers": {"Authorization": "Bearer test-token-123"},
+                    "json": {"token": "test-token-123"},
+                },
+            )
+        ]
+
+    @pytest.mark.asyncio
+    async def test_invalid_token_returns_401(
+        self,
+        mock_credentials,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        import akosha.api.middleware as middleware_module
+        from fastapi import HTTPException
+
+        response = self._FakeResponse(401, {"detail": "nope"})
+        self._install_fake_aiohttp(monkeypatch, response=response)
+        monkeypatch.setattr(
+            middleware_module,
+            "auth_config",
+            AuthConfig(auth_service_url="https://auth.example.com/verify"),
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await middleware_module.verify_token(mock_credentials)
+
+        assert exc_info.value.status_code == 401
+        assert "Invalid authentication token" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_auth_service_unreachable_returns_401(
+        self,
+        mock_credentials,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        import akosha.api.middleware as middleware_module
+        from fastapi import HTTPException
+
+        self._install_fake_aiohttp(
+            monkeypatch,
+            post_exc=RuntimeError("service unavailable"),
+        )
+        monkeypatch.setattr(
+            middleware_module,
+            "auth_config",
+            AuthConfig(auth_service_url="https://auth.example.com/verify"),
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await middleware_module.verify_token(mock_credentials)
+
+        assert exc_info.value.status_code == 401
+        assert "Token verification failed" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_missing_required_claim_returns_403(
+        self,
+        mock_credentials,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        import akosha.api.middleware as middleware_module
+        from fastapi import HTTPException
+
+        response = self._FakeResponse(200, {"sub": "user-123", "email": "test@example.com"})
+        self._install_fake_aiohttp(monkeypatch, response=response)
+        monkeypatch.setattr(
+            middleware_module,
+            "auth_config",
+            AuthConfig(
+                auth_service_url="https://auth.example.com/verify",
+                required_claims=["sub", "email", "roles"],
+            ),
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await middleware_module.verify_token(mock_credentials)
+
+        assert exc_info.value.status_code == 403
+        assert "Missing required claim: roles" in exc_info.value.detail
 
 
 # ============================================================================
@@ -384,3 +511,10 @@ class TestPrebuiltDependencies:
             assert callable(dep)
         else:
             pytest.skip("require_viewer not exported")
+
+    def test_audit_log_dependency_returns_global_logger(self):
+        import akosha.api.middleware as middleware_module
+
+        dep = middleware_module.audit_log("ingest", "upload")
+        assert callable(dep)
+        assert dep() is middleware_module.audit_logger

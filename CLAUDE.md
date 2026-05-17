@@ -19,6 +19,10 @@ This is **Akosha** (आकाश), a universal memory aggregation system for the
 # Install all dependencies (development + production)
 uv sync --group dev
 
+# Configure environment variables for development
+cp .env.example .env
+# Edit .env to customize storage paths, Redis settings, and API ports as needed
+
 # Run MCP server locally
 python -m akosha.mcp
 
@@ -193,32 +197,21 @@ pytest -v --tb=short
 
 ## Configuration
 
-### Environment Variables
+**Environment Variables:**
+
+Copy `.env.example` to `.env` and customize for your development environment:
 
 ```bash
-# Storage Configuration
-AKOSHA_HOT_PATH=/data/akosha/hot
-AKOSHA_WARM_PATH=/data/akosha/warm
-AKOSHA_COLD_BUCKET=akosha-cold-data
-
-# Oneiric Storage (Cold Tier)
-S3_BUCKET=akosha-cold-data
-S3_REGION=us-west-2
-
-# Cache Layer
-REDIS_HOST=redis.cache.local
-REDIS_PORT=6379
-REDIS_DB=0
-
-# API Configuration
-AKOSHA_API_PORT=8000
-AKOSHA_MCP_PORT=3001
-
-# Mahavishnu Integration
-MAHAVISHNU_MCP_URL=http://mahavishnu:3000
+cp .env.example .env
 ```
 
-### Configuration Files
+Akosha requires configuration for:
+
+- **Storage**: Hot/warm/cold tier paths and cloud buckets
+- **Cache**: Redis connection settings
+- **API**: Port configuration for REST and MCP servers
+
+**Configuration Files:**
 
 - `config/akosha.yaml` - Main configuration
 - `config/akosha_storage.yaml` - Storage backend configuration

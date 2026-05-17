@@ -2,12 +2,37 @@
 
 from __future__ import annotations
 
+import sys
+from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
+import akosha.processing.embeddings as embeddings_module
 from akosha.processing.embeddings import EmbeddingService, get_embedding_service
+
+
+class _ImmediateLoop:
+    async def run_in_executor(self, _executor, func, *args):
+        return func(*args)
+
+
+class _FakeSentenceTransformer:
+    def __init__(self, model_name: str) -> None:
+        self.model_name = model_name
+        self.encode_calls: list[tuple[object, tuple[object, ...], dict[str, object]]] = []
+
+    def encode(self, payload, *args, **kwargs):
+        self.encode_calls.append((payload, args, kwargs))
+        if isinstance(payload, list):
+            return np.vstack(
+                [
+                    np.full(384, float(index + 1), dtype=np.float32)
+                    for index, _text in enumerate(payload)
+                ]
+            )
+        return np.full(384, 0.25, dtype=np.float32)
 
 
 class TestEmbeddingService:
@@ -109,6 +134,135 @@ class TestEmbeddingService:
         embeddings = await service.generate_batch_embeddings([])
 
         assert embeddings == []
+
+    @pytest.mark.asyncio
+    async def test_real_model_path_initializes_and_generates_embeddings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A mocked sentence-transformers install should exercise the real-model branches."""
+        service = EmbeddingService(model_name="fake-model")
+
+        fake_module = ModuleType("sentence_transformers")
+        fake_module.SentenceTransformer = _FakeSentenceTransformer
+        monkeypatch.setitem(sys.modules, "sentence_transformers", fake_module)
+        monkeypatch.setattr(embeddings_module.asyncio, "get_event_loop", lambda: _ImmediateLoop())
+        monkeypatch.setattr(embeddings_module, "record_counter", lambda *args, **kwargs: None)
+        monkeypatch.setattr(embeddings_module, "record_histogram", lambda *args, **kwargs: None)
+
+        import akosha.observability as observability_module
+
+        monkeypatch.setattr(
+            observability_module,
+            "add_span_attributes",
+            lambda *args, **kwargs: None,
+        )
+
+        await service.initialize()
+
+        assert service._initialized is True
+        assert service.is_available() is True
+        assert isinstance(service._model, _FakeSentenceTransformer)
+
+        single = await service.generate_embedding("real-model text")
+        assert isinstance(single, np.ndarray)
+        assert single.shape == (384,)
+        assert single.dtype == np.float32
+
+        batch = await service.generate_batch_embeddings(["first", "second", "third"])
+        assert len(batch) == 3
+        assert all(emb.shape == (384,) for emb in batch)
+        assert service._model.encode_calls[0][0] == "real-model text"
+        assert service._model.encode_calls[1][0] == ["first", "second", "third"]
+
+    @pytest.mark.asyncio
+    async def test_initialize_returns_early_when_already_initialized(self) -> None:
+        """Repeated initialize calls should be cheap no-ops."""
+        service = EmbeddingService()
+        service._initialized = True
+        service._available = True
+
+        await service.initialize()
+
+        assert service._initialized is True
+        assert service.is_available() is True
+
+    @pytest.mark.asyncio
+    async def test_initialize_falls_back_when_model_load_fails(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Unexpected model-loading failures should still enable fallback mode."""
+        service = EmbeddingService(model_name="broken-model")
+
+        class _BrokenSentenceTransformer:
+            def __init__(self, model_name: str) -> None:
+                raise RuntimeError(f"failed to load {model_name}")
+
+        fake_module = ModuleType("sentence_transformers")
+        fake_module.SentenceTransformer = _BrokenSentenceTransformer
+        monkeypatch.setitem(sys.modules, "sentence_transformers", fake_module)
+        monkeypatch.setattr(embeddings_module.asyncio, "get_event_loop", lambda: _ImmediateLoop())
+
+        await service.initialize()
+
+        assert service._initialized is True
+        assert service.is_available() is False
+
+    @pytest.mark.asyncio
+    async def test_generate_methods_auto_initialize_when_needed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The public methods should lazily initialize an unprepared service."""
+        service = EmbeddingService()
+
+        async def fake_initialize() -> None:
+            service._initialized = True
+            service._available = False
+
+        service.initialize = fake_initialize  # type: ignore[method-assign]
+        monkeypatch.setattr(embeddings_module, "record_counter", lambda *args, **kwargs: None)
+        monkeypatch.setattr(embeddings_module, "record_histogram", lambda *args, **kwargs: None)
+
+        import akosha.observability as observability_module
+
+        monkeypatch.setattr(
+            observability_module,
+            "add_span_attributes",
+            lambda *args, **kwargs: None,
+        )
+
+        embedding = await service.generate_embedding("lazy-init")
+        service._initialized = False
+        batch = await service.generate_batch_embeddings(["lazy", "init"])
+
+        assert embedding.shape == (384,)
+        assert len(batch) == 2
+
+    @pytest.mark.asyncio
+    async def test_fallback_embedding_zero_norm_stays_zero(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A zero-valued fallback vector should skip normalization cleanly."""
+        service = EmbeddingService()
+        service._initialized = True
+        service._available = False
+
+        monkeypatch.setattr(embeddings_module.random.Random, "gauss", lambda self, mu, sigma: 0.0)
+        monkeypatch.setattr(embeddings_module, "record_counter", lambda *args, **kwargs: None)
+        monkeypatch.setattr(embeddings_module, "record_histogram", lambda *args, **kwargs: None)
+
+        import akosha.observability as observability_module
+
+        monkeypatch.setattr(
+            observability_module,
+            "add_span_attributes",
+            lambda *args, **kwargs: None,
+        )
+
+        embedding = await service.generate_embedding("zero-vector")
+
+        assert isinstance(embedding, np.ndarray)
+        assert embedding.shape == (384,)
+        assert np.count_nonzero(embedding) == 0
 
     @pytest.mark.asyncio
     async def test_compute_similarity(self, service: EmbeddingService) -> None:

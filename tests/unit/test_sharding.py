@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -148,3 +149,32 @@ class TestShardRouter:
         shard = router_256.get_shard(long_id)
         # Should still return valid shard ID
         assert 0 <= shard < 256
+
+    def test_get_shard_path_rejects_invalid_format(self, router_256: ShardRouter) -> None:
+        """Malformed system IDs should fail validation before path construction."""
+        with pytest.raises(ValueError, match="Invalid system_id format"):
+            router_256.get_shard_path("bad/path")
+
+    def test_get_shard_path_rejects_traversal_when_pattern_is_permissive(
+        self, router_256: ShardRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Traversal checks should still protect permissive inputs."""
+        import akosha.storage.sharding as sharding_module
+
+        monkeypatch.setattr(sharding_module, "VALID_SYSTEM_ID_PATTERN", re.compile(r".+"))
+
+        with pytest.raises(ValueError, match="Path traversal detected"):
+            router_256.get_shard_path("../evil", base_path=Path("/tmp/base"))
+
+    def test_get_shard_path_wraps_resolution_errors(
+        self, router_256: ShardRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Path resolution errors should be surfaced as validation failures."""
+
+        def fake_resolve(self: Path) -> Path:
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(Path, "resolve", fake_resolve, raising=False)
+
+        with pytest.raises(ValueError, match="Invalid path resolution"):
+            router_256.get_shard_path("system-123", base_path=Path("/tmp/base"))

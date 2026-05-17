@@ -350,3 +350,56 @@ class TestWarmStore:
         assert len(retrieved_embedding) == 384
         assert retrieved_embedding[0] == 100
         assert retrieved_embedding[1] == -50
+
+    @pytest.mark.asyncio
+    async def test_insert_batch_inserts_multiple_records(self, warm_store: WarmStore) -> None:
+        """Test batch insertion writes all records in one call."""
+        now = datetime.now(UTC)
+        records = [
+            WarmRecord(
+                system_id="system-1",
+                conversation_id="conv-batch-1",
+                embedding=[1] * 384,
+                summary="Batch 1",
+                timestamp=now,
+                metadata={"batch": 1},
+            ),
+            WarmRecord(
+                system_id="system-2",
+                conversation_id="conv-batch-2",
+                embedding=[2] * 384,
+                summary="Batch 2",
+                timestamp=now,
+                metadata={"batch": 2},
+            ),
+        ]
+
+        await warm_store.insert_batch(records)
+
+        result = warm_store.conn.execute("SELECT COUNT(*) FROM conversations").fetchone()
+        assert result[0] == 2
+
+    @pytest.mark.asyncio
+    async def test_insert_batch_empty_is_noop(self, warm_store: WarmStore) -> None:
+        """Empty batch inserts should return early without touching the table."""
+        await warm_store.insert_batch([])
+
+        result = warm_store.conn.execute("SELECT COUNT(*) FROM conversations").fetchone()
+        assert result[0] == 0
+
+    @pytest.mark.asyncio
+    async def test_insert_batch_without_initialization_raises(self) -> None:
+        """Batch insertion should fail fast when the store was never initialized."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = WarmStore(database_path=Path(tmpdir) / "warm.db")
+
+            with pytest.raises(RuntimeError, match="not initialized"):
+                await store.insert_batch([])
+
+    @pytest.mark.asyncio
+    async def test_close_without_connection_is_noop(self) -> None:
+        """Closing an uninitialized store should be a no-op."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = WarmStore(database_path=Path(tmpdir) / "warm.db")
+
+            await store.close()

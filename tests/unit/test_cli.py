@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import builtins
+import logging
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
+import akosha.cli as cli_module
 from akosha.cli import app
 
 runner = CliRunner()
@@ -178,3 +183,167 @@ class TestCLIIntegration:
         # Typer may treat empty invocation as a help/error path depending on version.
         assert result.exit_code in (0, 2)
         assert "Usage" in result.stdout or "help" in result.stdout.lower()
+
+    @patch("akosha.main.AkoshaApplication")
+    @patch("akosha.shell.AkoshaShell")
+    def test_shell_command_initializes_and_starts_shell(
+        self, mock_shell: MagicMock, mock_app: MagicMock
+    ) -> None:
+        """Shell command should construct the app and start the shell."""
+        shell_instance = MagicMock()
+        shell_instance.start = MagicMock()
+        mock_shell.return_value = shell_instance
+
+        cli_module.shell(None, mode="standard", verbose=True)
+
+        mock_app.assert_called_once_with(mode="standard")
+        mock_shell.assert_called_once()
+        shell_instance.start.assert_called_once()
+        assert logging.getLogger().level == logging.DEBUG
+
+    def test_shell_command_missing_optional_dependency_exits(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Missing shell imports should exit cleanly with a non-zero code."""
+        original_import = builtins.__import__
+
+        def fake_import(name: str, globals=None, locals=None, fromlist=(), level=0):  # noqa: A002
+            if name == "akosha.shell":
+                raise ImportError("no shell")
+            return original_import(name, globals, locals, fromlist, level)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        monkeypatch.setattr(cli_module.sys, "exit", MagicMock(side_effect=SystemExit(1)))
+
+        with pytest.raises(SystemExit, match="1"):
+            cli_module.shell(None)
+
+    def test_root_callback_shows_help(self) -> None:
+        """Invoking the root callback without a subcommand should show help."""
+        ctx = MagicMock()
+        ctx.invoked_subcommand = None
+        ctx.get_help.return_value = "help text"
+
+        with pytest.raises(cli_module.typer.Exit):
+            cli_module.main(ctx)
+
+        ctx.get_help.assert_called_once()
+
+    def test_version_unknown_when_metadata_lookup_fails(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Version command should degrade gracefully when package metadata is unavailable."""
+        monkeypatch.setattr(
+            "importlib.metadata.version", MagicMock(side_effect=Exception("boom"))
+        )
+
+        result = runner.invoke(app, ["version"])
+
+        assert result.exit_code == 0
+        assert "Akosha version: unknown" in result.stdout
+
+    def test_start_server_success_with_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Start server should load config and run the app in the requested mode."""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("alpha: 1\n")
+
+        mode_instance = MagicMock()
+        mode_instance.mode_config.description = "Standard mode"
+        mode_instance.requires_external_services = True
+        app_instance = MagicMock()
+
+        monkeypatch.setattr("akosha.modes.get_mode", MagicMock(return_value=mode_instance))
+        monkeypatch.setattr("akosha.mcp.create_app", MagicMock(return_value=app_instance))
+
+        cli_module._start_server(host="0.0.0.0", port=9000, mode="standard", config=str(config_path))
+
+        app_instance.run.assert_called_once_with(
+            transport="streamable-http", host="0.0.0.0", port=9000, path="/mcp"
+        )
+
+    def test_start_server_invalid_mode_exits(self) -> None:
+        """Invalid modes should be rejected before any initialization."""
+        with pytest.raises(cli_module.typer.Exit) as excinfo:
+            cli_module._start_server(mode="invalid")
+
+        assert excinfo.value.exit_code == 1
+
+    def test_start_server_missing_config_file_exits(self, tmp_path: Path) -> None:
+        """Missing config files should stop startup early."""
+        with pytest.raises(cli_module.typer.Exit) as excinfo:
+            cli_module._start_server(config=str(tmp_path / "missing.yaml"))
+
+        assert excinfo.value.exit_code == 1
+
+    def test_start_server_yaml_import_error_is_ignored(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """If PyYAML is unavailable, the config file should be ignored."""
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text("alpha: 1\n")
+
+        mode_instance = MagicMock()
+        mode_instance.mode_config.description = "Lite mode"
+        mode_instance.requires_external_services = False
+        app_instance = MagicMock()
+
+        original_import = builtins.__import__
+
+        def fake_import(name: str, globals=None, locals=None, fromlist=(), level=0):  # noqa: A002
+            if name == "yaml":
+                raise ImportError("no yaml")
+            return original_import(name, globals, locals, fromlist, level)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        monkeypatch.setattr("akosha.modes.get_mode", MagicMock(return_value=mode_instance))
+        monkeypatch.setattr("akosha.mcp.create_app", MagicMock(return_value=app_instance))
+
+        cli_module._start_server(mode="lite", config=str(config_path))
+
+        app_instance.run.assert_called_once()
+
+    def test_start_server_value_error_from_mode_factory(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Mode factory validation errors should surface as clean CLI exits."""
+        monkeypatch.setattr("akosha.modes.get_mode", MagicMock(side_effect=ValueError("bad mode")))
+
+        with pytest.raises(cli_module.typer.Exit) as excinfo:
+            cli_module._start_server(mode="lite")
+
+        assert excinfo.value.exit_code == 1
+
+    def test_start_server_generic_failure_from_mode_factory(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Unexpected initialization errors should also surface as clean CLI exits."""
+        monkeypatch.setattr(
+            "akosha.modes.get_mode", MagicMock(side_effect=RuntimeError("boom"))
+        )
+
+        with pytest.raises(cli_module.typer.Exit) as excinfo:
+            cli_module._start_server(mode="lite")
+
+        assert excinfo.value.exit_code == 1
+
+    @patch("akosha.cli._start_server")
+    def test_start_command_delegates_to_helper(self, mock_start_server: MagicMock) -> None:
+        """The public start command should delegate to the shared helper."""
+        cli_module.start(host="1.2.3.4", port=9999, mode="standard", config="cfg.yaml", verbose=True)
+
+        mock_start_server.assert_called_once_with(
+            host="1.2.3.4", port=9999, mode="standard", config="cfg.yaml", verbose=True
+        )
+
+    @patch("akosha.cli._start_server")
+    def test_mcp_start_command_delegates_to_helper(self, mock_start_server: MagicMock) -> None:
+        """The nested MCP start command should reuse the same helper."""
+        cli_module.mcp_start(
+            host="1.2.3.4", port=9999, mode="standard", config="cfg.yaml", verbose=True
+        )
+
+        mock_start_server.assert_called_once_with(
+            host="1.2.3.4", port=9999, mode="standard", config="cfg.yaml", verbose=True
+        )

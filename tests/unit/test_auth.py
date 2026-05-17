@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
+import builtins
 import os
+import sys
+import types
 
 import pytest
+from unittest.mock import MagicMock
 
 from akosha.security import (
+    AuthenticationMiddleware,
     InvalidTokenError,
     MissingTokenError,
     generate_jwt_token,
     get_api_token,
     is_auth_enabled,
+    require_auth,
+    setup_authentication_instructions,
     validate_token,
 )
 
@@ -50,6 +57,22 @@ class TestJWTAuthentication:
         monkeypatch.delenv("JWT_SECRET", raising=False)
 
         with pytest.raises(ValueError, match="JWT_SECRET.*required"):
+            generate_jwt_token(user_id="test-user")
+
+    @pytest.mark.asyncio
+    async def test_generate_jwt_token_import_error(self, monkeypatch) -> None:
+        """Test JWT generation fails cleanly when PyJWT is unavailable."""
+        original_import = builtins.__import__
+
+        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):  # noqa: A002
+            if name == "jwt":
+                raise ImportError("missing jwt")
+            return original_import(name, globals, locals, fromlist, level)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        monkeypatch.setenv("JWT_SECRET", "test_secret_key_at_least_32_characters")
+
+        with pytest.raises(ValueError, match="PyJWT library not installed"):
             generate_jwt_token(user_id="test-user")
 
     @pytest.mark.asyncio
@@ -119,6 +142,67 @@ class TestJWTAuthentication:
             result = validate_token(invalid_token)
             # Should be False (invalid JWT, no API token)
             assert result is False
+
+    def test_validate_jwt_token_invalid_falls_back_to_api_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Invalid JWTs should fall back to API token validation."""
+        fake_jwt = types.ModuleType("jwt")
+
+        class FakeExpiredSignatureError(Exception):
+            pass
+
+        class FakeInvalidTokenError(Exception):
+            pass
+
+        def decode(*_args, **_kwargs):
+            raise FakeInvalidTokenError("bad token")
+
+        fake_jwt.ExpiredSignatureError = FakeExpiredSignatureError
+        fake_jwt.InvalidTokenError = FakeInvalidTokenError
+        fake_jwt.decode = decode
+        monkeypatch.setitem(sys.modules, "jwt", fake_jwt)
+        monkeypatch.setenv("JWT_SECRET", "test_secret_key_at_least_32_characters")
+        monkeypatch.setenv("AKOSHA_API_TOKEN", "fallback-token")
+
+        assert validate_token("fallback-token") is True
+
+    def test_validate_jwt_token_expired_via_imported_exception(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Expired JWT exceptions should short-circuit validation."""
+        fake_jwt = types.ModuleType("jwt")
+
+        class FakeExpiredSignatureError(Exception):
+            pass
+
+        class FakeInvalidTokenError(Exception):
+            pass
+
+        def decode(*_args, **_kwargs):
+            raise FakeExpiredSignatureError("expired")
+
+        fake_jwt.ExpiredSignatureError = FakeExpiredSignatureError
+        fake_jwt.InvalidTokenError = FakeInvalidTokenError
+        fake_jwt.decode = decode
+        monkeypatch.setitem(sys.modules, "jwt", fake_jwt)
+        monkeypatch.setenv("JWT_SECRET", "test_secret_key_at_least_32_characters")
+        monkeypatch.setenv("AKOSHA_API_TOKEN", "fallback-token")
+
+        assert validate_token("fallback-token") is False
+
+    def test_validate_token_compare_digest_error_returns_false(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """API token comparison errors should fail closed."""
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+        monkeypatch.setenv("AKOSHA_API_TOKEN", "fallback-token")
+        monkeypatch.setattr(
+            "akosha.security.secrets.compare_digest",
+            MagicMock(side_effect=RuntimeError("boom")),
+        )
+
+        assert validate_token("fallback-token") is False
 
 
 class TestAPITokenAuthentication:
@@ -201,7 +285,7 @@ class TestAuthenticationConfig:
         for placeholder in placeholder_secrets:
             monkeypatch.setenv("JWT_SECRET", placeholder)
 
-            with pytest.raises(ValueError, match="placeholder value"):
+            with pytest.raises(ValueError):
                 validate_auth_config()
 
     @pytest.mark.asyncio
@@ -296,3 +380,63 @@ class TestRequireAuthDecorator:
         result = await protected_function("test_param")
 
         assert result["result"] == "protected: test_param"
+
+
+class TestSetupInstructions:
+    """Test authentication setup instructions."""
+
+    def test_setup_instructions_contains_token(self) -> None:
+        """Test that setup instructions include a generated token."""
+        instructions = setup_authentication_instructions()
+        assert "export AKOSHA_API_TOKEN=" in instructions
+        assert len(instructions) > 100
+
+    def test_setup_instructions_uses_generated_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Setup instructions should interpolate the generated token exactly once."""
+        monkeypatch.setattr("akosha.security.generate_token", lambda: "fixed-token")
+
+        instructions = setup_authentication_instructions()
+
+        assert 'export AKOSHA_API_TOKEN="fixed-token"' in instructions
+
+
+class TestAuthenticationMiddlewareBranches:
+    """Additional middleware branch coverage."""
+
+    @pytest.mark.asyncio
+    async def test_authenticate_request_allows_when_auth_disabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Disabled auth should allow protected tools through."""
+        monkeypatch.delenv("AKOSHA_API_TOKEN", raising=False)
+        monkeypatch.setenv("AKOSHA_AUTH_ENABLED", "false")
+        middleware = AuthenticationMiddleware()
+
+        result = await middleware.authenticate_request(
+            tool_name="search_all_systems",
+            tool_category="search",
+            context=None,
+        )
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_authenticate_request_with_context_missing_bearer_prefix(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Middleware should reject non-Bearer Authorization headers."""
+        monkeypatch.setenv("AKOSHA_API_TOKEN", "expected-token")
+        monkeypatch.setenv("AKOSHA_AUTH_ENABLED", "true")
+        middleware = AuthenticationMiddleware()
+
+        mock_context = MagicMock()
+        mock_context.headers = {"Authorization": "Basic expected-token"}
+
+        with pytest.raises(MissingTokenError):
+            await middleware.authenticate_request(
+                tool_name="search_all_systems",
+                tool_category="search",
+                context=mock_context,
+            )

@@ -343,4 +343,6 @@ Type 'help()' for Python help or '%help_shell' for shell commands
                 logger.warning(f"⚠️ Failed to emit session end event: {e}")
 
         # Call parent stop method
-        super().stop()
+        parent_stop = getattr(super(), "stop", None)
+        if callable(parent_stop):
+            parent_stop()

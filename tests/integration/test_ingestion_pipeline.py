@@ -4,6 +4,7 @@ Tests Session-Buddy upload flow through ingestion worker to hot tier storage.
 """
 
 import asyncio
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -13,6 +14,11 @@ import pytest
 from akosha.ingestion.worker import IngestionWorker
 from akosha.storage.hot_store import HotStore
 from akosha.storage.models import HotRecord, SystemMemoryUpload
+
+
+def _to_json_bytes(data: dict) -> bytes:
+    """Serialize a dict to JSON bytes."""
+    return json.dumps(data).encode()
 
 
 @pytest.fixture
@@ -29,12 +35,37 @@ def mock_storage():
     """Mock Oneiric storage adapter."""
     storage = AsyncMock()
 
-    # Mock list_prefixes to return systems
-    storage.list = AsyncMock(
-        return_value=[
-            "systems/system-1/",
-            "systems/system-2/",
-        ]
+    async def mock_list(prefix: str):
+        if prefix == "systems/":
+            yield "systems/system-1/"
+            yield "systems/system-2/"
+        elif prefix.startswith("systems/system-"):
+            yield f"{prefix}upload-1/"
+
+    storage.list = mock_list
+    storage.exists = AsyncMock(return_value=True)
+    storage.download = AsyncMock(
+        return_value=_to_json_bytes(
+            {
+                "uploaded_at": datetime.now(UTC).isoformat(),
+                "conversation_count": 10,
+                "version": "1.0",
+            }
+        )
+    )
+    storage.get = AsyncMock(
+        return_value=_to_json_bytes(
+            {
+                "conversations": [
+                    {
+                        "id": "conv-1",
+                        "content": "Test memory",
+                        "embedding": [0.1] * 384,
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    }
+                ]
+            }
+        )
     )
 
     return storage

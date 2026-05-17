@@ -75,7 +75,7 @@ class TestQueryAggregator:
         # Should only have 2 results (conv-1 deduplicated)
         assert len(merged) == 2
 
-        # First occurrence should be kept (highest similarity)
+        # Highest similarity should be kept for duplicates
         conv1_results = [r for r in merged if r["conversation_id"] == "conv-1"]
         assert len(conv1_results) == 1
         assert conv1_results[0]["similarity"] == 0.9
@@ -185,12 +185,11 @@ class TestQueryAggregator:
 
         merged = QueryAggregator.merge_results(result_sets, limit=10)
 
-        # Should keep first occurrence (from first set)
+        # Should keep the highest similarity record
         conv1_results = [r for r in merged if r["conversation_id"] == "conv-1"]
         assert len(conv1_results) == 1
-        # First occurrence wins, not necessarily highest similarity
-        assert conv1_results[0]["similarity"] == 0.7
-        assert conv1_results[0]["tier"] == "warm"
+        assert conv1_results[0]["similarity"] == 0.95
+        assert conv1_results[0]["tier"] == "hot"
 
     def test_large_number_of_results(self) -> None:
         """Test merging large number of results."""

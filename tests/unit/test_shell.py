@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -49,6 +49,17 @@ class TestAkoshaShell:
         version = akosha_shell._get_component_version()
         assert isinstance(version, str)
         assert len(version) > 0
+
+    def test_component_version_unknown_on_lookup_failure(self, akosha_shell, monkeypatch):
+        """Version lookup failures should fall back to an unknown marker."""
+        import akosha.shell.adapter as adapter_module
+
+        def raise_lookup_error(*args, **kwargs):
+            raise RuntimeError("missing metadata")
+
+        monkeypatch.setattr(adapter_module.importlib.metadata, "version", raise_lookup_error)
+
+        assert akosha_shell._get_component_version() == "unknown"
 
     def test_adapters_info(self, akosha_shell):
         """Test adapters information is correct."""
@@ -155,6 +166,99 @@ class TestSessionTracking:
         assert hasattr(akosha_shell.session_tracker, "emit_session_start")
         assert hasattr(akosha_shell.session_tracker, "emit_session_end")
         assert hasattr(akosha_shell.session_tracker, "_check_availability")
+
+    @pytest.mark.asyncio
+    async def test_start_emits_session_start_when_available(self, akosha_shell):
+        """The shell should emit a session-start event when tracking is available."""
+        tracker = AsyncMock()
+        tracker._check_availability = AsyncMock(return_value=True)
+        tracker.emit_session_start = AsyncMock()
+        akosha_shell.session_tracker = tracker
+
+        with patch("oneiric.shell.AdminShell.start") as mock_parent_start:
+            await akosha_shell.start()
+
+        mock_parent_start.assert_called_once()
+        tracker.emit_session_start.assert_awaited_once()
+        assert tracker.emit_session_start.await_args.kwargs["shell_type"] == "ipython"
+        assert tracker.emit_session_start.await_args.kwargs["metadata"]["component_name"] == "akosha"
+
+    @pytest.mark.asyncio
+    async def test_start_skips_session_start_when_unavailable(self, akosha_shell):
+        """When Session-Buddy is unavailable, startup should continue without emission."""
+        tracker = AsyncMock()
+        tracker._check_availability = AsyncMock(return_value=False)
+        tracker.emit_session_start = AsyncMock()
+        akosha_shell.session_tracker = tracker
+
+        with patch("oneiric.shell.AdminShell.start") as mock_parent_start:
+            await akosha_shell.start()
+
+        mock_parent_start.assert_called_once()
+        tracker.emit_session_start.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_start_handles_session_start_failure(self, akosha_shell):
+        """Session-start failures should be logged and startup should continue."""
+        tracker = AsyncMock()
+        tracker._check_availability = AsyncMock(return_value=True)
+        tracker.emit_session_start = AsyncMock(side_effect=RuntimeError("boom"))
+        akosha_shell.session_tracker = tracker
+
+        with patch("oneiric.shell.AdminShell.start") as mock_parent_start:
+            await akosha_shell.start()
+
+        mock_parent_start.assert_called_once()
+        tracker.emit_session_start.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_stop_emits_session_end_when_available(self, akosha_shell):
+        """The shell should emit a session-end event when tracking is available."""
+        import oneiric.shell.core as oneiric_shell_core
+
+        tracker = AsyncMock()
+        tracker._check_availability = AsyncMock(return_value=True)
+        tracker.emit_session_end = AsyncMock()
+        akosha_shell.session_tracker = tracker
+
+        parent_stop_calls: list[bool] = []
+
+        def fake_parent_stop(self) -> None:
+            parent_stop_calls.append(True)
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(oneiric_shell_core.AdminShell, "stop", fake_parent_stop, raising=False)
+
+        await akosha_shell.stop()
+        monkeypatch.undo()
+
+        tracker.emit_session_end.assert_awaited_once()
+        assert tracker.emit_session_end.await_args.kwargs["shell_type"] == "ipython"
+        assert len(parent_stop_calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_stop_skips_session_end_when_unavailable(self, akosha_shell):
+        """If Session-Buddy is unavailable, shutdown should still complete."""
+        tracker = AsyncMock()
+        tracker._check_availability = AsyncMock(return_value=False)
+        tracker.emit_session_end = AsyncMock()
+        akosha_shell.session_tracker = tracker
+
+        await akosha_shell.stop()
+
+        tracker.emit_session_end.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_stop_handles_session_end_failure(self, akosha_shell):
+        """Session-end failures should not block shell shutdown."""
+        tracker = AsyncMock()
+        tracker._check_availability = AsyncMock(return_value=True)
+        tracker.emit_session_end = AsyncMock(side_effect=RuntimeError("boom"))
+        akosha_shell.session_tracker = tracker
+
+        await akosha_shell.stop()
+
+        tracker.emit_session_end.assert_awaited_once()
 
 
 class TestCLIIntegration:
