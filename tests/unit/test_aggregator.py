@@ -15,6 +15,20 @@ class TestQueryAggregator:
 
         assert merged == []
 
+    def test_merge_results_keyword_alias(self) -> None:
+        """Test the keyword-only results alias."""
+        results = [
+            [
+                {"conversation_id": "conv-1", "similarity": 0.9, "content": "A"},
+                {"conversation_id": "conv-2", "similarity": 0.8, "content": "B"},
+            ]
+        ]
+
+        merged = QueryAggregator.merge_results(results=results, limit=10)
+
+        assert len(merged) == 2
+        assert merged[0]["conversation_id"] == "conv-1"
+
     def test_merge_single_result_set(self) -> None:
         """Test merging single result set."""
         result_sets = [

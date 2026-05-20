@@ -68,6 +68,21 @@ class TestWebsocketAuthAuthenticator:
             result = get_authenticator()
             assert result is None
 
+    def test_get_authenticator_warns_on_default_secret(self):
+        """Test getting authenticator warns when the default secret is used."""
+        with patch("akosha.websocket.auth.AUTH_ENABLED", True), patch(
+            "akosha.websocket.auth.JWT_SECRET", "dev-secret-change-in-production"
+        ), patch("akosha.websocket.auth.WebSocketAuthenticator") as MockAuthenticator:
+            MockAuthenticator.return_value = object()
+            result = get_authenticator()
+
+        assert result is not None
+        MockAuthenticator.assert_called_once_with(
+            secret="dev-secret-change-in-production",
+            algorithm="HS256",
+            token_expiry=TOKEN_EXPIRY,
+        )
+
 
 class TestWebsocketAuthTokenGeneration:
     """Test WebSocket token generation functionality."""
@@ -213,6 +228,60 @@ class TestWebsocketAuthErrorHandling:
             with patch("akosha.websocket.auth.JWT_SECRET", ""):
                 result = get_authenticator()
             assert result is not None
+
+    def test_generate_token_development_mode(self):
+        """Test token generation when get_authenticator returns None."""
+        with patch("akosha.websocket.auth.WebSocketAuthenticator") as MockAuthenticator, patch(
+            "akosha.websocket.auth.get_authenticator", return_value=None
+        ):
+            mock_auth = MockAuthenticator.return_value
+            mock_auth.create_token.return_value = "dev-token"
+            token = generate_token("dev-user", ["akosha:read"])
+
+        assert token == "dev-token"
+        MockAuthenticator.assert_called_once_with(
+            secret=JWT_SECRET,
+            algorithm="HS256",
+            token_expiry=TOKEN_EXPIRY,
+        )
+
+    def test_verify_token_development_mode(self):
+        """Test token verification when get_authenticator returns None."""
+        with patch("akosha.websocket.auth.WebSocketAuthenticator") as MockAuthenticator, patch(
+            "akosha.websocket.auth.get_authenticator", return_value=None
+        ):
+            mock_auth = MockAuthenticator.return_value
+            mock_auth.verify_token.return_value = {"user_id": "dev-user"}
+            result = verify_token("dev-token")
+
+        assert result == {"user_id": "dev-user"}
+        MockAuthenticator.assert_called_once_with(
+            secret=JWT_SECRET,
+            algorithm="HS256",
+            token_expiry=TOKEN_EXPIRY,
+        )
+
+    def test_generate_token_uses_configured_authenticator(self):
+        """Test token generation when get_authenticator returns a configured authenticator."""
+        with patch("akosha.websocket.auth.WebSocketAuthenticator") as MockAuthenticator:
+            mock_auth = MockAuthenticator.return_value
+            mock_auth.create_token.return_value = "configured-token"
+            with patch("akosha.websocket.auth.get_authenticator", return_value=mock_auth):
+                token = generate_token("configured-user", ["akosha:read"])
+
+        assert token == "configured-token"
+        MockAuthenticator.assert_not_called()
+
+    def test_verify_token_uses_configured_authenticator(self):
+        """Test token verification when get_authenticator returns a configured authenticator."""
+        with patch("akosha.websocket.auth.WebSocketAuthenticator") as MockAuthenticator:
+            mock_auth = MockAuthenticator.return_value
+            mock_auth.verify_token.return_value = {"user_id": "configured-user"}
+            with patch("akosha.websocket.auth.get_authenticator", return_value=mock_auth):
+                result = verify_token("configured-token")
+
+        assert result == {"user_id": "configured-user"}
+        MockAuthenticator.assert_not_called()
 
     def test_verification_error_handling(self):
         """Test error handling during token verification."""

@@ -201,6 +201,18 @@ class TestWebsocketServerMessage:
         # No response sent for unhandled types
         mock_websocket.send.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_on_connect_authenticated_user(self, server):
+        """Test connection handling when a user is already attached."""
+        mock_websocket = AsyncMock()
+        mock_websocket.user = {"user_id": "test-user"}
+
+        await server.on_connect(mock_websocket, "test-connection")
+
+        mock_websocket.send.assert_awaited_once()
+        payload = mock_websocket.send.call_args[0][0]
+        assert isinstance(payload, str)
+
 
 class TestWebsocketServerAuthentication:
     """Test WebSocket server authentication functionality."""
@@ -233,6 +245,148 @@ class TestWebsocketServerAuthentication:
         with patch.object(server, "authenticate_websocket", return_value=None):
             result = server.authenticate_websocket(None)
             assert result is None
+
+
+class TestWebsocketServerRequestBranches:
+    """Test request handling branches not covered by the happy path."""
+
+    @pytest.fixture
+    def server(self):
+        """Create WebSocket server fixture."""
+        mock_analytics = AsyncMock()
+        return AkoshaWebSocketServer(analytics_engine=mock_analytics)
+
+    @pytest.mark.asyncio
+    async def test_subscribe_forbidden(self, server):
+        """Test subscribe requests are rejected without permission."""
+        mock_websocket = AsyncMock()
+        mock_websocket.id = "test-conn-id"
+        mock_websocket.user = {"user_id": "test-user", "permissions": []}
+
+        mock_message = MagicMock(spec=WebSocketMessage)
+        mock_message.type = MessageType.REQUEST
+        mock_message.event = "subscribe"
+        mock_message.data = {"channel": "pattern:test"}
+        mock_message.correlation_id = "corr-1"
+
+        await server.on_message(mock_websocket, mock_message)
+
+        mock_websocket.send.assert_awaited_once()
+        payload = mock_websocket.send.call_args[0][0]
+        assert isinstance(payload, str)
+
+    @pytest.mark.asyncio
+    async def test_subscribe_without_channel(self, server):
+        """Test subscribe requests with no channel are ignored."""
+        mock_websocket = AsyncMock()
+        mock_websocket.id = "test-conn-id"
+        mock_websocket.user = None
+
+        mock_message = MagicMock(spec=WebSocketMessage)
+        mock_message.type = MessageType.REQUEST
+        mock_message.event = "subscribe"
+        mock_message.data = {}
+        mock_message.correlation_id = "corr-1"
+
+        await server.on_message(mock_websocket, mock_message)
+
+        mock_websocket.send.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_subscribe_authorized(self, server):
+        """Test subscribe requests with permission succeed."""
+        mock_websocket = AsyncMock()
+        mock_websocket.id = "test-conn-id"
+        mock_websocket.user = {"user_id": "test-user", "permissions": ["akosha:read"]}
+
+        mock_message = MagicMock(spec=WebSocketMessage)
+        mock_message.type = MessageType.REQUEST
+        mock_message.event = "subscribe"
+        mock_message.data = {"channel": "pattern:test"}
+        mock_message.correlation_id = "corr-1"
+
+        with patch.object(server, "join_room", new_callable=AsyncMock) as mock_join:
+            await server.on_message(mock_websocket, mock_message)
+
+        mock_join.assert_awaited_once_with("pattern:test", "test-conn-id")
+        mock_websocket.send.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_unsubscribe_without_channel(self, server):
+        """Test unsubscribe requests with no channel are ignored."""
+        mock_websocket = AsyncMock()
+        mock_websocket.id = "test-conn-id"
+        mock_websocket.user = None
+
+        mock_message = MagicMock(spec=WebSocketMessage)
+        mock_message.type = MessageType.REQUEST
+        mock_message.event = "unsubscribe"
+        mock_message.data = {}
+        mock_message.correlation_id = "corr-1"
+
+        await server.on_message(mock_websocket, mock_message)
+
+        mock_websocket.send.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unsubscribe_with_channel(self, server):
+        """Test unsubscribe requests with a channel leave the room."""
+        mock_websocket = AsyncMock()
+        mock_websocket.id = "test-conn-id"
+        mock_websocket.user = None
+
+        mock_message = MagicMock(spec=WebSocketMessage)
+        mock_message.type = MessageType.REQUEST
+        mock_message.event = "unsubscribe"
+        mock_message.data = {"channel": "pattern:test"}
+        mock_message.correlation_id = "corr-1"
+
+        with patch.object(server, "leave_room", new_callable=AsyncMock) as mock_leave:
+            await server.on_message(mock_websocket, mock_message)
+
+        mock_leave.assert_awaited_once_with("pattern:test", "test-conn-id")
+        mock_websocket.send.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_get_patterns_and_anomalies(self, server):
+        """Test request handlers that fetch analytics data."""
+        mock_websocket = AsyncMock()
+        mock_websocket.user = None
+
+        patterns_message = MagicMock(spec=WebSocketMessage)
+        patterns_message.type = MessageType.REQUEST
+        patterns_message.event = "get_patterns"
+        patterns_message.data = {"category": "code"}
+        patterns_message.correlation_id = "corr-patterns"
+
+        anomalies_message = MagicMock(spec=WebSocketMessage)
+        anomalies_message.type = MessageType.REQUEST
+        anomalies_message.event = "get_anomalies"
+        anomalies_message.data = {}
+        anomalies_message.correlation_id = "corr-anomalies"
+
+        await server.on_message(mock_websocket, patterns_message)
+        await server.on_message(mock_websocket, anomalies_message)
+
+        assert mock_websocket.send.await_count == 2
+
+    def test_can_subscribe_metrics_channel(self, server):
+        """Test metrics channel permission branch."""
+        user = {"user_id": "metrics-user", "permissions": ["akosha:read"]}
+
+        assert server._can_subscribe_to_channel(user, "metrics") is True
+
+    def test_can_subscribe_insight_channel(self, server):
+        """Test insight channel permission branch."""
+        user = {"user_id": "insight-user", "permissions": ["akosha:read"]}
+
+        assert server._can_subscribe_to_channel(user, "insight:summary") is True
+
+    def test_can_subscribe_default_deny(self, server):
+        """Test default deny branch for unknown channel patterns."""
+        user = {"user_id": "unknown-user", "permissions": ["akosha:read"]}
+
+        assert server._can_subscribe_to_channel(user, "custom:channel") is False
 
 
 class TestWebsocketServerSubscription:
@@ -642,3 +796,70 @@ class TestWebsocketServerConfiguration:
             assert server.port == config["port"]
             assert server.max_connections == config["max_connections"]
             assert server.message_rate_limit == config["message_rate_limit"]
+
+    def test_tls_configuration_from_explicit_files(self):
+        """Test TLS configuration path when certificate files are provided."""
+        mock_analytics = AsyncMock()
+        with patch("akosha.websocket.server.load_ssl_context") as mock_load, patch(
+            "akosha.websocket.server.get_authenticator"
+        ) as mock_auth:
+            mock_load.return_value = {"ssl_context": object()}
+            mock_auth.return_value = AsyncMock()
+
+            server = AkoshaWebSocketServer(
+                analytics_engine=mock_analytics,
+                cert_file="/tmp/cert.pem",
+                key_file="/tmp/key.pem",
+            )
+
+        mock_load.assert_called_once_with(
+            cert_file="/tmp/cert.pem",
+            key_file="/tmp/key.pem",
+            ca_file=None,
+            verify_client=False,
+        )
+        assert server.ssl_context is not None
+
+    def test_tls_configuration_from_environment(self):
+        """Test TLS configuration path when environment provides certs."""
+        mock_analytics = AsyncMock()
+        with patch("akosha.websocket.server.load_ssl_context") as mock_load, patch(
+            "akosha.websocket.server.get_websocket_tls_config"
+        ) as mock_env, patch("akosha.websocket.server.get_authenticator") as mock_auth:
+            mock_load.side_effect = [{"ssl_context": None}, {"ssl_context": object()}]
+            mock_env.return_value = {
+                "tls_enabled": True,
+                "cert_file": "/tmp/env-cert.pem",
+                "key_file": "/tmp/env-key.pem",
+                "ca_file": None,
+                "verify_client": False,
+            }
+            mock_auth.return_value = AsyncMock()
+
+            server = AkoshaWebSocketServer(analytics_engine=mock_analytics, tls_enabled=True)
+
+        assert mock_load.call_count == 2
+        mock_env.assert_called_once()
+        assert server.ssl_context is not None
+
+    def test_tls_configuration_env_disabled(self):
+        """Test TLS fallback when environment does not provide certs."""
+        mock_analytics = AsyncMock()
+        with patch("akosha.websocket.server.load_ssl_context") as mock_load, patch(
+            "akosha.websocket.server.get_websocket_tls_config"
+        ) as mock_env, patch("akosha.websocket.server.get_authenticator") as mock_auth:
+            mock_load.return_value = {"ssl_context": None}
+            mock_env.return_value = {
+                "tls_enabled": False,
+                "cert_file": None,
+                "key_file": None,
+                "ca_file": None,
+                "verify_client": False,
+            }
+            mock_auth.return_value = AsyncMock()
+
+            server = AkoshaWebSocketServer(analytics_engine=mock_analytics, tls_enabled=True)
+
+        assert mock_load.call_count == 1
+        mock_env.assert_called_once()
+        assert server.ssl_context is not None

@@ -694,6 +694,26 @@ class TestSearchCodePatternsTool:
         assert result["count"] == 1
 
     @pytest.mark.asyncio
+    async def test_graph_missing_data_is_ignored(self):
+        registry, captured, hot_store = _make_tool_registry()
+        hot_store.list_code_graphs = AsyncMock(
+            return_value=[
+                {"repo_path": "/repo1", "commit_hash": "abc", "nodes_count": 1},
+                {"repo_path": "/repo2", "commit_hash": "def", "nodes_count": 1},
+            ]
+        )
+        hot_store.get_code_graph = AsyncMock(
+            side_effect=[
+                None,
+                {"repo_path": "/repo2"},
+            ]
+        )
+        tool = captured[0]
+        result = await tool(pattern="does_not_match")
+        assert result["status"] == "success"
+        assert result["count"] == 0
+
+    @pytest.mark.asyncio
     async def test_code_graph_no_nodes(self):
         registry, captured, hot_store = _make_tool_registry()
         hot_store.list_code_graphs = AsyncMock(
@@ -791,6 +811,36 @@ class TestGetCodeProblemsTool:
         assert result["count"] == 1
 
     @pytest.mark.asyncio
+    async def test_info_severity_and_non_dict_nodes(self):
+        registry, captured, hot_store = _make_tool_registry()
+        hot_store.list_code_graphs = AsyncMock(
+            return_value=[
+                {"repo_path": "/repo1", "commit_hash": "abc"},
+            ]
+        )
+        hot_store.get_code_graph = AsyncMock(
+            return_value={
+                "graph_data": {
+                    "nodes": {
+                        "n1": {
+                            "type": "function",
+                            "file_path": "a.py",
+                            "start_line": 5,
+                            "problems": [
+                                {"severity": "INFO", "message": "note", "category": "STYLE"},
+                            ],
+                        },
+                        "n2": "not-a-dict",
+                    }
+                },
+            }
+        )
+        tool = captured[1]
+        result = await tool(severity="INFO")
+        assert result["status"] == "success"
+        assert result["count"] == 1
+
+    @pytest.mark.asyncio
     async def test_graph_not_found(self):
         registry, captured, hot_store = _make_tool_registry()
         hot_store.list_code_graphs = AsyncMock(
@@ -860,6 +910,38 @@ class TestFindFunctionUsageTool:
         result = await tool(function_name="my_func")
         assert result["status"] == "success"
         assert result["count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_exception_and_missing_match_paths(self):
+        registry, captured, hot_store = _make_tool_registry()
+        hot_store.list_code_graphs = AsyncMock(
+            return_value=[
+                {"repo_path": "/repo1", "commit_hash": "abc"},
+                {"repo_path": "/repo2", "commit_hash": "def"},
+            ]
+        )
+
+        async def get_code_graph(repo_path: str, commit_hash: str):
+            if repo_path == "/repo1":
+                raise RuntimeError("boom")
+            return {
+                "graph_data": {
+                    "nodes": {
+                        "n1": {
+                            "type": "function",
+                            "name": "different",
+                            "file_path": "b.py",
+                            "start_line": 1,
+                        }
+                    }
+                }
+            }
+
+        hot_store.get_code_graph = AsyncMock(side_effect=get_code_graph)
+        tool = captured[2]
+        result = await tool(function_name="my_func")
+        assert result["status"] == "success"
+        assert result["count"] == 0
 
     @pytest.mark.asyncio
     async def test_exception_returns_error(self):
@@ -952,6 +1034,28 @@ class TestAnalyzeImportsTool:
         assert result["count"] >= 1
 
     @pytest.mark.asyncio
+    async def test_unknown_analysis_type_returns_empty(self):
+        registry, captured, hot_store = _make_tool_registry()
+        hot_store.list_code_graphs = AsyncMock(
+            return_value=[
+                {"repo_path": "/repo1", "commit_hash": "abc"},
+            ]
+        )
+        hot_store.get_code_graph = AsyncMock(
+            return_value={
+                "graph_data": {
+                    "nodes": {
+                        "n1": {"type": "function", "name": "foo"},
+                    }
+                }
+            }
+        )
+        tool = captured[3]
+        result = await tool(analysis_type="custom")
+        assert result["status"] == "success"
+        assert result["count"] == 0
+
+    @pytest.mark.asyncio
     async def test_repo_filter(self):
         registry, captured, hot_store = _make_tool_registry()
         hot_store.list_code_graphs = AsyncMock(return_value=[])
@@ -1002,3 +1106,138 @@ class TestPyCharmHealthTool:
         tool = captured[4]
         result = await tool()
         assert result["status"] == "error"
+
+
+class TestPyCharmToolRuntimeBranches:
+    @pytest.mark.asyncio
+    async def test_register_and_execute_branches(self):
+        import akosha.mcp.tools.pycharm_tools as mod
+        from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
+
+        class FakeAdapter:
+            _available = True
+
+            async def search_regex(self, pattern: str, file_pattern: str | None = None, scope: str = "all"):
+                return [
+                    SearchResult(
+                        file_path="a.py",
+                        line_number=10,
+                        column=1,
+                        match_text="def foo()",
+                        context_before="before",
+                        context_after="after",
+                    )
+                ]
+
+            async def get_file_problems(self, file_path: str, errors_only: bool = False):
+                return [{"file": file_path, "line": 1, "severity": "ERROR", "message": "err"}]
+
+            async def find_usages(self, symbol_name: str, file_path: str | None = None):
+                return [{"file_path": "b.py", "line": 3, "type": "call"}]
+
+            async def health_check(self):
+                return {
+                    "mcp_available": True,
+                    "circuit_breaker_open": False,
+                    "failure_count": 0,
+                    "cache_size": 0,
+                }
+
+        class FakeApp:
+            def __init__(self) -> None:
+                self.tools: dict[str, object] = {}
+
+            def tool(self, *args, **kwargs):
+                def decorator(func):
+                    self.tools[func.__name__] = func
+                    return func
+
+                return decorator
+
+        fake_adapter = FakeAdapter()
+        hot_store = AsyncMock()
+        hot_store.list_code_graphs = AsyncMock(
+            return_value=[
+                {"repo_path": "/repo1", "commit_hash": "abc"},
+                {"repo_path": "/repo2", "commit_hash": "def"},
+            ]
+        )
+        async def get_code_graph(repo_path: str, commit_hash: str):
+            if repo_path == "/repo1" and commit_hash == "abc":
+                return {
+                    "graph_data": {
+                        "nodes": {
+                            "n1": {
+                                "type": "function",
+                                "source": "def my_func(): pass",
+                                "name": "my_func",
+                                "file_path": "graph.py",
+                                "start_line": 10,
+                                "problems": [
+                                    {"severity": "ERROR", "message": "broken", "category": "TYPE"},
+                                    {"severity": "WARNING", "message": "warn", "category": "STYLE"},
+                                ],
+                            },
+                            "n2": {
+                                "type": "import",
+                                "name": "package.foo",
+                                "file_path": "import.py",
+                                "start_line": 2,
+                            },
+                            "n3": {
+                                "type": "call",
+                                "name": "my_func",
+                                "file_path": "call.py",
+                                "start_line": 5,
+                            },
+                        },
+                        "edges": [
+                            {"type": "imports", "source": "a", "target": "b"},
+                            {"type": "imports", "source": "b", "target": "a"},
+                        ],
+                    }
+                }
+            if repo_path == "/repo2" and commit_hash == "def":
+                return None
+            return None
+
+        hot_store.get_code_graph = AsyncMock(side_effect=get_code_graph)
+
+        old_adapter = mod._pycharm_adapter
+        mod._pycharm_adapter = fake_adapter  # type: ignore[assignment]
+        try:
+            app = FakeApp()
+            registry = FastMCPToolRegistry(app)
+            registry.app = registry._app
+
+            register_pycharm_tools(registry, hot_store)
+
+            search = await app.tools["search_code_patterns"](pattern="foo", limit=5)
+            problems = await app.tools["get_code_problems"](severity="WARNING", limit=10)
+            usages = await app.tools["find_function_usage"](function_name="my_func", limit=10)
+            imports_unused = await app.tools["analyze_imports"](analysis_type="unused", limit=10)
+            imports_circular = await app.tools["analyze_imports"](analysis_type="circular", limit=10)
+            imports_patterns = await app.tools["analyze_imports"](analysis_type="patterns", limit=10)
+            health = await app.tools["pycharm_health"]()
+
+            assert search["status"] == "success"
+            assert search["count"] == 1
+            assert search["results"][0]["source"] == "pycharm_index"
+
+            assert problems["status"] == "success"
+            assert problems["count"] == 2
+
+            assert usages["status"] == "success"
+            assert usages["count"] == 2
+
+            assert imports_unused["status"] == "success"
+            assert imports_unused["count"] >= 1
+            assert imports_circular["status"] == "success"
+            assert imports_circular["count"] >= 1
+            assert imports_patterns["status"] == "success"
+            assert imports_patterns["count"] >= 1
+
+            assert health["status"] == "success"
+            assert health["healthy"] is True
+        finally:
+            mod._pycharm_adapter = old_adapter

@@ -149,3 +149,64 @@ async def test_search_shard_with_timeout(distributed_engine):
 
     assert len(result) == 1
     assert result[0]["conversation_id"] == "conv-1"
+
+
+@pytest.mark.asyncio
+async def test_search_all_shards_ignores_unexpected_result_type(distributed_engine):
+    """Test unexpected shard result types are logged and ignored."""
+
+    async def bad_timeout(*args, **kwargs):
+        return {"unexpected": "result"}
+
+    distributed_engine._search_shard_with_timeout = bad_timeout  # type: ignore[method-assign]
+
+    results = await distributed_engine.search_all_shards(
+        query_embedding=[0.1] * 384,
+        limit=10,
+    )
+
+    assert results == []
+
+
+@pytest.mark.asyncio
+async def test_search_shard_requires_store_callback(shard_router):
+    """Test missing shard store callback raises a runtime error."""
+    engine = DistributedQueryEngine(shard_router=shard_router)
+
+    with pytest.raises(RuntimeError, match="Shard store callback not configured"):
+        await engine._search_shard(
+            shard_id=0,
+            query_embedding=[0.1] * 384,
+            system_id=None,
+            limit=10,
+        )
+
+
+@pytest.mark.asyncio
+async def test_search_all_shards_uses_direct_shard_query(shard_router):
+    """Test direct shard query callback path."""
+    calls: list[int] = []
+
+    async def shard_query(shard_id: int, query_embedding: list[float], limit: int):
+        calls.append(shard_id)
+        return [
+            {
+                "conversation_id": f"conv-{shard_id}",
+                "similarity": 0.9,
+                "content": "direct",
+            }
+        ]
+
+    engine = DistributedQueryEngine(
+        shard_router=shard_router,
+        shard_query=shard_query,
+        num_shards=4,
+    )
+
+    results = await engine.search_all_shards(
+        query_embedding=[0.1] * 384,
+        limit=10,
+    )
+
+    assert calls == [0, 1, 2, 3]
+    assert len(results) == 4

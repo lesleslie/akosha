@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "akosha"
-version = "0.6.1"
+version = "0.6.2"
 description = "Universal Memory Aggregation System - Cross-system intelligence for Session-Buddy"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -99,6 +99,7 @@ asyncio_mode = "auto"
 addopts = [
     "-v",
     "--strict-markers",
+    "--import-mode=importlib",
     "--cov=akosha",
     "--cov-report=term-missing",
     "--cov-report=html",

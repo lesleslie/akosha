@@ -6,6 +6,10 @@ Tests ingestion throughput, latency, and resource usage under load.
 import random
 from datetime import datetime
 
+import pytest
+
+pytest.importorskip("locust")
+
 from locust import HttpUser, between, events, task
 
 

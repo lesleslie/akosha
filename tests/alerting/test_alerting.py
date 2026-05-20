@@ -295,6 +295,20 @@ class TestPatternDetector:
         assert "1234.56ms" in alert.message
         assert "1000.00ms" in alert.message
 
+    def test_alert_message_formatting_fallback(self, detector):
+        """Test fallback formatting for non-special alert types."""
+        message = detector._format_message(AlertType.TREND_CHANGE, 12.3, 10.0)
+
+        assert "Alert triggered" in message
+        assert "trend_change" in message
+
+    def test_alert_message_formatting_fallback(self, detector):
+        """Test formatting fallback for unknown alert types."""
+        message = detector._format_message(AlertType.TREND_CHANGE, 12.3, 10.0)
+
+        assert "Alert triggered" in message
+        assert "trend_change" in message
+
 
 class TestAlertManager:
     """Test main alert management system."""
@@ -438,6 +452,48 @@ class TestAlertManager:
         assert result is not None
         assert result["status"] == "complete"
         assert result["webhooks_notified"] == 1
+
+    @pytest.mark.asyncio
+    async def test_check_and_alert_with_override_webhooks(self, manager):
+        """Test check_and_alert applies explicit webhook overrides."""
+        alert = Alert(
+            alert_type=AlertType.HIGH_LATENCY,
+            message="Test alert",
+        )
+
+        with patch.object(manager.detector, "check_threshold", return_value=alert), patch.object(
+            manager, "send_alert", new=AsyncMock(return_value={"status": "complete"})
+        ) as mock_send:
+            result = await manager.check_and_alert(
+                AlertType.HIGH_LATENCY,
+                1500.0,
+                webhook_urls=["http://example.com/override"],
+            )
+
+        assert result["status"] == "complete"
+        assert alert.webhook_urls == ["http://example.com/override"]
+        mock_send.assert_awaited_once_with(alert)
+
+    @pytest.mark.asyncio
+    async def test_check_and_alert_with_override_webhooks(self, manager):
+        """Test check_and_alert applies explicit webhook overrides."""
+        alert = Alert(
+            alert_type=AlertType.HIGH_LATENCY,
+            message="Test alert",
+        )
+
+        with patch.object(manager.detector, "check_threshold", return_value=alert), patch.object(
+            manager, "send_alert", new=AsyncMock(return_value={"status": "complete"})
+        ) as mock_send:
+            result = await manager.check_and_alert(
+                AlertType.HIGH_LATENCY,
+                1500.0,
+                webhook_urls=["http://example.com/override"],
+            )
+
+        assert result["status"] == "complete"
+        assert alert.webhook_urls == ["http://example.com/override"]
+        mock_send.assert_awaited_once_with(alert)
 
 
 class TestConvenienceFunctions:

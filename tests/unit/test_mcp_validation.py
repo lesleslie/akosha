@@ -225,6 +225,15 @@ class TestAnalyticsValidation:
         assert result.metric_name == "quality_score"
         assert result.time_window_days == 7
 
+    def test_analyze_trends_request_none_system_id(self):
+        """Test analyze trends allows None system ID."""
+        assert SearchAllSystemsRequest.validate_system_id(None) is None
+
+    def test_analyze_trends_request_system_id_too_long(self):
+        """Test analyze trends rejects overlong system IDs."""
+        with pytest.raises(ValueError, match="too long"):
+            SearchAllSystemsRequest.validate_system_id("a" * 101)
+
 
 class TestGraphValidation:
     """Test knowledge graph request validation."""

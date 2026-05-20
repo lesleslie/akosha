@@ -14,12 +14,12 @@ from __future__ import annotations
 
 import asyncio  # noqa: F401
 import json  # noqa: F401
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import Enum, StrEnum  # noqa: F401
 from logging import INFO as LOG_LEVEL
-from logging import logging
 from typing import Any
 
 import httpx

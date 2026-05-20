@@ -146,6 +146,25 @@ class TestDependencyAvailability:
             ]
         )
 
+    def test_availability_checks_handle_find_spec_exception(self, monkeypatch):
+        """Test that dependency checks fall back to False when find_spec fails."""
+        import importlib.util
+        import types
+
+        from akosha.mcp import server as server_module
+
+        monkeypatch.setattr(importlib.util, "find_spec", lambda *_args, **_kwargs: (_ for _ in ()).throw(Exception("boom")))
+
+        module = types.ModuleType("temp_mcp_server")
+        module.__file__ = server_module.__file__
+        with open(server_module.__file__, "r", encoding="utf-8") as fh:
+            code = compile(fh.read(), server_module.__file__, "exec")
+        exec(code, module.__dict__)
+
+        assert module.MCP_COMMON_AVAILABLE is False
+        assert module.RATE_LIMITING_AVAILABLE is False
+        assert module.SERVERPANELS_AVAILABLE is False
+
 
 class TestLazyInitialization:
     """Test lazy initialization pattern."""
@@ -156,6 +175,18 @@ class TestLazyInitialization:
 
         result = __getattr__("app")
         assert result is not None
+
+    def test_getattr_for_http_app_instance(self, monkeypatch):
+        """Test __getattr__ returns http_app instance."""
+        from akosha.mcp import server as server_module
+
+        mock_app = MagicMock()
+        mock_app.http_app.return_value = "http-app"
+        monkeypatch.setattr(server_module, "create_app", lambda: mock_app)
+
+        result = server_module.__getattr__("http_app")
+
+        assert result == "http-app"
 
     def test_getattr_for_unknown_attribute(self):
         """Test __getattr__ raises AttributeError for unknown attributes."""

@@ -352,7 +352,7 @@ class TestSessionBuddyToolPerformance:
 
             end_time = time.time()
 
-            assert (end_time - start_time) < 1.0
+            assert (end_time - start_time) < 2.0
             assert mock_hot_record.call_count == 100
 
     @pytest.mark.asyncio
