@@ -142,15 +142,40 @@ class HotStore:
             if not self.conn:
                 raise RuntimeError("Hot store not initialized")
 
-            # Set HNSW search parameters
-            import contextlib
+            # Detect zero vector — array_cosine_similarity returns NULL for zero query,
+            # which would filter out all results. Use timestamp ordering instead.
+            is_zero_vector = all(abs(x) < 1e-10 for x in query_embedding)
 
-            with contextlib.suppress(Exception):
-                self.conn.execute("SET hnsw_ef_search = 100")
-
-            # Build query with parameterized WHERE clause (SQL injection prevention)
-            # Note: We use separate queries for each case to ensure proper parameterization
-            if system_id:
+            if is_zero_vector and system_id:
+                query = """
+                    SELECT
+                        system_id,
+                        conversation_id,
+                        content,
+                        timestamp,
+                        metadata,
+                        NULL as similarity
+                    FROM conversations
+                    WHERE system_id = ?
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """
+                results = self.conn.execute(query, [system_id, limit]).fetchall()
+            elif is_zero_vector:
+                query = """
+                    SELECT
+                        system_id,
+                        conversation_id,
+                        content,
+                        timestamp,
+                        metadata,
+                        NULL as similarity
+                    FROM conversations
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """
+                results = self.conn.execute(query, [limit]).fetchall()
+            elif system_id:
                 query = """
                     SELECT
                         system_id,
@@ -180,7 +205,8 @@ class HotStore:
                 """
                 results = self.conn.execute(query, [query_embedding, limit]).fetchall()
 
-            # Filter by threshold
+            # Filter by threshold — NULL similarity means timestamp-ordered (zero vector
+            # path); include those unconditionally since ordering already reflects recency.
             return [
                 {
                     "system_id": r[0],
@@ -191,7 +217,7 @@ class HotStore:
                     "similarity": r[5],
                 }
                 for r in results
-                if r[5] >= threshold
+                if r[5] is None or r[5] >= threshold
             ]
 
     @staticmethod
