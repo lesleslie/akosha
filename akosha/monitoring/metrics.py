@@ -1,9 +1,12 @@
 """Prometheus metrics collection for Akosha.
 
+from __future__ import annotations
 Provides instrumentation for ingestion, query, and storage operations.
 """
 
 import logging
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from prometheus_client import Counter, Gauge, Histogram
 
@@ -162,7 +165,9 @@ class MetricsCollector:
 # =============================================================================
 
 
-def track_ingestion(system_id: str = "unknown"):
+def track_ingestion(
+    system_id: str = "unknown",
+) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
     """Decorator to track ingestion metrics.
 
     Usage:
@@ -172,13 +177,11 @@ def track_ingestion(system_id: str = "unknown"):
             return result
     """
 
-    def decorator(func):
-        async def wrapper(*args, **kwargs):
+    def decorator(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             status = "success"
-            start_time = None
 
             try:
-                start_time = None  # Will be set in histogram
                 result = await func(*args, **kwargs)
 
                 ingestion_requests_total.labels(
@@ -197,16 +200,16 @@ def track_ingestion(system_id: str = "unknown"):
                 raise
 
             finally:
-                if start_time is not None:
-                    # Track duration if we started tracking
-                    pass  # Histogram handles timing automatically
+                pass  # Histogram handles timing automatically
 
         return wrapper
 
     return decorator
 
 
-def track_query(query_type: str = "search"):
+def track_query(
+    query_type: str = "search",
+) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
     """Decorator to track query metrics.
 
     Usage:
@@ -216,8 +219,8 @@ def track_query(query_type: str = "search"):
             return results
     """
 
-    def decorator(func):
-        async def wrapper(*args, **kwargs):
+    def decorator(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             status = "success"
 
             try:
@@ -247,7 +250,10 @@ def track_query(query_type: str = "search"):
     return decorator
 
 
-def track_migration(source_tier: str, target_tier: str):
+def track_migration(
+    source_tier: str,
+    target_tier: str,
+) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
     """Decorator to track tier migration metrics.
 
     Usage:
@@ -257,8 +263,8 @@ def track_migration(source_tier: str, target_tier: str):
             return stats
     """
 
-    def decorator(func):
-        async def wrapper(*args, **kwargs):
+    def decorator(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             status = "success"
 
             try:
@@ -306,7 +312,7 @@ def setup_metrics_endpoint(app: FastAPI) -> None:
     from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
     @app.get("/metrics")
-    async def metrics():
+    async def metrics() -> Response:
         """Expose Prometheus metrics."""
         return Response(
             content=generate_latest(),
@@ -323,7 +329,9 @@ def setup_middleware(app: FastAPI) -> None:
     """
 
     @app.middleware("http")
-    async def track_requests(request: Request, call_next):
+    async def track_requests(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         """Track all HTTP requests."""
         # Record start time
 
@@ -354,14 +362,16 @@ def setup_middleware(app: FastAPI) -> None:
 # =============================================================================
 
 
-def record_ingestion_event(system_id: str, status: str, duration: float = 0.0):
+def record_ingestion_event(system_id: str, status: str, duration: float = 0.0) -> None:
     """Record ingestion event manually."""
     ingestion_requests_total.labels(system_id=system_id, status=status).inc()
     if duration > 0:
         ingestion_duration_seconds.observe(duration)
 
 
-def record_query_event(query_type: str, status: str, duration: float = 0.0, result_count: int = 0):
+def record_query_event(
+    query_type: str, status: str, duration: float = 0.0, result_count: int = 0
+) -> None:
     """Record query event manually."""
     query_requests_total.labels(query_type=query_type, status=status).inc()
     if duration > 0:

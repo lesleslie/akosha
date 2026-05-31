@@ -47,7 +47,9 @@ async def test_require_rate_limit_allowed_denied_and_missing_user(
 
     limiter = StubLimiter()
     monkeypatch.setattr(rate_limit, "get_rate_limiter", lambda: limiter)
-    monkeypatch.setattr(rate_limit, "record_counter", lambda name, value, labels: calls.append((name, labels)))
+    monkeypatch.setattr(
+        rate_limit, "record_counter", lambda name, value, labels: calls.append((name, labels))
+    )
 
     @rate_limit.require_rate_limit(tokens=2)
     async def tool(*, user_id: str, query: str = "x") -> str:

@@ -325,7 +325,7 @@ kubectl set env deployment/akosha-mcp ENVIRONMENT=production -n akosha
 
 ## References
 
-- **OWASP Secret Management**: https://cheatsheetseries.owasp.org/cheatsheets/Secret_Management_Cheat_Sheet.html
+- **OWASP Secrets Management**: https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
 - **Kubernetes Secrets Best Practices**: https://kubernetes.io/docs/concepts/configuration/secret/
 - **JWT Best Practices**: https://tools.ietf.org/html/rfc8725
 

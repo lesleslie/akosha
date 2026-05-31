@@ -1,0 +1,9 @@
+# Exclude internal runtime URLs that are not accessible during CI/build checks
+# These are service endpoints that run locally during development
+http://localhost:*
+http://127.0.0.1:*
+http://akosha:*
+https://akosha:*
+
+# Exclude expected external services that may be down
+# (add specific URLs here as needed)

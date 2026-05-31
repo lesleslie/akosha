@@ -10,6 +10,7 @@ This module provides:
 from __future__ import annotations
 
 import functools
+import inspect
 import logging
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
@@ -98,7 +99,7 @@ def setup_telemetry(
 
     # Instrument asyncio
     asyncio_instrumentor = AsyncioInstrumentor()
-    asyncio_instrumentor.instrument()
+    asyncio_instrumentor.instrument()  # type: ignore[union-attr]
 
     logger.info(f"✅ Telemetry initialized: {service_name} ({environment})")
     logger.info(f"   Sampling rate: {sample_rate:.0%}")
@@ -251,7 +252,7 @@ def record_gauge(
 def traced(
     operation_name: str | None = None,
     attributes: dict[str, str] | None = None,
-) -> Callable:
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator to automatically trace a function.
 
     Args:
@@ -267,7 +268,7 @@ def traced(
             return model.encode(text)
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         nonlocal operation_name
 
         if operation_name is None:
@@ -277,7 +278,7 @@ def traced(
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             tracer_instance = get_tracer()
             with tracer_instance.start_as_current_span(
-                operation_name,
+                operation_name,  # type: ignore[arg-type]  # operation_name is str here due to assignment above
                 attributes=attributes or {},
             ) as span:
                 # Add function arguments as attributes (sanitized)
@@ -297,7 +298,7 @@ def traced(
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             tracer_instance = get_tracer()
             with tracer_instance.start_as_current_span(
-                operation_name,
+                operation_name,  # type: ignore[arg-type]  # guaranteed non-None after decorator assignment
                 attributes=attributes or {},
             ) as span:
                 span.set_attribute("function.name", func.__name__)
@@ -313,9 +314,7 @@ def traced(
                     raise
 
         # Return appropriate wrapper based on function type
-        import asyncio
-
-        if asyncio.iscoroutinefunction(func):
+        if inspect.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper
 

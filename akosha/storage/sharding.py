@@ -46,6 +46,8 @@ class ShardRouter:
         hash_int = int.from_bytes(hash_bytes[:4], byteorder="big")
 
         # Modulo num_shards to get shard ID
+        if self.num_shards is None or self.num_shards <= 0:  # type: ignore[reportUnnecessaryComparison]
+            raise ValueError(f"num_shards must be a positive integer, got {self.num_shards}")
         shard_id = hash_int % self.num_shards
 
         return shard_id
@@ -80,6 +82,12 @@ class ShardRouter:
         # Use config.warm.path as default base path
         if base_path is None:
             base_path = config.warm.path
+
+        if base_path is None:
+            raise ValueError(
+                "base_path is None and config.warm.path is not set. "
+                "Cannot determine shard storage path."
+            )
 
         # Build path: base/shard_XXX/system-id.duckdb
         shard_dir = base_path / f"shard_{shard_id:03d}"

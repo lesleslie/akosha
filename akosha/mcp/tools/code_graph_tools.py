@@ -1,12 +1,12 @@
 """Code graph analysis tools for Akosha.
 
+from __future__ import annotations
 This module provides MCP tools for analyzing indexed code graphs
 across repositories to detect patterns, similarities, and dependencies.
 """
 
-from __future__ import annotations
-
 import logging
+import operator
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -155,7 +155,7 @@ def register_code_graph_analysis_tools(
                 if r:
                     similar_repos.append(r)  # type: ignore[arg-type]
 
-            similar_repos.sort(key=lambda x: x["similarity"], reverse=True)
+            similar_repos.sort(key=operator.itemgetter("similarity"), reverse=True)
 
             return {
                 "status": "success",

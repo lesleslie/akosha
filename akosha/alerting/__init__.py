@@ -12,24 +12,34 @@ Features:
 
 from __future__ import annotations
 
-import asyncio  # noqa: F401
-import json  # noqa: F401
 import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from enum import Enum, StrEnum  # noqa: F401
+from enum import StrEnum
 from logging import INFO as LOG_LEVEL
 from typing import Any
 
 import httpx
-from pydantic import BaseModel, Field, HttpUrl  # noqa: F401
 
 
-def get_logger():
-    """Get a logger instance."""
+def get_logger(name: str = __name__) -> logging.Logger:
+    """Get a logger instance.
 
-    return logging.getLogger(__name__)
+    Args:
+        name: Logger name, defaults to module name
+
+    Returns:
+        Configured logger instance
+    """
+    logger = logging.getLogger(name)
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        )
+        logger.addHandler(handler)
+    return logger
 
 
 logger = get_logger()
@@ -75,10 +85,10 @@ class Alert:
     alert_type: AlertType = AlertType.ANOMALY_DETECTED
     severity: AlertSeverity = AlertSeverity.INFO
     message: str = ""
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict[str, Any])
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
-    pattern_data: dict[str, Any] = field(default_factory=dict)
-    webhook_urls: list[str] = field(default_factory=list)
+    pattern_data: dict[str, Any] = field(default_factory=dict[str, Any])
+    webhook_urls: list[str] = field(default_factory=list[str])
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for webhook transmission."""
@@ -96,9 +106,9 @@ class Alert:
 class AlertRouter:
     """Routes alerts to appropriate webhook endpoints."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize alert router."""
-        self._routes: dict[AlertType, list[str]] = {}
+        self._routes: dict[AlertType, list[str]] = {}  # type: ignore
 
     def register_webhook(self, alert_type: AlertType, webhook_url: str) -> None:
         """Register webhook URL for an alert type.
@@ -130,7 +140,7 @@ class AlertDeduplicator:
     Deduplication window: 5 minutes
     """
 
-    def __init__(self, window_minutes: int = 5):
+    def __init__(self, window_minutes: int = 5) -> None:
         """Initialize deduplicator.
 
         Args:
@@ -185,7 +195,7 @@ class AlertDeduplicator:
 class PatternDetector:
     """Detects patterns in analytics data that should trigger alerts."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize pattern detector with default thresholds."""
         self.thresholds = {
             AlertType.HIGH_LATENCY: 1000.0,  # milliseconds
@@ -230,7 +240,7 @@ class PatternDetector:
                 alert_type=alert_type,
                 severity=self._get_severity(alert_type),
                 message=self._format_message(alert_type, value, threshold),
-                metadata=metadata or {},
+                metadata=metadata if metadata is not None else {},
                 pattern_data={"threshold": threshold, "actual_value": value},
             )
 
@@ -273,8 +283,8 @@ class PatternDetector:
             return f"Error rate spike: {value:.1f}x (threshold: {threshold:.1f}x)"
         elif alert_type == AlertType.ANOMALY_DETECTED:
             return f"Anomaly detected: {value:.2f}σ (threshold: {threshold:.2f}σ)"  # noqa: RUF001
-        else:
-            return f"Alert triggered: {alert_type.value} (value: {value}, threshold: {threshold})"
+
+        return f"Alert triggered: {alert_type.value} (value: {value}, threshold: {threshold})"
 
 
 class AlertManager:
@@ -283,7 +293,7 @@ class AlertManager:
     Coordinates pattern detection, deduplication, routing, and webhook delivery.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize alert manager."""
         self.router = AlertRouter()
         self.deduplicator = AlertDeduplicator()
@@ -330,7 +340,7 @@ class AlertManager:
             return {"status": "deduplicated", "alert_id": alert.id}
 
         # Send to all webhooks
-        results = []
+        results: list[dict[str, Any]] = []
         async with httpx.AsyncClient(timeout=self._webhook_timeout) as client:
             for url in webhook_urls:
                 try:
@@ -441,8 +451,8 @@ async def send_alert(
         alert_type=alert_type,
         severity=severity,
         message=message,
-        metadata=metadata or {},
-        pattern_data=pattern_data or {},
+        metadata=metadata if metadata is not None else {},
+        pattern_data=pattern_data if pattern_data is not None else {},
     )
 
     manager = get_alert_manager()

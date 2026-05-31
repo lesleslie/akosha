@@ -220,28 +220,42 @@ class TestColdStore:
         assert object_key is not None
 
     @pytest.mark.asyncio
-    async def test_export_batch_table_error(self, cold_store: ColdStore, sample_records: list[ColdRecord]) -> None:
+    async def test_export_batch_table_error(
+        self, cold_store: ColdStore, sample_records: list[ColdRecord]
+    ) -> None:
         """Test export_batch surfaces table conversion failures."""
-        with patch.object(cold_store, "_records_to_arrow_table", side_effect=RuntimeError("table fail")):
-            with pytest.raises(RuntimeError, match="table fail"):
-                await cold_store.export_batch(sample_records, "test/path")
+        with (
+            patch.object(
+                cold_store, "_records_to_arrow_table", side_effect=RuntimeError("table fail")
+            ),
+            pytest.raises(RuntimeError, match="table fail"),
+        ):
+            await cold_store.export_batch(sample_records, "test/path")
 
     @pytest.mark.asyncio
     async def test_write_parquet_file_cleans_up_on_error(self, cold_store: ColdStore) -> None:
         """Test parquet writer cleans up when writing fails."""
-        with patch("akosha.storage.cold_store.pq.write_table", side_effect=RuntimeError("write fail")):
-            with pytest.raises(RuntimeError, match="write fail"):
-                await cold_store._write_parquet_file(cold_store._records_to_arrow_table([]))
+        with (
+            patch(
+                "akosha.storage.cold_store.pq.write_table", side_effect=RuntimeError("write fail")
+            ),
+            pytest.raises(RuntimeError, match="write fail"),
+        ):
+            await cold_store._write_parquet_file(cold_store._records_to_arrow_table([]))
 
     @pytest.mark.asyncio
-    async def test_upload_to_storage_cleans_up_on_error(self, cold_store: ColdStore, tmp_path) -> None:
+    async def test_upload_to_storage_cleans_up_on_error(
+        self, cold_store: ColdStore, tmp_path
+    ) -> None:
         """Test upload helper removes temp file on failure."""
         temp_path = tmp_path / "temp.parquet"
         temp_path.write_bytes(b"data")
 
-        with patch("akosha.storage.cold_store.logger.info", side_effect=RuntimeError("upload fail")):
-            with pytest.raises(RuntimeError, match="upload fail"):
-                await cold_store._upload_to_storage(temp_path, "bucket/key")
+        with (
+            patch("akosha.storage.cold_store.logger.info", side_effect=RuntimeError("upload fail")),
+            pytest.raises(RuntimeError, match="upload fail"),
+        ):
+            await cold_store._upload_to_storage(temp_path, "bucket/key")
 
         assert not temp_path.exists()
 

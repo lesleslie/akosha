@@ -1,18 +1,18 @@
 """PyCharm MCP tools for Akosha cross-system code analysis.
 
+from __future__ import annotations
 This module provides MCP tools that leverage PyCharm's IDE capabilities
 for enhanced code search, diagnostics, and analysis across all indexed
 repositories in Akosha's memory aggregation system.
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
+import operator
 import re
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ class PyCharmMCPAdapter:
         cache_key = f"search:{sanitized}:{file_pattern}:{scope}"
         cached = self._get_cached(cache_key)
         if cached is not None:
-            return cached
+            return cast("list[SearchResult]", cached)
 
         results = await self._execute_with_circuit_breaker(
             self._search_regex_impl,
@@ -103,7 +103,7 @@ class PyCharmMCPAdapter:
         )
 
         self._set_cached(cache_key, results, ttl=60.0)
-        return results
+        return cast("list[SearchResult]", results)
 
     async def get_file_problems(
         self,
@@ -117,7 +117,7 @@ class PyCharmMCPAdapter:
         cache_key = f"problems:{file_path}:{errors_only}"
         cached = self._get_cached(cache_key)
         if cached is not None:
-            return cached
+            return cast("list[dict[str, Any]]", cached)
 
         problems = await self._execute_with_circuit_breaker(
             self._get_file_problems_impl,
@@ -126,7 +126,7 @@ class PyCharmMCPAdapter:
         )
 
         self._set_cached(cache_key, problems, ttl=10.0)
-        return problems
+        return cast("list[dict[str, Any]]", problems)
 
     async def find_usages(
         self,
@@ -137,7 +137,7 @@ class PyCharmMCPAdapter:
         cache_key = f"usages:{symbol_name}:{file_path}"
         cached = self._get_cached(cache_key)
         if cached is not None:
-            return cached
+            return cast("list[dict[str, Any]]", cached)
 
         usages = await self._execute_with_circuit_breaker(
             self._find_usages_impl,
@@ -146,7 +146,7 @@ class PyCharmMCPAdapter:
         )
 
         self._set_cached(cache_key, usages, ttl=30.0)
-        return usages
+        return cast("list[dict[str, Any]]", usages)
 
     async def _search_regex_impl(
         self,
@@ -166,18 +166,17 @@ class PyCharmMCPAdapter:
                 timeout=self._timeout,
             )
 
-            search_results = []
-            for item in results[: self._max_results]:
-                search_results.append(
-                    SearchResult(
-                        file_path=item.get("file_path", ""),
-                        line_number=item.get("line", 0),
-                        column=item.get("column", 0),
-                        match_text=item.get("match", ""),
-                        context_before=item.get("context_before"),
-                        context_after=item.get("context_after"),
-                    )
+            search_results = [
+                SearchResult(
+                    file_path=item.get("file_path", ""),
+                    line_number=item.get("line", 0),
+                    column=item.get("column", 0),
+                    match_text=item.get("match", ""),
+                    context_before=item.get("context_before"),
+                    context_after=item.get("context_after"),
                 )
+                for item in results[: self._max_results]
+            ]
 
             return search_results
 
@@ -403,21 +402,18 @@ def register_pycharm_tools(
                                         }
                                     )
 
-            # Combine and deduplicate results
-            all_results = []
-
-            for r in pycharm_results[:limit]:
-                all_results.append(
-                    {
-                        "file_path": r.file_path,
-                        "line_number": r.line_number,
-                        "column": r.column,
-                        "match_text": r.match_text,
-                        "context_before": r.context_before,
-                        "context_after": r.context_after,
-                        "source": "pycharm_index",
-                    }
-                )
+            all_results = [
+                {
+                    "file_path": r.file_path,
+                    "line_number": r.line_number,
+                    "column": r.column,
+                    "match_text": r.match_text,
+                    "context_before": r.context_before,
+                    "context_after": r.context_after,
+                    "source": "pycharm_index",
+                }
+                for r in pycharm_results[:limit]
+            ]
 
             for r in code_graph_results[:limit]:
                 all_results.append(r)
@@ -619,7 +615,7 @@ def register_pycharm_tools(
                 for r in results:
                     if isinstance(r, Exception):
                         continue
-                    if r and r.get("files"):
+                    if r and r.get("files"):  # type: ignore[union-attr]
                         graph_usages.append(r)
 
             # Combine results
@@ -769,7 +765,7 @@ def register_pycharm_tools(
 
                         for imp, count in sorted(
                             import_counts.items(),
-                            key=lambda x: x[1],
+                            key=operator.itemgetter(1),
                             reverse=True,
                         )[:10]:
                             results.append(

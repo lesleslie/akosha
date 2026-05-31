@@ -1117,7 +1117,9 @@ class TestPyCharmToolRuntimeBranches:
         class FakeAdapter:
             _available = True
 
-            async def search_regex(self, pattern: str, file_pattern: str | None = None, scope: str = "all"):
+            async def search_regex(
+                self, pattern: str, file_pattern: str | None = None, scope: str = "all"
+            ):
                 return [
                     SearchResult(
                         file_path="a.py",
@@ -1162,6 +1164,7 @@ class TestPyCharmToolRuntimeBranches:
                 {"repo_path": "/repo2", "commit_hash": "def"},
             ]
         )
+
         async def get_code_graph(repo_path: str, commit_hash: str):
             if repo_path == "/repo1" and commit_hash == "abc":
                 return {
@@ -1216,8 +1219,12 @@ class TestPyCharmToolRuntimeBranches:
             problems = await app.tools["get_code_problems"](severity="WARNING", limit=10)
             usages = await app.tools["find_function_usage"](function_name="my_func", limit=10)
             imports_unused = await app.tools["analyze_imports"](analysis_type="unused", limit=10)
-            imports_circular = await app.tools["analyze_imports"](analysis_type="circular", limit=10)
-            imports_patterns = await app.tools["analyze_imports"](analysis_type="patterns", limit=10)
+            imports_circular = await app.tools["analyze_imports"](
+                analysis_type="circular", limit=10
+            )
+            imports_patterns = await app.tools["analyze_imports"](
+                analysis_type="patterns", limit=10
+            )
             health = await app.tools["pycharm_health"]()
 
             assert search["status"] == "success"

@@ -728,6 +728,6 @@ async def search_similar(query_embedding):
 
 - **[ADR-001: Architecture Decisions](ADR_001_ARCHITECTURE_DECISIONS.md)** - Detailed architectural decision records
 - **[Implementation Guide](IMPLEMENTATION_GUIDE.md)** - Developer setup guide
-- **[Session-Buddy](https://github.com/yourorg/session-buddy)** - Client system
-- **[Mahavishnu](https://github.com/yourorg/mahavishnu)** - Workflow orchestration
-- **[Oneiric](https://github.com/yourorg/oneiric)** - Universal storage adapter
+- **Session-Buddy** - Client system
+- **Mahavishnu** - Workflow orchestration
+- **Oneiric** - Universal storage adapter

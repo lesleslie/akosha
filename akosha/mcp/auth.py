@@ -38,8 +38,8 @@ def _get_config() -> AuthConfig:
 
 
 def require_auth(
-    func_or_permission: Callable | Permission = Permission.READ,
-) -> Callable:
+    func_or_permission: Callable[..., Any] | Permission = Permission.READ,
+) -> Callable[..., Any]:
     if callable(func_or_permission):
         return _make_wrapper(func_or_permission, Permission.READ)
     if not isinstance(func_or_permission, Permission):
@@ -48,13 +48,13 @@ def require_auth(
         )
     permission = func_or_permission
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         return _make_wrapper(func, permission)
 
     return decorator
 
 
-def _make_wrapper(func: Callable, permission: Permission) -> Callable:
+def _make_wrapper(func: Callable[..., Any], permission: Permission) -> Callable[..., Any]:
     @wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         cfg = _get_config()

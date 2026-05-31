@@ -154,7 +154,7 @@ def require_rate_limit(
             if user_id is None:
                 logger.warning(f"Missing {user_id_param} for rate limiting")
                 # Allow request but log warning
-                return await func(*args, **kwargs)
+                return await func(*args, **kwargs)  # type: ignore[misc]
 
             # Check rate limit
             limiter = get_rate_limiter()
@@ -171,7 +171,7 @@ def require_rate_limit(
             record_counter("mcp.rate_limit.allowed", 1, {"user_id": user_id})
 
             # Process request
-            return await func(*args, **kwargs)
+            return await func(*args, **kwargs)  # type: ignore[misc]
 
         return wrapper  # type: ignore[return-value]  # async wrapper is compatible with sync signature
 

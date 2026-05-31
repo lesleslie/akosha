@@ -182,4 +182,4 @@ def rollback(path: Path) -> None:
         click.echo(f"  Data copied to: {path}")
     except Exception as e:
         click.echo(f"❌ Rollback failed: {e}", err=True)
-        raise click.ClickException(1)
+        raise click.ClickException(1)  # noqa: B904

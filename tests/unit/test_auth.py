@@ -6,9 +6,9 @@ import builtins
 import os
 import sys
 import types
+from unittest.mock import MagicMock
 
 import pytest
-from unittest.mock import MagicMock
 
 from akosha.security import (
     AuthenticationMiddleware,
@@ -64,7 +64,7 @@ class TestJWTAuthentication:
         """Test JWT generation fails cleanly when PyJWT is unavailable."""
         original_import = builtins.__import__
 
-        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):  # noqa: A002
+        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
             if name == "jwt":
                 raise ImportError("missing jwt")
             return original_import(name, globals, locals, fromlist, level)
@@ -326,7 +326,6 @@ class TestRequireAuthDecorator:
     @pytest.mark.asyncio
     async def test_protected_function_with_valid_token(self) -> None:
         """Test that protected function accepts valid token."""
-        from akosha.security import require_auth
 
         @require_auth
         async def protected_function(param: str) -> dict:
@@ -340,7 +339,6 @@ class TestRequireAuthDecorator:
     @pytest.mark.asyncio
     async def test_protected_function_with_invalid_token(self) -> None:
         """Test that protected function rejects invalid token."""
-        from akosha.security import require_auth
 
         @require_auth
         async def protected_function(param: str) -> dict:
@@ -353,7 +351,6 @@ class TestRequireAuthDecorator:
     @pytest.mark.asyncio
     async def test_protected_function_without_token(self) -> None:
         """Test that protected function requires token."""
-        from akosha.security import require_auth
 
         @require_auth
         async def protected_function(param: str) -> dict:
@@ -366,7 +363,6 @@ class TestRequireAuthDecorator:
     @pytest.mark.asyncio
     async def test_protected_function_auth_disabled(self, monkeypatch) -> None:
         """Test that protected function works when auth is disabled."""
-        from akosha.security import require_auth
 
         # Clear API token and disable auth
         monkeypatch.delenv("AKOSHA_API_TOKEN", raising=False)
@@ -391,9 +387,7 @@ class TestSetupInstructions:
         assert "export AKOSHA_API_TOKEN=" in instructions
         assert len(instructions) > 100
 
-    def test_setup_instructions_uses_generated_token(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_setup_instructions_uses_generated_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Setup instructions should interpolate the generated token exactly once."""
         monkeypatch.setattr("akosha.security.generate_token", lambda: "fixed-token")
 

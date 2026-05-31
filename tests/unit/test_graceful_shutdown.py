@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 import signal
-from unittest.mock import AsyncMock, MagicMock, patch
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -256,9 +256,7 @@ class TestAkoshaApplicationLifecycle:
         app.shutdown_event.wait.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_start_handles_cancelled_wait(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_start_handles_cancelled_wait(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Start should swallow a cancelled shutdown wait and return cleanly."""
         mode_instance = self._make_mode(cache_result=None, cold_result=None)
         monkeypatch.setattr("akosha.modes.get_mode", MagicMock(return_value=mode_instance))
@@ -271,7 +269,9 @@ class TestAkoshaApplicationLifecycle:
         await app.start()
 
     @pytest.mark.asyncio
-    async def test_stop_handles_workers_without_stop_method(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_stop_handles_workers_without_stop_method(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Stop should skip workers that do not implement stop()."""
         mode_instance = self._make_mode(cache_result=None, cold_result=None)
         monkeypatch.setattr("akosha.modes.get_mode", MagicMock(return_value=mode_instance))

@@ -299,7 +299,7 @@ Type 'help()' for Python help or '%help_shell' for shell commands
 {"=" * 70}
 """
 
-    async def start(self) -> None:
+    async def start(self) -> None:  # type: ignore[override]
         """Start the admin shell with session tracking.
 
         Emits session start event to Session-Buddy MCP before launching

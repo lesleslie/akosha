@@ -4,6 +4,7 @@ Implements JWT verification, RBAC, and audit logging.
 """
 
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from logging import getLogger
 from typing import Any
@@ -47,7 +48,7 @@ auth_config = AuthConfig.from_env()
 
 async def verify_token(
     credentials: HTTPAuthorizationCredentials = Security(security),  # noqa: B008
-) -> dict[str, Any]:
+) -> Any:
     """Verify JWT token and return user claims.
 
     Args:
@@ -99,7 +100,7 @@ async def verify_token(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token verification failed",
-        )
+        ) from e
 
 
 class Role:
@@ -110,7 +111,7 @@ class Role:
     VIEWER = "viewer"
 
 
-async def require_role(required_role: str) -> None:
+def require_role(required_role: str) -> Callable[[dict[str, Any]], dict[str, Any]]:
     """Dependency that requires specific role.
 
     Use with FastAPI Depends:
@@ -123,18 +124,18 @@ async def require_role(required_role: str) -> None:
             ...
     """
 
-    def dependency(claims: dict = Depends(verify_token)) -> dict:  # noqa: B008
+    def dependency(claims: dict[str, Any] = Depends(verify_token)) -> dict[str, Any]:  # noqa: B008
         """Check if user has required role."""
         roles = claims.get("roles", [])
+        role = required_role
 
-        if required_role not in roles:
+        if role not in roles:
             logger.warning(
-                f"User {claims.get('sub')} attempted to access {required_role} resource "
-                f"with roles: {roles}"
+                f"User {claims.get('sub')} attempted to access {role} resource with roles: {roles}"
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Requires {required_role} role",
+                detail=f"Requires {role} role",
             )
 
         return claims
@@ -191,21 +192,21 @@ class AuditLogger:
 audit_logger = AuditLogger()
 
 
-def audit_log(action: str, resource_type: str):  # noqa: ARG001
+def audit_log(_action: str, _resource_type: str) -> Callable[[dict[str, Any]], AuditLogger]:  # type: ignore[reportUnusedParameter]
     """Create FastAPI dependency for audit logging.
 
     Usage:
         @app.post("/ingest/upload")
         async def upload(
             request: Request,
-            claims: dict = Depends(verify_token),
+            _claims: dict = Depends(verify_token),
             _audit = Depends(audit_log("ingest", "upload"))
         ):
             # ... upload logic
             return {"status": "success"}
     """
 
-    def dependency(claims: dict = Depends(verify_token)) -> AuditLogger:  # noqa: ARG001, B008
+    def dependency(_claims: dict[str, Any] = Depends(verify_token)) -> AuditLogger:  # type: ignore[reportUnusedParameter]
         """Dependency that logs audit event on completion."""
         return audit_logger
 
@@ -215,7 +216,7 @@ def audit_log(action: str, resource_type: str):  # noqa: ARG001
 class RBACMiddleware:
     """Role-based access control middleware for FastAPI."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.role_permissions = {
             Role.ADMIN: {
                 "ingest:upload",
@@ -246,12 +247,12 @@ class RBACMiddleware:
         Returns:
             True if role has permission
         """
-        role_perms = self.role_permissions.get(role, [])
+        role_perms: list[str] = list(self.role_permissions.get(role, []))
         return permission in role_perms
 
     async def check_permission(
         self,
-        claims: dict,
+        claims: dict[str, Any],
         permission: str,
     ) -> None:
         """Check if user has permission, raise if not.
@@ -284,7 +285,7 @@ class RBACMiddleware:
 rbac = RBACMiddleware()
 
 
-def require_permission(permission: str):
+def require_permission(permission: str) -> Callable[[dict[str, Any]], dict[str, Any]]:
     """FastAPI dependency that requires specific permission.
 
     Usage:
@@ -296,9 +297,21 @@ def require_permission(permission: str):
             ...
     """
 
-    async def dependency(claims: dict = Depends(verify_token)) -> dict:  # noqa: B008
+    def dependency(claims: dict[str, Any] = Depends(verify_token)) -> dict[str, Any]:  # noqa: B008
         """Check permission and raise if denied."""
-        await rbac.check_permission(claims, permission)
+        # Note: Synchronously check permission since we can't await in a sync dep
+        roles = claims.get("roles", [Role.VIEWER])
+        has_permission = False
+        for role in roles:
+            if rbac.has_permission(role, permission):
+                has_permission = True
+                break
+        if not has_permission:
+            logger.warning(f"User {claims.get('sub')} attempted {permission} with roles: {roles}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied: {permission}",
+            )
         return claims
 
     return dependency

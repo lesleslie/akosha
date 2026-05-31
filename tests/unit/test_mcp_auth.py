@@ -93,7 +93,7 @@ def test_require_auth_rejects_non_permission_value():
 @pytest.mark.asyncio
 async def test_require_auth_enforces_permission_and_strips_bearer(monkeypatch):
     from akosha.mcp import auth as auth_module
-    from akosha.mcp.auth import MCPAuthError, require_auth
+    from akosha.mcp.auth import require_auth
 
     monkeypatch.setattr(
         auth_module,
@@ -135,7 +135,7 @@ async def test_require_auth_raises_on_missing_token(monkeypatch):
     )
 
     @require_auth(Permission.READ)
-    async def my_tool(**kwargs):  # noqa: ARG001
+    async def my_tool(**kwargs):
         return "ok"
 
     with pytest.raises(MCPAuthError, match="Authentication required"):
@@ -152,10 +152,14 @@ async def test_require_auth_converts_auth_error(monkeypatch):
         "_get_config",
         lambda: SimpleNamespace(enabled=True, secret=SECRET),
     )
-    monkeypatch.setattr(auth_module, "_verify_token", lambda *args, **kwargs: (_ for _ in ()).throw(AuthError("bad token")))
+    monkeypatch.setattr(
+        auth_module,
+        "_verify_token",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AuthError("bad token")),
+    )
 
     @require_auth(Permission.READ)
-    async def my_tool(**kwargs):  # noqa: ARG001
+    async def my_tool(**kwargs):
         return "ok"
 
     with pytest.raises(MCPAuthError, match="bad token"):
@@ -182,7 +186,7 @@ async def test_require_auth_rejects_missing_permission(monkeypatch):
     )
 
     @require_auth(Permission.ADMIN)
-    async def my_tool(**kwargs):  # noqa: ARG001
+    async def my_tool(**kwargs):
         return "ok"
 
     with pytest.raises(MCPAuthError, match="Insufficient permissions"):

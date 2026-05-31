@@ -101,7 +101,7 @@ uv run akosha shell --mode=standard
 ## Documentation
 
 - [Complete Guide](docs/guides/operational-modes.md) - Full documentation
-- [Implementation Plan](OPERATIONAL_MODES_PLAN.md) - Design decisions
+- Implementation Plan - Design decisions
 - Completion Report - Implementation details
 
 ## FAQ
@@ -127,4 +127,4 @@ A: Yes, cloud storage is optional. You'll get Redis caching without long-term st
 
 ______________________________________________________________________
 
-**Questions?** Check the [complete guide](docs/guides/operational-modes.md) or [open an issue](https://github.com/yourusername/akosha/issues).
+**Questions?** Check the complete guide or open an issue.

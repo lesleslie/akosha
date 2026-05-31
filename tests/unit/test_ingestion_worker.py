@@ -114,7 +114,9 @@ class TestIngestionWorker:
         assert uploads == []
 
     @pytest.mark.asyncio
-    async def test_discover_uploads_sequential(self, worker: IngestionWorker, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_discover_uploads_sequential(
+        self, worker: IngestionWorker, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test the legacy sequential discovery path."""
         monkeypatch.setenv("USE_CONCURRENT_DISCOVERY", "false")
 
@@ -343,15 +345,27 @@ class TestIngestionWorker:
         assert items == ["systems/demo/"]
 
     @pytest.mark.asyncio
-    async def test_try_create_upload_missing_and_invalid_manifest(self, worker: IngestionWorker) -> None:
+    async def test_try_create_upload_missing_and_invalid_manifest(
+        self, worker: IngestionWorker
+    ) -> None:
         """Test manifest creation failure paths."""
 
         worker.storage.exists = AsyncMock(return_value=False)
-        assert await worker._try_create_upload("system-test", "upload-test", "systems/system-test/upload-test/") is None
+        assert (
+            await worker._try_create_upload(
+                "system-test", "upload-test", "systems/system-test/upload-test/"
+            )
+            is None
+        )
 
         worker.storage.exists = AsyncMock(return_value=True)
         worker.storage.download = AsyncMock(return_value=b"{invalid json")
-        assert await worker._try_create_upload("system-test", "upload-test", "systems/system-test/upload-test/") is None
+        assert (
+            await worker._try_create_upload(
+                "system-test", "upload-test", "systems/system-test/upload-test/"
+            )
+            is None
+        )
 
     @pytest.mark.asyncio
     async def test_try_create_upload_validation_error(self, worker: IngestionWorker) -> None:
@@ -368,11 +382,14 @@ class TestIngestionWorker:
             )
         )
 
-        assert await worker._try_create_upload(
-            "system-test",
-            "upload-test",
-            "systems/system-test/upload-test/",
-        ) is None
+        assert (
+            await worker._try_create_upload(
+                "system-test",
+                "upload-test",
+                "systems/system-test/upload-test/",
+            )
+            is None
+        )
 
     @pytest.mark.asyncio
     async def test_process_conversations_duplicate_and_error(self, worker: IngestionWorker) -> None:
@@ -407,13 +424,17 @@ class TestIngestionWorker:
             ]
         )
 
-        await worker._process_conversations("system-test", "upload-test", [inserted, duplicate, malformed])
+        await worker._process_conversations(
+            "system-test", "upload-test", [inserted, duplicate, malformed]
+        )
 
         worker.hot_store.insert.assert_awaited_once()
         assert worker.hot_store.search_similar.await_count == 3
 
     @pytest.mark.asyncio
-    async def test_process_upload_missing_db_and_invalid_json(self, worker: IngestionWorker) -> None:
+    async def test_process_upload_missing_db_and_invalid_json(
+        self, worker: IngestionWorker
+    ) -> None:
         """Test upload processing when the DB is missing or malformed."""
 
         upload = SystemMemoryUpload(
@@ -451,7 +472,9 @@ class TestIngestionWorker:
         worker.hot_store.insert.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_collect_system_prefixes_limit(self, worker: IngestionWorker, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_collect_system_prefixes_limit(
+        self, worker: IngestionWorker, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test that system prefix collection respects the configured limit."""
 
         worker.MAX_SYSTEM_PREFIXES = 1
@@ -497,7 +520,9 @@ class TestIngestionWorker:
             manifest_path = "systems/system-b/upload-b/manifest.json"
             storage_prefix = None
 
-        assert worker._get_upload_storage_prefix(ManifestPathUpload()) == "systems/system-b/upload-b"
+        assert (
+            worker._get_upload_storage_prefix(ManifestPathUpload()) == "systems/system-b/upload-b"
+        )
 
         class NoPrefixUpload:
             storage_prefix = None
@@ -513,11 +538,14 @@ class TestIngestionWorker:
         worker.storage.exists = AsyncMock(return_value=True)
         worker.storage.download = AsyncMock(return_value=None)
 
-        assert await worker._try_create_upload(
-            "system-test",
-            "upload-test",
-            "systems/system-test/upload-test/",
-        ) is None
+        assert (
+            await worker._try_create_upload(
+                "system-test",
+                "upload-test",
+                "systems/system-test/upload-test/",
+            )
+            is None
+        )
 
     def test_worker_configuration(self) -> None:
         """Test worker configuration from environment."""

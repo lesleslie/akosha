@@ -7,7 +7,7 @@ import inspect
 import json
 import logging
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from akosha.models import SystemMemoryUpload
 from akosha.models.schemas import (
@@ -60,7 +60,7 @@ class IngestionWorker:
         self.max_concurrent_ingests = max_concurrent_ingests
         self._running = False
 
-    async def run(self, uploads: list[SystemMemoryUpload] | None = None):
+    async def run(self, uploads: list[SystemMemoryUpload] | None = None) -> None:
         """Main worker loop with concurrent processing.
 
         If uploads are provided, process that batch once and return the
@@ -69,12 +69,13 @@ class IngestionWorker:
         if uploads is not None:
             semaphore = asyncio.Semaphore(self.max_concurrent_ingests)
 
-            async def process_with_semaphore(upload: SystemMemoryUpload):
+            async def process_with_semaphore(upload: SystemMemoryUpload) -> None:
                 async with semaphore:
                     return await self._process_upload(upload)
 
             tasks = [process_with_semaphore(upload) for upload in uploads]
-            return await asyncio.gather(*tasks, return_exceptions=True)
+            await asyncio.gather(*tasks, return_exceptions=True)
+            return
 
         self._running = True
         logger.info("Ingestion worker started")
@@ -472,11 +473,11 @@ class IngestionWorker:
         """Resolve the storage prefix for an upload across model variants."""
         storage_prefix = getattr(upload, "storage_prefix", None)
         if storage_prefix:
-            return storage_prefix
+            return storage_prefix  # type: ignore[no-any-return]
 
         manifest_path = getattr(upload, "manifest_path", None)
         if manifest_path:
-            return manifest_path.rsplit("/", 1)[0]
+            return manifest_path.rsplit("/", 1)[0]  # type: ignore
 
         raise AttributeError("Upload object does not expose a storage prefix")
 
@@ -488,17 +489,17 @@ class IngestionWorker:
 
         value = getter(key)
         if inspect.isawaitable(value):
-            return await value
-        return value
+            return await value  # type: ignore[no-any-return]
+        return value  # type: ignore[no-any-return]
 
-    async def _iterate_storage_list(self, prefix: str):
+    async def _iterate_storage_list(self, prefix: str) -> AsyncGenerator[str]:
         """Iterate over storage listings from async generators or plain iterables."""
         listing = self.storage.list(prefix)
         if inspect.isawaitable(listing):
             listing = await listing
 
-        if hasattr(listing, "__aiter__"):
-            async for item in listing:
+        if hasattr(listing, "__aiter__"):  # type: ignore[attr-defined]
+            async for item in listing:  # type: ignore[misc, attr-defined]
                 yield item
             return
 
@@ -509,7 +510,7 @@ class IngestionWorker:
         self,
         system_id: str,
         upload_id: str,
-        conversations: list[dict[str, object]],
+        conversations: list[dict[str, Any]],
     ) -> None:
         """Process conversations extracted from an upload.
 

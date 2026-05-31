@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import logging
 import time
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
     from mcp_common.tools import ToolProfile
+
+    from akosha.mcp.client import DharaServiceRegistryClient
 
 from mcp_common.health import DependencyConfig, register_health_tools
 
@@ -16,6 +19,11 @@ from akosha.mcp.tools.akosha_tools import (  # noqa: F401
     register_akosha_tools,
     register_code_graph_tools,
 )
+from akosha.mcp.tools.fitness_tools import (
+    init_fitness_analyzer,
+    register_fitness_tools,
+)
+from akosha.mcp.tools.otel_tools import register_otel_query_tools  # noqa: F401
 from akosha.mcp.tools.profiles import (
     FULL_REGISTRATIONS,
     PROFILE_REGISTRATIONS,
@@ -117,10 +125,123 @@ def register_all_tools(
         register_pycharm_tools(registry, hot_store)
         logger.info("Registered PyCharm integration tools")
 
+    if "register_otel_query_tools" in allowed and hot_store:
+        from akosha.mcp.tools.otel_tools import register_otel_query_tools
+
+        register_otel_query_tools(app, hot_store)
+        logger.info("Registered OTel query tools")
+
+    if "register_fitness_tools" in allowed:
+        from akosha.processing.fitness_analyzer import FitnessAnalyzer
+
+        analyzer = FitnessAnalyzer()
+        init_fitness_analyzer(analyzer)
+
+        # Start the periodic analysis loop (C4 fix — was missing entirely).
+        # create_task returns a Task that is kept alive by the running event loop.
+        import asyncio
+
+        _fitness_loop_task = asyncio.create_task(analyzer.start())  # noqa: RUF006
+
+        # Populate component endpoints from Dhara (Phase 0 read step)
+        # Each Bodai component writes its MCP URL to component_endpoint/{name}
+        # on startup. Read all registered endpoints so FitnessAnalyzer has targets.
+        _populate_component_endpoints_from_dhara(analyzer)
+
+        register_fitness_tools(app)
+        logger.info("Registered fitness analysis tools")
+
     # Always register the discovery meta-tool
     _register_discovery_tool(app, profile)
 
     logger.info("Akosha MCP tools registration complete (profile=%s)", profile.value)
+
+
+def _populate_component_endpoints_from_dhara(analyzer: Any) -> None:
+    """Read registered component endpoints from Dhara and register them with FitnessAnalyzer.
+
+    Phase 0 specifies that each Bodai component writes its MCP endpoint URL to Dhara
+    under key 'component_endpoint/{component_name}'. This function reads all matching
+    keys via list_prefix and registers them with the FitnessAnalyzer so it has targets
+    to poll.
+
+    Uses the KV time-series 'component_endpoint/' prefix scan since Mahavishnu uses
+    dhara_state.put() (not upsert_service) to register its endpoint.
+    """
+    import asyncio
+    import os
+
+    from akosha.mcp.client import DharaServiceRegistryClient
+
+    dhara_url = os.getenv("DHARA_MCP_URL", "http://localhost:8683/mcp")
+
+    try:
+        registry = DharaServiceRegistryClient(base_url=dhara_url, timeout=10.0)
+        asyncio.get_running_loop()
+        _endpoint_task = asyncio.create_task(_populate_async(registry, analyzer))
+        logger.debug(
+            "FitnessAnalyzer: initiated async endpoint discovery from Dhara (task=%s)",
+            id(_endpoint_task),
+        )
+    except RuntimeError:
+        # No running event loop — run synchronously
+        try:
+            asyncio.run(_populate_async(registry, analyzer))
+        except Exception as exc:
+            logger.warning(
+                "FitnessAnalyzer: could not populate endpoints from Dhara (continuing with empty list): %s",
+                exc,
+            )
+
+
+async def _populate_async(registry: DharaServiceRegistryClient, analyzer: Any) -> None:
+    """Async helper to populate endpoints from Dhara.
+
+    Scans for registered endpoints. Tries service registry (bodai_component)
+    first, then falls back to individual KV gets for known component names.
+    """
+    discovered = 0
+
+    # Phase 1: try ecosystem service registry (if components registered via upsert_service)
+    try:
+        services = await registry.list_services(service_type="bodai_component")
+        for svc in services:
+            component_name = svc.get("service_id", "")
+            metadata: dict[str, Any] = svc.get("metadata", {}) or {}
+            mcp_url = metadata.get("mcp_url") or metadata.get("url")
+            if component_name and mcp_url:
+                analyzer.add_component(component_name, mcp_url)
+                discovered += 1
+                logger.debug(
+                    "FitnessAnalyzer: discovered via service registry %s -> %s",
+                    component_name,
+                    mcp_url,
+                )
+    except Exception as exc:
+        logger.debug("Service registry scan returned no bodai_component services: %s", exc)
+
+    # Phase 2: known component names — direct KV get for each
+    # Mahavishnu uses put() to write component_endpoint/{name} in KV store
+    known_components = ["mahavishnu", "crackerjack", "session-buddy"]
+    for name in known_components:
+        with suppress(Exception):
+            entry = await registry.get(f"component_endpoint/{name}")
+            if entry and isinstance(entry, dict):
+                mcp_url = entry.get("url") or entry.get("mcp_url")
+                if mcp_url:
+                    analyzer.add_component(name, mcp_url)
+                    discovered += 1
+                    logger.debug(
+                        "FitnessAnalyzer: discovered via KV get %s -> %s",
+                        name,
+                        mcp_url,
+                    )
+
+    await registry.aclose()
+    logger.info(
+        "FitnessAnalyzer: populated %d component endpoints from Dhara",
+        discovered,
+    )
 
 
 def _register_discovery_tool(app: FastMCP, profile: ToolProfile) -> None:

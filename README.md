@@ -53,6 +53,9 @@ ______________________________________________________________________
 - **UV** package manager (recommended) or pip
 - **DuckDB** (automatically installed)
 - **Optional**: sentence-transformers for real embeddings (fallback available)
+- **Optional (serverless/production)**: PostgreSQL + pgvector extension for persistent hot-store storage across cold-starts
+
+> **pgvector note**: If using pgvector-backed storage, your PostgreSQL instance must have the `vector` extension enabled: `CREATE EXTENSION vector;`. See [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) for full serverless setup instructions.
 
 ### 5-Minute Setup
 

@@ -117,7 +117,9 @@ class TestVerifyToken:
         post_exc: Exception | None = None,
     ) -> object:
         class _FakeSession:
-            def __init__(self, response_obj: object | None, post_exception: Exception | None) -> None:
+            def __init__(
+                self, response_obj: object | None, post_exception: Exception | None
+            ) -> None:
                 self._response = response_obj
                 self._post_exception = post_exception
                 self.post_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
@@ -180,8 +182,9 @@ class TestVerifyToken:
         mock_credentials,
         monkeypatch: pytest.MonkeyPatch,
     ):
-        import akosha.api.middleware as middleware_module
         from fastapi import HTTPException
+
+        import akosha.api.middleware as middleware_module
 
         response = self._FakeResponse(401, {"detail": "nope"})
         self._install_fake_aiohttp(monkeypatch, response=response)
@@ -203,8 +206,9 @@ class TestVerifyToken:
         mock_credentials,
         monkeypatch: pytest.MonkeyPatch,
     ):
-        import akosha.api.middleware as middleware_module
         from fastapi import HTTPException
+
+        import akosha.api.middleware as middleware_module
 
         self._install_fake_aiohttp(
             monkeypatch,
@@ -228,8 +232,9 @@ class TestVerifyToken:
         mock_credentials,
         monkeypatch: pytest.MonkeyPatch,
     ):
-        import akosha.api.middleware as middleware_module
         from fastapi import HTTPException
+
+        import akosha.api.middleware as middleware_module
 
         response = self._FakeResponse(200, {"sub": "user-123", "email": "test@example.com"})
         self._install_fake_aiohttp(monkeypatch, response=response)

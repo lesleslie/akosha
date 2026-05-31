@@ -7,6 +7,7 @@ starting the admin shell, running services, and managing configuration.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 from pathlib import Path
@@ -15,17 +16,17 @@ from typing import Annotated, Any
 import typer
 
 try:
-    from akosha.main import AkoshaApplication
+    from akosha.main import AkoshaApplication  # type: ignore[import]
 except Exception:  # pragma: no cover - optional for test patching
     AkoshaApplication = None  # type: ignore[assignment]
 
 try:
-    from akosha.shell import AkoshaShell
+    from akosha.shell import AkoshaShell  # type: ignore[import]
 except Exception:  # pragma: no cover - optional for test patching
     AkoshaShell = None  # type: ignore[assignment]
 
 try:
-    from akosha.mcp import create_app
+    from akosha.mcp import create_app  # type: ignore[import]
 except Exception:  # pragma: no cover - import is validated in command paths
     create_app = None  # type: ignore[assignment]
 
@@ -91,6 +92,16 @@ def shell(
     # Initialize application with mode
     akosha_app = AkoshaApplication(mode=mode)
 
+    # Configure structured logging via Oneiric (Console / string tracebacks)
+    from oneiric.core.logging import LoggingConfig, configure_logging
+
+    configure_logging(
+        LoggingConfig(
+            level="DEBUG" if verbose else "INFO",
+            emit_json=False,
+        )
+    )
+
     logger.info("Starting Akosha admin shell...")
 
     # Import shell only when needed
@@ -99,12 +110,85 @@ def shell(
 
         # Create and start shell
         shell_instance = AkoshaShell(akosha_app)
-        shell_instance.start()
+        asyncio.run(shell_instance.start())
     except ImportError as e:
         logger.error(f"Failed to import shell: {e}")
         logger.error("Admin shell requires optional dependencies")
         logger.error("Install with: pip install ipython")
         sys.exit(1)
+
+
+def _load_config(config_path: str) -> dict[str, Any]:
+    """Load configuration from a YAML file.
+
+    Args:
+        config_path: Path to YAML configuration file.
+
+    Returns:
+        Configuration dictionary loaded from the file.
+    """
+    path = Path(config_path)
+    if not path.exists():
+        typer.echo(f"❌ Configuration file not found: {config_path}", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        import yaml
+
+        with path.open("r") as f:
+            config_dict: dict[str, Any] = yaml.safe_load(f) or {}
+        logger.info(f"Loaded configuration from {config_path}")
+        return config_dict
+    except ImportError:
+        typer.echo("⚠️  PyYAML not installed, ignoring config file", err=True)
+        return {}
+    except Exception as e:
+        typer.echo(f"⚠️  Failed to load config: {e}", err=True)
+        return {}
+
+
+def _init_mode(mode: str, config: dict[str, Any]) -> Any:
+    """Initialize an Akosha mode instance.
+
+    Args:
+        mode: Operational mode (lite or standard).
+        config: Configuration dictionary to pass to the mode.
+
+    Returns:
+        Initialized mode instance.
+
+    Raises:
+        typer.Exit: If mode is invalid or initialization fails.
+    """
+    from akosha.modes import get_mode
+
+    try:
+        mode_instance = get_mode(mode, config=config)
+        logger.info(f"Initialized {mode} mode: {mode_instance}")
+        return mode_instance
+    except ValueError as e:
+        typer.echo(f"❌ {e}", err=True)
+        raise typer.Exit(code=1) from e
+    except Exception as e:
+        typer.echo(f"❌ Failed to initialize mode: {e}", err=True)
+        logger.exception("Mode initialization failed")
+        raise typer.Exit(code=1) from e
+
+
+def _configure_logging(verbose: bool) -> None:
+    """Configure structured logging via Oneiric.
+
+    Args:
+        verbose: If True, set log level to DEBUG; otherwise INFO.
+    """
+    from oneiric.core.logging import LoggingConfig, configure_logging
+
+    configure_logging(
+        LoggingConfig(
+            level="DEBUG" if verbose else "INFO",
+            emit_json=False,
+        )
+    )
 
 
 def _start_server(
@@ -157,43 +241,14 @@ def _start_server(
 
     logger.info(f"Starting Akosha MCP server in {mode} mode on {host}:{port}")
 
-    # Load custom config if provided
-    config_dict: dict[str, Any] = {}
-    if config:
-        config_path = Path(config)
-        if not config_path.exists():
-            typer.echo(f"❌ Configuration file not found: {config}", err=True)
-            raise typer.Exit(code=1)
+    # Load config and initialize mode
+    config_dict: dict[str, Any] = _load_config(config) if config else {}
+    mode_instance = _init_mode(mode, config_dict)
+    _configure_logging(verbose)
 
-        try:
-            import yaml
-
-            with config_path.open("r") as f:
-                config_dict = yaml.safe_load(f)
-            logger.info(f"Loaded configuration from {config}")
-        except ImportError:
-            typer.echo("⚠️  PyYAML not installed, ignoring config file", err=True)
-        except Exception as e:
-            typer.echo(f"⚠️  Failed to load config: {e}", err=True)
-
-    # Initialize mode
-    try:
-        from akosha.modes import get_mode
-
-        mode_instance = get_mode(mode, config=config_dict)
-        logger.info(f"Initialized {mode} mode: {mode_instance}")
-    except ValueError as e:
-        typer.echo(f"❌ {e}", err=True)
-        raise typer.Exit(code=1) from e
-    except Exception as e:
-        typer.echo(f"❌ Failed to initialize mode: {e}", err=True)
-        logger.exception("Mode initialization failed")
-        raise typer.Exit(code=1) from e
-
-    # Import the MCP app
+    # Create and run the MCP server
     from akosha.mcp import create_app
 
-    # Create and run the MCP server with streamable-http transport
     app_instance = create_app(mode=mode_instance)
 
     logger.info(f"✅ Akosha ready in {mode} mode")

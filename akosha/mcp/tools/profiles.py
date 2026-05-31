@@ -24,6 +24,8 @@ FULL_REGISTRATIONS: list[str] = [
     *STANDARD_REGISTRATIONS,
     "register_session_buddy_tools",
     "register_pycharm_tools",
+    "register_otel_query_tools",
+    "register_fitness_tools",
 ]
 
 PROFILE_REGISTRATIONS: dict[ToolProfile, list[str]] = {
@@ -37,6 +39,8 @@ REGISTRATION_DESCRIPTIONS: dict[str, str] = {
     "register_akosha_tools": "Core memory aggregation: embeddings, search, analytics, anomaly detection, knowledge graph",
     "register_session_buddy_tools": "Session-Buddy integration: direct HTTP memory ingestion and cross-system sync",
     "register_pycharm_tools": "IDE diagnostics, code search, symbol info, and find usages via PyCharm",
+    "register_otel_query_tools": "OTel trace queries by system_id and attribute filters (Bodai feedback loop)",
+    "register_fitness_tools": "Fitness analysis for Bodai routing feedback loop (failure rate, p99 latency per task class)",
 }
 
 REGISTRATION_TOOLS: dict[str, list[str]] = {
@@ -65,6 +69,11 @@ REGISTRATION_TOOLS: dict[str, list[str]] = {
         "get_symbol_info",
         "find_usages",
         "pycharm_health",
+    ],
+    "register_otel_query_tools": ["query_local_traces"],
+    "register_fitness_tools": [
+        "run_fitness_analysis",
+        "get_fitness_analyzer_status",
     ],
 }
 

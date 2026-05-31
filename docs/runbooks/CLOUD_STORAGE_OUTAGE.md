@@ -16,7 +16,7 @@
    aws s3 ls s3://akosha-cold-data --region us-west-2
 
 1. Verify Oneiric circuit breaker status:
-   curl http://akosha:8000/api/v1/metrics | jq .akosha_circuit_breaker_storage_state
+   curl http://akosha:8000/api/v1/metrics | jq .akosha_circuit_breaker_storage_state # ARCHIVED: Broken link: http://akosha:8000/api/v1/metrics - Network error: Connection fail
 
 1. Check for credentials issues:
    kubectl get secret akosha-secrets -n akosha -o yaml

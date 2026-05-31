@@ -284,7 +284,7 @@ services:
 ### Import Dashboards
 
 **Option 1: Grafana UI**
-1. Navigate to http://localhost:3001
+1. Navigate to http://localhost:3001 # ARCHIVED: Broken link: http://localhost:3001/ - Network error: Connection refused - server
 2. Dashboards → Import
 3. Upload JSON files
 

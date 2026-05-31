@@ -42,9 +42,7 @@ def _disable_auth(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def embedding_service() -> MagicMock:
     service = MagicMock(spec=EmbeddingService)
-    service.generate_embedding = AsyncMock(
-        side_effect=[Vector([0.1] * 384), Vector([0.2] * 384)]
-    )
+    service.generate_embedding = AsyncMock(side_effect=[Vector([0.1] * 384), Vector([0.2] * 384)])
     service.generate_batch_embeddings = AsyncMock(
         side_effect=[[Vector([0.3] * 384), Vector([0.4] * 384)], []]
     )
@@ -148,7 +146,9 @@ async def test_tool_runtime_branches(
     assert embedding["embedding_dim"] == 384
     assert embedding["mode"] == "real"
 
-    search = await search_all_systems(query="JWT auth", limit=2, threshold=0.8, system_id="system-x")
+    search = await search_all_systems(
+        query="JWT auth", limit=2, threshold=0.8, system_id="system-x"
+    )
     assert search["total_results"] == 1
     assert search["results"][0]["system_id"] == "system-x"
     assert search["mode"] == "fallback"
@@ -170,7 +170,9 @@ async def test_tool_runtime_branches(
         "metric_names": ["conversation_count", "quality_score"],
     }
 
-    trend = await analyze_trends(metric_name="conversation_count", system_id="system-1", time_window_days=7)
+    trend = await analyze_trends(
+        metric_name="conversation_count", system_id="system-1", time_window_days=7
+    )
     assert trend["trend_direction"] == "increasing"
     assert trend["system_id"] == "system-1"
     missing_trend = await analyze_trends(metric_name="conversation_count", time_window_days=7)
@@ -200,4 +202,3 @@ async def test_tool_runtime_branches(
     stats = await get_graph_statistics()
     assert stats["total_entities"] == 42
     assert stats["entity_types"]["user"] == 15
-

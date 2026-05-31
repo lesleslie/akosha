@@ -7,6 +7,7 @@ and helper functions for secure WebSocket connections.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from mcp_common.websocket.tls import (
     create_ssl_context,
@@ -29,7 +30,7 @@ def get_websocket_tls_config() -> dict[str, str | bool | None]:
     Returns:
         Dictionary with TLS configuration
     """
-    return get_tls_config_from_env("AKOSHA_WS")
+    return get_tls_config_from_env("AKOSHA_WS")  # type: ignore[return-value]
 
 
 def load_ssl_context(
@@ -37,7 +38,7 @@ def load_ssl_context(
     key_file: str | None = None,
     ca_file: str | None = None,
     verify_client: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     """Load SSL context for WebSocket server.
 
     Args:
@@ -53,10 +54,10 @@ def load_ssl_context(
     if not cert_file and not key_file:
         config = get_websocket_tls_config()
         if config["tls_enabled"]:
-            cert_file = config["cert_file"]
-            key_file = config["key_file"]
-            ca_file = config["ca_file"]
-            verify_client = config.get("verify_client", False)
+            cert_file = config["cert_file"] if isinstance(config["cert_file"], str) else None
+            key_file = config["key_file"] if isinstance(config["key_file"], str) else None
+            ca_file = config["ca_file"] if isinstance(config["ca_file"], str) else None
+            verify_client = bool(config.get("verify_client", False))
 
     # Create SSL context if files provided
     ssl_context = None
@@ -79,4 +80,4 @@ def load_ssl_context(
         "key_file": key_file,
         "ca_file": ca_file,
         "verify_client": verify_client,
-    }
+    }  # type: ignore[return-value]

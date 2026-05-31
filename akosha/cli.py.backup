@@ -91,6 +91,17 @@ def shell(
     # Initialize application with mode
     akosha_app = AkoshaApplication(mode=mode)
 
+    # Configure structured logging via Oneiric (Console / string tracebacks)
+    from oneiric.core.logging import LoggingConfig, configure_logging
+
+    configure_logging(
+        LoggingConfig(
+            level="DEBUG" if verbose else "INFO",
+            emit_json=False,
+            traceback_style="string",
+        )
+    )
+
     logger.info("Starting Akosha admin shell...")
 
     # Import shell only when needed
@@ -188,10 +199,21 @@ def _start_server(
     except Exception as e:
         typer.echo(f"❌ Failed to initialize mode: {e}", err=True)
         logger.exception("Mode initialization failed")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
     # Import the MCP app
+    # Configure structured logging via Oneiric (Console / string tracebacks)
+    from oneiric.core.logging import LoggingConfig, configure_logging
+
     from akosha.mcp import create_app
+
+    configure_logging(
+        LoggingConfig(
+            level="INFO",
+            emit_json=False,  # Console output for local service readability
+            traceback_style="string",  # Human-readable tracebacks (not dict)
+        )
+    )
 
     # Create and run the MCP server with streamable-http transport
     app_instance = create_app(mode=mode_instance)

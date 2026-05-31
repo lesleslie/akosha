@@ -155,5 +155,12 @@ async def test_storage() -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    from oneiric.core.logging import LoggingConfig, configure_logging
+
+    configure_logging(
+        LoggingConfig(
+            level="INFO",
+            emit_json=False,
+        )
+    )
     asyncio.run(test_storage())

@@ -155,6 +155,9 @@ tests/archived/
 .session-buddy/
 .crackerjack/
 
+# Git Worktrees
+.worktrees/
+
 # XDG - DELETE candidates
 .obsidian/
 

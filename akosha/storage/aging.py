@@ -7,7 +7,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -147,7 +147,7 @@ class AgingService:
 
     async def _migrate_batch(
         self,
-        records_to_migrate: list[dict],
+        records_to_migrate: list[dict[str, Any]],
         stats: MigrationStats,
         start_time: datetime,
         batch_size: int = 1000,
@@ -245,7 +245,7 @@ class AgingService:
 
         return stats
 
-    async def _get_eligible_records(self, cutoff_date: datetime) -> list[dict]:
+    async def _get_eligible_records(self, cutoff_date: datetime) -> list[dict[str, Any]]:
         """Get records older than cutoff date from hot store.
 
         Args:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -150,7 +151,42 @@ class HotStore:
 
             # Build query with parameterized WHERE clause (SQL injection prevention)
             # Note: We use separate queries for each case to ensure proper parameterization
-            if system_id:
+            # Detect zero vector — cosine similarity is undefined for zero vectors,
+            # so use timestamp ordering instead (HNSW index not applicable here).
+            is_zero_vector = all(abs(x) < 1e-10 for x in query_embedding)
+
+            if is_zero_vector and system_id:
+                # Zero vector: order by timestamp descending (most recent first)
+                query = """
+                    SELECT
+                        system_id,
+                        conversation_id,
+                        content,
+                        timestamp,
+                        metadata,
+                        NULL as similarity
+                    FROM conversations
+                    WHERE system_id = ?
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """
+                results = self.conn.execute(query, [system_id, limit]).fetchall()
+            elif is_zero_vector:
+                # Zero vector, no system_id filter: order by timestamp
+                query = """
+                    SELECT
+                        system_id,
+                        conversation_id,
+                        content,
+                        timestamp,
+                        metadata,
+                        NULL as similarity
+                    FROM conversations
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """
+                results = self.conn.execute(query, [limit]).fetchall()
+            elif system_id:
                 query = """
                     SELECT
                         system_id,
@@ -180,7 +216,7 @@ class HotStore:
                 """
                 results = self.conn.execute(query, [query_embedding, limit]).fetchall()
 
-            # Filter by threshold
+            # Filter by threshold (NULL similarity from zero-vector path always passes)
             return [
                 {
                     "system_id": r[0],
@@ -191,7 +227,7 @@ class HotStore:
                     "similarity": r[5],
                 }
                 for r in results
-                if r[5] >= threshold
+                if r[5] is None or r[5] >= threshold
             ]
 
     @staticmethod
@@ -205,6 +241,86 @@ class HotStore:
             if self.conn:
                 self.conn.close()
                 logger.info("Hot store closed")
+
+    async def query_traces(
+        self,
+        system_id: str | None = None,
+        start_time: str | None = None,
+        end_time: str | None = None,
+        task_class: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Query traces using SQL WHERE on metadata JSON attributes.
+
+        This method pushes attribute filters (task_class, time range) into the SQL
+        WHERE clause rather than fetching all traces and filtering in Python.
+        The HNSW index is NOT used for this query.
+
+        Args:
+            system_id: Optional system_id filter
+            start_time: ISO8601 start time (inclusive)
+            end_time: ISO8601 end time (inclusive)
+            task_class: Filter traces where metadata.attributes.task_class matches
+            limit: Maximum results to return
+
+        Returns:
+            List of trace records with conversation_id, content, timestamp, metadata
+        """
+        async with self._lock:
+            if not self.conn:
+                raise RuntimeError("Hot store not initialized")
+
+            # Build parameterized WHERE clause
+            conditions: list[str] = []
+            params: list[Any] = []
+
+            if system_id:
+                conditions.append("system_id = ?")
+                params.append(system_id)
+
+            if start_time:
+                conditions.append("timestamp >= ?")
+                params.append(start_time)
+
+            if end_time:
+                conditions.append("timestamp <= ?")
+                params.append(end_time)
+
+            if task_class:
+                # Filter on metadata JSON: attributes.task_class or top-level task_class
+                conditions.append(
+                    "(metadata->>'task_class' = ? OR metadata->'attributes'->>'task_class' = ?)"
+                )
+                params.extend([task_class, task_class])
+
+            where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+            query = f"""
+                SELECT
+                    system_id,
+                    conversation_id,
+                    content,
+                    timestamp,
+                    metadata
+                FROM conversations
+                WHERE {where_clause}
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """
+            params.append(limit)
+
+            rows = self.conn.execute(query, params).fetchall()
+
+            return [
+                {
+                    "system_id": r[0],
+                    "conversation_id": r[1],
+                    "content": r[2],
+                    "timestamp": r[3],
+                    "metadata": r[4],
+                }
+                for r in rows
+            ]
 
     async def initialize_code_graphs_table(self) -> None:
         """Initialize code_graphs table for cross-repo pattern analysis."""
@@ -324,14 +440,15 @@ class HotStore:
             if not result or len(result) < 6:
                 return None
 
-            import json
+            graph_data = json.loads(result[3]) if result[3] else {}  # type: ignore[unreachable]
+            metadata = json.loads(result[4]) if result[4] else {}  # type: ignore[unreachable]
 
             return {
                 "repo_path": result[0],
                 "commit_hash": result[1],
                 "nodes_count": result[2],
-                "graph_data": json.loads(result[3]) if result[3] else {},
-                "metadata": json.loads(result[4]) if result[4] else {},
+                "graph_data": graph_data,
+                "metadata": metadata,
                 "ingested_at": result[5],
             }
 

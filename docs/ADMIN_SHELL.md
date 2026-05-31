@@ -394,7 +394,7 @@ self.namespace.update({
 
 ## Further Reading
 
-- [Oneiric Admin Shell Documentation](https://github.com/yourusername/oneiric)
-- [Session-Buddy MCP Documentation](https://github.com/yourusername/session-buddy)
+- Oneiric Admin Shell Documentation
+- Session-Buddy MCP Documentation
 - Akosha Architecture
 - Akosha CLI Reference

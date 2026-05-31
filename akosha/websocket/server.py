@@ -206,7 +206,7 @@ class AkoshaWebSocketServer(WebSocketServer):
             channel = message.data.get("channel")
 
             # Check authorization for this channel
-            if user and not self._can_subscribe_to_channel(user, channel):
+            if user and channel and not self._can_subscribe_to_channel(user, channel):
                 error = WebSocketProtocol.create_error(
                     error_code="FORBIDDEN",
                     error_message=f"Not authorized to subscribe to {channel}",
@@ -296,7 +296,7 @@ class AkoshaWebSocketServer(WebSocketServer):
         # Default: deny  # noqa: ERA001
         return False
 
-    async def _get_patterns(self, category: str | None) -> dict:
+    async def _get_patterns(self, category: str | None) -> dict[str, Any]:
         """Get detected patterns from analytics engine.
 
         Args:
@@ -317,7 +317,7 @@ class AkoshaWebSocketServer(WebSocketServer):
             logger.error(f"Error getting patterns: {e}")
             return {"category": category, "error": str(e)}
 
-    async def _get_anomalies(self) -> dict:
+    async def _get_anomalies(self) -> dict[str, Any]:
         """Get detected anomalies from analytics engine.
 
         Returns:
@@ -341,7 +341,7 @@ class AkoshaWebSocketServer(WebSocketServer):
         pattern_type: str,
         description: str,
         confidence: float,
-        metadata: dict,
+        metadata: dict[str, Any],
     ) -> None:
         """Broadcast pattern detected event.
 
@@ -360,8 +360,8 @@ class AkoshaWebSocketServer(WebSocketServer):
                 "description": description,
                 "confidence": confidence,
                 "timestamp": datetime.now(UTC).isoformat(),
-                **metadata,
-            },
+            }
+            | metadata,
             room=f"patterns:{pattern_type}",
         )
         await self.broadcast_to_room(f"patterns:{pattern_type}", event)
@@ -372,7 +372,7 @@ class AkoshaWebSocketServer(WebSocketServer):
         anomaly_type: str,
         severity: str,
         description: str,
-        metrics: dict,
+        metrics: dict[str, Any],
     ) -> None:
         """Broadcast anomaly detected event.
 
@@ -403,7 +403,7 @@ class AkoshaWebSocketServer(WebSocketServer):
         insight_type: str,
         title: str,
         description: str,
-        data: dict,
+        data: dict[str, Any],
     ) -> None:
         """Broadcast insight generated event.
 
@@ -433,7 +433,7 @@ class AkoshaWebSocketServer(WebSocketServer):
         aggregation_id: str,
         aggregation_type: str,
         record_count: int,
-        summary: dict,
+        summary: dict[str, Any],
     ) -> None:
         """Broadcast aggregation completed event.
 

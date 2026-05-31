@@ -374,7 +374,7 @@ Before deploying to production:
 For issues or questions:
 
 - **Documentation**: [../docs/DEPLOYMENT_GUIDE.md](../docs/DEPLOYMENT_GUIDE.md)
-- **Issues**: https://github.com/yourusername/akosha/issues
+- **Issues**: https://github.com/lesleslie/akosha/issues
 - **Email**: akosha@example.com
 
 ______________________________________________________________________

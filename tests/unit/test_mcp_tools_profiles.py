@@ -68,7 +68,9 @@ async def test_register_all_tools_minimal_profile(monkeypatch: pytest.MonkeyPatc
 
 
 @pytest.mark.asyncio
-async def test_register_all_tools_full_profile_and_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_register_all_tools_full_profile_and_discovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Full profiles should load all registered groups and surface them in discovery."""
     app = DummyFastMCP()
     health = MagicMock()

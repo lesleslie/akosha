@@ -197,7 +197,12 @@ class DistributedQueryEngine:
             List of search results from this shard
         """
         if self.shard_query is not None:
-            return await self.shard_query(shard_id, query_embedding, limit)
+            result: Any = await self.shard_query(shard_id, query_embedding, limit)
+            if isinstance(result, list) and all(isinstance(r, dict) for r in result):
+                return result
+            if isinstance(result, list):
+                return [dict(r) if isinstance(r, dict) else {} for r in result]
+            return []
 
         # Get HotStore for this shard
         if self.get_shard_store is None:

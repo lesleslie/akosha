@@ -10,7 +10,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / "akosha" / "scripts" / "generate_secrets.py"
 
 
@@ -24,7 +23,9 @@ def load_script_module() -> ModuleType:
     return module
 
 
-def test_generate_production_secrets_uses_template(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_generate_production_secrets_uses_template(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Existing templates should have placeholders replaced and be written out."""
     module = load_script_module()
     template_path = tmp_path / "secret.production.yaml.template"
@@ -68,12 +69,16 @@ def test_main_parses_cli_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
     module = load_script_module()
     captured: dict[str, Path | str] = {}
 
-    def fake_generate_production_secrets(output_path: str | Path, template_path: str | Path) -> None:
+    def fake_generate_production_secrets(
+        output_path: str | Path, template_path: str | Path
+    ) -> None:
         captured["output_path"] = output_path
         captured["template_path"] = template_path
 
     monkeypatch.setattr(module, "generate_production_secrets", fake_generate_production_secrets)
-    monkeypatch.setattr(sys, "argv", ["generate_secrets", "--output", "out.yaml", "--template", "tmpl.yaml"])
+    monkeypatch.setattr(
+        sys, "argv", ["generate_secrets", "--output", "out.yaml", "--template", "tmpl.yaml"]
+    )
 
     module.main()
 
@@ -98,7 +103,9 @@ def test_secret_helpers_return_urlsafe_strings() -> None:
 def test_script_main_block_executes_without_side_effects() -> None:
     """The module's __main__ block should be executable without writing files."""
     source = SCRIPT_PATH.read_text()
-    source = source.replace("if __name__ == \"__main__\":\n    main()\n", "if __name__ == \"__main__\":\n    pass\n")
+    source = source.replace(
+        'if __name__ == "__main__":\n    main()\n', 'if __name__ == "__main__":\n    pass\n'
+    )
     compiled = compile(source, str(SCRIPT_PATH), "exec")
 
     namespace = {"__name__": "__main__", "__file__": str(SCRIPT_PATH)}

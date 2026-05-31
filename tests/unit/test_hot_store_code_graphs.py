@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,7 +17,7 @@ class FakeConnection:
         self.closed = False
         self._index_attempts = 0
 
-    def execute(self, sql: str, params: list[object] | None = None) -> "FakeConnection":
+    def execute(self, sql: str, params: list[object] | None = None) -> FakeConnection:
         self.executed.append(sql)
         if "CREATE INDEX IF NOT EXISTS code_graphs_repo_index" in sql:
             self._index_attempts += 1
@@ -47,7 +46,7 @@ class FakeInitConnection:
     def __init__(self) -> None:
         self.executed: list[str] = []
 
-    def execute(self, sql: str, params: list[object] | None = None) -> "FakeInitConnection":
+    def execute(self, sql: str, params: list[object] | None = None) -> FakeInitConnection:
         self.executed.append(sql)
         if "CREATE INDEX IF NOT EXISTS system_id_index" in sql:
             raise RuntimeError("system index failed")
@@ -130,7 +129,9 @@ async def test_code_graph_helpers_require_initialization() -> None:
 
 
 @pytest.mark.asyncio
-async def test_initialize_code_graphs_table_logs_index_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_initialize_code_graphs_table_logs_index_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Index creation failures should be logged but not stop initialization."""
     store = HotStore()
     fake_conn = FakeConnection()
@@ -151,7 +152,9 @@ async def test_initialize_logs_conversation_index_failures(monkeypatch: pytest.M
     """Hot-store initialization should log and continue when conversation indexes fail."""
     store = HotStore()
     fake_conn = FakeInitConnection()
-    monkeypatch.setattr("akosha.storage.hot_store.duckdb.connect", lambda *_args, **_kwargs: fake_conn)
+    monkeypatch.setattr(
+        "akosha.storage.hot_store.duckdb.connect", lambda *_args, **_kwargs: fake_conn
+    )
 
     warnings: list[str] = []
     monkeypatch.setattr("akosha.storage.hot_store.logger.warning", lambda msg: warnings.append(msg))

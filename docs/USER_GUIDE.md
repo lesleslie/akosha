@@ -587,10 +587,10 @@ ______________________________________________________________________
 
 ## Additional Resources
 
-- **GitHub Repository**: [https://github.com/yourusername/akosha](https://github.com/yourusername/akosha)
+- **GitHub Repository**: https://github.com/lesleslie/akosha
 - **Architecture**: [ADR_001_ARCHITECTURE_DECISIONS.md](ADR_001_ARCHITECTURE_DECISIONS.md)
 - **Roadmap**: [ROADMAP.md](ROADMAP.md)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/akosha/issues)
+- **Issues**: GitHub Issues
 
 ______________________________________________________________________
 

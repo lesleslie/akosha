@@ -800,9 +800,10 @@ class TestWebsocketServerConfiguration:
     def test_tls_configuration_from_explicit_files(self):
         """Test TLS configuration path when certificate files are provided."""
         mock_analytics = AsyncMock()
-        with patch("akosha.websocket.server.load_ssl_context") as mock_load, patch(
-            "akosha.websocket.server.get_authenticator"
-        ) as mock_auth:
+        with (
+            patch("akosha.websocket.server.load_ssl_context") as mock_load,
+            patch("akosha.websocket.server.get_authenticator") as mock_auth,
+        ):
             mock_load.return_value = {"ssl_context": object()}
             mock_auth.return_value = AsyncMock()
 
@@ -823,9 +824,11 @@ class TestWebsocketServerConfiguration:
     def test_tls_configuration_from_environment(self):
         """Test TLS configuration path when environment provides certs."""
         mock_analytics = AsyncMock()
-        with patch("akosha.websocket.server.load_ssl_context") as mock_load, patch(
-            "akosha.websocket.server.get_websocket_tls_config"
-        ) as mock_env, patch("akosha.websocket.server.get_authenticator") as mock_auth:
+        with (
+            patch("akosha.websocket.server.load_ssl_context") as mock_load,
+            patch("akosha.websocket.server.get_websocket_tls_config") as mock_env,
+            patch("akosha.websocket.server.get_authenticator") as mock_auth,
+        ):
             mock_load.side_effect = [{"ssl_context": None}, {"ssl_context": object()}]
             mock_env.return_value = {
                 "tls_enabled": True,
@@ -845,9 +848,11 @@ class TestWebsocketServerConfiguration:
     def test_tls_configuration_env_disabled(self):
         """Test TLS fallback when environment does not provide certs."""
         mock_analytics = AsyncMock()
-        with patch("akosha.websocket.server.load_ssl_context") as mock_load, patch(
-            "akosha.websocket.server.get_websocket_tls_config"
-        ) as mock_env, patch("akosha.websocket.server.get_authenticator") as mock_auth:
+        with (
+            patch("akosha.websocket.server.load_ssl_context") as mock_load,
+            patch("akosha.websocket.server.get_websocket_tls_config") as mock_env,
+            patch("akosha.websocket.server.get_authenticator") as mock_auth,
+        ):
             mock_load.return_value = {"ssl_context": None}
             mock_env.return_value = {
                 "tls_enabled": False,

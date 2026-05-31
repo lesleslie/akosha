@@ -1,5 +1,6 @@
 """Prometheus metrics collection for Akosha.
 
+from __future__ import annotations
 Provides instrumentation for ingestion, query, and storage operations.
 """
 
@@ -162,7 +163,7 @@ class MetricsCollector:
 # =============================================================================
 
 
-def track_ingestion(system_id: str = "unknown"):
+def track_ingestion(system_id: str = "unknown") -> None:
     """Decorator to track ingestion metrics.
 
     Usage:
@@ -172,7 +173,7 @@ def track_ingestion(system_id: str = "unknown"):
             return result
     """
 
-    def decorator(func):
+    def decorator(func) -> None:
         async def wrapper(*args, **kwargs):
             status = "success"
             start_time = None
@@ -206,7 +207,7 @@ def track_ingestion(system_id: str = "unknown"):
     return decorator
 
 
-def track_query(query_type: str = "search"):
+def track_query(query_type: str = "search") -> None:
     """Decorator to track query metrics.
 
     Usage:
@@ -216,7 +217,7 @@ def track_query(query_type: str = "search"):
             return results
     """
 
-    def decorator(func):
+    def decorator(func) -> None:
         async def wrapper(*args, **kwargs):
             status = "success"
 
@@ -247,7 +248,7 @@ def track_query(query_type: str = "search"):
     return decorator
 
 
-def track_migration(source_tier: str, target_tier: str):
+def track_migration(source_tier: str, target_tier: str) -> None:
     """Decorator to track tier migration metrics.
 
     Usage:
@@ -257,7 +258,7 @@ def track_migration(source_tier: str, target_tier: str):
             return stats
     """
 
-    def decorator(func):
+    def decorator(func) -> None:
         async def wrapper(*args, **kwargs):
             status = "success"
 
@@ -292,7 +293,7 @@ def track_migration(source_tier: str, target_tier: str):
 # =============================================================================
 
 from fastapi import FastAPI, Request  # noqa: E402
-from starlette.responses import Response
+from starlette.responses import Response  # noqa: E402
 
 
 def setup_metrics_endpoint(app: FastAPI) -> None:
@@ -306,7 +307,7 @@ def setup_metrics_endpoint(app: FastAPI) -> None:
     from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
     @app.get("/metrics")
-    async def metrics():
+    async def metrics() -> None:
         """Expose Prometheus metrics."""
         return Response(
             content=generate_latest(),
@@ -323,7 +324,7 @@ def setup_middleware(app: FastAPI) -> None:
     """
 
     @app.middleware("http")
-    async def track_requests(request: Request, call_next):
+    async def track_requests(request: Request, call_next) -> None:
         """Track all HTTP requests."""
         # Record start time
 
@@ -354,14 +355,16 @@ def setup_middleware(app: FastAPI) -> None:
 # =============================================================================
 
 
-def record_ingestion_event(system_id: str, status: str, duration: float = 0.0):
+def record_ingestion_event(system_id: str, status: str, duration: float = 0.0) -> None:
     """Record ingestion event manually."""
     ingestion_requests_total.labels(system_id=system_id, status=status).inc()
     if duration > 0:
         ingestion_duration_seconds.observe(duration)
 
 
-def record_query_event(query_type: str, status: str, duration: float = 0.0, result_count: int = 0):
+def record_query_event(
+    query_type: str, status: str, duration: float = 0.0, result_count: int = 0
+) -> None:
     """Record query event manually."""
     query_requests_total.labels(query_type=query_type, status=status).inc()
     if duration > 0:

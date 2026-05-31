@@ -330,4 +330,4 @@ The Akosha ecosystem demonstrates **solid distributed systems fundamentals** wit
 
 ---
 
-**Full review**: [`DISTRIBUTED_SYSTEMS_INTEGRATION_REVIEW.md`](./DISTRIBUTED_SYSTEMS_INTEGRATION_REVIEW.md)
+**Full review**: [`DISTRIBUTED_SYSTEMS_INTEGRATION_REVIEW.md`](../../DISTRIBUTED_SYSTEMS_INTEGRATION_REVIEW.md)

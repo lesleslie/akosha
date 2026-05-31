@@ -207,7 +207,7 @@ class TestCLIIntegration:
         """Missing shell imports should exit cleanly with a non-zero code."""
         original_import = builtins.__import__
 
-        def fake_import(name: str, globals=None, locals=None, fromlist=(), level=0):  # noqa: A002
+        def fake_import(name: str, globals=None, locals=None, fromlist=(), level=0):
             if name == "akosha.shell":
                 raise ImportError("no shell")
             return original_import(name, globals, locals, fromlist, level)
@@ -233,9 +233,7 @@ class TestCLIIntegration:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Version command should degrade gracefully when package metadata is unavailable."""
-        monkeypatch.setattr(
-            "importlib.metadata.version", MagicMock(side_effect=Exception("boom"))
-        )
+        monkeypatch.setattr("importlib.metadata.version", MagicMock(side_effect=Exception("boom")))
 
         result = runner.invoke(app, ["version"])
 
@@ -257,7 +255,9 @@ class TestCLIIntegration:
         monkeypatch.setattr("akosha.modes.get_mode", MagicMock(return_value=mode_instance))
         monkeypatch.setattr("akosha.mcp.create_app", MagicMock(return_value=app_instance))
 
-        cli_module._start_server(host="0.0.0.0", port=9000, mode="standard", config=str(config_path))
+        cli_module._start_server(
+            host="0.0.0.0", port=9000, mode="standard", config=str(config_path)
+        )
 
         app_instance.run.assert_called_once_with(
             transport="streamable-http", host="0.0.0.0", port=9000, path="/mcp"
@@ -291,7 +291,7 @@ class TestCLIIntegration:
 
         original_import = builtins.__import__
 
-        def fake_import(name: str, globals=None, locals=None, fromlist=(), level=0):  # noqa: A002
+        def fake_import(name: str, globals=None, locals=None, fromlist=(), level=0):
             if name == "yaml":
                 raise ImportError("no yaml")
             return original_import(name, globals, locals, fromlist, level)
@@ -319,9 +319,7 @@ class TestCLIIntegration:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Unexpected initialization errors should also surface as clean CLI exits."""
-        monkeypatch.setattr(
-            "akosha.modes.get_mode", MagicMock(side_effect=RuntimeError("boom"))
-        )
+        monkeypatch.setattr("akosha.modes.get_mode", MagicMock(side_effect=RuntimeError("boom")))
 
         with pytest.raises(cli_module.typer.Exit) as excinfo:
             cli_module._start_server(mode="lite")
@@ -331,7 +329,9 @@ class TestCLIIntegration:
     @patch("akosha.cli._start_server")
     def test_start_command_delegates_to_helper(self, mock_start_server: MagicMock) -> None:
         """The public start command should delegate to the shared helper."""
-        cli_module.start(host="1.2.3.4", port=9999, mode="standard", config="cfg.yaml", verbose=True)
+        cli_module.start(
+            host="1.2.3.4", port=9999, mode="standard", config="cfg.yaml", verbose=True
+        )
 
         mock_start_server.assert_called_once_with(
             host="1.2.3.4", port=9999, mode="standard", config="cfg.yaml", verbose=True

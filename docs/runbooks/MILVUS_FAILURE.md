@@ -17,7 +17,7 @@ Phase 2+ architecture includes Milvus for warm tier vector search. When Milvus i
 ## Immediate Actions
 
 1. Verify DuckDB fallback is working:
-   curl http://akosha:8000/api/v1/search -X POST \
+   curl http://akosha:8000/api/v1/search -X POST \\ # ARCHIVED: Broken link: http://akosha:8000/api/v1/search - Network error: Connection failed
    -H "Content-Type: application/json" \
    -d '{"query": "test", "limit": 10}'
 
@@ -25,7 +25,7 @@ Phase 2+ architecture includes Milvus for warm tier vector search. When Milvus i
    kubectl get pods -n akosha -l app=milvus
 
 1. Check circuit breaker status:
-   curl http://akosha:8000/api/v1/metrics | jq .akosha_circuit_breaker_milvus_state
+   curl http://akosha:8000/api/v1/metrics | jq .akosha_circuit_breaker_milvus_state # ARCHIVED: Broken link: http://akosha:8000/api/v1/metrics - Network error: Connection fail
 
 ## Recovery Steps
 

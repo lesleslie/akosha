@@ -162,10 +162,12 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
                 system_id=source,
                 conversation_id=memory_id,
                 content=text,
-                embedding=embedding,
-                timestamp=metadata.get("created_at", datetime.now(UTC).isoformat())
+                embedding=embedding or [],  # type: ignore[arg-type]
+                timestamp=datetime.fromisoformat(
+                    metadata.get("created_at", datetime.now(UTC).isoformat())
+                )
                 if metadata
-                else datetime.now(UTC).isoformat(),
+                else datetime.now(UTC),
                 metadata=normalized_metadata,
             )
 

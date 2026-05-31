@@ -181,7 +181,9 @@ class TestSessionTracking:
         mock_parent_start.assert_called_once()
         tracker.emit_session_start.assert_awaited_once()
         assert tracker.emit_session_start.await_args.kwargs["shell_type"] == "ipython"
-        assert tracker.emit_session_start.await_args.kwargs["metadata"]["component_name"] == "akosha"
+        assert (
+            tracker.emit_session_start.await_args.kwargs["metadata"]["component_name"] == "akosha"
+        )
 
     @pytest.mark.asyncio
     async def test_start_skips_session_start_when_unavailable(self, akosha_shell):

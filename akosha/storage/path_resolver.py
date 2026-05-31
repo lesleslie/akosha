@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from contextlib import suppress
 from pathlib import Path
 from typing import Final
 
@@ -67,12 +68,10 @@ class StoragePathResolver:
 
         # Check for container cgroup
         if Path("/proc/1/cgroup").exists():
-            try:
+            with suppress(OSError):
                 cgroup = Path("/proc/1/cgroup").read_text()
                 if "/docker/" in cgroup or "/kubepods/" in cgroup:
                     return True
-            except OSError:
-                pass
 
         return False
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -61,7 +60,9 @@ def patched_lifespan(monkeypatch: pytest.MonkeyPatch):
         "akosha.processing.embeddings.get_embedding_service",
         lambda: embedding_service,
     )
-    monkeypatch.setattr("akosha.processing.analytics.TimeSeriesAnalytics", lambda: analytics_service)
+    monkeypatch.setattr(
+        "akosha.processing.analytics.TimeSeriesAnalytics", lambda: analytics_service
+    )
     monkeypatch.setattr(
         "akosha.processing.knowledge_graph.KnowledgeGraphBuilder",
         lambda: graph_builder,
@@ -85,10 +86,14 @@ def patched_lifespan(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.mark.asyncio
-async def test_create_app_standard_mode_lifespan(fastmcp_factory: DummyFastMCP, patched_lifespan, monkeypatch):
+async def test_create_app_standard_mode_lifespan(
+    fastmcp_factory: DummyFastMCP, patched_lifespan, monkeypatch
+):
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("OTLP_ENDPOINT", "http://otel:4317")
-    monkeypatch.setattr("akosha.observability.prometheus_metrics.generate_metrics", lambda: "metrics")
+    monkeypatch.setattr(
+        "akosha.observability.prometheus_metrics.generate_metrics", lambda: "metrics"
+    )
 
     app = create_app()
     assert app is fastmcp_factory
@@ -142,7 +147,9 @@ async def test_create_app_lite_mode_and_auth_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ENVIRONMENT", "development")
-    monkeypatch.setattr("akosha.observability.prometheus_metrics.generate_metrics", lambda: "metrics")
+    monkeypatch.setattr(
+        "akosha.observability.prometheus_metrics.generate_metrics", lambda: "metrics"
+    )
 
     app = create_app(mode=LiteMode())
     async with app._mcp_server.lifespan(app) as context:

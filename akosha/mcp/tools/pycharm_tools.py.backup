@@ -1,14 +1,14 @@
 """PyCharm MCP tools for Akosha cross-system code analysis.
 
+from __future__ import annotations
 This module provides MCP tools that leverage PyCharm's IDE capabilities
 for enhanced code search, diagnostics, and analysis across all indexed
 repositories in Akosha's memory aggregation system.
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
+import operator
 import re
 import time
 from dataclasses import dataclass
@@ -593,7 +593,7 @@ def register_pycharm_tools(
                             node_type = node.get("type", "")
 
                             # Match function definitions, calls, and imports
-                            if function_name.lower() in node_name.lower():  # nosec SIM102
+                            if function_name.lower() in node_name.lower():  # nosec SIM102  # noqa: SIM102
                                 if node_type in ("function", "method", "call", "import"):
                                     matching_files.append(
                                         {
@@ -769,7 +769,7 @@ def register_pycharm_tools(
 
                         for imp, count in sorted(
                             import_counts.items(),
-                            key=lambda x: x[1],
+                            key=operator.itemgetter(1),
                             reverse=True,
                         )[:10]:
                             results.append(

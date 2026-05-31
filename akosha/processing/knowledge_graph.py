@@ -6,15 +6,42 @@ import logging
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
-try:
-    from druva import generate as generate_ulid
-except ImportError:
-    generate_ulid = None  # Fallback for ULID
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
-from akosha.observability import add_span_attributes, record_counter, record_histogram, traced
+def _load_ulid_generator() -> Callable[[], str] | None:
+    """Load ULID generator from druva package if available."""
+    try:
+        from druva import generate as _gen_fn  # type: ignore[import-not-found]
+
+        return _gen_fn  # type: ignore[no-any-return]
+    except ImportError:
+        return None
+
+
+_ulid_impl: Callable[[], str] | None = _load_ulid_generator()
+
+
+def make_ulid() -> str:
+    """Generate a ULID or fallback to prefixed ID.
+
+    Note: When druva is not installed, returns empty string.
+    Callers must provide fallback via conditional.
+    """
+    if _ulid_impl is not None:
+        return _ulid_impl()
+    return ""
+
+
+from akosha.observability import (  # noqa: E402
+    add_span_attributes,
+    record_counter,
+    record_histogram,
+    traced,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +52,7 @@ class GraphEntity:
 
     entity_id: str
     entity_type: str  # user, project, concept, error, system
-    properties: dict[str, Any] = field(default_factory=dict)
+    properties: dict[str, Any] = field(default_factory=lambda: cast("dict[str, Any]", {}))
     source_system: str = "unknown"
 
 
@@ -37,7 +64,7 @@ class GraphEdge:
     target_id: str
     edge_type: str  # worked_on, fixed, related_to, similar_to, mentioned
     weight: float = 1.0
-    properties: dict[str, Any] = field(default_factory=dict)
+    properties: dict[str, Any] = field(default_factory=lambda: cast("dict[str, Any]", {}))
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     source_system: str = "unknown"
 
@@ -77,14 +104,14 @@ class KnowledgeGraphBuilder:
             }
         )
 
-        entities = []
+        entities: list[GraphEntity] = []
 
         # Extract system entity
         system_id = conversation.get("system_id")
         if system_id:
             entities.append(
                 GraphEntity(
-                    entity_id=generate_ulid() if generate_ulid else f"system:{system_id}",
+                    entity_id=make_ulid() or f"system:{system_id}",
                     entity_type="system",
                     properties={"name": system_id},
                     source_system=system_id,
@@ -97,7 +124,7 @@ class KnowledgeGraphBuilder:
         if user_id:
             entities.append(
                 GraphEntity(
-                    entity_id=generate_ulid() if generate_ulid else f"user:{user_id}",
+                    entity_id=make_ulid() or f"user:{user_id}",
                     entity_type="user",
                     properties={"user_id": user_id},
                     source_system=system_id or "unknown",
@@ -109,7 +136,7 @@ class KnowledgeGraphBuilder:
         if project:
             entities.append(
                 GraphEntity(
-                    entity_id=generate_ulid() if generate_ulid else f"project:{project}",
+                    entity_id=make_ulid() or f"project:{project}",
                     entity_type="project",
                     properties={"name": project},
                     source_system=system_id or "unknown",
@@ -136,7 +163,7 @@ class KnowledgeGraphBuilder:
         Returns:
             List of relationships
         """
-        edges = []
+        edges: list[GraphEdge] = []
         system_id = conversation.get("system_id", "unknown")
 
         add_span_attributes(
@@ -238,7 +265,7 @@ class KnowledgeGraphBuilder:
             }
         )
 
-        neighbors = []
+        neighbors: list[dict[str, Any]] = []
 
         for edge in self.edges:
             if edge.source_id == entity_id and (edge_type is None or edge.edge_type == edge_type):
@@ -435,7 +462,7 @@ class KnowledgeGraphBuilder:
         Returns:
             List of neighbor entity IDs
         """
-        neighbors = []
+        neighbors: list[str] = []
 
         for edge in self.edges:
             if edge.source_id == entity_id:
@@ -466,7 +493,7 @@ class KnowledgeGraphBuilder:
             List of entity IDs forming the path, or None if reconstruction fails
         """
         # Reconstruct forward path (source -> meeting_point)
-        forward_path = []
+        forward_path: list[str] = []
         current: str | None = meeting_point
         while current is not None:
             forward_path.append(current)
@@ -474,14 +501,14 @@ class KnowledgeGraphBuilder:
         forward_path.reverse()
 
         # Reconstruct backward path (meeting_point -> target)
-        backward_path = []
+        backward_path: list[str] = []
         current = backward_visited.get(meeting_point)
         while current is not None:
             backward_path.append(current)
             current = backward_visited.get(current)
 
         # Combine paths (excluding duplicate meeting_point)
-        full_path = forward_path + backward_path
+        full_path: list[str] = forward_path + backward_path
 
         # Validate path
         if not full_path or full_path[0] != source_id or full_path[-1] != target_id:

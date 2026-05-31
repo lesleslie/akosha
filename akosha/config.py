@@ -27,10 +27,10 @@ from typing import Any
 from pydantic import BaseModel, Field, model_validator
 
 try:
-    from mcp_common.config.base import MCPBaseSettings
+    from mcp_common.config.base import MCPBaseSettings  # type: ignore[assignment]
 except ImportError:
     # Fallback if mcp-common is not installed
-    from pydantic import BaseModel as MCPBaseSettings
+    from pydantic import BaseModel as MCPBaseSettings  # type: ignore[assignment, redefinition]
 
 from akosha.storage.path_resolver import StoragePathResolver
 
@@ -41,16 +41,48 @@ class HotStorageConfig(BaseModel):
     """Hot storage configuration.
 
     Attributes:
-        backend: Storage backend type (duckdb-memory, duckdb-ssd)
+        backend: Storage backend type (duckdb-memory, duckdb-ssd, pgvector)
         path: Path to hot storage (usually ":memory:" for in-memory)
+        pg_url: PostgreSQL connection string for pgvector backend
         write_ahead_log: Enable write-ahead logging
         wal_path: Path to WAL directory
+
+    Configuration can be set via:
+    1. settings/akosha.yaml under storage.hot
+    2. settings/local.yaml
+    3. Environment variables: AKOSHA__STORAGE__HOT__BACKEND, AKOSHA__STORAGE__HOT__PG_URL
     """
 
-    backend: str = "duckdb-memory"
-    path: str = ":memory:"
-    write_ahead_log: bool = True
+    backend: str = Field(
+        default="duckdb-memory",
+        description=(
+            "Storage backend: 'duckdb-memory', 'duckdb-ssd', or 'pgvector'. "
+            "Set via AKOSHA__STORAGE__HOT__BACKEND"
+        ),
+    )
+    path: str = Field(
+        default=":memory:",
+        description="DuckDB database path for OTel ingester (':memory:' for in-memory)",
+    )
+    pg_url: str = Field(
+        default="",
+        description=(
+            "PostgreSQL connection string for pgvector-backed hot storage. "
+            "Required when backend='pgvector'. Set via AKOSHA__STORAGE__HOT__PG_URL"
+        ),
+    )
+    write_ahead_log: bool = Field(default=True)
     wal_path: Path | None = None  # Will be resolved by model_validator
+
+    def __init__(self, **data: Any) -> None:
+        # Phase 1.1c: Honor AKOSHA__STORAGE__HOT__BACKEND and AKOSHA__STORAGE__HOT__PG_URL
+        _env_backend = os.getenv("AKOSHA__STORAGE__HOT__BACKEND", "")
+        _env_pg_url = os.getenv("AKOSHA__STORAGE__HOT__PG_URL", "")
+        if _env_backend and "backend" not in data:
+            data["backend"] = _env_backend
+        if _env_pg_url and "pg_url" not in data:
+            data["pg_url"] = _env_pg_url
+        super().__init__(**data)
 
     @model_validator(mode="after")
     def resolve_paths(self) -> HotStorageConfig:
@@ -121,7 +153,7 @@ class CacheConfig(BaseModel):
     redis_ttl_seconds: int = 3600
 
 
-class AkoshaConfig(MCPBaseSettings):
+class AkoshaConfig(MCPBaseSettings):  # type: ignore[reportUntypedBaseClass]
     """Main Akosha configuration using Oneiric MCPBaseSettings pattern.
 
     Configuration loading order (later overrides earlier):
@@ -202,8 +234,8 @@ def load_config_from_file(config_path: str) -> dict[str, Any]:
         return {}
 
     try:
-        with open(path) as f:  # noqa: PTH123
-            config = yaml.safe_load(f) or {}
+        with path.open() as f:
+            config: dict[str, Any] = yaml.safe_load(f) or {}  # type: ignore[assignment]
         logger.info(f"Loaded configuration from {config_path}")
         return config
     except Exception as e:
@@ -224,12 +256,12 @@ def validate_storage_config(config: AkoshaConfig) -> dict[str, bool]:
 
     # Validate warm path
     warm_path = config.warm.path
-    if warm_path.exists():
+    if warm_path.exists():  # type: ignore
         results["warm"] = True
     else:
         # Try to create it
         try:
-            warm_path.mkdir(parents=True, exist_ok=True)
+            warm_path.mkdir(parents=True, exist_ok=True)  # type: ignore[union-attr]
             results["warm"] = True
             logger.info(f"Created warm storage directory: {warm_path}")
         except Exception as e:
@@ -239,11 +271,11 @@ def validate_storage_config(config: AkoshaConfig) -> dict[str, bool]:
     # Validate WAL path (if enabled)
     if config.hot.write_ahead_log:
         wal_path = config.hot.wal_path
-        if wal_path.exists():
+        if wal_path.exists():  # type: ignore[union-attr]
             results["wal"] = True
         else:
             try:
-                wal_path.mkdir(parents=True, exist_ok=True)
+                wal_path.mkdir(parents=True, exist_ok=True)  # type: ignore[union-attr]
                 results["wal"] = True
                 logger.info(f"Created WAL directory: {wal_path}")
             except Exception as e:
@@ -272,7 +304,7 @@ def get_config(config_path: str | None = None) -> AkoshaConfig:
         AkoshaConfig instance
     """
     # Use MCPBaseSettings.load() pattern
-    return AkoshaConfig.load("akosha", config_path=Path(config_path) if config_path else None)
+    return AkoshaConfig.load("akosha", config_path=Path(config_path) if config_path else None)  # type: ignore[return-value]
 
 
 # Global configuration instance

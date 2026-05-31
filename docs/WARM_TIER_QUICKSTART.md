@@ -157,7 +157,7 @@ kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80
 
 ### 5.2 Import Akosha Dashboard
 
-1. Open Grafana: http://localhost:3000 (admin/prom-operator)
+1. Open Grafana: http://localhost:3000 (admin/prom-operator) # ARCHIVED: Broken link: http://localhost:3000/ - Network error: Connection refused - server
 1. Navigate to Dashboards → Import
 1. Paste dashboard JSON from `docs/grafana-dashboard.json`
 1. Select Prometheus data source

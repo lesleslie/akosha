@@ -70,9 +70,11 @@ class TestWebsocketAuthAuthenticator:
 
     def test_get_authenticator_warns_on_default_secret(self):
         """Test getting authenticator warns when the default secret is used."""
-        with patch("akosha.websocket.auth.AUTH_ENABLED", True), patch(
-            "akosha.websocket.auth.JWT_SECRET", "dev-secret-change-in-production"
-        ), patch("akosha.websocket.auth.WebSocketAuthenticator") as MockAuthenticator:
+        with (
+            patch("akosha.websocket.auth.AUTH_ENABLED", True),
+            patch("akosha.websocket.auth.JWT_SECRET", "dev-secret-change-in-production"),
+            patch("akosha.websocket.auth.WebSocketAuthenticator") as MockAuthenticator,
+        ):
             MockAuthenticator.return_value = object()
             result = get_authenticator()
 
@@ -231,8 +233,9 @@ class TestWebsocketAuthErrorHandling:
 
     def test_generate_token_development_mode(self):
         """Test token generation when get_authenticator returns None."""
-        with patch("akosha.websocket.auth.WebSocketAuthenticator") as MockAuthenticator, patch(
-            "akosha.websocket.auth.get_authenticator", return_value=None
+        with (
+            patch("akosha.websocket.auth.WebSocketAuthenticator") as MockAuthenticator,
+            patch("akosha.websocket.auth.get_authenticator", return_value=None),
         ):
             mock_auth = MockAuthenticator.return_value
             mock_auth.create_token.return_value = "dev-token"
@@ -247,8 +250,9 @@ class TestWebsocketAuthErrorHandling:
 
     def test_verify_token_development_mode(self):
         """Test token verification when get_authenticator returns None."""
-        with patch("akosha.websocket.auth.WebSocketAuthenticator") as MockAuthenticator, patch(
-            "akosha.websocket.auth.get_authenticator", return_value=None
+        with (
+            patch("akosha.websocket.auth.WebSocketAuthenticator") as MockAuthenticator,
+            patch("akosha.websocket.auth.get_authenticator", return_value=None),
         ):
             mock_auth = MockAuthenticator.return_value
             mock_auth.verify_token.return_value = {"user_id": "dev-user"}

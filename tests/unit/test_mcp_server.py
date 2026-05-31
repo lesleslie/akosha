@@ -153,11 +153,15 @@ class TestDependencyAvailability:
 
         from akosha.mcp import server as server_module
 
-        monkeypatch.setattr(importlib.util, "find_spec", lambda *_args, **_kwargs: (_ for _ in ()).throw(Exception("boom")))
+        monkeypatch.setattr(
+            importlib.util,
+            "find_spec",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(Exception("boom")),
+        )
 
         module = types.ModuleType("temp_mcp_server")
         module.__file__ = server_module.__file__
-        with open(server_module.__file__, "r", encoding="utf-8") as fh:
+        with open(server_module.__file__, encoding="utf-8") as fh:
             code = compile(fh.read(), server_module.__file__, "exec")
         exec(code, module.__dict__)
 

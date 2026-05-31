@@ -1056,6 +1056,6 @@ ______________________________________________________________________
 
 ## Support
 
-- **Oneiric Documentation**: https://github.com/oneiric/oneiric
+- **Oneiric Documentation**: https://github.com/lesleslie/oneiric
 - **Session-Buddy**: https://github.com/lesleslie/session-buddy
 - **Akosha Issues**: https://github.com/lesleslie/akosha/issues

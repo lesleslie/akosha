@@ -261,7 +261,7 @@ pytest --cov=akosha --cov-report=html
 - [pytest Documentation](https://docs.pytest.org/)
 - [pytest-asyncio Documentation](https://pytest-asyncio.readthedocs.io/)
 - [Pytest Coverage Documentation](https://pytest-cov.readthedocs.io/)
-- [Akosha README](/Users/les/Projects/akosha/README.md)
+- [Akosha README](../../README.md)
 
 ---
 

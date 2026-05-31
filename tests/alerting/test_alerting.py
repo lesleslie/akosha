@@ -461,9 +461,12 @@ class TestAlertManager:
             message="Test alert",
         )
 
-        with patch.object(manager.detector, "check_threshold", return_value=alert), patch.object(
-            manager, "send_alert", new=AsyncMock(return_value={"status": "complete"})
-        ) as mock_send:
+        with (
+            patch.object(manager.detector, "check_threshold", return_value=alert),
+            patch.object(
+                manager, "send_alert", new=AsyncMock(return_value={"status": "complete"})
+            ) as mock_send,
+        ):
             result = await manager.check_and_alert(
                 AlertType.HIGH_LATENCY,
                 1500.0,
@@ -482,9 +485,12 @@ class TestAlertManager:
             message="Test alert",
         )
 
-        with patch.object(manager.detector, "check_threshold", return_value=alert), patch.object(
-            manager, "send_alert", new=AsyncMock(return_value={"status": "complete"})
-        ) as mock_send:
+        with (
+            patch.object(manager.detector, "check_threshold", return_value=alert),
+            patch.object(
+                manager, "send_alert", new=AsyncMock(return_value={"status": "complete"})
+            ) as mock_send,
+        ):
             result = await manager.check_and_alert(
                 AlertType.HIGH_LATENCY,
                 1500.0,

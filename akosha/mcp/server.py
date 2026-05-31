@@ -14,6 +14,7 @@ Example:
 
 from __future__ import annotations
 
+import asyncio  # noqa: TC003 — runtime use (sleep, create_task), not just type annotations
 import os
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Final
@@ -43,6 +44,95 @@ logger = logging.getLogger(__name__)
 
 APP_NAME: Final = "akosha-mcp"
 APP_VERSION: Final = "0.1.0"
+
+DHARA_DEFAULT_URL = "http://localhost:8683"
+
+
+def _get_mcp_url() -> str:
+    """Get Akosha's MCP server URL from environment or config.
+
+    Returns:
+        MCP server URL string (e.g., "http://localhost:3002/mcp")
+    """
+    # Check env var first
+    mcp_url = os.getenv("AKOSHA_MCP_URL", "")
+    if mcp_url:
+        return mcp_url
+
+    # Fall back to host + port from config
+    host = os.getenv("AKOSHA_HOST", "localhost")
+    mcp_port = int(os.getenv("AKOSHA_MCP_PORT", "3002"))
+    return f"http://{host}:{mcp_port}/mcp"
+
+
+async def _register_to_dhara_once(dhara_url: str, key: str, mcp_url: str) -> bool:
+    """Single attempt to write component_endpoint/{name} -> mcp_url to Dhara.
+
+    Returns True on success, False on failure.
+    """
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{dhara_url}/tools/call",
+                json={"name": "put", "arguments": {"key": key, "value": mcp_url}},
+            )
+            response.raise_for_status()
+            return True
+    except Exception:
+        return False
+
+
+# Module-level task reference so shutdown can cancel the heartbeat loop
+_heartbeat_task: asyncio.Task[None] | None = None
+
+
+async def _register_component_to_dhara(mcp_url: str) -> None:
+    """Register Akosha's MCP endpoint to Dhara with retry + periodic heartbeat.
+
+    Key: component_endpoint/akosha
+    Value: MCP server URL string
+
+    Phase 1 (startup): retries with exponential backoff (1s, 2s, 4s, 8s, 16s)
+    until registration succeeds or max retries are exhausted.
+    Phase 2 (heartbeat): re-registers every 5 minutes to keep the TTL fresh.
+    Akosha's own FitnessAnalyzer is the consumer of this key — it reads it on
+    startup and re-reads it periodically via _populate_component_endpoints_from_dhara.
+    """
+    import asyncio
+    import itertools
+
+    dhara_url = os.getenv("DHARA_MCP_URL", DHARA_DEFAULT_URL)
+    key = "component_endpoint/akosha"
+
+    # Phase 1: exponential-backoff retry until registration succeeds
+    for attempt in itertools.count():
+        if await _register_to_dhara_once(dhara_url, key, mcp_url):
+            logger.info("Phase 0: registered akosha endpoint to Dhara: %s -> %s", key, mcp_url)
+            break
+        wait = min(2**attempt, 32)
+        logger.debug(
+            "Phase 0: registration attempt %d failed, retrying in %ds",
+            attempt + 1,
+            wait,
+        )
+        await asyncio.sleep(wait)
+    else:
+        logger.warning(
+            "Phase 0: exhausted retries for %s — heartbeat will continue",
+            key,
+        )
+
+    # Phase 2: periodic heartbeat — cancels on server shutdown via _heartbeat_task
+    async def heartbeat() -> None:
+        while True:
+            await asyncio.sleep(300)  # 5 minutes
+            if not await _register_to_dhara_once(dhara_url, key, mcp_url):
+                logger.debug("Phase 0 heartbeat: failed to refresh %s", key)
+
+    global _heartbeat_task
+    _heartbeat_task = asyncio.create_task(heartbeat())
 
 
 def create_app(mode: Any | None = None) -> FastMCP:
@@ -131,6 +221,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         4. Initializes analytics service
         5. Initializes knowledge graph builder
         6. Registers all MCP tools
+        7. Phase 0: registers MCP endpoint to Dhara
 
         Shutdown sequence:
         1. Flushes OpenTelemetry telemetry
@@ -180,7 +271,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         from akosha.processing.analytics import TimeSeriesAnalytics
         from akosha.processing.embeddings import get_embedding_service
         from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
-        from akosha.storage.hot_store import HotStore
+        from akosha.storage import create_hot_store
 
         # Check if we're in lite mode
         is_lite_mode = (
@@ -218,10 +309,13 @@ def create_app(mode: Any | None = None) -> FastMCP:
             analytics_service = None
             graph_builder = None
 
-        # Initialize hot store (always use in-memory for simplicity)
-        hot_store = HotStore(database_path=":memory:")
+        # Initialize hot store using factory (Task 1.1a: wire PgvectorHotStore)
+        hot_store = create_hot_store()
         await hot_store.initialize()
-        logger.info("Hot store initialized")
+        logger.info(
+            "Hot store initialized (%s)",
+            type(hot_store).__name__,
+        )
 
         # Initialize cold storage if available
         if mode_instance is not None and hasattr(mode_instance, "initialize_cold_storage"):
@@ -239,6 +333,10 @@ def create_app(mode: Any | None = None) -> FastMCP:
             graph_builder=graph_builder,
             hot_store=hot_store,
         )
+
+        # Phase 0: register this component's MCP endpoint to Dhara
+        mcp_url = _get_mcp_url()
+        await _register_component_to_dhara(mcp_url)
 
         yield {
             "akosha_ready": True,

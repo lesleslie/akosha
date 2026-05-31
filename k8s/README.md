@@ -473,7 +473,7 @@ ______________________________________________________________________
 
 - [Kubernetes Documentation](https://kubernetes.io/docs/)
 - [Prometheus on Kubernetes](https://prometheus.io/docs/prometheus/latest/installation/)
-- [OpenTelemetry Kubernetes](https://opentelemetry.io/docs/instrumentation/kubernetes/)
+- OpenTelemetry Kubernetes
 - [HPA Guidelines](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/)
 
 ______________________________________________________________________
