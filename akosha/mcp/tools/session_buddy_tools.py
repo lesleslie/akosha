@@ -142,7 +142,12 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
                         f"(expected 384 for all-MiniLM-L6-v2)"
                     )
             else:
-                embedding_dim = None
+                # Explicit None check: embedding is required for HotRecord
+                return {
+                    "status": "failed",
+                    "memory_id": memory_id,
+                    "error": "Embedding is required: must be a 384-dimensional vector",
+                }
 
             # Extract source from metadata
             source = metadata.get("source", "unknown") if metadata else "unknown"
@@ -162,7 +167,7 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
                 system_id=source,
                 conversation_id=memory_id,
                 content=text,
-                embedding=embedding or [],  # type: ignore[arg-type]
+                embedding=embedding,  # type: ignore[arg-type]
                 timestamp=datetime.fromisoformat(
                     metadata.get("created_at", datetime.now(UTC).isoformat())
                 )

@@ -213,7 +213,9 @@ class FitnessAnalyzer:
 
             try:
                 if self._circuit_breaker is not None:
-                    await self._circuit_breaker.call(lambda: self._write_to_dhara(key, value))  # type: ignore[arg-type]
+                    await self._circuit_breaker.call(
+                        lambda k=key, v=value: self._write_to_dhara(k, v)
+                    )  # type: ignore[arg-type]
                 else:
                     await self._write_to_dhara(key, value)
                 self._dlq_failures.pop(key, None)

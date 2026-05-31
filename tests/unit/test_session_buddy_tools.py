@@ -62,19 +62,19 @@ class TestStoreMemory:
             mock_record = MagicMock()
             mock_record_class.return_value = mock_record
 
-            memory_id = "test-mem-no-embedding"
-            text = "Memory without embedding"
+            memory_id = "test-mem-with-embedding"
+            text = "Memory with embedding"
             metadata = {
                 "source": "http://localhost:8678",
                 "correlation_id": "corr-123",
             }
 
-            result = await store_memory(memory_id=memory_id, text=text, metadata=metadata)
+            result = await store_memory(memory_id=memory_id, text=text, embedding=[0.1] * 384, metadata=metadata)
 
             # Should succeed
             assert result["status"] == "stored"
             assert result["memory_id"] == memory_id
-            assert result["embedding_dim"] is None
+            assert result["embedding_dim"] == 384
             assert result["source"] == "http://localhost:8678"
             assert mock_record_class.call_args is not None
             assert mock_record_class.call_args.kwargs["metadata"]["correlation_id"] == "corr-123"
@@ -245,6 +245,7 @@ class TestBatchStoreMemories:
             {
                 "memory_id": "mem1",
                 "text": "Valid memory",
+                "embedding": [0.1] * 384,
                 "metadata": {"source": "http://localhost:8678"},
             },
             {"memory_id": "", "text": "Invalid memory (no ID)"},

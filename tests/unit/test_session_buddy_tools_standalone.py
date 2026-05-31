@@ -82,7 +82,7 @@ class TestStoreMemoryLogic:
                 "text": "valid text",
                 "embedding": None,
                 "metadata": None,
-                "should_succeed": True,
+                "should_succeed": False,  # embedding is required for HotRecord
             },
             {"memory_id": "", "text": "valid text", "should_succeed": False},
             {"memory_id": "valid-id", "text": "", "should_succeed": False},
@@ -189,7 +189,10 @@ class TestStoreMemoryLogic:
                 store_func = captured[0]
 
                 result = await store_func(
-                    memory_id="test-metadata", text="Test metadata handling", metadata=case["input"]
+                    memory_id="test-metadata",
+                    text="Test metadata handling",
+                    embedding=[0.1] * 384,
+                    metadata=case["input"],
                 )
 
                 assert result["status"] == "stored"
@@ -234,7 +237,7 @@ class TestBatchStoreMemoriesLogic:
             register_session_buddy_tools(mock_registry2, mock_hot_store2)
             batch_func2 = captured2[1]
 
-            valid_batch = [{"memory_id": f"mem{i}", "text": f"Text{i}"} for i in range(1000)]
+            valid_batch = [{"memory_id": f"mem{i}", "text": f"Text{i}", "embedding": [0.1] * 384} for i in range(1000)]
             result = await batch_func2(valid_batch)
 
             assert result["status"] == "completed"
@@ -247,8 +250,8 @@ class TestBatchStoreMemoriesLogic:
             {
                 "name": "all_success",
                 "memories": [
-                    {"memory_id": "mem1", "text": "Text1"},
-                    {"memory_id": "mem2", "text": "Text2"},
+                    {"memory_id": "mem1", "text": "Text1", "embedding": [0.1] * 384},
+                    {"memory_id": "mem2", "text": "Text2", "embedding": [0.1] * 384},
                 ],
                 "expected_status": "completed",
                 "expected_stored": 2,
@@ -256,7 +259,7 @@ class TestBatchStoreMemoriesLogic:
             {
                 "name": "partial_success",
                 "memories": [
-                    {"memory_id": "mem1", "text": "Text1"},
+                    {"memory_id": "mem1", "text": "Text1", "embedding": [0.1] * 384},
                     {"memory_id": "", "text": "Invalid"},
                     {"memory_id": "mem2", "text": ""},
                 ],
@@ -314,9 +317,9 @@ class TestBatchStoreMemoriesLogic:
             batch_func = captured[1]
 
             memories = [
-                {"memory_id": "mem1", "text": "Text1"},
-                {"memory_id": "mem2", "text": "Text2"},
-                {"memory_id": "mem3", "text": "Text3"},
+                {"memory_id": "mem1", "text": "Text1", "embedding": [0.1] * 384},
+                {"memory_id": "mem2", "text": "Text2", "embedding": [0.1] * 384},
+                {"memory_id": "mem3", "text": "Text3", "embedding": [0.1] * 384},
             ]
 
             result = await batch_func(memories)
@@ -352,13 +355,20 @@ class TestMemoryPersistence:
             result = await store_func(
                 memory_id="timestamp-test",
                 text="Test with timestamp",
+                embedding=[0.1] * 384,
                 metadata={"created_at": test_timestamp},
             )
 
             assert result["status"] == "stored"
 
             call_args = mock_record_class.call_args
-            assert call_args.kwargs["timestamp"] == test_timestamp
+            stored_ts = call_args.kwargs["timestamp"]
+            # HotRecord stores datetime objects, not strings
+            assert stored_ts.year == 2026
+            assert stored_ts.month == 2
+            assert stored_ts.day == 8
+            assert stored_ts.hour == 12
+            assert stored_ts.minute == 0
             mock_hot_store.insert.assert_called_once_with(mock_record)
 
     @pytest.mark.asyncio
@@ -378,17 +388,20 @@ class TestMemoryPersistence:
             from datetime import UTC, datetime
 
             result = await store_func(
-                memory_id="default-time-test", text="Test with default timestamp"
+                memory_id="default-time-test",
+                text="Test with default timestamp",
+                embedding=[0.1] * 384,
             )
 
             assert result["status"] == "stored"
 
             call_args = mock_record_class.call_args
             stored_timestamp = call_args.kwargs["timestamp"]
-            now = datetime.now(UTC).isoformat()
+            now = datetime.now(UTC)
 
-            # Should be approximately the same time (within reasonable tolerance)
-            assert stored_timestamp[:13] == now[:13]  # Same minute
+            # Should be approximately the same time (within 5 seconds)
+            diff = abs((stored_timestamp - now).total_seconds())
+            assert diff < 5, f"Timestamp difference {diff}s exceeds 5s tolerance"
 
 
 if __name__ == "__main__":

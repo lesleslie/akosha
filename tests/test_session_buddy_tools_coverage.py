@@ -118,7 +118,7 @@ class TestStoreMemory:
 
         store_func = registry.tools["store_memory"].decorated
         with patch("akosha.models.HotRecord", MagicMock):
-            result = await store_func(memory_id="mem_1", text="content", metadata=None)
+            result = await store_func(memory_id="mem_1", text="content", embedding=[0.1] * 384, metadata=None)
 
         assert result["status"] == "stored"
         assert result["source"] == "unknown"
@@ -132,7 +132,7 @@ class TestStoreMemory:
 
         store_func = registry.tools["store_memory"].decorated
         with patch("akosha.models.HotRecord", MagicMock):
-            result = await store_func(memory_id="mem_1", text="content")
+            result = await store_func(memory_id="mem_1", text="content", embedding=[0.1] * 384)
 
         assert result["status"] == "failed"
         assert "db error" in result["error"]
@@ -148,6 +148,7 @@ class TestStoreMemory:
             result = await store_func(
                 memory_id="mem_1",
                 text="content",
+                embedding=[0.1] * 384,
                 metadata={"source": "http://test", "created_at": "2026-01-01T00:00:00Z"},
             )
 

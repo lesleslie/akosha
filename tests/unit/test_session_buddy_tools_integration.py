@@ -204,7 +204,7 @@ class TestSessionBuddyToolsMCPIntegration:
                     "embedding": [0.1] * 384,
                     "metadata": {"source": "http://localhost:8678"},
                 },
-                {"memory_id": "mem2", "text": "Second memory"},
+                {"memory_id": "mem2", "text": "Second memory", "embedding": [0.1] * 384},
             ]
 
             result = await batch_func(memories=memories)
@@ -231,7 +231,7 @@ class TestSessionBuddyToolsMCPIntegration:
             register_session_buddy_tools(mock_registry, mock_hot_store)
             store_func = captured[0]
 
-            result = await store_func(memory_id="test-error", text="Test content")
+            result = await store_func(memory_id="test-error", text="Test content", embedding=[0.1] * 384)
 
             assert result["status"] == "failed"
             assert result["memory_id"] == "test-error"
@@ -348,7 +348,7 @@ class TestSessionBuddyToolPerformance:
             start_time = time.time()
 
             for i in range(100):
-                await store_func(memory_id=f"perf-test-{i}", text=f"Performance test content {i}")
+                await store_func(memory_id=f"perf-test-{i}", text=f"Performance test content {i}", embedding=[0.1] * 384)
 
             end_time = time.time()
 
@@ -372,7 +372,7 @@ class TestSessionBuddyToolPerformance:
 
             memories = []
             for i in range(500):
-                memories.append({"memory_id": f"batch-test-{i}", "text": f"Batch test content {i}"})
+                memories.append({"memory_id": f"batch-test-{i}", "text": f"Batch test content {i}", "embedding": [0.1] * 384})
 
             import time
 

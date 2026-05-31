@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field
 if TYPE_CHECKING:
     from datetime import datetime
 
+    pass  # datetime imported above for runtime use
+
 
 class ConversationMetadata(BaseModel):
     """Metadata for a conversation."""
@@ -78,6 +80,10 @@ class SystemMemoryUpload(BaseModel):
     manifest_path: str  # Path to manifest.json in cloud storage
     checksum: str | None = None  # SHA-256 checksum for validation
     size_bytes: int | None = None  # Total upload size
+
+
+# Pydantic v2: resolve datetime forward references before any instantiation
+SystemMemoryUpload.model_rebuild()
 
 
 class IngestionStats(BaseModel):
