@@ -364,3 +364,70 @@ class TestRegisterComponentToDhara:
             assert attempt_count == 3
             # Heartbeat task should have been started
             assert asyncio.create_task.called is True
+
+    @pytest.mark.asyncio
+    async def test_bounded_retry_when_dhara_unreachable(
+        self,
+        patched_server_module: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """B1 regression: bounded retry when Dhara is unreachable.
+
+        The previous code used `itertools.count()` for the retry loop,
+        making it infinite. Combined with an unreachable Dhara, this
+        blocked the lifespan startup forever. The bug was hidden because
+        the lifespan itself didn't fire (private-attribute poke no-op'd
+        in FastMCP 3.x); the public-API lifespan fix activates the
+        lifespan and exposes the bug. This test pins the bounded behavior
+        so it can't regress.
+        """
+        import asyncio
+
+        _register_component_to_dhara = patched_server_module["_register_component_to_dhara"]
+
+        monkeypatch.setenv("DHARA_MCP_URL", "http://localhost:8683")
+        monkeypatch.setattr(asyncio, "create_task", MagicMock())
+
+        # Always fail — Dhara unreachable
+        attempt_count = 0
+
+        async def always_fail(*args: object, **kwargs: object) -> bool:
+            nonlocal attempt_count
+            attempt_count += 1
+            return False
+
+        # Mock asyncio.sleep to keep the test fast (<1s real time)
+        # — the real sleep would total 1+2+4+8+16 = 31s of real waits.
+        sleep_intervals: list[float] = []
+
+        async def fake_sleep(t: float) -> None:
+            sleep_intervals.append(t)
+
+        with patch(
+            "akosha.mcp.server._register_to_dhara_once",
+            new_callable=AsyncMock,
+            side_effect=always_fail,
+        ), patch("akosha.mcp.server.asyncio.sleep", fake_sleep):
+            import akosha.mcp.server as server_module
+
+            server_module._heartbeat_task = None
+
+            # The bounded retry must exit in well under 1 second of
+            # real time (no real sleeps because we mocked sleep).
+            await asyncio.wait_for(
+                _register_component_to_dhara("http://localhost:8682/mcp"),
+                timeout=1.0,
+            )
+
+        # The retry is bounded by MAX_STARTUP_ATTEMPTS = 5.
+        # Verify exactly 5 attempts, not infinite.
+        assert attempt_count == 5, (
+            f"Expected exactly 5 retry attempts (MAX_STARTUP_ATTEMPTS), got {attempt_count}"
+        )
+        # Sleep intervals should be exponential: 1, 2, 4, 8, 16.
+        assert sleep_intervals == [1, 2, 4, 8, 16], (
+            f"Expected exponential backoff [1,2,4,8,16], got {sleep_intervals}"
+        )
+        # Even when bounded retries exhaust, the heartbeat task must
+        # still be started (Phase 2 of the registration flow).
+        assert asyncio.create_task.called is True

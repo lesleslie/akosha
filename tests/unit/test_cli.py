@@ -190,8 +190,10 @@ class TestCLIIntegration:
         self, mock_shell: MagicMock, mock_app: MagicMock
     ) -> None:
         """Shell command should construct the app and start the shell."""
+        from unittest.mock import AsyncMock
+
         shell_instance = MagicMock()
-        shell_instance.start = MagicMock()
+        shell_instance.start = AsyncMock()
         mock_shell.return_value = shell_instance
 
         cli_module.shell(None, mode="standard", verbose=True)

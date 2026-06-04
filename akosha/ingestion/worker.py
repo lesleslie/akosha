@@ -60,22 +60,24 @@ class IngestionWorker:
         self.max_concurrent_ingests = max_concurrent_ingests
         self._running = False
 
-    async def run(self, uploads: list[SystemMemoryUpload] | None = None) -> None:
+    async def run(self, uploads: list[SystemMemoryUpload] | None = None) -> list[Any] | None:
         """Main worker loop with concurrent processing.
 
         If uploads are provided, process that batch once and return the
-        per-upload results. Otherwise, run the long-lived polling loop.
+        per-upload results. Otherwise, run the long-lived polling loop
+        and return None when stopped.
         """
         if uploads is not None:
             semaphore = asyncio.Semaphore(self.max_concurrent_ingests)
 
-            async def process_with_semaphore(upload: SystemMemoryUpload) -> None:
+            async def process_with_semaphore(upload: SystemMemoryUpload) -> Any:
                 async with semaphore:
                     return await self._process_upload(upload)
 
             tasks = [process_with_semaphore(upload) for upload in uploads]
-            await asyncio.gather(*tasks, return_exceptions=True)
-            return
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            # Filter out exceptions, keep successful results
+            return [r for r in results if not isinstance(r, Exception)]
 
         self._running = True
         logger.info("Ingestion worker started")
@@ -92,13 +94,13 @@ class IngestionWorker:
                     logger.info(f"Discovered {len(uploads)} new uploads")
 
                     # 2. Process uploads concurrently with semaphore protection
-                    async def process_with_semaphore(upload: SystemMemoryUpload) -> None:
+                    async def process_in_loop(upload: SystemMemoryUpload) -> None:
                         """Process upload with semaphore limiting."""
                         async with semaphore:
-                            return await self._process_upload(upload)
+                            await self._process_upload(upload)
 
                     # Create all tasks
-                    tasks = [process_with_semaphore(upload) for upload in uploads]
+                    tasks = [process_in_loop(upload) for upload in uploads]
 
                     # Execute concurrently and capture results
                     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -118,6 +120,7 @@ class IngestionWorker:
             except Exception as e:
                 logger.error(f"Ingestion worker error: {e}", exc_info=True)
                 await asyncio.sleep(60)  # Backoff on error
+        return None
 
     async def _discover_uploads(self) -> list[SystemMemoryUpload]:
         """Discover new uploads from cloud storage using concurrent processing.
@@ -229,7 +232,7 @@ class IngestionWorker:
             logger.error(f"Sequential upload discovery failed: {e}", exc_info=True)
             return []
 
-    async def _process_upload(self, upload: SystemMemoryUpload) -> None:
+    async def _process_upload(self, upload: SystemMemoryUpload) -> Any:
         """Process a single upload.
 
         Downloads the memory database, extracts conversations with embeddings,
@@ -511,7 +514,7 @@ class IngestionWorker:
         system_id: str,
         upload_id: str,
         conversations: list[dict[str, Any]],
-    ) -> None:
+    ) -> Any:
         """Process conversations extracted from an upload.
 
         Returns:

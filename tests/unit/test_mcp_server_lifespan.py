@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -10,10 +11,14 @@ from akosha.mcp.server import APP_NAME, APP_VERSION, create_app
 
 
 class DummyFastMCP:
-    def __init__(self, name: str, version: str) -> None:
+    def __init__(self, name: str, version: str, lifespan: Any = None) -> None:
         self.name = name
         self.version = version
-        self._mcp_server = SimpleNamespace()
+        # Store lifespan in both places: the new public path (lifespan
+        # passed via the FastMCP constructor) and the legacy _mcp_server
+        # path that the existing tests below still reference.
+        self.lifespan = lifespan
+        self._mcp_server = SimpleNamespace(lifespan=lifespan)
         self.routes: dict[str, object] = {}
 
     def custom_route(self, path: str, methods: list[str]):
@@ -30,7 +35,20 @@ class DummyFastMCP:
 @pytest.fixture
 def fastmcp_factory(monkeypatch: pytest.MonkeyPatch) -> DummyFastMCP:
     app = DummyFastMCP(APP_NAME, APP_VERSION)
-    monkeypatch.setattr("akosha.mcp.server.FastMCP", lambda name, version: app)
+
+    def factory(name: str, version: str, lifespan: Any = None) -> DummyFastMCP:
+        # When create_app() calls FastMCP(..., lifespan=lifespan), update
+        # the existing dummy's lifespan reference. The test then reaches
+        # the lifespan via `app._mcp_server.lifespan` (the legacy access
+        # pattern used by the existing tests). This is a side-effect
+        # fixture; pre-fix the same dummy was used and create_app assigned
+        # `app._mcp_server.lifespan = lifespan` after the constructor,
+        # which is the same end result.
+        app.lifespan = lifespan
+        app._mcp_server.lifespan = lifespan
+        return app
+
+    monkeypatch.setattr("akosha.mcp.server.FastMCP", factory)
     return app
 
 
@@ -68,6 +86,7 @@ def patched_lifespan(monkeypatch: pytest.MonkeyPatch):
         lambda: graph_builder,
     )
     monkeypatch.setattr("akosha.storage.hot_store.HotStore", lambda database_path: hot_store)
+    monkeypatch.setattr("akosha.storage.create_hot_store", lambda: hot_store)
 
     register_all_tools = MagicMock()
     monkeypatch.setattr("akosha.mcp.tools.register_all_tools", register_all_tools)

@@ -14,9 +14,9 @@ Example:
 
 from __future__ import annotations
 
-import asyncio  # noqa: TC003 — runtime use (sleep, create_task), not just type annotations
+import asyncio
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import TYPE_CHECKING, Any, Final
 
 from fastmcp import FastMCP
@@ -101,13 +101,20 @@ async def _register_component_to_dhara(mcp_url: str) -> None:
     startup and re-reads it periodically via _populate_component_endpoints_from_dhara.
     """
     import asyncio
-    import itertools
 
     dhara_url = os.getenv("DHARA_MCP_URL", DHARA_DEFAULT_URL)
     key = "component_endpoint/akosha"
 
-    # Phase 1: exponential-backoff retry until registration succeeds
-    for attempt in itertools.count():
+    # Phase 1: bounded exponential-backoff retry. The previous code used
+    # itertools.count() with a for/else — but itertools.count() is infinite,
+    # so the else branch was unreachable, and if Dhara was unreachable this
+    # loop blocked the lifespan startup forever. The bug was hidden because
+    # the lifespan didn't fire (private-attribute poke no-op'd in FastMCP
+    # 3.x); the public-API lifespan fix activates it. Bounding to
+    # MAX_STARTUP_ATTEMPTS gives ~31s of startup wait before falling through
+    # to the heartbeat (which retries every 5 minutes).
+    MAX_STARTUP_ATTEMPTS = 5
+    for attempt in range(MAX_STARTUP_ATTEMPTS):
         if await _register_to_dhara_once(dhara_url, key, mcp_url):
             logger.info("Phase 0: registered akosha endpoint to Dhara: %s -> %s", key, mcp_url)
             break
@@ -120,18 +127,28 @@ async def _register_component_to_dhara(mcp_url: str) -> None:
         await asyncio.sleep(wait)
     else:
         logger.warning(
-            "Phase 0: exhausted retries for %s — heartbeat will continue",
+            "Phase 0: exhausted %d startup retries for %s — heartbeat will continue",
+            MAX_STARTUP_ATTEMPTS,
             key,
         )
 
-    # Phase 2: periodic heartbeat — cancels on server shutdown via _heartbeat_task
+    # Phase 2: periodic heartbeat — cancelled on server shutdown via _heartbeat_task
     async def heartbeat() -> None:
         while True:
             await asyncio.sleep(300)  # 5 minutes
             if not await _register_to_dhara_once(dhara_url, key, mcp_url):
                 logger.debug("Phase 0 heartbeat: failed to refresh %s", key)
 
+    # Guard against create_app() being called twice without an intervening
+    # shutdown (e.g. test fixture reuse, hot-reload). Without this, the prior
+    # task's reference is overwritten in the module-level global and the old
+    # task leaks, holding the previous dhara_url/key/mcp_url closure until
+    # the loop ends.
     global _heartbeat_task
+    if _heartbeat_task is not None and not _heartbeat_task.done():
+        _heartbeat_task.cancel()
+        with suppress(asyncio.CancelledError, Exception):
+            await _heartbeat_task
     _heartbeat_task = asyncio.create_task(heartbeat())
 
 
@@ -171,44 +188,21 @@ def create_app(mode: Any | None = None) -> FastMCP:
         >>> async with app.get_client() as client:
         ...     result = await client.call_tool("search_all_systems", {...})
     """
-    app = FastMCP(
-        name=APP_NAME,
-        version=APP_VERSION,
-    )
-
-    # HTTP health endpoint for Claude Code compatibility
-    @app.custom_route("/health", methods=["GET"])
-    async def health_check(request: Any) -> Any:  # noqa: ARG001
-        """HTTP health check endpoint for Claude Code `mcp list` compatibility."""
-        from starlette.responses import JSONResponse
-
-        return JSONResponse({"status": "ok", "service": "akosha", "version": APP_VERSION})
-
-    @app.custom_route("/healthz", methods=["GET"])
-    async def healthz_check(request: Any) -> Any:  # noqa: ARG001
-        """Kubernetes-style health check endpoint."""
-        from starlette.responses import JSONResponse
-
-        return JSONResponse({"status": "ok"})
-
-    @app.custom_route("/metrics", methods=["GET"])
-    async def metrics(request: Any) -> Any:  # noqa: ARG001
-        """Canonical Prometheus metrics endpoint on the main HTTP port."""
-        from starlette.responses import Response
-
-        from akosha.observability.prometheus_metrics import generate_metrics
-
-        return Response(
-            content=generate_metrics(),
-            media_type="text/plain; version=0.0.4; charset=utf-8",
-        )
-
-    # Capture mode for lifespan closure
+    # Capture mode for lifespan closure. Must be set before the lifespan
+    # is defined since the lifespan closes over this local.
     mode_instance = mode
 
-    # Custom lifespan for startup/shutdown
+    # Lifespan is defined BEFORE the FastMCP constructor so it can be
+    # passed via the public `lifespan=` kwarg. The previous code defined
+    # `lifespan` as a closure AFTER the constructor and then assigned it
+    # via `app._mcp_server.lifespan = lifespan` — a private-API attribute
+    # poke that silently no-ops in FastMCP 3.x, which caused Claude Code's
+    # transport auto-detector to fall back to REST-style /mcp/tools/call
+    # routing (returns 404, since only /mcp is mounted). Using the public
+    # constructor kwarg ensures the lifespan is captured by FastMCP's
+    # _lifespan_proxy correctly.
     @asynccontextmanager
-    async def lifespan(server: Any) -> AsyncGenerator[dict[str, Any]]:  # noqa: ARG001
+    async def lifespan(server: Any) -> AsyncGenerator[dict[str, Any]]:
         """Custom lifespan manager for Akosha.
 
         Manages the complete lifecycle of the Akosha MCP server, including
@@ -217,26 +211,26 @@ def create_app(mode: Any | None = None) -> FastMCP:
         Startup sequence:
         1. Validates authentication configuration
         2. Initializes OpenTelemetry tracing and metrics
-        3. Initializes embedding service (with fallback mode)
+        3. Initializes embedding service (with graceful fallback)
         4. Initializes analytics service
         5. Initializes knowledge graph builder
-        6. Registers all MCP tools
+        6. Registers all MCP tools (using the framework-passed `server` param)
         7. Phase 0: registers MCP endpoint to Dhara
 
         Shutdown sequence:
-        1. Flushes OpenTelemetry telemetry
-        2. Logs shutdown completion
+        1. Cancels the heartbeat task created in Phase 0
+        2. Flushes OpenTelemetry telemetry
+        3. Logs shutdown completion
 
         Args:
-            server: FastMCP server instance (unused, required by interface)
+            server: FastMCP server instance, passed by the framework. This is
+                the same object as the FastMCP instance returned by create_app();
+                we use it to register tools instead of capturing `app` from
+                the enclosing closure (which doesn't exist yet at definition time
+                when the lifespan is defined above the constructor).
 
         Yields:
-            dict[str, Any]: Context dictionary containing initialized services:
-                - akosha_ready (bool): True if all services initialized
-                - embedding_service (EmbeddingService): Embedding generation
-                - analytics_service (TimeSeriesAnalytics): Analytics engine
-                - tracer (Tracer): OpenTelemetry tracer
-                - meter (Meter): OpenTelemetry meter
+            dict[str, Any]: Context dictionary containing initialized services.
 
         Raises:
             RuntimeError: If authentication configuration is invalid.
@@ -326,8 +320,11 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # Register MCP tools with Phase 2 services
         from akosha.mcp.tools import register_all_tools
 
+        # Use the framework-passed `server` parameter (which IS the FastMCP
+        # instance) instead of a closure-captured `app`. The lifespan is
+        # defined before the constructor, so no closure name is available.
         register_all_tools(
-            app,
+            server,
             embedding_service=embedding_service,
             analytics_service=analytics_service,
             graph_builder=graph_builder,
@@ -349,11 +346,58 @@ def create_app(mode: Any | None = None) -> FastMCP:
             "cold_storage": cold_storage,
         }
 
+        # Shutdown: cancel the heartbeat task created by
+        # _register_component_to_dhara. cancel() is fire-and-forget — must
+        # await to ensure the task has finished its cleanup (closing the
+        # httpx client) before the lifespan returns and uvicorn tears down.
+        global _heartbeat_task
+        if _heartbeat_task is not None and not _heartbeat_task.done():
+            _heartbeat_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await _heartbeat_task
+            _heartbeat_task = None
+
         # Shutdown telemetry (synchronous call, no await needed)
         shutdown_telemetry()
         logger.info(f"{APP_NAME} shutdown complete")
 
-    app._mcp_server.lifespan = lifespan
+    # Construct FastMCP with the public `lifespan=` kwarg. This is the fix
+    # for the routing-404 bug: the previous code assigned lifespan via
+    # `app._mcp_server.lifespan = lifespan` AFTER the constructor, which
+    # FastMCP 3.x silently drops because the internal Server captures its
+    # own lifespan reference at __init__ time.
+    app = FastMCP(
+        name=APP_NAME,
+        version=APP_VERSION,
+        lifespan=lifespan,
+    )
+
+    # HTTP health endpoint for Claude Code compatibility
+    @app.custom_route("/health", methods=["GET"])
+    async def health_check(request: Any) -> Any:  # noqa: ARG001
+        """HTTP health check endpoint for Claude Code `mcp list` compatibility."""
+        from starlette.responses import JSONResponse
+
+        return JSONResponse({"status": "ok", "service": "akosha", "version": APP_VERSION})
+
+    @app.custom_route("/healthz", methods=["GET"])
+    async def healthz_check(request: Any) -> Any:  # noqa: ARG001
+        """Kubernetes-style health check endpoint."""
+        from starlette.responses import JSONResponse
+
+        return JSONResponse({"status": "ok"})
+
+    @app.custom_route("/metrics", methods=["GET"])
+    async def metrics(request: Any) -> Any:  # noqa: ARG001
+        """Canonical Prometheus metrics endpoint on the main HTTP port."""
+        from starlette.responses import Response
+
+        from akosha.observability.prometheus_metrics import generate_metrics
+
+        return Response(
+            content=generate_metrics(),
+            media_type="text/plain; version=0.0.4; charset=utf-8",
+        )
 
     logger.debug("Akosha MCP server created")
     return app

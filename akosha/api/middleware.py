@@ -111,7 +111,7 @@ class Role:
     VIEWER = "viewer"
 
 
-def require_role(required_role: str) -> Callable[[dict[str, Any]], dict[str, Any]]:
+async def require_role(required_role: str) -> Callable[[dict[str, Any]], dict[str, Any]]:
     """Dependency that requires specific role.
 
     Use with FastAPI Depends:
@@ -119,7 +119,7 @@ def require_role(required_role: str) -> Callable[[dict[str, Any]], dict[str, Any
         @app.post("/admin/settings")
         async def admin_settings(
             claims: dict = Depends(verify_token),
-            _ = Depends(require_role(Role.ADMIN))
+            _ = Depends(await require_role(Role.ADMIN))
         ):
             ...
     """
@@ -285,14 +285,14 @@ class RBACMiddleware:
 rbac = RBACMiddleware()
 
 
-def require_permission(permission: str) -> Callable[[dict[str, Any]], dict[str, Any]]:
+async def require_permission(permission: str) -> Callable[[dict[str, Any]], dict[str, Any]]:
     """FastAPI dependency that requires specific permission.
 
     Usage:
         @app.post("/ingest/upload")
         async def upload(
             claims: dict = Depends(verify_token),
-            _ = Depends(require_permission("ingest:upload"))
+            _ = Depends(await require_permission("ingest:upload"))
         ):
             ...
     """

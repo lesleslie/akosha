@@ -470,25 +470,26 @@ class TestRBACMiddleware:
 class TestRequirePermission:
     """Tests for require_permission dependency factory."""
 
-    def test_returns_callable(self):
-        dep = require_permission("ingest:upload")
+    @pytest.mark.asyncio
+    async def test_returns_callable(self):
+        dep = await require_permission("ingest:upload")
         assert callable(dep)
 
     @pytest.mark.asyncio
     async def test_permission_granted_for_admin(self):
-        dep = require_permission("ingest:upload")
+        dep = await require_permission("ingest:upload")
         claims = {"sub": "admin", "roles": ["admin"]}
-        result = await dep(claims=claims)
+        result = dep(claims=claims)
         assert result["sub"] == "admin"
 
     @pytest.mark.asyncio
     async def test_permission_denied_for_viewer(self):
         from fastapi import HTTPException
 
-        dep = require_permission("admin:settings")
+        dep = await require_permission("admin:settings")
         claims = {"sub": "viewer", "roles": ["viewer"]}
         with pytest.raises(HTTPException):
-            await dep(claims=claims)
+            dep(claims=claims)
 
 
 # ============================================================================

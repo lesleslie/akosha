@@ -55,7 +55,7 @@ async def test_register_all_tools_minimal_profile(monkeypatch: pytest.MonkeyPatc
     assert default_result["profile"] == "minimal"
     assert default_result["query"] is None
     assert default_result["loaded_count"] == 6
-    assert default_result["not_loaded_count"] == 15
+    assert default_result["not_loaded_count"] == 18
     assert result["profile"] == "minimal"
     assert result["query"] == "session"
     assert result["loaded_count"] == 0

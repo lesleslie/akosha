@@ -132,12 +132,17 @@ def _print_migration_summary(results: dict[str, int], from_path: Path) -> None:
     is_flag=True,
     help="Check if migration is needed",
 )
-def status(_check: bool) -> None:
+def status(check: bool) -> None:  # noqa: ARG001
     """Check storage status and show current paths."""
     resolver = get_default_resolver()
     click.echo("Akosha Storage Paths:")
     click.echo(f"  Environment: {resolver.env}")
     click.echo(f"  Base path: {resolver.base_path}")
+    from_path = Path.cwd() / "data"
+    if from_path.exists() and any(from_path.iterdir()):
+        click.echo(f"  Project-local data: present at {from_path}")
+    else:
+        click.echo("  Project-local data: none")
 
 
 @migrate.command()

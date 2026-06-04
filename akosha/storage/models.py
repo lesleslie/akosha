@@ -12,8 +12,6 @@ from pydantic import BaseModel, Field
 if TYPE_CHECKING:
     from datetime import datetime
 
-    pass  # datetime imported above for runtime use
-
 
 class ConversationMetadata(BaseModel):
     """Metadata for a conversation."""
