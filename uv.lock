@@ -150,7 +150,7 @@ wheels = [
 
 [[package]]
 name = "akosha"
-version = "0.7.0"
+version = "0.8.0"
 source = { editable = "." }
 dependencies = [
     { name = "circuitbreaker" },
@@ -4399,7 +4399,7 @@ wheels = [
 
 [[package]]
 name = "session-buddy"
-version = "0.19.9"
+version = "0.19.10"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -4420,9 +4420,9 @@ dependencies = [
     { name = "typer" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/23/ac/2d22d135c74806d65e8e512a500cab2c2a53bcf096568ea112edeff5c2b4/session_buddy-0.19.9.tar.gz", hash = "sha256:e450a9fc38c499cb0b38f84509ad70cb0f5c6211199faf62c672d72f36073813", size = 4480536, upload-time = "2026-06-03T00:55:37.24Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/75/96/f2149f2837e15c040e0d20041a5974c28bd57a35c7a768f3c2e4838e6327/session_buddy-0.19.10.tar.gz", hash = "sha256:594b6c382a5770b3c161c0181edf4b63ce72f426573329f8b95b76b9e848591b", size = 4480618, upload-time = "2026-06-04T05:04:27.183Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c6/9f/023e6d944784c2c4b9f95800393dbd78a1110bce5d5e7443d3ffe726df11/session_buddy-0.19.9-py3-none-any.whl", hash = "sha256:36316b32eacc769173dc1ff3989cdeb72b28ecba23488b2c54e91be0f72afd5c", size = 1009997, upload-time = "2026-06-03T00:55:35.127Z" },
+    { url = "https://files.pythonhosted.org/packages/20/bc/7e21e665e7ce80797bbf13a0b857276a8bc3e8a62949f6e604b56d019e31/session_buddy-0.19.10-py3-none-any.whl", hash = "sha256:9a5a51f5f56017b2fed9afd9091d410fc10b04f71f14b4571dae1670ff8e600b", size = 1010006, upload-time = "2026-06-04T05:04:25.023Z" },
 ]
 
 [[package]]
@@ -4445,7 +4445,7 @@ wheels = [
 
 [[package]]
 name = "skylos"
-version = "4.23.0"
+version = "4.23.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ca9" },
@@ -4467,9 +4467,9 @@ dependencies = [
     { name = "tree-sitter-rust" },
     { name = "tree-sitter-typescript" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/13/79/437013e92218620bd614a32a5aaacb033bc8fc546a365ec9e4e146c1971e/skylos-4.23.0.tar.gz", hash = "sha256:8be66a2c6ebcb231e694009648b4188b4e1ef40a0f01a6a6c63884a888be63c2", size = 1214763, upload-time = "2026-06-03T11:39:23.889Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ab/2d/585b651c907d015b7751d95454fa1dd3b25bbe50862f4d8c1e5df8e2e5b2/skylos-4.23.1.tar.gz", hash = "sha256:2102b790de750023c3cb5aec268b3f0315401506061a6c4cfd7f25a689e3e37c", size = 1227558, upload-time = "2026-06-04T05:36:58.749Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/5c/5eaaeba19f3b00c67e7253f15ce1143505162eb169e256d1d7d21531485b/skylos-4.23.0-py3-none-any.whl", hash = "sha256:e21c8794368f0f6ca4613cd4df0e1247d5183db0b5908e923e4ca91552551149", size = 953098, upload-time = "2026-06-03T11:39:22.586Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/a0/e232e8b39ccce62c9839e2ab9e97c6e2c0a36064404211d643efdc737b32/skylos-4.23.1-py3-none-any.whl", hash = "sha256:6ffefa2dddeb2cae0597c7b9ab191e573c1739d49a33cf36c394a4fe57946fc5", size = 964508, upload-time = "2026-06-04T05:36:57.44Z" },
 ]
 
 [[package]]
