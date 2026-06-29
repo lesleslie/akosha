@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from akosha.mcp.tools.akosha_tools import register_akosha_tools
+from akosha.mcp.tools.akosha_tools import register_akosha_tools, register_analytics_tools
 from akosha.processing.analytics import TimeSeriesAnalytics
 from akosha.processing.embeddings import EmbeddingService
 from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
@@ -202,3 +202,29 @@ async def test_tool_runtime_branches(
     stats = await get_graph_statistics()
     assert stats["total_entities"] == 42
     assert stats["entity_types"]["user"] == 15
+
+
+def test_register_analytics_tools_skips_when_service_is_none(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Regression: analytics_service=None must not register broken closures.
+
+    Mirrors the lite-mode wiring at akosha/mcp/server.py:296-304 where the
+    lifespan leaves ``analytics_service = None`` and still hands it to
+    ``register_akosha_tools``. Before the fix, the four analytics closures
+    captured ``None`` and raised ``AttributeError`` on first invocation
+    (``'NoneType' object has no attribute 'detect_anomalies'`` etc.).
+
+    After the fix, ``register_analytics_tools`` returns early, logs a
+    warning, and registers nothing.
+    """
+    registry = CapturingRegistry()
+
+    with caplog.at_level("WARNING", logger="akosha.mcp.tools.akosha_tools"):
+        register_analytics_tools(registry, analytics_service=None)
+
+    assert "analytics_service is None" in caplog.text
+    assert "detect_anomalies" not in registry.tools
+    assert "analyze_trends" not in registry.tools
+    assert "correlate_systems" not in registry.tools
+    assert "get_system_metrics" not in registry.tools

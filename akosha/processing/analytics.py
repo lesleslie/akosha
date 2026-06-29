@@ -20,6 +20,153 @@ from akosha.observability import add_span_attributes, record_counter, record_his
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Changepoint detection dataclasses
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class TrendSegment:
+    """A structurally distinct period in a time series, as detected by pytrendy."""
+
+    direction: str        # "up" | "down" | "flat"
+    start: str            # ISO datetime string (from pytrendy segment)
+    end: str              # ISO datetime string
+    days: int
+    total_change: float
+    change_rank: int      # 1 = largest magnitude shift in the window
+    trend_class: str      # "gradual" | "abrupt" | "flat" | "noise"
+
+
+@dataclass
+class ChangePointResult:
+    """Result of changepoint analysis for a metric time series."""
+
+    metric_name: str
+    segments: list[TrendSegment]             # ordered oldest → newest
+    latest_segment: TrendSegment
+    has_abrupt_trend: bool                   # True if any segment is trend_class="abrupt"
+    abrupt_segment_count: int
+    time_range: tuple[str, str]              # (first_ts, last_ts) ISO strings
+
+
+# ---------------------------------------------------------------------------
+# ChangePointAnalytics
+# ---------------------------------------------------------------------------
+
+
+class ChangePointAnalytics:
+    """Structural break detection using pytrendy's segmented changepoint analysis.
+
+    Queries Dhara directly (NOT _metrics_cache) for time-series data, then uses
+    pytrendy.detect_trends to segment the series into structurally distinct periods.
+
+    Use ``analyze_changepoints`` when structural breaks or abrupt transitions are the
+    question (segments time series, identifies cliff events). Use ``analyze_trends``
+    (TimeSeriesAnalytics) when overall direction and linear trend strength is sufficient.
+    """
+
+    def __init__(self, dhara: Any) -> None:
+        self._dhara = dhara
+
+    async def analyze_changepoints(
+        self,
+        metric_name: str,
+        entity_id: str,
+        time_window_days: int = 30,
+    ) -> ChangePointResult | None:
+        """Detect structural breakpoints in a Dhara time-series metric.
+
+        Args:
+            metric_name: Dhara metric type key (e.g. "fix-failures").
+            entity_id: Second-level Dhara key (fingerprint, system_id, etc.).
+            time_window_days: How far back to query. Default 30 days.
+
+        Returns:
+            ChangePointResult with ranked segments, or None when < 5 data points.
+        """
+        import pandas as pd
+        from pytrendy import detect_trends
+
+        start_dt = datetime.now(UTC) - timedelta(days=time_window_days)
+        records: list[dict[str, Any]] = await self._dhara.query_time_series_async(
+            metric_name,
+            entity_id,
+            start_date=start_dt.isoformat(),
+        )
+
+        # Guard BEFORE pytrendy — calling with < 5 points causes SciPy errors
+        if len(records) < 5:
+            logger.warning(
+                "Insufficient data for changepoint analysis: %s/%s (%d points)",
+                metric_name,
+                entity_id,
+                len(records),
+            )
+            return None
+
+        # Build DataFrame — pytrendy uses the date column directly (no set_index needed)
+        rows = []
+        for rec in records:
+            ts_raw = rec.get("ts")
+            value = rec.get("value")
+            if ts_raw is None or value is None:
+                continue
+            try:
+                ts = datetime.fromisoformat(ts_raw)
+            except (ValueError, TypeError):
+                continue
+            rows.append({"date": ts, "value": float(value)})
+
+        if len(rows) < 5:
+            return None
+
+        df = pd.DataFrame(rows)
+        df = df.sort_values("date").reset_index(drop=True)
+
+        try:
+            result = detect_trends(df, date_col="date", value_col="value", plot=False)
+        except Exception as e:
+            logger.warning("pytrendy.detect_trends failed for %s: %s", metric_name, e)
+            return None
+
+        raw_segments: list[dict[str, Any]] = result.segments or []
+
+        segments: list[TrendSegment] = []
+        for seg in raw_segments:
+            direction = seg.get("direction", "Flat")
+            if isinstance(direction, str):
+                direction = direction.lower()
+            segments.append(
+                TrendSegment(
+                    direction=direction,
+                    start=str(seg.get("start", "")),
+                    end=str(seg.get("end", "")),
+                    days=int(seg.get("days", 0)),
+                    total_change=float(seg.get("total_change", seg.get("change", 0.0))),
+                    change_rank=int(seg.get("change_rank", 0)),
+                    trend_class=seg.get("trend_class", "flat"),
+                )
+            )
+
+        if not segments:
+            return None
+
+        has_abrupt = any(s.trend_class == "abrupt" for s in segments)
+        abrupt_count = sum(1 for s in segments if s.trend_class == "abrupt")
+        first_ts = str(rows[0]["date"].isoformat())
+        last_ts = str(rows[-1]["date"].isoformat())
+
+        return ChangePointResult(
+            metric_name=metric_name,
+            segments=segments,
+            latest_segment=segments[-1],
+            has_abrupt_trend=has_abrupt,
+            abrupt_segment_count=abrupt_count,
+            time_range=(first_ts, last_ts),
+        )
+
+
 @dataclass
 class DataPoint:
     """Single data point in time series."""

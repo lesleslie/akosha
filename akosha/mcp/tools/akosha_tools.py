@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
-    from akosha.processing.analytics import TimeSeriesAnalytics
+    from akosha.processing.analytics import ChangePointAnalytics, TimeSeriesAnalytics
     from akosha.processing.embeddings import EmbeddingService
     from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
 
@@ -45,6 +45,7 @@ def register_akosha_tools(
     embedding_service: EmbeddingService,
     analytics_service: TimeSeriesAnalytics,
     graph_builder: KnowledgeGraphBuilder,
+    changepoint_analytics: ChangePointAnalytics | None = None,
 ) -> None:
     """Register all Akosha MCP tools.
 
@@ -56,11 +57,14 @@ def register_akosha_tools(
         embedding_service: Embedding generation service for semantic search
         analytics_service: Time-series analytics service for trend analysis
         graph_builder: Knowledge graph builder for relationship queries
+        changepoint_analytics: Optional pytrendy-backed changepoint analytics service.
+            When provided, registers the `analyze_changepoints` MCP tool. When None
+            (default), that tool is omitted — callers without a Dhara client skip it.
 
     Example:
         >>> from fastmcp import FastMCP
         >>> from akosha.processing.embeddings import get_embedding_service
-        >>> from akosha.processing.analytics import TimeSeriesAnalytics
+        >>> from akosha.processing.analytics import TimeSeriesAnalytics, ChangePointAnalytics
         >>> from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
         >>>
         >>> app = FastMCP("akosha")
@@ -68,12 +72,13 @@ def register_akosha_tools(
         ...     app,
         ...     get_embedding_service(),
         ...     TimeSeriesAnalytics(),
-        ...     KnowledgeGraphBuilder()
+        ...     KnowledgeGraphBuilder(),
+        ...     changepoint_analytics=ChangePointAnalytics(dhara=dhara_client),
         ... )
     """
     register_embedding_tools(registry, embedding_service)
     register_search_tools(registry, embedding_service)
-    register_analytics_tools(registry, analytics_service)
+    register_analytics_tools(registry, analytics_service, changepoint_analytics)
     register_graph_tools(registry, graph_builder)
 
 
@@ -361,26 +366,43 @@ def register_search_tools(
 
 def register_analytics_tools(
     registry: FastMCPToolRegistry,
-    analytics_service: TimeSeriesAnalytics,
+    analytics_service: TimeSeriesAnalytics | None,
+    changepoint_analytics: ChangePointAnalytics | None = None,
 ) -> None:
     """Register analytics tools.
 
     Registers tools for time-series analytics including trend analysis,
-    anomaly detection, and cross-system correlation analysis.
+    anomaly detection, cross-system correlation analysis, and changepoint detection.
 
     Args:
         registry: FastMCP tool registry instance
-        analytics_service: Time-series analytics service
+        analytics_service: Time-series analytics service. When ``None`` (e.g.
+            lite mode where the lifespan skips construction), no analytics
+            tools are registered and a warning is logged.
+        changepoint_analytics: Optional changepoint analytics service (pytrendy-backed).
+            When provided, registers the ``analyze_changepoints`` tool. When None,
+            the tool is omitted from the registry.
 
     Tools registered:
         - get_system_metrics: Get available metrics and statistics
-        - analyze_trends: Analyze trends for a metric over time
+        - analyze_trends: Analyze trends for a metric over time (single linear slope)
         - detect_anomalies: Detect statistical anomalies in metrics
         - correlate_systems: Analyze correlations between systems
+        - analyze_changepoints: Detect structural breaks via pytrendy (when changepoint_analytics
+            is provided). Use this when abrupt transitions or cliff events are the question;
+            use analyze_trends when overall direction is sufficient.
     """
-    from akosha.mcp.tools.tool_registry import ToolCategory, ToolMetadata
-
     logger = logging.getLogger(__name__)
+
+    if analytics_service is None:
+        logger.warning(
+            "Skipping analytics tool registration: analytics_service is None "
+            "(likely lite mode). detect_anomalies, analyze_trends, correlate_systems, "
+            "and get_system_metrics will be unavailable."
+        )
+        return
+
+    from akosha.mcp.tools.tool_registry import ToolCategory, ToolMetadata
 
     @registry.register(
         ToolMetadata(
@@ -755,6 +777,98 @@ def register_analytics_tools(
                 correlation.time_range[1].isoformat(),
             ),
         }
+
+    # Only register analyze_changepoints when a ChangePointAnalytics instance is provided.
+    if changepoint_analytics is not None:
+
+        @registry.register(
+            ToolMetadata(
+                name="analyze_changepoints",
+                description=(
+                    "Detect structural breaks and abrupt transitions in metric time series. "
+                    "Use when cliff events or segment boundaries matter. "
+                    "Use analyze_trends for overall direction only."
+                ),
+                category=ToolCategory.ANALYTICS,
+                examples=[
+                    {
+                        "metric_name": "fix-failures",
+                        "entity_id": "fp-abc123",
+                        "time_window_days": 30,
+                        "description": "Detect if AI-fix failures spiked abruptly",
+                    }
+                ],
+            )
+        )
+        @require_auth
+        async def analyze_changepoints(
+            metric_name: str,
+            entity_id: str,
+            time_window_days: int = 30,
+        ) -> dict[str, Any]:
+            """Detect structural changepoints in a Dhara time-series metric.
+
+            Segments the time series into structurally distinct periods using pytrendy,
+            classifying each as gradual, abrupt, flat, or noise. Returns the ranked
+            segment list and a flag for any abrupt transition detected.
+
+            Args:
+                metric_name: Dhara metric type key (e.g. "fix-failures").
+                entity_id: Second-level Dhara key (fingerprint, system_id, etc.).
+                time_window_days: Look-back window in days. Default 30.
+
+            Returns:
+                dict containing segments, has_abrupt_trend, abrupt_segment_count,
+                latest_segment, and time_range. Or an error dict if insufficient data.
+
+            Raises:
+                PermissionError: If authentication fails.
+            """
+            logger.info(
+                "Analyzing changepoints: metric=%s entity=%s window=%dd",
+                metric_name,
+                entity_id,
+                time_window_days,
+            )
+
+            result = await changepoint_analytics.analyze_changepoints(
+                metric_name=metric_name,
+                entity_id=entity_id,
+                time_window_days=time_window_days,
+            )
+
+            if result is None:
+                return {
+                    "metric_name": metric_name,
+                    "error": "Insufficient data for changepoint analysis",
+                    "entity_id": entity_id,
+                    "time_window_days": time_window_days,
+                }
+
+            return {
+                "metric_name": result.metric_name,
+                "segments": [
+                    {
+                        "direction": s.direction,
+                        "start": s.start,
+                        "end": s.end,
+                        "days": s.days,
+                        "total_change": s.total_change,
+                        "change_rank": s.change_rank,
+                        "trend_class": s.trend_class,
+                    }
+                    for s in result.segments
+                ],
+                "latest_segment": {
+                    "direction": result.latest_segment.direction,
+                    "trend_class": result.latest_segment.trend_class,
+                    "change_rank": result.latest_segment.change_rank,
+                    "total_change": result.latest_segment.total_change,
+                },
+                "has_abrupt_trend": result.has_abrupt_trend,
+                "abrupt_segment_count": result.abrupt_segment_count,
+                "time_range": result.time_range,
+            }
 
 
 def register_graph_tools(
