@@ -149,6 +149,7 @@ tests/archived/
 .oneiric_cache/
 .complexipy_cache/
 .cache/
+.lycheecache/
 
 # XDG - State directories
 .claude/
@@ -171,3 +172,4 @@ tests/archived/
 # ============================================================================
 *.backup
 *.bak
+*.backup.json
