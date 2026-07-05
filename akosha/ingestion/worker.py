@@ -212,9 +212,17 @@ class IngestionWorker:
         try:
             logger.debug("Discovering uploads from cloud storage (sequential)")
 
-            # Collect system prefixes from async generator
-            storage_gen: AsyncGenerator[str] = self.storage.list("systems/")  # type: ignore[call-arg, assignment]
-            system_prefixes: list[str] = [prefix async for prefix in storage_gen]  # type: ignore[union-attr]
+            # Collect system prefixes from cloud storage. ``list_files`` is
+            # sync and returns ``list[dict[str, Any]]``; extract the prefix
+            # strings from the entries.
+            list_files = getattr(self.storage, "list_files", None)
+            if list_files is None:
+                logger.warning("Storage adapter has no list_files method")
+                return []
+            entries = list_files("systems/")
+            system_prefixes: list[str] = [
+                entry["name"] for entry in entries if "name" in entry
+            ]
 
             # Process each system sequentially
             for system_prefix in system_prefixes:
@@ -327,17 +335,21 @@ class IngestionWorker:
         # Each task returns list[SystemMemoryUpload], and we catch exceptions
         results = await asyncio.gather(*scan_tasks, return_exceptions=True)
 
-        # Convert tuple to list and handle BaseException -> Exception narrowing
-        # In practice, asyncio.gather with return_exceptions=True returns Exception, not BaseException
-        # but the type signature uses BaseException for safety. We cast to satisfy mypy.
+        # Convert tuple to list and handle BaseException -> Exception narrowing.
+        # ``asyncio.gather(..., return_exceptions=True)`` is typed as
+        # ``BaseException`` for safety, but in practice raises ``Exception``.
+        # Split the branches so ty sees the narrow types in each case.
         output: list[list[SystemMemoryUpload] | Exception] = []
         for r in results:
             if isinstance(r, Exception):
-                output.append(r)  # type: ignore[arg-type]
+                output.append(r)
+            elif isinstance(r, BaseException):
+                # Truly fatal — skip rather than store alongside upload results.
+                logger.error("gather() returned non-Exception BaseException: %r", r)
+                continue
             else:
-                # r is list[SystemMemoryUpload], which is compatible with our union type
-                # but mypy sees it as list[SystemMemoryUpload] | BaseException from gather()
-                output.append(r)  # type: ignore[arg-type]
+                # r is the original T (list[SystemMemoryUpload]) — fits our union.
+                output.append(r)
         return output
 
     def _flatten_scan_results(
@@ -437,14 +449,13 @@ class IngestionWorker:
         """
         manifest_path = f"{obj}manifest.json"
 
-        if not await self.storage.exists(manifest_path):  # type: ignore[attr-defined, call-arg]
-            logger.debug(f"No manifest found at {manifest_path}")
-            return None
-
         try:
-            manifest_data_bytes = await self.storage.download(manifest_path)  # type: ignore[attr-defined, call-arg]
+            # ``S3StorageAdapter`` does not expose an ``exists`` method; instead,
+            # ``download`` returns ``None`` when the object is absent. So we let
+            # ``download`` do the existence check.
+            manifest_data_bytes = await self.storage.download(manifest_path)
             if manifest_data_bytes is None:
-                logger.warning(f"Empty manifest at {manifest_path}")
+                logger.debug(f"No manifest found at {manifest_path}")
                 return None
 
             manifest_dict = json.loads(manifest_data_bytes)
@@ -480,7 +491,7 @@ class IngestionWorker:
 
         manifest_path = getattr(upload, "manifest_path", None)
         if manifest_path:
-            return manifest_path.rsplit("/", 1)[0]  # type: ignore
+            return manifest_path.rsplit("/", 1)[0]
 
         raise AttributeError("Upload object does not expose a storage prefix")
 

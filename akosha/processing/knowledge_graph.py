@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 def _load_ulid_generator() -> Callable[[], str] | None:
     """Load ULID generator from druva package if available."""
     try:
-        from druva import generate as _gen_fn  # type: ignore[import-not-found]
+        from druva import generate as _gen_fn  # ty: ignore[unresolved-import]
 
         return _gen_fn  # type: ignore[no-any-return]
     except ImportError:

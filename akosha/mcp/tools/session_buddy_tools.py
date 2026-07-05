@@ -162,12 +162,17 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
 
             # Use HotRecord model for insertion
             from akosha.models import HotRecord
+            from typing import cast as _cast
 
+            # ``embedding`` is ``list[float] | list[list[float]]`` at the type
+            # level (the latter is unsupported but documented). The 384-dim
+            # length check above matches a flat 384-element vector; cast so
+            # HotRecord.embedding (which is typed ``list[float]``) accepts it.
             record = HotRecord(
                 system_id=source,
                 conversation_id=memory_id,
                 content=text,
-                embedding=embedding,  # type: ignore[arg-type]
+                embedding=_cast(list[float], embedding),
                 timestamp=datetime.fromisoformat(
                     metadata.get("created_at", datetime.now(UTC).isoformat())
                 )

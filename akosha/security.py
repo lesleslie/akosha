@@ -425,19 +425,23 @@ def require_auth(func: Callable) -> Callable:
         # Check for direct token parameter first (for testing)
         token = _extract_direct_token(kwargs)
 
+        # Resolve the function name once — ``Callable`` doesn't expose
+        # ``__name__`` in stubs, so use getattr() with a fallback.
+        func_name = getattr(func, "__name__", "<unknown>")
+
         if token:
-            _validate_direct_token(token, func.__name__)
+            _validate_direct_token(token, func_name)
             _clear_token_from_kwargs(kwargs)
-            logger.debug(f"Access granted to {func.__name__} (direct token)")
+            logger.debug(f"Access granted to {func_name} (direct token)")
             return await func(*args, **kwargs)
 
         # Try to extract token from context
         # FastMCP passes context as part of kwargs
         context = _extract_context_from_kwargs(kwargs)
-        _authenticate_via_context(context, func.__name__)
+        _authenticate_via_context(context, func_name)
 
         # Token is valid, proceed with function
-        logger.debug(f"Access granted to {func.__name__}")
+        logger.debug(f"Access granted to {func_name}")
         return await func(*args, **kwargs)
 
     return wrapped

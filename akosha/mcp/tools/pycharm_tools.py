@@ -613,10 +613,11 @@ def register_pycharm_tools(
                 results = await asyncio.gather(*tasks, return_exceptions=True)
 
                 for r in results:
-                    if isinstance(r, Exception):
+                    if isinstance(r, BaseException):
                         continue
-                    if r and r.get("files"):  # type: ignore[union-attr]
-                        graph_usages.append(r)
+                    entry = cast(dict[str, Any], r)
+                    if entry and entry.get("files"):
+                        graph_usages.append(entry)
 
             # Combine results
             all_usages = graph_usages

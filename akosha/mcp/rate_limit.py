@@ -10,9 +10,9 @@ import logging
 import os
 import time
 from collections import defaultdict
-from collections.abc import Callable  # noqa: TC003  # Used in runtime type hints
+from collections.abc import Awaitable, Callable  # noqa: TC003  # Used in runtime type hints
 from functools import wraps
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from akosha.observability import record_counter
 
@@ -129,7 +129,7 @@ def get_rate_limiter() -> RateLimiter:
 def require_rate_limit(
     tokens: int = 1,
     user_id_param: str = "user_id",
-) -> Callable[[Callable[..., T]], Callable[..., T]]:
+) -> Callable[[Callable[..., Awaitable[T]]], Callable[..., Awaitable[T]]]:
     """Decorator to enforce rate limiting on MCP tools.
 
     Args:
@@ -146,15 +146,15 @@ def require_rate_limit(
             pass
     """
 
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+    def decorator(func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
         @wraps(func)
-        async def wrapper(*args, **kwargs):  # type: ignore
+        async def wrapper(*args: Any, **kwargs: Any) -> T:
             # Extract user_id from kwargs or args
             user_id = kwargs.get(user_id_param)
             if user_id is None:
                 logger.warning(f"Missing {user_id_param} for rate limiting")
                 # Allow request but log warning
-                return await func(*args, **kwargs)  # type: ignore[misc]
+                return await func(*args, **kwargs)
 
             # Check rate limit
             limiter = get_rate_limiter()
@@ -171,9 +171,9 @@ def require_rate_limit(
             record_counter("mcp.rate_limit.allowed", 1, {"user_id": user_id})
 
             # Process request
-            return await func(*args, **kwargs)  # type: ignore[misc]
+            return await func(*args, **kwargs)
 
-        return wrapper  # type: ignore[return-value]  # async wrapper is compatible with sync signature
+        return wrapper
 
     return decorator
 

@@ -22,15 +22,25 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import BaseModel, Field, model_validator
 
-try:
-    from mcp_common.config.base import MCPBaseSettings  # type: ignore[assignment]
-except ImportError:
-    # Fallback if mcp-common is not installed
-    from pydantic import BaseModel as MCPBaseSettings  # type: ignore[assignment, redefinition]
+if TYPE_CHECKING:
+    # Type-checker only: import the real base class so ``class AkoshaConfig``
+    # sees a single concrete base (no MRO ambiguity).
+    from mcp_common.config.base import MCPBaseSettings
+else:
+    try:
+        from mcp_common.config.base import MCPBaseSettings  # type: ignore[assignment]
+    except ImportError:
+        # Fallback if mcp-common is not installed. Defining an empty subclass of
+        # BaseModel keeps ``MCPBaseSettings`` a single class for the type checker,
+        # instead of a ``MCPBaseSettings | BaseModel`` union which would break
+        # ``class AkoshaConfig(MCPBaseSettings)``. The ``TYPE_CHECKING`` branch
+        # above shadows this fallback for the type checker.
+        class MCPBaseSettings(BaseModel):  # type: ignore[no-redef]
+            """Fallback base class when ``mcp-common`` is unavailable."""
 
 from akosha.storage.path_resolver import StoragePathResolver
 
@@ -254,33 +264,41 @@ def validate_storage_config(config: AkoshaConfig) -> dict[str, bool]:
     """
     results: dict[str, bool] = {}
 
-    # Validate warm path
-    warm_path = config.warm.path
-    if warm_path.exists():  # type: ignore
-        results["warm"] = True
-    else:
-        # Try to create it
-        try:
-            warm_path.mkdir(parents=True, exist_ok=True)  # type: ignore[union-attr]
-            results["warm"] = True
-            logger.info(f"Created warm storage directory: {warm_path}")
-        except Exception as e:
+    # Validate warm path. ``config.warm.path`` is typed as ``Path | None``; the
+    # walrus + ``is None`` check narrows the type for the rest of the branch.
+    if (warm_path := config.warm.path) is None or not warm_path.exists():
+        # Either path is missing or doesn't exist on disk — try to create it.
+        if warm_path is not None:
+            try:
+                warm_path.mkdir(parents=True, exist_ok=True)
+                results["warm"] = True
+                logger.info(f"Created warm storage directory: {warm_path}")
+            except Exception as e:
+                results["warm"] = False
+                logger.error(f"Cannot create warm storage directory {warm_path}: {e}")
+        else:
             results["warm"] = False
-            logger.error(f"Cannot create warm storage directory {warm_path}: {e}")
+            logger.error("Warm storage path is not configured")
+    else:
+        results["warm"] = True
 
     # Validate WAL path (if enabled)
     if config.hot.write_ahead_log:
         wal_path = config.hot.wal_path
-        if wal_path.exists():  # type: ignore[union-attr]
-            results["wal"] = True
-        else:
-            try:
-                wal_path.mkdir(parents=True, exist_ok=True)  # type: ignore[union-attr]
-                results["wal"] = True
-                logger.info(f"Created WAL directory: {wal_path}")
-            except Exception as e:
+        if wal_path is None or not wal_path.exists():
+            if wal_path is not None:
+                try:
+                    wal_path.mkdir(parents=True, exist_ok=True)
+                    results["wal"] = True
+                    logger.info(f"Created WAL directory: {wal_path}")
+                except Exception as e:
+                    results["wal"] = False
+                    logger.error(f"Cannot create WAL directory {wal_path}: {e}")
+            else:
                 results["wal"] = False
-                logger.error(f"Cannot create WAL directory {wal_path}: {e}")
+                logger.error("WAL path is not configured")
+        else:
+            results["wal"] = True
 
     # Cold storage is external, just validate config
     results["cold"] = bool(config.cold.bucket)
@@ -303,8 +321,14 @@ def get_config(config_path: str | None = None) -> AkoshaConfig:
     Returns:
         AkoshaConfig instance
     """
-    # Use MCPBaseSettings.load() pattern
-    return AkoshaConfig.load("akosha", config_path=Path(config_path) if config_path else None)  # type: ignore[return-value]
+    # Use MCPBaseSettings.load() pattern. ``load`` is typed against the base
+    # class's self-type, so we cast back to ``AkoshaConfig`` for the caller.
+    return cast(
+        AkoshaConfig,
+        AkoshaConfig.load(
+            "akosha", config_path=Path(config_path) if config_path else None
+        ),
+    )
 
 
 # Global configuration instance

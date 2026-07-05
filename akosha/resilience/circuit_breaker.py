@@ -10,6 +10,7 @@ This module provides:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -262,8 +263,11 @@ class CircuitBreaker:
         Raises:
             Exception: If function execution fails
         """
-        result: T = await func(*args, **kwargs)  # type: ignore[misc]
-        return result
+        # ``func`` is typed as ``Callable[..., T]`` but may be either sync or
+        # async. Detect at runtime so we await the coroutine only when present.
+        if inspect.iscoroutinefunction(func):
+            return await func(*args, **kwargs)  # type: ignore[union-attr]
+        return func(*args, **kwargs)  # type: ignore[arg-type]
 
     def get_stats_summary(self) -> dict[str, Any]:
         """Get summary of circuit statistics.
@@ -364,14 +368,16 @@ def with_circuit_breaker(
     import functools
 
     def decorator(func: Callable) -> Callable:
-        nonlocal service_name
-
-        if service_name is None:
-            service_name = func.__name__
+        # Resolve service_name into a local so ty can narrow str | None -> str.
+        # The previous code used `nonlocal` reassignment, which ty does not
+        # narrow through closure boundaries.
+        resolved_name: str = service_name or getattr(func, "__name__", "<unknown>")
 
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-            breaker = get_circuit_breaker_registry().get_or_create_breaker(service_name, config)
+            breaker = get_circuit_breaker_registry().get_or_create_breaker(
+                resolved_name, config
+            )
 
             return await breaker.call(func, *args, **kwargs)
 
@@ -386,7 +392,7 @@ def with_circuit_breaker(
 
             async def _wrapped() -> Any:
                 breaker = get_circuit_breaker_registry().get_or_create_breaker(
-                    service_name or func.__name__, config
+                    resolved_name, config
                 )
                 return await breaker.call(_async_call)
 

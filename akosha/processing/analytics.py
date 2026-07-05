@@ -10,7 +10,7 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, TypedDict
 
 import numpy as np
 import numpy.typing as npt
@@ -25,17 +25,29 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+class _TimeSeriesRow(TypedDict):
+    """One row of the in-memory time series passed to pytrendy.
+
+    TypedDict gives us a precise ``datetime`` for ``date`` and a precise ``float``
+    for ``value``, so ``rows[0]["date"].isoformat()`` type-checks without an
+    attribute-on-union error.
+    """
+
+    date: datetime
+    value: float
+
+
 @dataclass
 class TrendSegment:
     """A structurally distinct period in a time series, as detected by pytrendy."""
 
-    direction: str        # "up" | "down" | "flat"
-    start: str            # ISO datetime string (from pytrendy segment)
-    end: str              # ISO datetime string
+    direction: str  # "up" | "down" | "flat"
+    start: str  # ISO datetime string (from pytrendy segment)
+    end: str  # ISO datetime string
     days: int
     total_change: float
-    change_rank: int      # 1 = largest magnitude shift in the window
-    trend_class: str      # "gradual" | "abrupt" | "flat" | "noise"
+    change_rank: int  # 1 = largest magnitude shift in the window
+    trend_class: str  # "gradual" | "abrupt" | "flat" | "noise"
 
 
 @dataclass
@@ -43,11 +55,11 @@ class ChangePointResult:
     """Result of changepoint analysis for a metric time series."""
 
     metric_name: str
-    segments: list[TrendSegment]             # ordered oldest → newest
+    segments: list[TrendSegment]  # ordered oldest → newest
     latest_segment: TrendSegment
-    has_abrupt_trend: bool                   # True if any segment is trend_class="abrupt"
+    has_abrupt_trend: bool  # True if any segment is trend_class="abrupt"
     abrupt_segment_count: int
-    time_range: tuple[str, str]              # (first_ts, last_ts) ISO strings
+    time_range: tuple[str, str]  # (first_ts, last_ts) ISO strings
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +118,7 @@ class ChangePointAnalytics:
             return None
 
         # Build DataFrame — pytrendy uses the date column directly (no set_index needed)
-        rows = []
+        rows: list[_TimeSeriesRow] = []
         for rec in records:
             ts_raw = rec.get("ts")
             value = rec.get("value")

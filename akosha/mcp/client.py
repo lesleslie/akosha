@@ -117,8 +117,13 @@ class BodaiComponentMCPClient:
         """
         await self._ensure_session()
 
-        result = await self._session.call_tool(name, arguments)  # type: ignore[union-attr]
-        return result
+        # ``_ensure_session`` always sets ``_session`` to a ``ClientSession``,
+        # but ty can't see across the await boundary. Use a runtime guard so
+        # the type narrows without a blanket ``type: ignore``.
+        session = self._session
+        if session is None:
+            raise RuntimeError("MCP session is not initialized")
+        return await session.call_tool(name, arguments)
 
     async def query_local_traces(
         self,

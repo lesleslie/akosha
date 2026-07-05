@@ -299,12 +299,32 @@ Type 'help()' for Python help or '%help_shell' for shell commands
 {"=" * 70}
 """
 
-    async def start(self) -> None:  # type: ignore[override]
+    def start(self) -> None:
         """Start the admin shell with session tracking.
 
         Emits session start event to Session-Buddy MCP before launching
-        the interactive shell.
+        the interactive shell. Signature mirrors ``AdminShell.start`` (sync)
+        so this remains a valid override; the async emit work is scheduled
+        via ``_emit_session_start_async`` which mirrors the parent's
+        ``_notify_session_start_async`` fire-and-forget pattern.
         """
+        self._emit_session_start_async()
+
+        # Call parent start method
+        super().start()
+
+    def _emit_session_start_async(self) -> None:
+        """Schedule the async session-start emit, tolerating both
+        running-loop and no-loop contexts (mirrors AdminShell's pattern)."""
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._emit_session_start())
+        except RuntimeError:
+            # No running loop — safe to use asyncio.run()
+            asyncio.run(self._emit_session_start())
+
+    async def _emit_session_start(self) -> None:
+        """Emit session_start to Session-Buddy MCP if available."""
         # Emit session start event
         if await self.session_tracker._check_availability():
             try:
@@ -322,9 +342,6 @@ Type 'help()' for Python help or '%help_shell' for shell commands
                 logger.warning(f"⚠️ Failed to emit session start event: {e}")
         else:
             logger.info("ℹ️ Session-Buddy MCP unavailable - session tracking disabled")  # noqa: RUF001
-
-        # Call parent start method
-        super().start()
 
     async def stop(self) -> None:
         """Stop the admin shell with session tracking.

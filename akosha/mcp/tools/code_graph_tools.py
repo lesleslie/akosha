@@ -7,7 +7,7 @@ across repositories to detect patterns, similarities, and dependencies.
 
 import logging
 import operator
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -147,13 +147,17 @@ def register_code_graph_analysis_tools(
             tasks = [compare_graph(g) for g in graphs]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # Filter and sort results (narrow BaseException to Exception)
+            # Filter and sort results. ``gather(..., return_exceptions=True)``
+            # is typed as ``T | BaseException``; after the ``isinstance`` check
+            # we know ``r`` is ``T`` and cast through Any to drop the union
+            # without sprinkling suppression markers on the append call.
             similar_repos: list[dict[str, Any]] = []
             for r in results:
-                if isinstance(r, Exception):
+                if isinstance(r, BaseException):
                     continue
-                if r:
-                    similar_repos.append(r)  # type: ignore[arg-type]
+                entry = cast(dict[str, Any], r)
+                if entry:
+                    similar_repos.append(entry)
 
             similar_repos.sort(key=operator.itemgetter("similarity"), reverse=True)
 
@@ -225,15 +229,18 @@ def register_code_graph_analysis_tools(
             tasks = [search_graph(g) for g in graphs]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # Filter results (narrow BaseException to Exception)
+            # Filter results. Same gather-BaseException-narrowing pattern as the
+            # compare-concurrently branch above: cast through Any after the
+            # ``isinstance(BaseException)`` check.
             repos_with_usage: list[dict[str, Any]] = []
             for r in results:
-                if isinstance(r, Exception):
+                if isinstance(r, BaseException):
                     continue
-                if not r:
+                entry = cast(dict[str, Any], r)
+                if not entry:
                     continue
-                if r.get("files"):  # type: ignore[union-attr]
-                    repos_with_usage.append(r)  # type: ignore[arg-type]
+                if entry.get("files"):
+                    repos_with_usage.append(entry)
 
             return {
                 "status": "success",

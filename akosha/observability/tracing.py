@@ -269,21 +269,24 @@ def traced(
     """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        nonlocal operation_name
-
-        if operation_name is None:
-            operation_name = f"{func.__module__}.{func.__name__}"
+        # Resolve operation_name into a local so ty can narrow str | None -> str.
+        # The previous code used `nonlocal` reassignment, which ty does not narrow
+        # through closure boundaries.
+        resolved_name: str = (
+            operation_name if operation_name is not None
+            else f"{getattr(func, '__module__', '<unknown>')}.{getattr(func, '__name__', '<unknown>')}"
+        )
 
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             tracer_instance = get_tracer()
             with tracer_instance.start_as_current_span(
-                operation_name,  # type: ignore[arg-type]  # operation_name is str here due to assignment above
+                resolved_name,
                 attributes=attributes or {},
             ) as span:
                 # Add function arguments as attributes (sanitized)
-                span.set_attribute("function.name", func.__name__)
-                span.set_attribute("function.module", func.__module__)
+                span.set_attribute("function.name", getattr(func, "__name__", "<unknown>"))
+                span.set_attribute("function.module", getattr(func, "__module__", "<unknown>"))
 
                 try:
                     result = await func(*args, **kwargs)
@@ -298,11 +301,11 @@ def traced(
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             tracer_instance = get_tracer()
             with tracer_instance.start_as_current_span(
-                operation_name,  # type: ignore[arg-type]  # guaranteed non-None after decorator assignment
+                resolved_name,
                 attributes=attributes or {},
             ) as span:
-                span.set_attribute("function.name", func.__name__)
-                span.set_attribute("function.module", func.__module__)
+                span.set_attribute("function.name", getattr(func, "__name__", "<unknown>"))
+                span.set_attribute("function.module", getattr(func, "__module__", "<unknown>"))
 
                 try:
                     result = func(*args, **kwargs)
@@ -334,16 +337,16 @@ def shutdown_telemetry() -> None:
 
     logger.info("Shutting down telemetry...")
 
-    # Shutdown trace provider
+    # Shutdown trace provider. trace.get_tracer_provider() returns the abstract
+    # API type which doesn't expose shutdown(); at runtime, akosha installs the
+    # SDK TracerProvider, so narrow via isinstance before calling shutdown().
     trace_provider = trace.get_tracer_provider()
-    if trace_provider:
-        # shutdown() is a synchronous method
-        trace_provider.shutdown()  # type: ignore[attr-defined]
+    if isinstance(trace_provider, TracerProvider):
+        trace_provider.shutdown()
 
-    # Shutdown meter provider
+    # Shutdown meter provider. Same reasoning as above for the SDK MeterProvider.
     meter_provider = metrics.get_meter_provider()
-    if meter_provider:
-        # shutdown() is a synchronous method with optional timeout_millis parameter
-        meter_provider.shutdown()  # type: ignore[attr-defined]
+    if isinstance(meter_provider, MeterProvider):
+        meter_provider.shutdown()
 
     logger.info("✅ Telemetry shutdown complete")

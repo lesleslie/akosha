@@ -108,7 +108,7 @@ class AlertRouter:
 
     def __init__(self) -> None:
         """Initialize alert router."""
-        self._routes: dict[AlertType, list[str]] = {}  # type: ignore
+        self._routes: dict[AlertType, list[str]] = {}
 
     def register_webhook(self, alert_type: AlertType, webhook_url: str) -> None:
         """Register webhook URL for an alert type.

@@ -18,17 +18,17 @@ import typer
 try:
     from akosha.main import AkoshaApplication  # type: ignore[import]
 except Exception:  # pragma: no cover - optional for test patching
-    AkoshaApplication = None  # type: ignore[assignment]
+    AkoshaApplication = None  # ty: ignore[invalid-assignment]
 
 try:
     from akosha.shell import AkoshaShell  # type: ignore[import]
 except Exception:  # pragma: no cover - optional for test patching
-    AkoshaShell = None  # type: ignore[assignment]
+    AkoshaShell = None  # ty: ignore[invalid-assignment]
 
 try:
     from akosha.mcp import create_app  # type: ignore[import]
 except Exception:  # pragma: no cover - import is validated in command paths
-    create_app = None  # type: ignore[assignment]
+    create_app = None  # ty: ignore[invalid-assignment]
 
 # Configure logging
 logging.basicConfig(
@@ -108,9 +108,11 @@ def shell(
     try:
         from akosha.shell import AkoshaShell
 
-        # Create and start shell
+        # Create and start shell. ``AkoshaShell.start`` is intentionally sync
+        # so it overrides ``AdminShell.start`` (also sync). The IPython shell
+        # blocks until exit, so there is no coroutine to ``asyncio.run``.
         shell_instance = AkoshaShell(akosha_app)
-        asyncio.run(shell_instance.start())
+        shell_instance.start()
     except ImportError as e:
         logger.error(f"Failed to import shell: {e}")
         logger.error("Admin shell requires optional dependencies")
