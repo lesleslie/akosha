@@ -19,6 +19,13 @@ from mcp_common.websocket import (
     WebSocketServer,
 )
 
+from akosha.observability.eventbridge_publisher import (
+    publish_aggregation_completed,
+    publish_anomaly_detected,
+    publish_insight_generated,
+    publish_pattern_detected,
+)
+
 # Import authentication
 from akosha.websocket.auth import get_authenticator
 
@@ -366,6 +373,14 @@ class AkoshaWebSocketServer(WebSocketServer):
         )
         await self.broadcast_to_room(f"patterns:{pattern_type}", event)
 
+        await publish_pattern_detected(
+            pattern_id=pattern_id,
+            pattern_type=pattern_type,
+            description=description,
+            confidence=confidence,
+            metadata=metadata,
+        )
+
     async def broadcast_anomaly_detected(
         self,
         anomaly_id: str,
@@ -396,6 +411,14 @@ class AkoshaWebSocketServer(WebSocketServer):
             room="anomalies",
         )
         await self.broadcast_to_room("anomalies", event)
+
+        await publish_anomaly_detected(
+            anomaly_id=anomaly_id,
+            anomaly_type=anomaly_type,
+            severity=severity,
+            description=description,
+            metrics=metrics,
+        )
 
     async def broadcast_insight_generated(
         self,
@@ -428,6 +451,14 @@ class AkoshaWebSocketServer(WebSocketServer):
         )
         await self.broadcast_to_room("insights", event)
 
+        await publish_insight_generated(
+            insight_id=insight_id,
+            insight_type=insight_type,
+            title=title,
+            description=description,
+            data=data,
+        )
+
     async def broadcast_aggregation_completed(
         self,
         aggregation_id: str,
@@ -455,3 +486,10 @@ class AkoshaWebSocketServer(WebSocketServer):
             room="metrics",
         )
         await self.broadcast_to_room("metrics", event)
+
+        await publish_aggregation_completed(
+            aggregation_id=aggregation_id,
+            aggregation_type=aggregation_type,
+            record_count=record_count,
+            summary=summary,
+        )
