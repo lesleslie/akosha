@@ -29,18 +29,18 @@ from pydantic import BaseModel, Field, model_validator
 if TYPE_CHECKING:
     # Type-checker only: import the real base class so ``class AkoshaConfig``
     # sees a single concrete base (no MRO ambiguity).
-    from mcp_common.config.base import MCPBaseSettings
+    from oneiric.core.config import OneiricMCPConfig
 else:
     try:
-        from mcp_common.config.base import MCPBaseSettings  # type: ignore[assignment]
+        from oneiric.core.config import OneiricMCPConfig  # type: ignore[assignment]
     except ImportError:
-        # Fallback if mcp-common is not installed. Defining an empty subclass of
-        # BaseModel keeps ``MCPBaseSettings`` a single class for the type checker,
-        # instead of a ``MCPBaseSettings | BaseModel`` union which would break
-        # ``class AkoshaConfig(MCPBaseSettings)``. The ``TYPE_CHECKING`` branch
+        # Fallback if oneiric is not installed. Defining an empty subclass of
+        # BaseModel keeps ``OneiricMCPConfig`` a single class for the type checker,
+        # instead of a ``OneiricMCPConfig | BaseModel`` union which would break
+        # ``class AkoshaConfig(OneiricMCPConfig)``. The ``TYPE_CHECKING`` branch
         # above shadows this fallback for the type checker.
-        class MCPBaseSettings(BaseModel):  # type: ignore[no-redef]
-            """Fallback base class when ``mcp-common`` is unavailable."""
+        class OneiricMCPConfig(BaseModel):  # type: ignore[no-redef]
+            """Fallback base class when ``oneiric`` is unavailable."""
 
 from akosha.storage.path_resolver import StoragePathResolver
 
@@ -227,7 +227,7 @@ class EventBridgeConfig(BaseModel):
         super().__init__(**data)
 
 
-class AkoshaConfig(MCPBaseSettings):  # type: ignore[reportUntypedBaseClass]
+class AkoshaConfig(OneiricMCPConfig):  # type: ignore[reportUntypedBaseClass]
     """Main Akosha configuration using Oneiric MCPBaseSettings pattern.
 
     Configuration loading order (later overrides earlier):
@@ -377,23 +377,36 @@ def validate_storage_config(config: AkoshaConfig) -> dict[str, bool]:
 def get_config(config_path: str | None = None) -> AkoshaConfig:
     """Get configuration instance.
 
-    Uses the MCPBaseSettings.load() pattern for layered configuration.
-    For backward compatibility, supports loading from explicit config path.
+    Migrated from MCPBaseSettings.load() to oneiric.core.config.load_settings().
+    Reads ``settings/akosha.yaml`` via oneiric's layered-config machinery
+    and constructs an ``AkoshaConfig`` from the relevant fields.
 
     Args:
-        config_path: Optional path to YAML config file (for backward compatibility)
+        config_path: Optional path to YAML config file (for backward
+            compatibility). When provided, this is forwarded to oneiric's
+            loader as the explicit-path override.
 
     Returns:
         AkoshaConfig instance
     """
-    # Use MCPBaseSettings.load() pattern. ``load`` is typed against the base
-    # class's self-type, so we cast back to ``AkoshaConfig`` for the caller.
-    return cast(
-        "AkoshaConfig",
-        AkoshaConfig.load(
-            "akosha", config_path=Path(config_path) if config_path else None
-        ),
+    from oneiric.core.config import load_settings as _oneiric_load
+
+    settings_obj = _oneiric_load(
+        path=str(Path(config_path)) if config_path else None,
+        project_name="akosha",
     )
+    # Strip values that don't match an AkoshaConfig field. ``OneiricSettings``
+    # includes inherited fields (``http_port``, ``cache_dir``, etc.) from
+    # ``OneiricMCPConfig`` that AkoshaConfig also inherits -- but
+    # OneiricSettings may populate them with ``None`` (Pydantic v2 default
+    # for required fields). Filter to (a) AkoshaConfig fields and
+    # (b) non-None values so we don't trip the type validator.
+    relevant_data = {
+        k: v
+        for k, v in settings_obj.model_dump().items()
+        if k in AkoshaConfig.model_fields and v is not None
+    }
+    return AkoshaConfig(**relevant_data)
 
 
 # Global configuration instance
