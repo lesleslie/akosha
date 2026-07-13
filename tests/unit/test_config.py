@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 
 class TestHotStorageConfig:
     """Test HotStorageConfig model."""
@@ -231,3 +233,43 @@ class TestGetConfig:
         cfg = get_config("/nonexistent.yaml")
         # Should still return a valid config with defaults
         assert cfg.api_port == 8682
+
+
+class TestEventBridgeConfig:
+    """Test EventBridgeConfig model + env-var binding."""
+
+    def test_eventbridge_config_binds_enabled_env_var(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AKOSHA_EVENTBRIDGE_ENABLED=true must propagate to cfg.enabled."""
+        from akosha.config import EventBridgeConfig
+
+        monkeypatch.setenv("AKOSHA_EVENTBRIDGE_ENABLED", "true")
+        cfg = EventBridgeConfig()
+        assert cfg.enabled is True, (
+            f"AKOSHA_EVENTBRIDGE_ENABLED=true did not propagate; got {cfg.enabled}"
+        )
+
+    def test_eventbridge_config_binds_dry_run_env_var(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AKOSHA_EVENTBRIDGE_DRY_RUN=false must propagate to cfg.dry_run."""
+        from akosha.config import EventBridgeConfig
+
+        monkeypatch.setenv("AKOSHA_EVENTBRIDGE_DRY_RUN", "false")
+        cfg = EventBridgeConfig()
+        assert cfg.dry_run is False
+
+    def test_eventbridge_config_defaults_when_no_env_var(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When no env vars are set, defaults apply (enabled=False, dry_run=True)."""
+        from akosha.config import EventBridgeConfig
+
+        monkeypatch.delenv("AKOSHA_EVENTBRIDGE_ENABLED", raising=False)
+        monkeypatch.delenv("AKOSHA_EVENTBRIDGE_DRY_RUN", raising=False)
+        monkeypatch.delenv("AKOSHA_EVENTBRIDGE_ENDPOINT", raising=False)
+        cfg = EventBridgeConfig()
+        assert cfg.enabled is False
+        assert cfg.dry_run is True
+        assert cfg.endpoint is None

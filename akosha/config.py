@@ -163,6 +163,70 @@ class CacheConfig(BaseModel):
     redis_ttl_seconds: int = 3600
 
 
+class EventBridgeConfig(BaseModel):
+    """EventBridge publisher configuration.
+
+    Attributes:
+        enabled: Master toggle for the Akosha-side EventBridge publisher.
+        default_topic: Default topic suffix when callers omit one.
+        default_source: Producer identifier (``akosha``).
+        endpoint: Optional external EventBridge ingestion URL.
+        max_concurrency: Max concurrent publishes (reserved).
+        timeout_seconds: Per-publish HTTP timeout (reserved).
+        dry_run: When True, envelopes are logged but not transmitted.
+
+    Configuration can be set via:
+    1. settings/akosha.yaml under eventbridge
+    2. settings/local.yaml
+    3. Environment variables: AKOSHA_EVENTBRIDGE_ENABLED,
+       AKOSHA_EVENTBRIDGE_DRY_RUN, AKOSHA_EVENTBRIDGE_ENDPOINT.
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Master toggle for the EventBridge publisher. Set to True to "
+            "begin emitting analytics events to the Bodai EventBridge. "
+            "Set via AKOSHA_EVENTBRIDGE_ENABLED."
+        ),
+    )
+    default_topic: str = Field(default="analytics.default")
+    default_source: str = Field(default="akosha")
+    endpoint: str | None = Field(
+        default=None,
+        description=(
+            "Optional external EventBridge ingestion URL. Reserved for "
+            "future AWS PutEvents integration; not consumed by the "
+            "current Oneiric dispatcher transport."
+        ),
+    )
+    max_concurrency: int = Field(default=5, ge=1, le=100)
+    timeout_seconds: float = Field(default=5.0, gt=0.0)
+    dry_run: bool = Field(
+        default=True,
+        description=(
+            "When True, envelopes are logged but not transmitted. Operators "
+            "must explicitly set dry_run=False (or AKOSHA_EVENTBRIDGE_DRY_RUN=false) "
+            "to actually emit events."
+        ),
+    )
+
+    def __init__(self, **data: Any) -> None:
+        # MCPBaseSettings does not auto-bind nested env vars; mirror the
+        # HotStorageConfig pattern (above). Only fills fields not already
+        # explicitly passed via ``data``.
+        _env_enabled = os.getenv("AKOSHA_EVENTBRIDGE_ENABLED", "")
+        _env_dry_run = os.getenv("AKOSHA_EVENTBRIDGE_DRY_RUN", "")
+        _env_endpoint = os.getenv("AKOSHA_EVENTBRIDGE_ENDPOINT", "")
+        if _env_enabled and "enabled" not in data:
+            data["enabled"] = _env_enabled.lower() in ("true", "1", "yes")
+        if _env_dry_run and "dry_run" not in data:
+            data["dry_run"] = _env_dry_run.lower() in ("true", "1", "yes")
+        if _env_endpoint and "endpoint" not in data:
+            data["endpoint"] = _env_endpoint
+        super().__init__(**data)
+
+
 class AkoshaConfig(MCPBaseSettings):  # type: ignore[reportUntypedBaseClass]
     """Main Akosha configuration using Oneiric MCPBaseSettings pattern.
 
@@ -204,6 +268,7 @@ class AkoshaConfig(MCPBaseSettings):  # type: ignore[reportUntypedBaseClass]
     warm: WarmStorageConfig = Field(default_factory=WarmStorageConfig)
     cold: ColdStorageConfig = Field(default_factory=ColdStorageConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
+    eventbridge: EventBridgeConfig = Field(default_factory=EventBridgeConfig)
 
     # API
     api_port: int = Field(default_factory=lambda: int(os.getenv("AKOSHA_API_PORT", "8682")))
