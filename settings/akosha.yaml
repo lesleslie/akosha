@@ -48,3 +48,19 @@ prometheus_port: 9090
 
 # Environment
 environment: development
+
+# EventBridge publisher (Phase 6 cross-repo publisher).
+# When enabled=true and dry_run=false, Akosha emits analytics events
+# (pattern.detected, anomaly.detected, insight.generated,
+# aggregation.completed) to the unified Bodai EventBridge stream
+# consumed by Mahavishnu's Bodai subscriber.
+# Default disabled (enabled=false, dry_run=true) per operator-facing
+# toggle convention.
+eventbridge:
+  enabled: false
+  default_topic: "analytics.default"
+  default_source: "akosha"
+  endpoint: null  # Reserved for future AWS PutEvents integration
+  max_concurrency: 5
+  timeout_seconds: 5.0
+  dry_run: true
