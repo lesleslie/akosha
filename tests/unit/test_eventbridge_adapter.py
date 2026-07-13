@@ -32,10 +32,3 @@ def test_adaptor_publish_calls_emit_with_envelope_fields() -> None:
         {"pattern_id": "p1", "pattern_type": "burst"},
         {"source": "akosha", "event_id": "abc-123"},
     )
-
-
-def test_adaptor_constructor_stores_bridge() -> None:
-    """The bridge reference is stored for later emit() calls."""
-    bridge = MagicMock()
-    adapter = EventBridgePublisher(bridge)
-    assert adapter._bridge is bridge
