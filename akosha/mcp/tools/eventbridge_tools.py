@@ -21,6 +21,7 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from akosha.observability.eventbridge_publisher import (
+    _get_publisher,
     publish_aggregation_completed,
     publish_anomaly_detected,
     publish_insight_generated,
@@ -100,6 +101,15 @@ def register_eventbridge_tools(
         """Publish an analytics event to the Akosha EventBridge stream."""
         if not _enabled:
             return {"status": "disabled"}
+
+        if _get_publisher() is None:
+            return {
+                "status": "no_publisher",
+                "warning": (
+                    "eventbridge enabled but publisher not wired; "
+                    "no envelope will be emitted"
+                ),
+            }
 
         if async_callback:
             workflow_id = f"pub_{uuid.uuid4().hex[:12]}"
