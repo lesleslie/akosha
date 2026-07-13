@@ -50,6 +50,14 @@ class AkoshaApplication:
         # Initialize mode-specific components
         await self._initialize_mode_components()
 
+        # Wire EventBridge publisher (opt-in via cfg.eventbridge.enabled).
+        # Production callers pass a live Oneiric EventBridge via the
+        # ``bridge_resolver`` slot on the mode instance (or via
+        # ``wire_eventbridge_publisher`` directly); when neither is
+        # provided the resolver clears any existing publisher and the
+        # ``publish_*`` functions become no-ops.
+        self._wire_eventbridge_publisher()
+
         # Setup signal handlers
         logger.info("Setting up signal handlers for graceful shutdown")
         signal.signal(signal.SIGTERM, self._handle_shutdown)
@@ -99,6 +107,37 @@ class AkoshaApplication:
         signal_name = "SIGINT" if signum == signal.SIGINT else "SIGTERM"
         logger.info(f"Received {signal_name} signal, initiating graceful shutdown")
         self.shutdown_event.set()
+
+    def _wire_eventbridge_publisher(self) -> None:
+        """Resolve and inject the EventBridge publisher at app startup.
+
+        Reads ``AksoshaConfig().eventbridge`` and a (lazy) bridge from
+        ``self.mode_instance`` if it exposes one. Wraps the result via
+        ``wire_eventbridge_publisher`` which enforces the
+        ``enabled=True`` AND ``dry_run=False`` AND ``bridge is not None``
+        opt-in triple.
+        """
+        try:
+            from akosha.config import AkoshaConfig
+            from akosha.observability.eventbridge_resolver import (
+                wire_eventbridge_publisher,
+            )
+
+            cfg = AkoshaConfig()
+            bridge = getattr(self.mode_instance, "eventbridge", None)
+            publisher = wire_eventbridge_publisher(cfg, bridge=bridge)
+            if publisher is not None:
+                logger.info(
+                    "EventBridge publisher wired (source=%s)",
+                    cfg.eventbridge.endpoint or "default",
+                )
+            else:
+                logger.debug("EventBridge publisher not wired (opt-out or runtime unavailable)")
+        except Exception as exc:  # noqa: BLE001 -- opt-in path, never fail startup
+            logger.warning(
+                "EventBridge wiring failed (%s); continuing without publisher",
+                exc,
+            )
 
     async def stop(self) -> None:
         """Stop Akosha services with drain period."""
