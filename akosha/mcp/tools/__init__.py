@@ -155,11 +155,19 @@ def register_all_tools(
         from akosha.config import AkoshaConfig
         from akosha.mcp.tools.eventbridge_tools import register_eventbridge_tools
 
-        eventbridge_enabled = AkoshaConfig().eventbridge.enabled
-        register_eventbridge_tools(app, enabled=eventbridge_enabled)
+        # Per-call re-read: each tool invocation calls the lambda, which
+        # constructs a fresh AkoshaConfig. Pydantic v1 reads the env vars
+        # in EventBridgeConfig.__init__, so operators can flip
+        # AKOSHA_EVENTBRIDGE_ENABLED without restarting the MCP server.
+        # The cost of constructing a Pydantic model (~ms) per call is
+        # acceptable for an MCP tool invocation.
+        def _eventbridge_enabled_fn() -> bool:
+            return AkoshaConfig().eventbridge.enabled
+
+        register_eventbridge_tools(app, enabled_fn=_eventbridge_enabled_fn)
         logger.info(
-            "Registered EventBridge publisher tools (enabled=%s)",
-            eventbridge_enabled,
+            "Registered EventBridge publisher tools (per-call re-read of "
+            "AkoshaConfig().eventbridge.enabled)"
         )
 
     # Always register the discovery meta-tool

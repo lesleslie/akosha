@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from akosha.observability.eventbridge_publisher import (
     _get_publisher,
@@ -78,19 +78,27 @@ async def _dispatch_topic(topic: str, payload: dict[str, Any]) -> None:
 def register_eventbridge_tools(
     mcp_app: FastMCP,
     enabled: bool = False,
+    enabled_fn: Callable[[], bool] | None = None,
     category: ToolCategory | None = None,  # noqa: ARG001 - reserved for future registry grouping
 ) -> None:
     """Register the EventBridge publisher MCP tool.
 
     Args:
         mcp_app: FastMCP application instance.
-        enabled: Master toggle. When False (default), the tool returns
-            ``{"status": "disabled"}`` for every call. Callers must pass
-            ``enabled=True`` after validating the operator has set
-            ``eventbridge.enabled=true`` in settings.
+        enabled: Legacy master toggle. When False (default), the tool
+            returns ``{"status": "disabled"}`` for every call. Captured
+            ONCE at registration. Prefer ``enabled_fn`` for hot-reload.
+        enabled_fn: Callable returning the current ``enabled`` state,
+            invoked on EVERY tool call. When provided, ``enabled`` is
+            ignored. Operators can flip the toggle without restarting the
+            MCP server by changing the source the callable reads from.
         category: Optional ToolCategory for registry grouping.
     """
-    _enabled = enabled
+    if enabled_fn is None:
+        # Legacy single-shot behavior: capture ``enabled`` once.
+        _resolved_enabled_fn: Callable[[], bool] = lambda: enabled
+    else:
+        _resolved_enabled_fn = enabled_fn
 
     @mcp_app.tool()
     async def publish_to_eventbridge(
@@ -99,7 +107,7 @@ def register_eventbridge_tools(
         async_callback: bool = False,
     ) -> dict[str, Any]:
         """Publish an analytics event to the Akosha EventBridge stream."""
-        if not _enabled:
+        if not _resolved_enabled_fn():
             return {"status": "disabled"}
 
         if _get_publisher() is None:
