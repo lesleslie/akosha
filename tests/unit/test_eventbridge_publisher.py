@@ -275,15 +275,17 @@ async def test_publisher_supports_sync_publish_returning_none() -> None:
 
 @pytest.mark.asyncio
 async def test_publisher_swallows_coroutine_raising_after_await() -> None:
-    """A coroutine returned by ``publish`` that raises mid-execution is swallowed."""
+    """A coroutine returned by ``publish`` that raises mid-execution is swallowed.
+
+    Uses ``side_effect`` with an ``async def`` so each ``publisher.publish``
+    call returns a real coroutine that raises when awaited.
+    """
     publisher = AsyncMock()
 
     async def boom(_envelope: object) -> None:
         raise ConnectionError("lost mid-flight")
 
-    publisher.publish.return_value = boom(
-        EventEnvelope(topic="pattern.detected", payload={}, headers={})
-    )
+    publisher.publish.side_effect = boom
 
     await publish_pattern_detected("p", "t", "d", 0.5, {}, publisher=publisher)
 
