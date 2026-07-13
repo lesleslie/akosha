@@ -18,6 +18,7 @@ class ToolCategory(StrEnum):
 
     SEARCH = "search"
     ANALYTICS = "analytics"
+    EVENTS = "events"
     GRAPH = "graph"
     INGESTION = "ingestion"
     SYSTEM = "system"

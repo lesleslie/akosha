@@ -151,6 +151,17 @@ def register_all_tools(
         register_fitness_tools(app)
         logger.info("Registered fitness analysis tools")
 
+    if "register_eventbridge_tools" in allowed:
+        from akosha.config import AkoshaConfig
+        from akosha.mcp.tools.eventbridge_tools import register_eventbridge_tools
+
+        eventbridge_enabled = AkoshaConfig().eventbridge.enabled
+        register_eventbridge_tools(app, enabled=eventbridge_enabled)
+        logger.info(
+            "Registered EventBridge publisher tools (enabled=%s)",
+            eventbridge_enabled,
+        )
+
     # Always register the discovery meta-tool
     _register_discovery_tool(app, profile)
 

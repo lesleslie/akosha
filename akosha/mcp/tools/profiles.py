@@ -26,6 +26,7 @@ FULL_REGISTRATIONS: list[str] = [
     "register_pycharm_tools",
     "register_otel_query_tools",
     "register_fitness_tools",
+    "register_eventbridge_tools",
 ]
 
 PROFILE_REGISTRATIONS: dict[ToolProfile, list[str]] = {
@@ -41,6 +42,7 @@ REGISTRATION_DESCRIPTIONS: dict[str, str] = {
     "register_pycharm_tools": "IDE diagnostics, code search, symbol info, and find usages via PyCharm",
     "register_otel_query_tools": "OTel trace queries by system_id and attribute filters (Bodai feedback loop)",
     "register_fitness_tools": "Fitness analysis for Bodai routing feedback loop (failure rate, p99 latency per task class)",
+    "register_eventbridge_tools": "EventBridge publisher: emit Akosha analytics events to the unified Bodai queue",
 }
 
 REGISTRATION_TOOLS: dict[str, list[str]] = {
@@ -75,6 +77,7 @@ REGISTRATION_TOOLS: dict[str, list[str]] = {
         "run_fitness_analysis",
         "get_fitness_analyzer_status",
     ],
+    "register_eventbridge_tools": ["publish_to_eventbridge"],
 }
 
 
