@@ -10,13 +10,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from collections.abc import Generator
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 from oneiric.runtime.events import EventEnvelope
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 from akosha.observability.eventbridge_publisher import (
     EVENT_VERSION,

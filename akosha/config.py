@@ -389,7 +389,7 @@ def get_config(config_path: str | None = None) -> AkoshaConfig:
     # Use MCPBaseSettings.load() pattern. ``load`` is typed against the base
     # class's self-type, so we cast back to ``AkoshaConfig`` for the caller.
     return cast(
-        AkoshaConfig,
+        "AkoshaConfig",
         AkoshaConfig.load(
             "akosha", config_path=Path(config_path) if config_path else None
         ),
