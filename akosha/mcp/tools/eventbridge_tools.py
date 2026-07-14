@@ -13,12 +13,13 @@ The tool is gated by an explicit ``enabled`` parameter — calling
 expose it. The MCP server wiring must pass
 ``enabled=cfg.eventbridge.enabled`` from the loaded AkoshaConfig.
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import uuid
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from akosha.observability.eventbridge_publisher import (
     _get_publisher,
@@ -29,6 +30,8 @@ from akosha.observability.eventbridge_publisher import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from fastmcp import FastMCP
 
     from akosha.mcp.tools.tool_registry import ToolCategory
@@ -70,9 +73,7 @@ async def _dispatch_topic(topic: str, payload: dict[str, Any]) -> None:
             summary=payload.get("summary", {}),
         )
     else:
-        logger.warning(
-            "akosha.eventbridge_tools: unknown topic=%s; ignoring", topic
-        )
+        logger.warning("akosha.eventbridge_tools: unknown topic=%s; ignoring", topic)
 
 
 def register_eventbridge_tools(
@@ -96,7 +97,8 @@ def register_eventbridge_tools(
     """
     if enabled_fn is None:
         # Legacy single-shot behavior: capture ``enabled`` once.
-        _resolved_enabled_fn: Callable[[], bool] = lambda: enabled
+        def _resolved_enabled_fn() -> bool:
+            return enabled
     else:
         _resolved_enabled_fn = enabled_fn
 
@@ -114,8 +116,7 @@ def register_eventbridge_tools(
             return {
                 "status": "no_publisher",
                 "warning": (
-                    "eventbridge enabled but publisher not wired; "
-                    "no envelope will be emitted"
+                    "eventbridge enabled but publisher not wired; no envelope will be emitted"
                 ),
             }
 

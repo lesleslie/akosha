@@ -7,7 +7,6 @@ starting the admin shell, running services, and managing configuration.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import sys
 from pathlib import Path

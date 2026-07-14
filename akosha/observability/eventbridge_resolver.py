@@ -21,13 +21,16 @@ returns None -- the full Oneiric runtime initialization is deferred;
 this resolver is the seam where production code will pass the live
 bridge once that wiring exists.
 """
+
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from akosha.config import AkoshaConfig
 from akosha.observability.eventbridge_adapter import EventBridgePublisher
 from akosha.observability.eventbridge_publisher import set_eventbridge_publisher
+
+if TYPE_CHECKING:
+    from akosha.config import AkoshaConfig
 
 
 def wire_eventbridge_publisher(

@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-07-14
+
+### Added
+
+- Add EventBridgeConfig Pydantic model
+- Add EventBridgePublisher adapter
+- eventbridge: Add Akosha analytics-event publisher
+- Expose publish_to_eventbridge MCP tool
+- settings: Add eventbridge block to akosha.yaml
+- Wire EventBridgePublisher at akosha app startup
+- Wire publish_* into AkoshaWebSocketServer.broadcast_*
+
+### Changed
+
+- settings: Migrate AkoshaConfig to OneiricMCPConfig
+
+### Fixed
+
+- mcp: Re-read eventbridge.enabled per call instead of closure capture
+- mcp: Return no_publisher status when publisher unwired
+
+### Testing
+
+- eventbridge: Add end-to-end round-trip integration tests
+- eventbridge: Drop brittle private-attr assertion in Akosha adapter test
+- eventbridge: Fix mid-flight coroutine test to actually drive failure path
+- eventbridge: Real Oneiric transport round-trip integration tests
+- eventbridge: Resolve ty complaints in Akosha unit tests
+
+### Internal
+
+- lint: Fix ruff complaints introduced by eventbridge module
+
 ## [0.8.4] - 2026-07-05
 
 ### Fixed
@@ -14,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Internal
 
 - akosha: Migrate [project.optional-dependencies] → [dependency-groups]
-- gitignore: Untrack .lycheecache + add *.backup.json rule
+- gitignore: Untrack .lycheecache + add \*.backup.json rule
 
 ## [0.8.3] - 2026-06-15
 

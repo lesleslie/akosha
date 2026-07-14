@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -41,6 +41,7 @@ else:
         # above shadows this fallback for the type checker.
         class OneiricMCPConfig(BaseModel):  # type: ignore[no-redef]
             """Fallback base class when ``oneiric`` is unavailable."""
+
 
 from akosha.storage.path_resolver import StoragePathResolver
 

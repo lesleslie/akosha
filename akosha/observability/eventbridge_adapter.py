@@ -10,6 +10,7 @@ Per the operational-safety review (Finding #2): this adapter is the
 production injection point. Without it, the publisher module would
 have no production-compatible publisher to wire into.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any

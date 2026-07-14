@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,6 +13,21 @@ from akosha.main import AkoshaApplication
 from akosha.shell import AkoshaShell
 
 runner = CliRunner()
+
+
+async def _drain_pending_tasks(expected_mock: AsyncMock | None = None) -> None:
+    """Yield to the event loop until any fire-and-forget tasks complete.
+
+    ``AkoshaShell.start`` schedules its async session-start emit via
+    ``loop.create_task`` (a fire-and-forget pattern mirrored from
+    ``oneiric.shell.AdminShell``). Tests that need to assert on the
+    scheduled work must wait for it. Pass ``expected_mock`` to short-circuit
+    as soon as the mock has been awaited at least once.
+    """
+    for _ in range(10):
+        await asyncio.sleep(0)
+        if expected_mock is not None and expected_mock.await_count > 0:
+            return
 
 
 @pytest.fixture
@@ -176,7 +192,11 @@ class TestSessionTracking:
         akosha_shell.session_tracker = tracker
 
         with patch("oneiric.shell.AdminShell.start") as mock_parent_start:
-            await akosha_shell.start()
+            akosha_shell.start()
+            # ``start`` is sync; the async emit is scheduled fire-and-forget.
+            # Yield to the event loop so the scheduled task completes before
+            # we assert on the mock.
+            await _drain_pending_tasks(tracker.emit_session_start)
 
         mock_parent_start.assert_called_once()
         tracker.emit_session_start.assert_awaited_once()
@@ -194,7 +214,10 @@ class TestSessionTracking:
         akosha_shell.session_tracker = tracker
 
         with patch("oneiric.shell.AdminShell.start") as mock_parent_start:
-            await akosha_shell.start()
+            akosha_shell.start()
+            # Drain any pending tasks (none expected here, but keep parity
+            # with the other fire-and-forget start tests).
+            await _drain_pending_tasks(tracker.emit_session_start)
 
         mock_parent_start.assert_called_once()
         tracker.emit_session_start.assert_not_awaited()
@@ -208,7 +231,8 @@ class TestSessionTracking:
         akosha_shell.session_tracker = tracker
 
         with patch("oneiric.shell.AdminShell.start") as mock_parent_start:
-            await akosha_shell.start()
+            akosha_shell.start()
+            await _drain_pending_tasks(tracker.emit_session_start)
 
         mock_parent_start.assert_called_once()
         tracker.emit_session_start.assert_awaited_once()

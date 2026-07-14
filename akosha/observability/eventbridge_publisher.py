@@ -41,6 +41,7 @@ against a Pydantic envelope, not Oneiric's msgspec envelope. Duck-typing
 is intentional; AsyncMock and the Oneiric EventBridge publisher both
 satisfy ``publisher.publish(envelope)``.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -146,14 +147,12 @@ async def publish_pattern_detected(
             "pattern_type": pattern_type,
             "description": description,
             "confidence": confidence,
-            **metadata,
-        }
+        } | metadata
         envelope = _make_envelope(TOPIC_PATTERN_DETECTED, SOURCE, payload)
         await _publish(envelope, effective_publisher)
     except Exception:
         logger.exception(
-            "akosha.publisher: failed to publish pattern.detected event "
-            "pattern_id=%s",
+            "akosha.publisher: failed to publish pattern.detected event pattern_id=%s",
             pattern_id,
         )
 
@@ -183,8 +182,7 @@ async def publish_anomaly_detected(
         await _publish(envelope, effective_publisher)
     except Exception:
         logger.exception(
-            "akosha.publisher: failed to publish anomaly.detected event "
-            "anomaly_id=%s",
+            "akosha.publisher: failed to publish anomaly.detected event anomaly_id=%s",
             anomaly_id,
         )
 
@@ -214,8 +212,7 @@ async def publish_insight_generated(
         await _publish(envelope, effective_publisher)
     except Exception:
         logger.exception(
-            "akosha.publisher: failed to publish insight.generated event "
-            "insight_id=%s",
+            "akosha.publisher: failed to publish insight.generated event insight_id=%s",
             insight_id,
         )
 
@@ -243,8 +240,7 @@ async def publish_aggregation_completed(
         await _publish(envelope, effective_publisher)
     except Exception:
         logger.exception(
-            "akosha.publisher: failed to publish aggregation.completed event "
-            "aggregation_id=%s",
+            "akosha.publisher: failed to publish aggregation.completed event aggregation_id=%s",
             aggregation_id,
         )
 

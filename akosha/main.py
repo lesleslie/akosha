@@ -133,7 +133,7 @@ class AkoshaApplication:
                 )
             else:
                 logger.debug("EventBridge publisher not wired (opt-out or runtime unavailable)")
-        except Exception as exc:  # noqa: BLE001 -- opt-in path, never fail startup
+        except Exception as exc:
             logger.warning(
                 "EventBridge wiring failed (%s); continuing without publisher",
                 exc,

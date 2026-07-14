@@ -318,7 +318,10 @@ Type 'help()' for Python help or '%help_shell' for shell commands
         running-loop and no-loop contexts (mirrors AdminShell's pattern)."""
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(self._emit_session_start())
+            # Fire-and-forget: hold a strong reference so the task isn't
+            # garbage-collected mid-flight (mirrors the _fitness_loop_task
+            # pattern in akosha/mcp/tools/__init__.py).
+            _emit_task = loop.create_task(self._emit_session_start())  # noqa: RUF006
         except RuntimeError:
             # No running loop — safe to use asyncio.run()
             asyncio.run(self._emit_session_start())

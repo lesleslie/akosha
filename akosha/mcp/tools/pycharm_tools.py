@@ -615,7 +615,7 @@ def register_pycharm_tools(
                 for r in results:
                     if isinstance(r, BaseException):
                         continue
-                    entry = cast(dict[str, Any], r)
+                    entry = cast("dict[str, Any]", r)
                     if entry and entry.get("files"):
                         graph_usages.append(entry)
 

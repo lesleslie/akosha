@@ -212,17 +212,18 @@ class IngestionWorker:
         try:
             logger.debug("Discovering uploads from cloud storage (sequential)")
 
-            # Collect system prefixes from cloud storage. ``list_files`` is
-            # sync and returns ``list[dict[str, Any]]``; extract the prefix
-            # strings from the entries.
-            list_files = getattr(self.storage, "list_files", None)
-            if list_files is None:
-                logger.warning("Storage adapter has no list_files method")
-                return []
-            entries = list_files("systems/")
-            system_prefixes: list[str] = [
-                entry["name"] for entry in entries if "name" in entry
-            ]
+            # Collect system prefixes from cloud storage using the same
+            # storage adapter contract as ``_discover_uploads_concurrent``:
+            # ``storage.list(prefix)`` yields prefix strings (sync or async).
+            system_prefixes: list[str] = []
+            async for prefix in self._iterate_storage_list("systems/"):  # type: ignore[arg-type]
+                system_prefixes.append(prefix)  # type: ignore[union-attr]
+                if len(system_prefixes) >= self.MAX_SYSTEM_PREFIXES:
+                    logger.warning(
+                        f"System prefix limit reached ({self.MAX_SYSTEM_PREFIXES}), "
+                        "stopping discovery to prevent memory exhaustion"
+                    )
+                    break
 
             # Process each system sequentially
             for system_prefix in system_prefixes:

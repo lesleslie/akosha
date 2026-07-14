@@ -273,7 +273,8 @@ def traced(
         # The previous code used `nonlocal` reassignment, which ty does not narrow
         # through closure boundaries.
         resolved_name: str = (
-            operation_name if operation_name is not None
+            operation_name
+            if operation_name is not None
             else f"{getattr(func, '__module__', '<unknown>')}.{getattr(func, '__name__', '<unknown>')}"
         )
 

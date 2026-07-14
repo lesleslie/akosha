@@ -155,7 +155,7 @@ def register_code_graph_analysis_tools(
             for r in results:
                 if isinstance(r, BaseException):
                     continue
-                entry = cast(dict[str, Any], r)
+                entry = cast("dict[str, Any]", r)
                 if entry:
                     similar_repos.append(entry)
 
@@ -236,7 +236,7 @@ def register_code_graph_analysis_tools(
             for r in results:
                 if isinstance(r, BaseException):
                     continue
-                entry = cast(dict[str, Any], r)
+                entry = cast("dict[str, Any]", r)
                 if not entry:
                     continue
                 if entry.get("files"):

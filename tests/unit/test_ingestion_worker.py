@@ -350,7 +350,10 @@ class TestIngestionWorker:
     ) -> None:
         """Test manifest creation failure paths."""
 
-        worker.storage.exists = AsyncMock(return_value=False)
+        # ``_try_create_upload`` uses ``download`` for the existence check
+        # (see ``akosha/ingestion/worker.py``: S3StorageAdapter has no
+        # ``exists`` method, so ``download`` returns ``None`` when absent).
+        worker.storage.download = AsyncMock(return_value=None)
         assert (
             await worker._try_create_upload(
                 "system-test", "upload-test", "systems/system-test/upload-test/"
@@ -358,7 +361,6 @@ class TestIngestionWorker:
             is None
         )
 
-        worker.storage.exists = AsyncMock(return_value=True)
         worker.storage.download = AsyncMock(return_value=b"{invalid json")
         assert (
             await worker._try_create_upload(

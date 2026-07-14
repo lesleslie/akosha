@@ -375,9 +375,7 @@ def with_circuit_breaker(
 
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-            breaker = get_circuit_breaker_registry().get_or_create_breaker(
-                resolved_name, config
-            )
+            breaker = get_circuit_breaker_registry().get_or_create_breaker(resolved_name, config)
 
             return await breaker.call(func, *args, **kwargs)
 
