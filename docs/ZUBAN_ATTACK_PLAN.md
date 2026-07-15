@@ -1,10 +1,20 @@
 # ZUBAN FIX ATTACK PLAN
 
+**Status**: resolved (2026-07-15)
+
 ## Problem Summary
 
 **Error:** `thread 'main' panicked at crates/zmypy/src/lib.rs:316:27: Problem parsing Mypy config`
 
 **Root Cause:** ZubanAdapter hardcodes `--config-file mypy.ini` but Akosha uses `pyproject.toml`
+
+## Resolution (2026-07-15)
+
+Option 1 applied — `akosha/mypy.ini` exists at the repository root and unblocks the zuban adapter that hardcodes `--config-file mypy.ini`.
+
+Option 2 verification pending; see `pyproject.toml` / `.crackerjack.toml` for zuban exclusion. The current crackerjack config (`pyproject.toml` and the absence of a repo-local `.crackerjack.toml`) does **not** disable zuban, so the dual type-checker overhead from this plan's "Phase 2: Long-term" recommendation has not been formally applied. Future operators can complete Option 2 by adding `exclude_hooks = ["zuban"]` under `[tool.crackerjack]` in `pyproject.toml`.
+
+Options 3 (patch crackerjack adapter upstream) and 4 (`zuban check` workflow) remain unimplemented and are tracked here for completeness only.
 
 ---
 
