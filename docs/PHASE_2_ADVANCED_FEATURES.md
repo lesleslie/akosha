@@ -4,6 +4,11 @@
 **Duration**: Weeks 5-8 (4 weeks)
 **Focus**: Vector indexing, time-series analytics, advanced graph operations
 
+> **Module Rename Drift (2026-07-15):** This plan references module paths that were renamed during implementation. Plan said -> Actual location:
+> - `akosha/utils/resilience.py` -> `akosha/resilience/circuit_breaker.py`
+> - `akosha/monitoring/tracing.py` -> `akosha/observability/tracing.py`
+> - `akosha/monitoring/metrics.py` -> `akosha/observability/prometheus_metrics.py`
+
 ______________________________________________________________________
 
 ## Overview
@@ -668,15 +673,15 @@ ______________________________________________________________________
 
 ### Week 5
 
-- [ ] Embedding service with ONNX all-MiniLM-L6-v2
+- [x] Embedding service with ONNX all-MiniLM-L6-v2 <!-- verified 2026-07-15: akosha/processing/embeddings.py -->
 - [ ] Enhanced vector search with cosine similarity
-- [ ] Batch embedding generation
-- [ ] Fallback for when embeddings unavailable
+- [x] Batch embedding generation <!-- verified 2026-07-15: EmbeddingService.generate_batch_embeddings -->
+- [x] Fallback for when embeddings unavailable <!-- verified 2026-07-15: EmbeddingService falls back when sentence-transformers unavailable -->
 
 ### Week 6
 
-- [ ] Time-series aggregator
-- [ ] Trend detection (linear regression)
+- [x] Time-series aggregator <!-- verified 2026-07-15: akosha/processing/analytics.py -->
+- [x] Trend detection (linear regression) <!-- verified 2026-07-15: analytics.py TrendSegment -->
 - [ ] Anomaly detection (z-score, IQR)
 - [ ] Cross-system correlation matrix
 
