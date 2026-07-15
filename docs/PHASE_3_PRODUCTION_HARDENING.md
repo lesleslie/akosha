@@ -4,6 +4,11 @@
 **Duration**: Weeks 9-10 (2 weeks)
 **Focus**: Reliability, observability, performance optimization
 
+> **Module Rename Drift (2026-07-15):** This plan references module paths that were renamed during implementation. Plan said -> Actual location:
+> - `akosha/utils/resilience.py` -> `akosha/resilience/circuit_breaker.py`
+> - `akosha/monitoring/tracing.py` -> `akosha/observability/tracing.py`
+> - `akosha/monitoring/metrics.py` -> `akosha/observability/prometheus_metrics.py`
+
 ______________________________________________________________________
 
 ## Overview
@@ -502,16 +507,16 @@ ______________________________________________________________________
 
 ### Week 9
 
-- [ ] Circuit breakers for all external calls
-- [ ] Retry logic with exponential backoff
-- [ ] OpenTelemetry tracing setup
-- [ ] Prometheus metrics endpoints
+- [x] Circuit breakers for all external calls <!-- verified 2026-07-15: akosha/resilience/circuit_breaker.py -->
+- [x] Retry logic with exponential backoff <!-- verified 2026-07-15: tenacity.retry decorators in circuit_breaker.py -->
+- [x] OpenTelemetry tracing setup <!-- verified 2026-07-15: akosha/observability/tracing.py (353 lines) -->
+- [x] Prometheus metrics endpoints <!-- verified 2026-07-15: akosha/observability/prometheus_metrics.py (1376 lines) -->
 - [ ] Structured logging with context
 
 ### Week 10
 
-- [ ] Kubernetes deployment manifests
-- [ ] HPA configuration
+- [x] Kubernetes deployment manifests <!-- verified 2026-07-15: k8s/ + kubernetes/ directories -->
+- [x] HPA configuration <!-- verified 2026-07-15: k8s/hpa.yaml -->
 - [ ] Health check endpoints
 - [ ] Load testing with Locust
 - [ ] Performance profiling and optimization
