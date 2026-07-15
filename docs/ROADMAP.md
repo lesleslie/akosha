@@ -4,6 +4,11 @@
 **Timeline**: 12 weeks (3 months) to full production
 **Target Scale**: 100 → 100,000 systems
 
+> **Module Rename Drift (2026-07-15):** This plan references module paths that were renamed during implementation. Plan said -> Actual location:
+> - `akosha/utils/resilience.py` -> `akosha/resilience/circuit_breaker.py`
+> - `akosha/monitoring/tracing.py` -> `akosha/observability/tracing.py`
+> - `akosha/monitoring/metrics.py` -> `akosha/observability/prometheus_metrics.py`
+
 ______________________________________________________________________
 
 ## Quick Reference
@@ -131,9 +136,9 @@ ______________________________________________________________________
 
 ### 📋 Phase 2 Targets (Week 8)
 
-- [ ] ONNX embedding generation
+- [x] ONNX embedding generation <!-- verified 2026-07-15: akosha/processing/embeddings.py (sentence_transformers all-MiniLM-L6-v2) -->
 - [ ] Semantic search with real embeddings
-- [ ] Time-series aggregator
+- [x] Time-series aggregator <!-- verified 2026-07-15: akosha/processing/analytics.py with TrendSegment -->
 - [ ] Trend and anomaly detection
 - [ ] Community detection
 - [ ] Centrality metrics
@@ -141,11 +146,11 @@ ______________________________________________________________________
 
 ### 📋 Phase 3 Targets (Week 10)
 
-- [ ] Circuit breakers for all external calls
+- [x] Circuit breakers for all external calls <!-- verified 2026-07-15: akosha/resilience/circuit_breaker.py -->
 - [ ] Retry with exponential backoff
-- [ ] OpenTelemetry tracing
-- [ ] Prometheus metrics
-- [ ] Kubernetes deployment
+- [x] OpenTelemetry tracing <!-- verified 2026-07-15: akosha/observability/tracing.py (353 lines) -->
+- [x] Prometheus metrics <!-- verified 2026-07-15: akosha/observability/prometheus_metrics.py (1376 lines) -->
+- [x] Kubernetes deployment <!-- verified 2026-07-15: k8s/ + kubernetes/ directories -->
 - [ ] Load testing (1000 req/min)
 - [ ] Zero-downtime deployments
 
