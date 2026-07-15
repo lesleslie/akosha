@@ -4,6 +4,13 @@
 **Duration**: Weeks 11-12 (2 weeks)
 **Focus**: Hyperscale architecture, 100M+ embeddings, distributed systems
 
+> **Module Rename Drift (2026-07-15):** This plan references module paths that were renamed during implementation. Plan said -> Actual location:
+> - `akosha/utils/resilience.py` -> `akosha/resilience/circuit_breaker.py`
+> - `akosha/monitoring/tracing.py` -> `akosha/observability/tracing.py`
+> - `akosha/monitoring/metrics.py` -> `akosha/observability/prometheus_metrics.py`
+
+> **Status (2026-07-15):** All 11 items in the Phase 4 checklist remain genuinely unimplemented. The audit found 0/11 done. Milvus cluster deployment, TimescaleDB continuous aggregates, Neo4j integration, and multi-region disaster recovery were **not** worked on during the EventBridge pivot and should be considered deferred until Akosha reaches the scale thresholds described in the "Scaling Triggers" table (1B embeddings / 100,000 systems). The drift-sync audit explicitly excluded Phase 4 from the stale-done reconciliation for this reason.
+
 ______________________________________________________________________
 
 ## Overview
