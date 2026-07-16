@@ -76,7 +76,7 @@ Expected: `0.13.0` or higher. The `create_event_envelope` factory exists in 0.13
 - Consumes: `oneiric.domains.events.EventBridge` (a `bridge.emit(topic, payload, headers)` method — confirmed at `oneiric/domains/events.py:58-73`)
 - Produces: `class EventBridgePublisher` with `async def publish(self, envelope: EventEnvelope) -> None` that delegates to `bridge.emit(envelope.topic, envelope.payload, envelope.headers)`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Write `tests/unit/test_eventbridge_adapter.py`:
 
@@ -124,12 +124,12 @@ def test_adaptor_constructor_stores_bridge() -> None:
     assert adapter._bridge is bridge
 ```
 
-- [ ] **Step 2: Run the test to verify it fails (RED)**
+- [x] **Step 2: Run the test to verify it fails (RED)**
 
 Run: `cd /Users/les/Projects/akosha && pytest tests/unit/test_eventbridge_adapter.py -v`
 Expected: `ModuleNotFoundError: No module named 'akosha.observability.eventbridge_adapter'`
 
-- [ ] **Step 3: Implement the adapter**
+- [x] **Step 3: Implement the adapter**
 
 Write `akosha/observability/eventbridge_adapter.py`:
 
@@ -176,17 +176,17 @@ class EventBridgePublisher:
 __all__ = ["EventBridgePublisher"]
 ```
 
-- [ ] **Step 4: Run the test to verify it passes (GREEN)**
+- [x] **Step 4: Run the test to verify it passes (GREEN)**
 
 Run: `cd /Users/les/Projects/akosha && pytest tests/unit/test_eventbridge_adapter.py -v`
 Expected: All 2 tests pass.
 
-- [ ] **Step 5: Verify ruff is clean**
+- [x] **Step 5: Verify ruff is clean**
 
 Run: `cd /Users/les/Projects/akosha && ruff check akosha/observability/eventbridge_adapter.py tests/unit/test_eventbridge_adapter.py`
 Expected: `All checks passed!`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd /Users/les/Projects/akosha
@@ -210,7 +210,7 @@ duck-typed AsyncMock via the publisher: Any | None parameter."
 - Consumes: `oneiric.runtime.events.EventEnvelope` (msgspec.Struct with `topic`, `payload`, `headers`)
 - Produces: `akosha.observability.eventbridge_publisher._make_envelope(topic, source, payload) -> EventEnvelope`
 
-- [ ] **Step 1: Create the test file**
+- [x] **Step 1: Create the test file**
 
 Write `tests/unit/test_eventbridge_publisher.py`:
 
@@ -302,12 +302,12 @@ def test_envelope_timestamp_is_iso_utc() -> None:
     assert parsed.astimezone(UTC).utcoffset().total_seconds() == 0
 ```
 
-- [ ] **Step 2: Run the test to verify it fails (RED)**
+- [x] **Step 2: Run the test to verify it fails (RED)**
 
 Run: `cd /Users/les/Projects/akosha && pytest tests/unit/test_eventbridge_publisher.py -v`
 Expected: `ModuleNotFoundError: No module named 'akosha.observability.eventbridge_publisher'` (or `ImportError`).
 
-- [ ] **Step 3: Stop. Move to Task 3.**
+- [x] **Step 3: Stop. Move to Task 3.**
 
 Do NOT commit yet. Tasks 2 and 3 are one TDD cycle.
 
@@ -323,7 +323,7 @@ Do NOT commit yet. Tasks 2 and 3 are one TDD cycle.
 - Consumes: `oneiric.runtime.events.EventEnvelope`, `oneiric.runtime.events.create_event_envelope`
 - Produces: `publish_pattern_detected(pattern_id, pattern_type, description, confidence, metadata, *, publisher=None)`, `publish_anomaly_detected(...)`, `publish_insight_generated(...)`, `publish_aggregation_completed(...)`, plus module-level `set_eventbridge_publisher(publisher)` and `_get_publisher()` accessors
 
-- [ ] **Step 1: Implement the publisher module**
+- [x] **Step 1: Implement the publisher module**
 
 Write `akosha/observability/eventbridge_publisher.py`:
 
@@ -661,7 +661,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 2: Extend the test file with the publish_* tests**
+- [x] **Step 2: Extend the test file with the publish_* tests**
 
 Append to `tests/unit/test_eventbridge_publisher.py` (after the three tests from Task 2):
 
@@ -934,22 +934,22 @@ Also add to the imports at the top of the file:
 import logging
 ```
 
-- [ ] **Step 3: Run all tests in the file**
+- [x] **Step 3: Run all tests in the file**
 
 Run: `cd /Users/les/Projects/akosha && pytest tests/unit/test_eventbridge_publisher.py -v`
 Expected: All 25 tests pass (3 from Task 2, 7 basic publish_* tests from Step 2.1, 5 parametrized exception types + CancelledError + sync publisher + coroutine raising + boundary cases + UUID4 format + autouse fixture = 15 from Step 2.2).
 
-- [ ] **Step 4: Verify ruff is clean**
+- [x] **Step 4: Verify ruff is clean**
 
 Run: `cd /Users/les/Projects/akosha && ruff check akosha/observability/eventbridge_publisher.py tests/unit/test_eventbridge_publisher.py`
 Expected: `All checks passed!`
 
-- [ ] **Step 5: Verify coverage gate still passes**
+- [x] **Step 5: Verify coverage gate still passes**
 
 Run: `cd /Users/les/Projects/akosha && pytest tests/unit/test_eventbridge_publisher.py --cov=akosha.observability.eventbridge_publisher --cov-report=term-missing --cov-fail-under=85`
 Expected: Coverage ≥ 85%.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd /Users/les/Projects/akosha
@@ -976,12 +976,12 @@ contract preserved; publisher=None is a no-op; module-level global
 - Consumes: Existing `BaseModel` imports from `pydantic` (line 8)
 - Produces: `class EventBridgeConfig(BaseModel)` + `eventbridge: EventBridgeConfig = Field(default_factory=EventBridgeConfig)` field on `AkoshaConfig`
 
-- [ ] **Step 1: Read the end of `CacheConfig`**
+- [x] **Step 1: Read the end of `CacheConfig`**
 
 Run: `cd /Users/les/Projects/akosha && sed -n '146,170p' akosha/config.py`
 Expected: Tail of `CacheConfig` and start of `AkoshaConfig`.
 
-- [ ] **Step 1.5: Write the failing test for env-var binding**
+- [x] **Step 1.5: Write the failing test for env-var binding**
 
 Add this test to `tests/unit/test_akosha_config.py` (create if absent) or append to `tests/unit/test_config.py`:
 
@@ -1024,12 +1024,12 @@ def test_eventbridge_config_defaults_when_no_env_var(
     assert cfg.endpoint is None
 ```
 
-- [ ] **Step 1.6: Run the tests to verify they fail (RED)**
+- [x] **Step 1.6: Run the tests to verify they fail (RED)**
 
 Run: `cd /Users/les/Projects/akosha && pytest tests/unit/test_akosha_config.py -v -k eventbridge`
 Expected: 2 tests fail (the env-var binding ones) because `EventBridgeConfig.__init__` does not yet read env vars; 1 passes (defaults).
 
-- [ ] **Step 2: Add the `EventBridgeConfig` model**
+- [x] **Step 2: Add the `EventBridgeConfig` model**
 
 Insert the following class between `CacheConfig` (starts line 146) and `AkoshaConfig` (starts line 166):
 
@@ -1110,26 +1110,26 @@ class EventBridgeConfig(BaseModel):
 
 Note: `import os` must already be present at the top of `akosha/config.py` (it is — line 14).
 
-- [ ] **Step 3: Add the field to `AkoshaConfig`**
+- [x] **Step 3: Add the field to `AkoshaConfig`**
 
 Find `AkoshaConfig` (line 166) and add `eventbridge: EventBridgeConfig = Field(default_factory=EventBridgeConfig)` after the existing `cache: CacheConfig = Field(default_factory=CacheConfig)` field (around line 206). The new field must come after `cache` and before any subsequent fields (e.g., `api_port` at line 209).
 
-- [ ] **Step 4: Verify AkoshaConfig instantiates**
+- [x] **Step 4: Verify AkoshaConfig instantiates**
 
 Run: `cd /Users/les/Projects/akosha && python -c "from akosha.config import AkoshaConfig, EventBridgeConfig; cfg = AkoshaConfig(); print(cfg.eventbridge.enabled, cfg.eventbridge.dry_run)"`
 Expected: `False True` (the defaults).
 
-- [ ] **Step 5: Verify env-var binding**
+- [x] **Step 5: Verify env-var binding**
 
 Run: `cd /Users/les/Projects/akosha && AKOSHA_EVENTBRIDGE_ENABLED=true AKOSHA_EVENTBRIDGE_DRY_RUN=false python -c "from akosha.config import EventBridgeConfig; cfg = EventBridgeConfig(); print(cfg.enabled, cfg.dry_run)"`
 Expected: `True False`
 
-- [ ] **Step 6: Run the unit tests from Step 1.5 to verify they pass (GREEN)**
+- [x] **Step 6: Run the unit tests from Step 1.5 to verify they pass (GREEN)**
 
 Run: `cd /Users/les/Projects/akosha && pytest tests/unit/test_akosha_config.py -v -k eventbridge`
 Expected: All 3 tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd /Users/les/Projects/akosha
@@ -1153,12 +1153,12 @@ AKOSHA_EVENTBRIDGE_* (e.g. AKOSHA_EVENTBRIDGE_ENABLED=true)."
 - Consumes: Existing YAML structure
 - Produces: New top-level `eventbridge:` block
 
-- [ ] **Step 1: Read the tail of the YAML file**
+- [x] **Step 1: Read the tail of the YAML file**
 
 Run: `tail -10 /Users/les/Projects/akosha/settings/akosha.yaml`
 Expected: Final section (likely `monitoring:` or similar).
 
-- [ ] **Step 2: Append the eventbridge block**
+- [x] **Step 2: Append the eventbridge block**
 
 Append to `settings/akosha.yaml` (preserve trailing newline if present):
 
@@ -1180,12 +1180,12 @@ eventbridge:
   dry_run: true
 ```
 
-- [ ] **Step 3: Validate YAML and config loading**
+- [x] **Step 3: Validate YAML and config loading**
 
 Run: `cd /Users/les/Projects/akosha && python -c "from akosha.config import AkoshaConfig; cfg = AkoshaConfig(); print(cfg.eventbridge.enabled, cfg.eventbridge.dry_run, cfg.eventbridge.endpoint)"`
 Expected: `False True None` (matches the YAML defaults).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd /Users/les/Projects/akosha
@@ -1212,7 +1212,7 @@ Mirrors the pattern used in mahavishnu.yaml and crackerjack.yaml."
 - Consumes: The four `publish_*` functions from `akosha.observability.eventbridge_publisher`
 - Produces: 4 sibling `await publish_*` calls (one per `broadcast_*` method), each AFTER the existing `broadcast_to_room` call
 
-- [ ] **Step 1: Add the import**
+- [x] **Step 1: Add the import**
 
 Find the imports block at the top of `akosha/websocket/server.py`. Locate the existing first-party imports (e.g. `from akosha...`). Add (in alphabetical order with other akosha imports):
 
@@ -1227,7 +1227,7 @@ from akosha.observability.eventbridge_publisher import (
 
 If the file uses `from __future__ import annotations`, ensure this import is after that line. If there are no existing akosha imports, add this near the end of the imports block.
 
-- [ ] **Step 2: Wire `broadcast_pattern_detected` (line 338)**
+- [x] **Step 2: Wire `broadcast_pattern_detected` (line 338)**
 
 Find the end of the method body (line 367 `await self.broadcast_to_room(f"patterns:{pattern_type}", event)`). Append AFTER this line (preserving the existing indentation):
 
@@ -1241,7 +1241,7 @@ Find the end of the method body (line 367 `await self.broadcast_to_room(f"patter
         )
 ```
 
-- [ ] **Step 3: Wire `broadcast_anomaly_detected` (line 369)**
+- [x] **Step 3: Wire `broadcast_anomaly_detected` (line 369)**
 
 Find the end of the method body (line 398 `await self.broadcast_to_room("anomalies", event)`). Append AFTER:
 
@@ -1255,7 +1255,7 @@ Find the end of the method body (line 398 `await self.broadcast_to_room("anomali
         )
 ```
 
-- [ ] **Step 4: Wire `broadcast_insight_generated` (line 400)**
+- [x] **Step 4: Wire `broadcast_insight_generated` (line 400)**
 
 Find the end of the method body (line 429 `await self.broadcast_to_room("insights", event)`). Append AFTER:
 
@@ -1269,7 +1269,7 @@ Find the end of the method body (line 429 `await self.broadcast_to_room("insight
         )
 ```
 
-- [ ] **Step 5: Wire `broadcast_aggregation_completed` (line 431)**
+- [x] **Step 5: Wire `broadcast_aggregation_completed` (line 431)**
 
 Read the full method first to confirm its body ends where expected (around line 466 — the scout truncated it). Find the `await self.broadcast_to_room(...)` call. Append AFTER:
 
@@ -1282,17 +1282,17 @@ Read the full method first to confirm its body ends where expected (around line 
         )
 ```
 
-- [ ] **Step 6: Run the existing websocket tests**
+- [x] **Step 6: Run the existing websocket tests**
 
 Run: `cd /Users/les/Projects/akosha && pytest tests/unit/test_websocket_server.py -x -q --timeout=120`
 Expected: All existing tests pass. The new `await publish_*` calls are no-ops when `eventbridge_publisher._publisher` is `None` (the default).
 
-- [ ] **Step 7: Verify ruff is clean**
+- [x] **Step 7: Verify ruff is clean**
 
 Run: `cd /Users/les/Projects/akosha && ruff check akosha/websocket/server.py`
 Expected: `All checks passed!`
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 cd /Users/les/Projects/akosha
@@ -1320,7 +1320,7 @@ preserving existing behavior for callers that don't configure one."
 - Consumes: The four `publish_*` functions from `akosha.observability.eventbridge_publisher`
 - Produces: One MCP tool `publish_to_eventbridge(topic, payload, *, async_callback=False) -> dict`
 
-- [ ] **Step 1: Add `EVENTS` category**
+- [x] **Step 1: Add `EVENTS` category**
 
 Open `akosha/mcp/tools/tool_registry.py` (line 16 starts `ToolCategory(StrEnum)`). Add a new entry to the StrEnum (preserve alphabetical order):
 
@@ -1330,7 +1330,7 @@ Open `akosha/mcp/tools/tool_registry.py` (line 16 starts `ToolCategory(StrEnum)`
 
 (Insert after `ANALYTICS = "analytics"` and before `GRAPH = "graph"`, or at end if the existing order is by discovery date.)
 
-- [ ] **Step 2: Create `akosha/mcp/tools/eventbridge_tools.py`**
+- [x] **Step 2: Create `akosha/mcp/tools/eventbridge_tools.py`**
 
 ```python
 """MCP tools for the Akosha-side EventBridge publisher.
@@ -1463,13 +1463,13 @@ def register_eventbridge_tools(
 __all__ = ["register_eventbridge_tools"]
 ```
 
-- [ ] **Step 3: Register the tool with the FULL profile**
+- [x] **Step 3: Register the tool with the FULL profile**
 
 Open `akosha/mcp/tools/profiles.py`. Find `FULL_REGISTRATIONS` (around line 31-78). Add `"register_eventbridge_tools"` to the list. Also add the corresponding entry to `REGISTRATION_TOOLS` (around line 23-29) mapping the registration function name to the `ToolCategory.EVENTS` value.
 
 If the structure differs from the scout's report, follow the existing pattern: find where `register_fitness_tools` is listed (it's the closest precedent — analytics-adjacent, full-only) and mirror that structure.
 
-- [ ] **Step 4: Wire into `register_all_tools`**
+- [x] **Step 4: Wire into `register_all_tools`**
 
 Open `akosha/mcp/tools/__init__.py`. Find the `register_all_tools` function (line 77). Add a call to `register_eventbridge_tools` at the appropriate location (typically grouped with other observability/analytics tools). The call MUST pass `enabled=cfg.eventbridge.enabled` from the loaded `AksoshaConfig` — this is the operator-facing kill switch (per Finding #8).
 
@@ -1483,17 +1483,17 @@ def register_all_tools(app, config, ...):
 
 If `register_all_tools` already takes `config` or a similar settings object, read `eventbridge.enabled` from it. If not, refactor `register_all_tools` to take the loaded config so the gating works.
 
-- [ ] **Step 5: Run the existing tests**
+- [x] **Step 5: Run the existing tests**
 
 Run: `cd /Users/les/Projects/akosha && pytest tests/unit/ -x -q --timeout=120`
 Expected: All existing tests pass.
 
-- [ ] **Step 6: Verify ruff is clean**
+- [x] **Step 6: Verify ruff is clean**
 
 Run: `cd /Users/les/Projects/akosha && ruff check akosha/mcp/tools/eventbridge_tools.py akosha/mcp/tools/tool_registry.py akosha/mcp/tools/profiles.py akosha/mcp/tools/__init__.py`
 Expected: `All checks passed!`
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd /Users/les/Projects/akosha
@@ -1517,7 +1517,7 @@ the precedent of register_fitness_tools. Supports sync and async
 - Consumes: `publish_pattern_detected`, `publish_anomaly_detected`, `publish_insight_generated`, `publish_aggregation_completed`
 - Produces: 5 integration tests verifying envelopes flow from publish call through a recording transport and back as parsed dicts
 
-- [ ] **Step 1: Create the integration test file**
+- [x] **Step 1: Create the integration test file**
 
 Write `tests/integration/test_eventbridge_e2e.py`:
 
@@ -1648,12 +1648,12 @@ async def test_four_sequential_publishes_preserve_order_and_uniqueness() -> None
     assert len(set(event_ids)) == 4, "event_ids must be unique across publishes"
 ```
 
-- [ ] **Step 2: Run the integration tests**
+- [x] **Step 2: Run the integration tests**
 
 Run: `cd /Users/les/Projects/akosha && pytest tests/integration/test_eventbridge_e2e.py -v --timeout=120`
 Expected: All 5 tests pass.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cd /Users/les/Projects/akosha
@@ -1673,7 +1673,7 @@ sequential-publish uniqueness check across all 4."
 **Files:**
 - None. Manual verification step.
 
-- [ ] **Step 1: Confirm the smoke test passes**
+- [x] **Step 1: Confirm the smoke test passes**
 
 Run:
 ```bash
@@ -1699,7 +1699,7 @@ print('OK')
 ```
 Expected: `OK` prints, no errors.
 
-- [ ] **Step 2: Final commit (if any cleanup needed)**
+- [x] **Step 2: Final commit (if any cleanup needed)**
 
 If any documentation updates are needed (e.g., adding a note to `CLAUDE.md` or `docs/ROUTES_GUIDE.md` analog), commit them here. Otherwise skip.
 
