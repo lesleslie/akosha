@@ -1,3 +1,13 @@
+---
+status: complete
+role: historical
+date: 2026-07-16
+last_reviewed: 2026-07-16
+superseded_by: null
+blocks_on: []
+topic: lifecycle
+---
+
 # Akosha Current Status & Task Summary
 
 **Date**: 2025-01-27
@@ -42,7 +52,7 @@
 ### High Priority (Recommended)
 
 #### 1. Documentation Consolidation
-**Status**: Partially complete (README exists, needs updates)
+**Status**: Partially complete (README exists, needs updates)  <!-- legacy status — see YAML frontmatter -->
 
 **What's Done**:
 - ✅ README.md with quick start

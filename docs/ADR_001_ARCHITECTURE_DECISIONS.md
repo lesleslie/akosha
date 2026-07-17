@@ -1,7 +1,17 @@
+---
+status: complete
+role: historical
+date: 2026-07-16
+last_reviewed: 2026-07-16
+superseded_by: null
+blocks_on: []
+topic: architecture
+---
+
 # ADR-001: Akosha Architecture Decisions
 
 **Date**: 2025-01-25
-**Status**: Accepted
+**Status**: Accepted  <!-- legacy status — see YAML frontmatter -->
 **Context**: Universal Memory Aggregation System Design
 **Specialists Consulted**: Code-Architect, Oneiric-Specialist, Orchestration-Specialist, Database Expert
 

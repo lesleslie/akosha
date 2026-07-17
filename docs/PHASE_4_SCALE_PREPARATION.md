@@ -1,6 +1,16 @@
+---
+status: draft
+role: implementation
+date: 2026-07-16
+last_reviewed: 2026-07-16
+superseded_by: null
+blocks_on: []
+topic: lifecycle
+---
+
 # Akosha Phase 4: Scale Preparation
 
-**Status**: Planned
+**Status**: Planned  <!-- legacy status — see YAML frontmatter -->
 **Duration**: Weeks 11-12 (2 weeks)
 **Focus**: Hyperscale architecture, 100M+ embeddings, distributed systems
 

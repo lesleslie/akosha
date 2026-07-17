@@ -1,8 +1,18 @@
+---
+status: active
+role: canonical
+date: 2026-07-16
+last_reviewed: 2026-07-16
+superseded_by: null
+blocks_on: []
+topic: architecture
+---
+
 # Akosha Architecture Documentation
 
 **Version**: 0.3.0 (Phase 1: Production Pilot Ready)
 **Last Updated**: 2025-02-08
-**Status**: Production Ready for 100-System Pilot
+**Status**: Production Ready for 100-System Pilot  <!-- legacy status — see YAML frontmatter -->
 
 ## System Overview
 

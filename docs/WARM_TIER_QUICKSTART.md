@@ -1,3 +1,13 @@
+---
+status: active
+role: canonical
+date: 2026-07-16
+last_reviewed: 2026-07-16
+superseded_by: null
+blocks_on: []
+topic: storage-consolidation
+---
+
 # Warm Tier Storage - Quick Start Implementation
 
 This guide provides step-by-step instructions for implementing the warm tier storage strategy.

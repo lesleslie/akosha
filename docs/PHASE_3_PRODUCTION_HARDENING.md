@@ -1,6 +1,16 @@
+---
+status: draft
+role: implementation
+date: 2026-07-16
+last_reviewed: 2026-07-16
+superseded_by: null
+blocks_on: []
+topic: observability
+---
+
 # Akosha Phase 3: Production Hardening
 
-**Status**: Planned
+**Status**: Planned  <!-- legacy status — see YAML frontmatter -->
 **Duration**: Weeks 9-10 (2 weeks)
 **Focus**: Reliability, observability, performance optimization
 

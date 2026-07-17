@@ -1,3 +1,13 @@
+---
+status: active
+role: canonical
+date: 2026-07-16
+last_reviewed: 2026-07-16
+superseded_by: null
+blocks_on: []
+topic: storage-consolidation
+---
+
 # Akosha Implementation Guide
 
 **Phase 1 Foundation** - Weeks 1-4
@@ -42,7 +52,7 @@ ______________________________________________________________________
 
 ### Task 1.1: Project Setup ✅
 
-**Status**: ✅ Complete
+**Status**: ✅ Complete  <!-- legacy status — see YAML frontmatter -->
 **Files Created**:
 
 - `/Users/les/Projects/akosha/` - Project directory

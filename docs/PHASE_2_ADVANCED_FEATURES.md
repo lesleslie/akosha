@@ -1,6 +1,16 @@
+---
+status: draft
+role: implementation
+date: 2026-07-16
+last_reviewed: 2026-07-16
+superseded_by: null
+blocks_on: []
+topic: lifecycle
+---
+
 # Akosha Phase 2: Advanced Features
 
-**Status**: Ready to Implement
+**Status**: Ready to Implement  <!-- legacy status — see YAML frontmatter -->
 **Duration**: Weeks 5-8 (4 weeks)
 **Focus**: Vector indexing, time-series analytics, advanced graph operations
 

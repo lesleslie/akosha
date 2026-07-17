@@ -1,3 +1,13 @@
+---
+status: complete
+role: historical
+date: 2026-07-16
+last_reviewed: 2026-07-16
+superseded_by: null
+blocks_on: []
+topic: memory-architecture
+---
+
 # Akosha Entity Storage Identifier Analysis
 
 **Date:** 2026-02-11
@@ -167,4 +177,4 @@ ALTER TABLE entities DROP COLUMN entity_id;
 3. **NEXT:** Implement Druva storage adapter for Akosha
 4. **NEXT:** Create migration scripts from custom IDs → ULID
 
-**Status:** Analysis complete, ready for Task 5 (Crackerjack analysis)
+**Status:** Analysis complete, ready for Task 5 (Crackerjack analysis)  <!-- legacy status — see YAML frontmatter -->

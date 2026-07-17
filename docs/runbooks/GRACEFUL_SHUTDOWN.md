@@ -1,3 +1,13 @@
+---
+status: active
+role: canonical
+date: 2026-07-16
+last_reviewed: 2026-07-16
+superseded_by: null
+blocks_on: []
+topic: observability
+---
+
 # Graceful Shutdown Handler
 
 When Akosha receives a shutdown signal (SIGTERM or SIGINT), it should gracefully stop all services with a 30-second drain period to allow in-flight uploads to complete.

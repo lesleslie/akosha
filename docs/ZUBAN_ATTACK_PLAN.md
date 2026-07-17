@@ -1,6 +1,16 @@
+---
+status: draft
+role: implementation
+date: 2026-07-16
+last_reviewed: 2026-07-16
+superseded_by: null
+blocks_on: []
+topic: storage-consolidation
+---
+
 # ZUBAN FIX ATTACK PLAN
 
-**Status**: resolved (2026-07-15)
+**Status**: resolved (2026-07-15)  <!-- legacy status — see YAML frontmatter -->
 
 ## Problem Summary
 

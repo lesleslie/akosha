@@ -1,3 +1,13 @@
+---
+status: active
+role: canonical
+date: 2026-07-16
+last_reviewed: 2026-07-16
+superseded_by: null
+blocks_on: []
+topic: lifecycle
+---
+
 # Akosha Complete Development Roadmap
 
 **Project**: Akosha - Universal Memory Aggregation System
@@ -283,5 +293,5 @@ ______________________________________________________________________
 ______________________________________________________________________
 
 **Last Updated**: 2025-01-27
-**Status**: Phase 1 Complete, Phases 2-4 Ready to Implement
+**Status**: Phase 1 Complete, Phases 2-4 Ready to Implement  <!-- legacy status — see YAML frontmatter -->
 **Next**: Start Phase 2 implementation with embeddings and time-series analytics

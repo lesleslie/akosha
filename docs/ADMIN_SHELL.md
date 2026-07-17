@@ -1,3 +1,13 @@
+---
+status: active
+role: canonical
+date: 2026-07-16
+last_reviewed: 2026-07-16
+superseded_by: null
+blocks_on: []
+topic: observability
+---
+
 # Akosha Admin Shell
 
 The Akosha admin shell provides an interactive IPython environment for distributed intelligence operations and pattern recognition across systems.
