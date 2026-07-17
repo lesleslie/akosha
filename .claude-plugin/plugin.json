@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0.0",
+  "name": "akosha",
+  "version": "0.1.0",
+  "description": "Bodai plugin for the Akosha intelligence MCP server.",
+  "author": {"name": "Bodai"},
+  "keywords": ["bodai", "mcp", "akosha", "intelligence"],
+  "mcpServers": "./.mcp.json"
+}

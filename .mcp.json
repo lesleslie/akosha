@@ -1,0 +1,6 @@
+{
+  "akosha": {
+    "type": "http",
+    "url": "http://localhost:8682/mcp"
+  }
+}
