@@ -1,20 +1,15 @@
----
-status: draft
-role: implementation
-date: 2026-07-16
-last_reviewed: 2026-07-16
-superseded_by: null
-blocks_on: []
-topic: lifecycle
----
+______________________________________________________________________
+
+## status: draft role: implementation date: 2026-07-16 last_reviewed: 2026-07-16 superseded_by: null blocks_on: [] topic: lifecycle
 
 # Akosha Phase 4: Scale Preparation
 
-**Status**: Planned  <!-- legacy status — see YAML frontmatter -->
+**Status**: Planned <!-- legacy status — see YAML frontmatter -->
 **Duration**: Weeks 11-12 (2 weeks)
 **Focus**: Hyperscale architecture, 100M+ embeddings, distributed systems
 
 > **Module Rename Drift (2026-07-15):** This plan references module paths that were renamed during implementation. Plan said -> Actual location:
+>
 > - `akosha/utils/resilience.py` -> `akosha/resilience/circuit_breaker.py`
 > - `akosha/monitoring/tracing.py` -> `akosha/observability/tracing.py`
 > - `akosha/monitoring/metrics.py` -> `akosha/observability/prometheus_metrics.py`

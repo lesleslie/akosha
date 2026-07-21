@@ -1,12 +1,6 @@
----
-status: draft
-role: implementation
-date: 2026-07-16
-last_reviewed: 2026-07-16
-superseded_by: null
-blocks_on: []
-topic: observability
----
+______________________________________________________________________
+
+## status: draft role: implementation date: 2026-07-16 last_reviewed: 2026-07-16 superseded_by: null blocks_on: [] topic: observability
 
 # Akosha EventBridge Publisher Implementation Plan
 
@@ -29,7 +23,7 @@ topic: observability
 - Akosha coverage gate is `--cov-fail-under=85` (`pyproject.toml:110`). New code must maintain this threshold.
 - New settings go in `akosha/config.py` as Pydantic models matching `HotStorageConfig` / `WarmStorageConfig` / `ColdStorageConfig` / `CacheConfig` (lines 50-163). New env-var binding: `AKOSHA_EVENTBRIDGE_*` for plain fields, `AKOSHA__EVENTBRIDGE__*` for nested.
 
----
+______________________________________________________________________
 
 ## File Structure
 
@@ -48,11 +42,12 @@ topic: observability
 
 Files changing together: `config.py` and `settings/akosha.yaml` both define the same block; `eventbridge_publisher.py` depends on the env-var convention but not on the `EventBridgeConfig` class itself (loose coupling); `websocket/server.py` only depends on `eventbridge_publisher.py`; the MCP tools path is independent of the publisher. Tests are organized unit-then-integration per project convention.
 
----
+______________________________________________________________________
 
 ## Task 1: Verify oneiric dependency is sufficient
 
 **Files:**
+
 - Read-only: `pyproject.toml` (line 16)
 
 **Step 1.1: Read pyproject.toml line 16**
@@ -72,18 +67,21 @@ Expected: `0.13.0` or higher. The `create_event_envelope` factory exists in 0.13
 
 **Commit:** No commit for this task — it's a verification step.
 
----
+______________________________________________________________________
 
 ## Task 1.5: Oneiric EventBridge adapter — `EventBridgePublisher`
 
 **Files:**
+
 - Create: `akosha/observability/eventbridge_adapter.py`
 - Test: `tests/unit/test_eventbridge_adapter.py`
 
 **Why this task exists (per operational-safety Finding #2):** The publisher functions call `publisher.publish(envelope)`, but Oneiric's `EventBridge` exposes `emit(topic, payload, headers)`. The plan needs an adapter that bridges the two APIs so production wiring has a real publisher to inject.
 
 **Interfaces:**
+
 - Consumes: `oneiric.domains.events.EventBridge` (a `bridge.emit(topic, payload, headers)` method — confirmed at `oneiric/domains/events.py:58-73`)
+
 - Produces: `class EventBridgePublisher` with `async def publish(self, envelope: EventEnvelope) -> None` that delegates to `bridge.emit(envelope.topic, envelope.payload, envelope.headers)`
 
 - [x] **Step 1: Write the failing test**
@@ -209,15 +207,18 @@ Production wiring now has a real publisher to inject; tests still use
 duck-typed AsyncMock via the publisher: Any | None parameter."
 ```
 
----
+______________________________________________________________________
 
 ## Task 2: Failing test — `_make_envelope` produces canonical Oneiric envelope
 
 **Files:**
+
 - Create: `tests/unit/test_eventbridge_publisher.py`
 
 **Interfaces:**
+
 - Consumes: `oneiric.runtime.events.EventEnvelope` (msgspec.Struct with `topic`, `payload`, `headers`)
+
 - Produces: `akosha.observability.eventbridge_publisher._make_envelope(topic, source, payload) -> EventEnvelope`
 
 - [x] **Step 1: Create the test file**
@@ -321,16 +322,19 @@ Expected: `ModuleNotFoundError: No module named 'akosha.observability.eventbridg
 
 Do NOT commit yet. Tasks 2 and 3 are one TDD cycle.
 
----
+______________________________________________________________________
 
 ## Task 3: Implement `akosha/observability/eventbridge_publisher.py` (GREEN)
 
 **Files:**
+
 - Create: `akosha/observability/eventbridge_publisher.py` (new directory `akosha/observability/` already exists per scout)
-- Modify: `tests/unit/test_eventbridge_publisher.py` (extend with the publish_* tests below)
+- Modify: `tests/unit/test_eventbridge_publisher.py` (extend with the publish\_\* tests below)
 
 **Interfaces:**
+
 - Consumes: `oneiric.runtime.events.EventEnvelope`, `oneiric.runtime.events.create_event_envelope`
+
 - Produces: `publish_pattern_detected(pattern_id, pattern_type, description, confidence, metadata, *, publisher=None)`, `publish_anomaly_detected(...)`, `publish_insight_generated(...)`, `publish_aggregation_completed(...)`, plus module-level `set_eventbridge_publisher(publisher)` and `_get_publisher()` accessors
 
 - [x] **Step 1: Implement the publisher module**
@@ -671,7 +675,7 @@ __all__ = [
 ]
 ```
 
-- [x] **Step 2: Extend the test file with the publish_* tests**
+- [x] **Step 2: Extend the test file with the publish\_* tests*\*
 
 Append to `tests/unit/test_eventbridge_publisher.py` (after the three tests from Task 2):
 
@@ -947,7 +951,7 @@ import logging
 - [x] **Step 3: Run all tests in the file**
 
 Run: `cd /Users/les/Projects/akosha && pytest tests/unit/test_eventbridge_publisher.py -v`
-Expected: All 25 tests pass (3 from Task 2, 7 basic publish_* tests from Step 2.1, 5 parametrized exception types + CancelledError + sync publisher + coroutine raising + boundary cases + UUID4 format + autouse fixture = 15 from Step 2.2).
+Expected: All 25 tests pass (3 from Task 2, 7 basic publish\_\* tests from Step 2.1, 5 parametrized exception types + CancelledError + sync publisher + coroutine raising + boundary cases + UUID4 format + autouse fixture = 15 from Step 2.2).
 
 - [x] **Step 4: Verify ruff is clean**
 
@@ -975,15 +979,18 @@ contract preserved; publisher=None is a no-op; module-level global
 (set_eventbridge_publisher) allows MCP-tool-driven ad-hoc emission."
 ```
 
----
+______________________________________________________________________
 
 ## Task 4: Settings — add `EventBridgeConfig` to `akosha/config.py`
 
 **Files:**
+
 - Modify: `akosha/config.py` (after `CacheConfig`, before `AkoshaConfig`)
 
 **Interfaces:**
+
 - Consumes: Existing `BaseModel` imports from `pydantic` (line 8)
+
 - Produces: `class EventBridgeConfig(BaseModel)` + `eventbridge: EventBridgeConfig = Field(default_factory=EventBridgeConfig)` field on `AkoshaConfig`
 
 - [x] **Step 1: Read the end of `CacheConfig`**
@@ -1152,15 +1159,18 @@ per operator-facing toggle convention. Env-var binding via
 AKOSHA_EVENTBRIDGE_* (e.g. AKOSHA_EVENTBRIDGE_ENABLED=true)."
 ```
 
----
+______________________________________________________________________
 
 ## Task 5: Append settings block to `settings/akosha.yaml`
 
 **Files:**
+
 - Modify: `settings/akosha.yaml` (append at end)
 
 **Interfaces:**
+
 - Consumes: Existing YAML structure
+
 - Produces: New top-level `eventbridge:` block
 
 - [x] **Step 1: Read the tail of the YAML file**
@@ -1206,11 +1216,12 @@ Disabled-by-default settings for the Akosha EventBridge publisher.
 Mirrors the pattern used in mahavishnu.yaml and crackerjack.yaml."
 ```
 
----
+______________________________________________________________________
 
 ## Task 6: Wire publish calls into `AkoshaWebSocketServer.broadcast_*`
 
 **Files:**
+
 - Modify: `akosha/websocket/server.py`
   - Imports: add `from akosha.observability.eventbridge_publisher import publish_pattern_detected, publish_anomaly_detected, publish_insight_generated, publish_aggregation_completed`
   - Method 1: `broadcast_pattern_detected` (line 338) — add `await publish_pattern_detected(...)` after the existing `await self.broadcast_to_room(...)` call (after line 367)
@@ -1219,7 +1230,9 @@ Mirrors the pattern used in mahavishnu.yaml and crackerjack.yaml."
   - Method 4: `broadcast_aggregation_completed` (line 431) — same (after line 466)
 
 **Interfaces:**
+
 - Consumes: The four `publish_*` functions from `akosha.observability.eventbridge_publisher`
+
 - Produces: 4 sibling `await publish_*` calls (one per `broadcast_*` method), each AFTER the existing `broadcast_to_room` call
 
 - [x] **Step 1: Add the import**
@@ -1316,18 +1329,21 @@ calls are no-ops when the module-level publisher global is None,
 preserving existing behavior for callers that don't configure one."
 ```
 
----
+______________________________________________________________________
 
 ## Task 7: MCP tool — `publish_to_eventbridge`
 
 **Files:**
+
 - Create: `akosha/mcp/tools/eventbridge_tools.py`
 - Modify: `akosha/mcp/tools/tool_registry.py` (add `EVENTS = "events"` to `ToolCategory`)
 - Modify: `akosha/mcp/tools/profiles.py` (add to `FULL_REGISTRATIONS`)
 - Modify: `akosha/mcp/tools/__init__.py` (wire into `register_all_tools`)
 
 **Interfaces:**
+
 - Consumes: The four `publish_*` functions from `akosha.observability.eventbridge_publisher`
+
 - Produces: One MCP tool `publish_to_eventbridge(topic, payload, *, async_callback=False) -> dict`
 
 - [x] **Step 1: Add `EVENTS` category**
@@ -1516,15 +1532,18 @@ the precedent of register_fitness_tools. Supports sync and async
 (async_callback=true) modes mirroring mahavishnu.dispatch_to_pool."
 ```
 
----
+______________________________________________________________________
 
 ## Task 8: Integration test — end-to-end envelope round-trip
 
 **Files:**
+
 - Create: `tests/integration/test_eventbridge_e2e.py`
 
 **Interfaces:**
+
 - Consumes: `publish_pattern_detected`, `publish_anomaly_detected`, `publish_insight_generated`, `publish_aggregation_completed`
+
 - Produces: 5 integration tests verifying envelopes flow from publish call through a recording transport and back as parsed dicts
 
 - [x] **Step 1: Create the integration test file**
@@ -1676,16 +1695,18 @@ or AWS required. Covers pattern/anomaly/insight/aggregation plus a
 sequential-publish uniqueness check across all 4."
 ```
 
----
+______________________________________________________________________
 
 ## Task 9: Smoke test (manual verification)
 
 **Files:**
+
 - None. Manual verification step.
 
 - [x] **Step 1: Confirm the smoke test passes**
 
 Run:
+
 ```bash
 cd /Users/les/Projects/akosha && python -c "
 import asyncio
@@ -1707,13 +1728,14 @@ asyncio.run(main())
 print('OK')
 "
 ```
+
 Expected: `OK` prints, no errors.
 
 - [x] **Step 2: Final commit (if any cleanup needed)**
 
 If any documentation updates are needed (e.g., adding a note to `CLAUDE.md` or `docs/ROUTES_GUIDE.md` analog), commit them here. Otherwise skip.
 
----
+______________________________________________________________________
 
 ## Integration Contract
 

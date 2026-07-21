@@ -1,12 +1,6 @@
----
-status: active
-role: canonical
-date: 2026-07-16
-last_reviewed: 2026-07-16
-superseded_by: null
-blocks_on: []
-topic: lifecycle
----
+______________________________________________________________________
+
+## status: active role: canonical date: 2026-07-16 last_reviewed: 2026-07-16 superseded_by: null blocks_on: [] topic: lifecycle
 
 # Akosha Complete Development Roadmap
 
@@ -15,6 +9,7 @@ topic: lifecycle
 **Target Scale**: 100 → 100,000 systems
 
 > **Module Rename Drift (2026-07-15):** This plan references module paths that were renamed during implementation. Plan said -> Actual location:
+>
 > - `akosha/utils/resilience.py` -> `akosha/resilience/circuit_breaker.py`
 > - `akosha/monitoring/tracing.py` -> `akosha/observability/tracing.py`
 > - `akosha/monitoring/metrics.py` -> `akosha/observability/prometheus_metrics.py`
@@ -293,5 +288,5 @@ ______________________________________________________________________
 ______________________________________________________________________
 
 **Last Updated**: 2025-01-27
-**Status**: Phase 1 Complete, Phases 2-4 Ready to Implement  <!-- legacy status — see YAML frontmatter -->
+**Status**: Phase 1 Complete, Phases 2-4 Ready to Implement <!-- legacy status — see YAML frontmatter -->
 **Next**: Start Phase 2 implementation with embeddings and time-series analytics

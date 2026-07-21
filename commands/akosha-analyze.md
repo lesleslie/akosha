@@ -1,6 +1,6 @@
----
-description: Analyze Akosha-indexed repository imports for structural issues and patterns.
----
+______________________________________________________________________
+
+## description: Analyze Akosha-indexed repository imports for structural issues and patterns.
 
 # /akosha:analyze
 
@@ -15,12 +15,13 @@ Analyze repository imports to identify unused imports, circular dependencies, or
 ## What This Command Does
 
 1. **Selects an analysis** — determines whether to inspect unused imports, cycles, or patterns.
-2. **Scopes the repository** — applies an optional repository path and result limit.
-3. **Explains findings** — reports import relationships and actionable structural concerns.
+1. **Scopes the repository** — applies an optional repository path and result limit.
+1. **Explains findings** — reports import relationships and actionable structural concerns.
 
 ## Technical Implementation
 
 This command uses the `mcp__akosha__analyze_imports` MCP tool which:
+
 - supports `unused`, `circular`, and `patterns` analysis modes
 - can filter findings by repository path and cap the number of results
 

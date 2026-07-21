@@ -1,12 +1,6 @@
----
-status: active
-role: canonical
-date: 2026-07-16
-last_reviewed: 2026-07-16
-superseded_by: null
-blocks_on: []
-topic: architecture
----
+______________________________________________________________________
+
+## status: active role: canonical date: 2026-07-16 last_reviewed: 2026-07-16 superseded_by: null blocks_on: [] topic: architecture
 
 # Akosha Service Dependencies
 
@@ -54,7 +48,7 @@ akosha:
   enabled: true
 ```
 
-**Status**: Optional - Akosha provides value without Mahavishnu  <!-- legacy status — see YAML frontmatter -->
+**Status**: Optional - Akosha provides value without Mahavishnu <!-- legacy status — see YAML frontmatter -->
 
 ### Session-Buddy (Session Manager)
 

@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-07-21
+
+### Added
+
+- Initial akosha plugin manifest + starter commands
+
+### Fixed
+
+- akosha: Move datetime import out of TYPE_CHECKING (Pydantic v2 forward-ref resolution)
+
+### Documentation
+
+- akosha: Apply plan-lifecycle-unification playbook (P7.B)
+- plans: Reconcile stale-done items and module-rename drift
+- plans: Reconcile stale-done items and module-rename drift
+- plans: Reconcile stale-done items and module-rename drift
+- plans: Reconcile stale-done items and module-rename drift
+- plans: Reconcile stale-done items and module-rename drift
+- plans: Tick shipped checkboxes in akosha eventbridge-publisher
+
+### Internal
+
+- akosha: Remove LICENSE (consolidated to root-level LICENSE)
+- akosha: Sync uv.lock to pyproject.toml (0.9.0)
+
 ## [0.9.0] - 2026-07-14
 
 ### Added
@@ -15,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expose publish_to_eventbridge MCP tool
 - settings: Add eventbridge block to akosha.yaml
 - Wire EventBridgePublisher at akosha app startup
-- Wire publish_* into AkoshaWebSocketServer.broadcast_*
+- Wire publish\_\* into AkoshaWebSocketServer.broadcast\_\*
 
 ### Changed
 

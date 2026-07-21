@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "akosha"
-version = "0.9.0"
+version = "0.9.1"
 description = "Universal Memory Aggregation System - Cross-system intelligence for Session-Buddy"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -36,6 +36,9 @@ dependencies = [
     "pytrendy>=0.2",
     "pandas>=2.0.0",
 ]
+
+[project.license]
+text = "BSD-3-CLAUSE"
 
 [tool.ruff]
 line-length = 100

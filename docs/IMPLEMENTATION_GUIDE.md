@@ -1,12 +1,6 @@
----
-status: active
-role: canonical
-date: 2026-07-16
-last_reviewed: 2026-07-16
-superseded_by: null
-blocks_on: []
-topic: storage-consolidation
----
+______________________________________________________________________
+
+## status: active role: canonical date: 2026-07-16 last_reviewed: 2026-07-16 superseded_by: null blocks_on: [] topic: storage-consolidation
 
 # Akosha Implementation Guide
 
@@ -52,7 +46,7 @@ ______________________________________________________________________
 
 ### Task 1.1: Project Setup ✅
 
-**Status**: ✅ Complete  <!-- legacy status — see YAML frontmatter -->
+**Status**: ✅ Complete <!-- legacy status — see YAML frontmatter -->
 **Files Created**:
 
 - `/Users/les/Projects/akosha/` - Project directory

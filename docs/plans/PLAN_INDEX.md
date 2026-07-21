@@ -1,13 +1,16 @@
----
+______________________________________________________________________
+
 status: active
 role: canonical
 date: 2026-07-16
 last_reviewed: 2026-07-16
 superseded_by: null
 blocks_on:
-  - docs/schemas/document-frontmatter-v1.md
-topic: convergence-control-plane
----
+
+- docs/schemas/document-frontmatter-v1.md
+  topic: convergence-control-plane
+
+______________________________________________________________________
 
 # Plan Index
 
@@ -99,7 +102,7 @@ One table per store. Entries are sorted by `date` DESC, with ties broken by path
 
 | Path | Date | Status | Role | Topic | Title |
 |---|---|---|---|---|---|
-| [`docs/superpowers/plans/2026-07-12-eventbridge-publisher.md`](../docs/superpowers/plans/2026-07-12-eventbridge-publisher.md) | 2026-07-16 | `draft` | `implementation` | `observability` | Akosha EventBridge Publisher Implementation Plan |
+| [`docs/superpowers/plans/2026-07-12-eventbridge-publisher.md`](../superpowers/plans/2026-07-12-eventbridge-publisher.md) | 2026-07-16 | `draft` | `implementation` | `observability` | Akosha EventBridge Publisher Implementation Plan |
 
 ### Repo-local Decisions (`.claude/decisions/`)
 
