@@ -37,6 +37,9 @@ dependencies = [
     "pandas>=2.0.0",
 ]
 
+[project.scripts]
+akosha = "akosha.cli:app"
+
 [project.license]
 text = "BSD-3-CLAUSE"
 
