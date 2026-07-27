@@ -11,6 +11,12 @@ Universal memory aggregation and cross-system analytics for the Bodai ecosystem.
 **Version:** 0.3.0
 **Status:** Active pilot deployment for the current phase
 
+## Bodai Ecosystem Role
+
+Akosha is the **seer** of the [Bodai ecosystem](https://github.com/lesleslie/bodai) — the cross-system intelligence layer that aggregates embeddings, semantic search, and pattern detection across all other Bodai repos (Mahavishnu, Dhara, Session-Buddy, Crackerjack, Oneiric).
+
+Standalone, Akosha is a universal memory aggregation and analytics platform — useful for any team that needs to search semantically across multiple codebases or knowledge sources. See [bodai/docs](https://github.com/lesleslie/bodai) for integration patterns.
+
 ## Quick Links
 
 - [Overview](#what-is-akosha)
