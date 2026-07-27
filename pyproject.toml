@@ -165,7 +165,7 @@ dev = [
     "bandit>=1.7.0",
     "refurb>=0.0.0",
     "pyright>=1.1.0",
-    "crackerjack>=0.54.5",
+    "crackerjack>=0.70.0",
     "session-buddy>=0.18.0",
 ]
 
