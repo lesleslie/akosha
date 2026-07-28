@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2026-07-27
+
+### Fixed
+
+- storage: Add missing datetime import for pydantic annotations
+
+### Documentation
+
+- readme: Add Bodai Ecosystem Role section
+
+### Internal
+
+- Bump oneiric dep to >=0.16.0
+- deps: Bump crackerjack>=0.70.0; remove duplicated validator script
+- Normalize LICENSE attribution to Robert Leslie and Wedgwood Web Works
+- pyproject: Add [project.scripts] entry for akosha CLI
+
 ## [0.9.1] - 2026-07-21
 
 ### Added
