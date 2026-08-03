@@ -384,27 +384,44 @@ def get_config(config_path: str | None = None) -> AkoshaConfig:
 
     Args:
         config_path: Optional path to YAML config file (for backward
-            compatibility). When provided, this is forwarded to oneiric's
-            loader as the explicit-path override.
+            compatibility). When provided, this file's contents override
+            the oneiric-loaded defaults with the highest priority
+            (after env vars).
 
     Returns:
         AkoshaConfig instance
     """
     from oneiric.core.config import load_settings as _oneiric_load
 
-    settings_obj = _oneiric_load(
-        path=str(Path(config_path)) if config_path else None,
-        project_name="akosha",
-    )
+    # Read the explicit file ourselves so unknown-to-OneiricSettings
+    # fields (like ``mode``) survive the round-trip. oneiric's
+    # ``load_settings`` validates through OneiricSettings, which
+    # silently drops any field it doesn't declare (Pydantic v2 default
+    # with no ``extra="allow"``). For Akosha-specific fields like
+    # ``mode``, that drop means explicit overrides are silently lost.
+    explicit_data: dict[str, Any] = {}
+    if config_path:
+        file = Path(config_path)
+        if file.exists():
+            import yaml
+
+            explicit_data = yaml.safe_load(file.read_text()) or {}
+
+    settings_obj = _oneiric_load(path=None, project_name="akosha")
+
     # Strip values that don't match an AkoshaConfig field. ``OneiricSettings``
     # includes inherited fields (``http_port``, ``cache_dir``, etc.) from
     # ``OneiricMCPConfig`` that AkoshaConfig also inherits -- but
     # OneiricSettings may populate them with ``None`` (Pydantic v2 default
     # for required fields). Filter to (a) AkoshaConfig fields and
     # (b) non-None values so we don't trip the type validator.
+    merged: dict[str, Any] = {
+        **settings_obj.model_dump(),
+        **explicit_data,
+    }
     relevant_data = {
         k: v
-        for k, v in settings_obj.model_dump().items()
+        for k, v in merged.items()
         if k in AkoshaConfig.model_fields and v is not None
     }
     return AkoshaConfig(**relevant_data)
