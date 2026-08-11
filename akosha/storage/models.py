@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
-    from datetime import datetime  # noqa: F401
+    from datetime import datetime
 
 
 class ConversationMetadata(BaseModel):

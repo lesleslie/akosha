@@ -149,6 +149,7 @@ tests/archived/
 .oneiric_cache/
 .complexipy_cache/
 .cache/
+.lycheecache
 .lycheecache/
 
 # XDG - State directories

@@ -17,20 +17,20 @@ The three contract bugs captured below were the trigger for writing it
 — they all stemmed from undocumented expectations about how the tier
 schema, the ingestion pipelines, and the EventBridge publisher line up.
 
----
+______________________________________________________________________
 
 ## Table of Contents
 
 1. [Storage Inventory](#1-storage-inventory)
-2. [MCP Write Surface](#2-mcp-write-surface)
-3. [MCP Read Surface](#3-mcp-read-surface)
-4. [Cross-Component Visibility](#4-cross-component-visibility)
-5. [Integration Contract](#5-integration-contract)
-6. [Sample Queries](#6-sample-queries)
-7. [Diagrams](#7-diagrams)
-8. [Operational Notes](#8-operational-notes)
+1. [MCP Write Surface](#2-mcp-write-surface)
+1. [MCP Read Surface](#3-mcp-read-surface)
+1. [Cross-Component Visibility](#4-cross-component-visibility)
+1. [Integration Contract](#5-integration-contract)
+1. [Sample Queries](#6-sample-queries)
+1. [Diagrams](#7-diagrams)
+1. [Operational Notes](#8-operational-notes)
 
----
+______________________________________________________________________
 
 ## 1. Storage Inventory
 
@@ -178,9 +178,9 @@ erDiagram
 deployment environment to concrete paths. Environment detection priority:
 
 1. `AKOSHA_ENV` if set (`container` / `local` / `development` / `test`).
-2. `/.dockerenv` or `/proc/1/cgroup` → `container`.
-3. `pytest` in `sys.modules` or `PYTEST_CURRENT_TEST` → `test`.
-4. Otherwise `local`.
+1. `/.dockerenv` or `/proc/1/cgroup` → `container`.
+1. `pytest` in `sys.modules` or `PYTEST_CURRENT_TEST` → `test`.
+1. Otherwise `local`.
 
 The resolver returns:
 
@@ -195,7 +195,7 @@ hot WAL at `wal/`, the cold cache at `cold/cache/`, config at
 overridden by env vars (`AKOSHA_WARM_PATH`, `AKOSHA_WAL_PATH`,
 `AKOSHA_DATA_PATH`).
 
----
+______________________________________________________________________
 
 ## 2. MCP Write Surface
 
@@ -218,8 +218,8 @@ publishes analytics events onto the Bodai EventBridge.
 `publish_to_eventbridge` is gated three ways:
 
 1. **`enabled`** parameter passed at registration time (legacy, captured once).
-2. **`enabled_fn` callable** invoked on every tool invocation — the production wiring reads `AkoshaConfig().eventbridge.enabled` per call so operators can flip `AKOSHA_EVENTBRIDGE_ENABLED` without restarting the MCP server.
-3. **Publisher presence** — when the module-level `_publisher` in `akosha/observability/eventbridge_publisher.py` is `None` (no Oneiric dispatcher wired), the tool returns `{"status": "no_publisher", "warning": ...}` instead of failing.
+1. **`enabled_fn` callable** invoked on every tool invocation — the production wiring reads `AkoshaConfig().eventbridge.enabled` per call so operators can flip `AKOSHA_EVENTBRIDGE_ENABLED` without restarting the MCP server.
+1. **Publisher presence** — when the module-level `_publisher` in `akosha/observability/eventbridge_publisher.py` is `None` (no Oneiric dispatcher wired), the tool returns `{"status": "no_publisher", "warning": ...}` instead of failing.
 
 When disabled, every call returns `{"status": "disabled"}`. When no
 publisher is wired but `enabled=true`, the tool warns but does not
@@ -286,7 +286,7 @@ sequenceDiagram
     end
 ```
 
----
+______________________________________________________________________
 
 ## 3. MCP Read Surface
 
@@ -372,7 +372,7 @@ gracefully when the model isn't loaded.
 | `wait_for_dependency` | Polls one dep until ready | Boot ordering |
 | `wait_for_all_dependencies` | Polls all | Boot ordering |
 
----
+______________________________________________________________________
 
 ## 4. Cross-Component Visibility
 
@@ -401,7 +401,7 @@ To avoid double-bookkeeping with neighbors, Akosha intentionally does
 - **Workspace graphs as primary source** — Mahavishnu owns the indexer; Akosha is the secondary index for cross-repo recall.
 - **Long-term KG state across restarts** — `KnowledgeGraphBuilder` is in-process; the canonical cross-system KG is replicated to Dhara / Session-Buddy.
 
----
+______________________________________________________________________
 
 ## 5. Integration Contract
 
@@ -419,7 +419,7 @@ own lifespan reference at `__init__` time. With the lifespan
 no-op'd, two failure modes surfaced:
 
 1. **MCP routing 404**: Claude Code's transport auto-detector fell back to REST-style `/mcp/tools/call` routing, which returned 404 because only `/mcp` is mounted.
-2. **Phase 0 registration never fired**: Akosha never wrote `component_endpoint/akosha` to Dhara, so `FitnessAnalyzer` could not discover Akosha as a polling target.
+1. **Phase 0 registration never fired**: Akosha never wrote `component_endpoint/akosha` to Dhara, so `FitnessAnalyzer` could not discover Akosha as a polling target.
 
 **Contract**: `create_app()` MUST pass the lifespan via the public
 `lifespan=` kwarg to the `FastMCP(...)` constructor. Any code path that
@@ -525,7 +525,7 @@ contract, store it as `tests/integration/test_fitness_analyzer_discovery.py::tes
 These four contracts are the minimum bar; new MCP wrappers should add
 similar round-trip tests when introducing new write/read pairs.
 
----
+______________________________________________________________________
 
 ## 6. Sample Queries
 
@@ -725,7 +725,7 @@ mcp__akosha__publish_to_eventbridge(
 
 Returns `{"status": "published"}` (or `{"status": "queued", "workflow_id": "..."}` if `async_callback=True`).
 
----
+______________________________________________________________________
 
 ## 7. Diagrams
 
@@ -733,7 +733,7 @@ Three diagrams are persisted with this document. Two are embedded
 above:
 
 1. **Schema map** (Section 1) — `erDiagram` of all three storage tiers, the in-process fitness buffer, and the knowledge graph; arrows show the `AgingService` hot→warm migration and the FitnessAnalyzer→Dhara write.
-2. **Phase 0 startup** (Section 2) — `sequenceDiagram` of the lifespan-initiated embedding/hot-store/tool registration, the Phase 0 Dhara write, and the steady-state 60-second fitness loop.
+1. **Phase 0 startup** (Section 2) — `sequenceDiagram` of the lifespan-initiated embedding/hot-store/tool registration, the Phase 0 Dhara write, and the steady-state 60-second fitness loop.
 
 The third — **Cross-system data flow** — lives in the global Bodai
 docs at `bodai/docs/memory/INDEX.md` because it spans all five
@@ -742,7 +742,7 @@ components, not just Akosha. The **Memory routing decision tree**
 Per-component diagrams (storage tiers, lifespan) live in each
 component's `docs/architecture/MEMORY_ARCHITECTURE.md`.
 
----
+______________________________________________________________________
 
 ## 8. Operational Notes
 
@@ -751,7 +751,7 @@ component's `docs/architecture/MEMORY_ARCHITECTURE.md`.
 | Mode | Model | Latency per text (typical) | Throughput (batch) |
 |------|-------|---------------------------|---------------------|
 | `real` | all-MiniLM-L6-v2 via sentence-transformers ONNX | 15-50 ms (executor thread, non-blocking) | 200-500 texts/sec at batch_size=32 |
-| `fallback` | deterministic hash-based mock | <1 ms | n/a |
+| `fallback` | deterministic hash-based mock | \<1 ms | n/a |
 
 The model loads lazily in `EmbeddingService.initialize()` via
 `loop.run_in_executor`, so the lifespan startup is not blocked. When
@@ -799,7 +799,7 @@ export AKOSHA__STORAGE__HOT__PG_URL=postgresql://akosha:***@localhost:5432/akosh
 | Operation | Typical latency | Hot path? |
 |-----------|-----------------|-----------|
 | `generate_embedding` (real) | 15-50 ms | Yes (preflight for recall) |
-| `generate_embedding` (fallback) | <1 ms | Yes |
+| `generate_embedding` (fallback) | \<1 ms | Yes |
 | `search_all_systems` | (mock; ~ms) → will be 5-30 ms once Contract 5.2 is fixed | Yes |
 | `query_local_traces` (SQL WHERE) | 10-50 ms | Yes (FitnessAnalyzer) |
 | `find_similar_repositories` | 200-800 ms (fans out to N code graphs) | No |
@@ -818,7 +818,7 @@ export AKOSHA__STORAGE__HOT__PG_URL=postgresql://akosha:***@localhost:5432/akosh
 - **Phase 0 Dhara write fails**: bounded exponential backoff (5 attempts, ~31s); heartbeat retries every 5 minutes. Akosha still starts up — `FitnessAnalyzer` simply cannot discover it.
 - **Ingestion worker S3/R2 unavailable**: `IngestionWorker._discover_uploads` raises; logged, lifespan continues. Hot store is unreachable for new data until the adapter recovers.
 
----
+______________________________________________________________________
 
 ## See Also
 

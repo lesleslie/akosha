@@ -420,9 +420,7 @@ def get_config(config_path: str | None = None) -> AkoshaConfig:
         **explicit_data,
     }
     relevant_data = {
-        k: v
-        for k, v in merged.items()
-        if k in AkoshaConfig.model_fields and v is not None
+        k: v for k, v in merged.items() if k in AkoshaConfig.model_fields and v is not None
     }
     return AkoshaConfig(**relevant_data)
 
