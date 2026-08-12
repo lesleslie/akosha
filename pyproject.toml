@@ -89,6 +89,7 @@ addopts = [
     "--cov=akosha",
     "--cov-report=term-missing",
     "--cov-report=html",
+    "--cov-fail-under=87.61723329425557",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
@@ -113,7 +114,7 @@ omit = [
 
 [tool.coverage.report]
 precision = 2
-fail_under = 85
+fail_under = 87.61723329425557
 
 [tool.mypy]
 python_version = "3.13"
