@@ -113,7 +113,7 @@ class TestAkoshaConfig:
         cfg = AkoshaConfig()
         assert cfg.mode == "lite"
         assert cfg.api_port == 8682
-        assert cfg.mcp_port == 3002
+        assert cfg.mcp_port == 8682
         assert cfg.debug is False
         assert cfg.ingestion_workers == 3
         assert cfg.max_concurrent_ingests == 100

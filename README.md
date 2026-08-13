@@ -8,7 +8,7 @@
 
 Universal memory aggregation and cross-system analytics for the Bodai ecosystem.
 
-**Version:** 0.3.0
+**Version:** 0.9.4
 **Status:** Active pilot deployment for the current phase
 
 ## Bodai Ecosystem Role
@@ -376,30 +376,62 @@ akosha start --host 0.0.0.0 --port 8000
 └─────────────────────────────────────────────────────────┘
 ```
 
-### MCP Tools (11 Total)
+### MCP Tools (Profile-Gated Inventory)
 
-**Search Tools (3):**
+Akosha exposes its tools via the `AKOSHA_TOOL_PROFILE` environment variable.
+The list below is the **FULL profile** (25 tools), which is the default.
+Profiles: **MINIMAL** (6 tools, health probes only) → **STANDARD** (14 tools,
+adds core memory aggregation) → **FULL** (25 tools, adds Session-Buddy,
+PyCharm, OTel, fitness, and EventBridge integrations).
 
-- `generate_embedding` - Generate semantic embeddings
+Source of truth: `akosha/mcp/tools/profiles.py:48-81`
+(`REGISTRATION_TOOLS`).
+
+**Health & Dependency Probes (6):**
+
+- `get_liveness` - Liveness check
+- `get_readiness` - Readiness check
+- `health_check_service` - Check a single dependency
+- `health_check_all` - Check all dependencies
+- `wait_for_dependency` - Block until a dependency is healthy
+- `wait_for_all_dependencies` - Block until every dependency is healthy
+
+**Core Memory Aggregation (8):**
+
+- `generate_embedding` - Generate semantic embedding for one text
 - `generate_batch_embeddings` - Batch embedding generation
-- `search_all_systems` - Semantic search across all systems
-
-**Analytics Tools (4):**
-
-- `get_system_metrics` - Get metrics and statistics
-- `analyze_trends` - Detect trends (increasing/decreasing/stable)
-- `detect_anomalies` - Find statistical outliers
+- `search_all_systems` - Semantic search across systems
+- `detect_anomalies` - Statistical anomaly detection
+- `analyze_trends` - Time-series trend analysis (increasing/decreasing/stable)
 - `correlate_systems` - Cross-system correlation analysis
+- `query_knowledge_graph` - Entity and relationship queries
+- `get_system_metrics` - Aggregate system metrics
 
-**Graph Tools (3):**
+**Session-Buddy Integration (2):**
 
-- `query_knowledge_graph` - Query entities and relationships
-- `find_path` - Shortest path between entities
-- `get_graph_statistics` - Graph metrics and statistics
+- `ingest_session_memory` - Direct HTTP memory ingestion from Session-Buddy
+- `get_cross_system_summary` - Cross-system memory summary
 
-**System Tools (1):**
+**PyCharm / IDE Integration (5):**
 
-- `get_storage_status` - Storage tier status
+- `get_ide_diagnostics` - Pull file-level diagnostics from PyCharm
+- `search_code` - Project-wide code search via PyCharm index
+- `get_symbol_info` - Symbol metadata
+- `find_usages` - Symbol usage lookup
+- `pycharm_health` - PyCharm MCP connectivity
+
+**OpenTelemetry Trace Queries (1):**
+
+- `query_local_traces` - Query OTel traces by task class + time window
+
+**Fitness Analyzer (2):**
+
+- `run_fitness_analysis` - On-demand fitness signal computation
+- `get_fitness_analyzer_status` - Fitness analyzer status
+
+**EventBridge Publisher (1):**
+
+- `publish_to_eventbridge` - Emit analytics events to the Bodai EventBridge
 
 ______________________________________________________________________
 

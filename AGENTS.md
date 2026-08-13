@@ -2,7 +2,24 @@
 
 ## Project Structure & Module Organization
 
-- `akosha/` contains the main package, with storage backends in `storage/`, ingestion logic in `ingestion/`, processing services in `processing/`, query execution in `query/`, caching in `cache/`, and API or MCP surfaces in `api/` and related entrypoints.
+- `akosha/` contains the main package. The real sub-packages are:
+  - `alerting/` — anomaly and composite alerting
+  - `api/` — REST API surface
+  - `cli/` — CLI command implementations (Typer)
+  - `ingestion/` — pull-based ingestion pipeline
+  - `mcp/` — FastMCP server, tool profiles, transport
+  - `models/` — Pydantic / DTO models
+  - `modes/` — lite / standard mode factories
+  - `monitoring/` — metrics and health probes
+  - `observability/` — OpenTelemetry setup, Prometheus exporters
+  - `processing/` — embeddings, time-series analytics, knowledge graph
+  - `query/` — query execution and ranking
+  - `resilience/` — circuit breakers and retry policies
+  - `scripts/` — operator / utility scripts
+  - `shell/` — IPython admin shell
+  - `storage/` — hot / warm / cold storage backends (cache config lives
+    in `akosha/config.py::CacheConfig`, not in a `cache/` sub-package)
+  - `websocket/` — realtime event broadcasting
 - Keep tiered storage concerns separated: hot, warm, and cold path logic should stay in their respective modules instead of accumulating in shared utility files.
 - Tests live in `tests/` and should mirror the package structure across unit, integration, and performance scenarios.
 - Long-form architecture and operator guidance belong in `README.md`, `CLAUDE.md`, and focused docs under `docs/` as features mature.

@@ -14,6 +14,8 @@ from typing import Annotated, Any
 
 import typer
 
+from akosha.config import DEFAULT_MCP_PORT
+
 try:
     from akosha.main import AkoshaApplication  # type: ignore[import]
 except Exception:  # pragma: no cover - optional for test patching
@@ -194,7 +196,7 @@ def _configure_logging(verbose: bool) -> None:
 
 def _start_server(
     host: Annotated[str, typer.Option("--host", "-h", help="Host to bind to")] = "127.0.0.1",
-    port: Annotated[int, typer.Option("--port", "-p", help="Port to bind to")] = 8682,
+    port: Annotated[int, typer.Option("--port", "-p", help="Port to bind to")] = DEFAULT_MCP_PORT,
     mode: Annotated[
         str, typer.Option("--mode", "-m", help="Operational mode (lite|standard)")
     ] = "lite",
@@ -262,7 +264,7 @@ def _start_server(
 @app.command()
 def start(
     host: Annotated[str, typer.Option("--host", "-h", help="Host to bind to")] = "127.0.0.1",
-    port: Annotated[int, typer.Option("--port", "-p", help="Port to bind to")] = 8682,
+    port: Annotated[int, typer.Option("--port", "-p", help="Port to bind to")] = DEFAULT_MCP_PORT,
     mode: Annotated[
         str, typer.Option("--mode", "-m", help="Operational mode (lite|standard)")
     ] = "lite",
@@ -276,7 +278,7 @@ def start(
 @mcp_app.command("start")
 def mcp_start(
     host: Annotated[str, typer.Option("--host", "-h", help="Host to bind to")] = "127.0.0.1",
-    port: Annotated[int, typer.Option("--port", "-p", help="Port to bind to")] = 8682,
+    port: Annotated[int, typer.Option("--port", "-p", help="Port to bind to")] = DEFAULT_MCP_PORT,
     mode: Annotated[
         str, typer.Option("--mode", "-m", help="Operational mode (lite|standard)")
     ] = "lite",

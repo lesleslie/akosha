@@ -1,12 +1,29 @@
-"""Embedding service for semantic search using ONNX models.
+"""Embedding service for semantic search.
 
-This module provides local embedding generation using sentence-transformers
-with ONNX runtime for privacy-preserving semantic search.
+Provides embedding generation for Akosha's semantic search and similarity
+pipelines. As of 2026-08 the runtime path is **deterministic mock
+embeddings** generated from ``numpy.random`` — there is no native ONNX, no
+sentence-transformers, and no fastembed import in this process.
 
-graceful Degradation:
-    - If sentence-transformers unavailable: Returns mock embeddings
-    - If model loading fails: Falls back to random embeddings
-    - Always functional, never blocks operations
+Why mock?
+
+- The previous ONNX / sentence-transformers runtime was removed when the
+  ``embeddings`` PEP 735 dependency group was emptied (see ``pyproject.toml``
+  lines 173-176). Embedding generation is now delegated to MCP-side
+  providers (Ollama, OpenAI) running in the configured Bodai ecosystem.
+- ``akosha/processing/embeddings.py`` exposes a stable interface
+  (``EmbeddingService``, ``get_embedding_service``,
+  ``MockEmbeddingService``) so callers and tests do not need to change.
+
+Graceful degradation:
+
+    - If a real embedding backend is unavailable: returns deterministic
+      mock vectors seeded from the input text hash, so semantic-search
+      scores are stable across runs for the same corpus.
+    - ``is_available()`` returns False to signal to callers that they
+      are operating against synthetic vectors — operations continue but
+      relevance ranking is not meaningful.
+    - Always functional; never blocks operations.
 """
 
 from __future__ import annotations

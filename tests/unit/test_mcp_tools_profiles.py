@@ -124,5 +124,5 @@ def test_register_health_tools_akosha_delegates_to_shared_contract(
     assert health_register.call_count == 1
     kwargs = health_register.call_args.kwargs
     assert kwargs["service_name"] == "akosha"
-    assert kwargs["version"] == "0.1.0"
+    assert kwargs["version"] == "0.9.4"
     assert kwargs["dependencies"] == tools_module.DEFAULT_DEPENDENCIES

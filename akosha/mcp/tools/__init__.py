@@ -37,7 +37,7 @@ from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
 logger = logging.getLogger(__name__)
 
 SERVICE_NAME = "akosha"
-SERVICE_VERSION = "0.1.0"
+SERVICE_VERSION = "0.9.4"
 SERVICE_START_TIME = time.time()
 
 DEFAULT_DEPENDENCIES: dict[str, DependencyConfig] = {

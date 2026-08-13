@@ -47,6 +47,12 @@ from akosha.storage.path_resolver import StoragePathResolver
 
 logger = logging.getLogger(__name__)
 
+#: Single source of truth for the Akosha network port. The Bodai ecosystem
+#: reserves 8682 for the Akosha seer; the previous 3002 default predates the
+#: port convention. Override via AKOSHA_MCP_PORT / MCP_PORT env vars or CLI
+#: flag, never by editing this constant.
+DEFAULT_MCP_PORT: int = 8682
+
 
 class HotStorageConfig(BaseModel):
     """Hot storage configuration.
@@ -272,8 +278,8 @@ class AkoshaConfig(OneiricMCPConfig):  # type: ignore[reportUntypedBaseClass]
     eventbridge: EventBridgeConfig = Field(default_factory=EventBridgeConfig)
 
     # API
-    api_port: int = Field(default_factory=lambda: int(os.getenv("AKOSHA_API_PORT", "8682")))
-    mcp_port: int = Field(default_factory=lambda: int(os.getenv("AKOSHA_MCP_PORT", "3002")))
+    api_port: int = Field(default_factory=lambda: int(os.getenv("AKOSHA_API_PORT", str(DEFAULT_MCP_PORT))))
+    mcp_port: int = Field(default_factory=lambda: int(os.getenv("AKOSHA_MCP_PORT", str(DEFAULT_MCP_PORT))))
     debug: bool = False
 
     # Processing

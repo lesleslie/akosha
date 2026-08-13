@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING, Any, Final
 
 from fastmcp import FastMCP
 
+from akosha.config import DEFAULT_MCP_PORT
+
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
@@ -43,7 +45,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 APP_NAME: Final = "akosha-mcp"
-APP_VERSION: Final = "0.1.0"
+APP_VERSION: Final = "0.9.4"
 
 DHARA_DEFAULT_URL = "http://localhost:8683"
 
@@ -52,7 +54,7 @@ def _get_mcp_url() -> str:
     """Get Akosha's MCP server URL from environment or config.
 
     Returns:
-        MCP server URL string (e.g., "http://localhost:3002/mcp")
+        MCP server URL string (e.g., "http://localhost:8682/mcp")
     """
     # Check env var first
     mcp_url = os.getenv("AKOSHA_MCP_URL", "")
@@ -61,7 +63,7 @@ def _get_mcp_url() -> str:
 
     # Fall back to host + port from config
     host = os.getenv("AKOSHA_HOST", "localhost")
-    mcp_port = int(os.getenv("AKOSHA_MCP_PORT", "3002"))
+    mcp_port = int(os.getenv("AKOSHA_MCP_PORT", str(DEFAULT_MCP_PORT)))
     return f"http://{host}:{mcp_port}/mcp"
 
 
