@@ -43,7 +43,7 @@ Akosha is a universal memory aggregation system that collects, processes, and an
 
 ### Key Capabilities
 
-✅ **Privacy-First**: Local ONNX embeddings, no external API calls required
+✅ **Privacy-First**: Deterministic mock embeddings; real backends delegated to MCP-side providers (Ollama, OpenAI)
 ✅ **Scalable**: Handles 100 to 100,000+ Session-Buddy instances
 ✅ **Real-Time Analytics**: Trend detection, anomaly spotting, cross-system correlation
 ✅ **MCP Protocol**: Exposes all capabilities via Model Context Protocol
@@ -497,10 +497,10 @@ ______________________________________________________________________
 
 ### Phase 2: Advanced Features
 
-- ONNX embedding service
+- Mock embedding service
 - Time-series analytics
 - Cross-system correlation
-- 11 MCP tools integrated
+- 25 MCP tools integrated (FULL profile)
 
 ### Phase 3: Production Hardening
 
