@@ -169,31 +169,33 @@ pytest -v --tb=short
 ### Ingestion Pipeline (`akosha/ingestion/`)
 
 - **worker.py**: Pull-based ingestion from cloud storage
-- **discovery.py**: Upload discovery via Oneiric
 - **orchestrator.py**: Multi-worker coordinator
+- **code_graph_ingester.py**: Code-graph ingestion from local repos
 
 ### Processing Services (`akosha/processing/`)
 
 - **deduplication.py**: Exact SHA-256 + MinHash fuzzy matching
-- **enrichment.py**: Metadata enrichment (system profiles, geo-tags)
-- **vector_indexer.py**: HNSW index management
-- **time_series.py**: Hourly/daily aggregation with trend detection
+- **embeddings.py**: Deterministic mock embeddings (384-dim, no native ONNX runtime)
+- **analytics.py**: Time-series trend detection, anomaly spotting, cross-system correlation
+- **fitness_analyzer.py**: Per-task-class rolling fitness signals
 - **knowledge_graph.py**: Entity extraction and relationship linking
 
 ### Query Layer (`akosha/query/`)
 
 - **distributed.py**: Fan-out query engine across shards
 - **aggregator.py**: Result merging and re-ranking
-- **faceted.py**: Faceted search with filters
 
-### Cache Layer (`akosha/cache/`)
+### Cache Layer
 
-- **layered_cache.py**: L1 (memory) + L2 (Redis) caching
+- L1 in-process cache via DuckDB hot-store; L2 Redis is currently disabled.
+  The historical `akosha/cache/layered_cache.py` module was removed; do
+  not reintroduce a top-level `akosha/cache/` package.
 
 ### API Layer (`akosha/api/`)
 
-- **routes.py**: FastAPI route definitions
 - **middleware.py**: Authentication, logging, rate limiting
+  (no FastAPI router module ships today; REST routes are wired inside
+  the FastAPI app factory, not under `akosha/api/routes.py`).
 
 ## Configuration
 
