@@ -58,8 +58,14 @@ ______________________________________________________________________
 - **Python 3.13+** (required for modern type hints)
 - **UV** package manager (recommended) or pip
 - **DuckDB** (automatically installed)
-- **Optional**: sentence-transformers for real embeddings (fallback available)
 - **Optional (serverless/production)**: PostgreSQL + pgvector extension for persistent hot-store storage across cold-starts
+
+> **Note on embeddings**: Akosha generates deterministic mock embeddings
+> in-process (see `akosha/processing/embeddings.py`); real embeddings
+> are delegated to MCP-side providers (Ollama, OpenAI). The historical
+> `embeddings` optional dependency group was emptied in 2026-08 when
+> `onnxruntime` was dropped, so there is no native ONNX / sentence-
+> transformers install path from this repo.
 
 > **pgvector note**: If using pgvector-backed storage, your PostgreSQL instance must have the `vector` extension enabled: `CREATE EXTENSION vector;`. See [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) for full serverless setup instructions.
 
@@ -136,17 +142,23 @@ pytest tests/unit/ -v
 
 ### Optional Dependencies
 
-For **real semantic embeddings** (recommended):
+Akosha has no optional dependency groups for in-process embeddings — the
+`embeddings` PEP 735 group in `pyproject.toml` is intentionally empty
+(see its inline comment). Real semantic embeddings, when you need them,
+are produced by MCP-side providers (Ollama, OpenAI) configured in your
+Bodai deployment; this package does not ship a native ONNX / sentence-
+transformers runtime.
+
+For **persistent hot-store storage across cold-starts**:
 
 ```bash
-# Using UV
-uv add --optional embeddings sentence-transformers onnxruntime
-
-# Using pip
-pip install "akosha[embeddings]"
+# Serverless / production: pgvector-backed hot store
+uv sync --group storage-pg
 ```
 
-**Note**: Akosha works without these dependencies using deterministic fallback embeddings. Real embeddings provide better semantic search.
+See the [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) for the full
+serverless setup instructions, including the `CREATE EXTENSION vector;`
+prerequisite.
 
 ______________________________________________________________________
 
@@ -561,7 +573,7 @@ ______________________________________________________________________
 - **Session-Buddy**: For the excellent MCP server patterns
 - **Oneiric**: For universal storage adapter framework
 - **FastMCP**: For elegant MCP protocol implementation
-- **Sentence-Transformers**: For all-MiniLM-L6-v2 model
+- **Ollama / OpenAI**: Real embeddings are delegated to MCP-side providers running in the configured Bodai ecosystem
 
 ______________________________________________________________________
 
