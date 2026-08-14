@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-import sys
-from types import ModuleType
-from unittest.mock import MagicMock, patch
-
 import numpy as np
 import pytest
 
@@ -13,30 +9,8 @@ import akosha.processing.embeddings as embeddings_module
 from akosha.processing.embeddings import EmbeddingService, get_embedding_service
 
 
-class _ImmediateLoop:
-    async def run_in_executor(self, _executor, func, *args):
-        return func(*args)
-
-
-class _FakeSentenceTransformer:
-    def __init__(self, model_name: str) -> None:
-        self.model_name = model_name
-        self.encode_calls: list[tuple[object, tuple[object, ...], dict[str, object]]] = []
-
-    def encode(self, payload, *args, **kwargs):
-        self.encode_calls.append((payload, args, kwargs))
-        if isinstance(payload, list):
-            return np.vstack(
-                [
-                    np.full(384, float(index + 1), dtype=np.float32)
-                    for index, _text in enumerate(payload)
-                ]
-            )
-        return np.full(384, 0.25, dtype=np.float32)
-
-
 class TestEmbeddingService:
-    """Test suite for EmbeddingService."""
+    """Test suite for EmbeddingService (mock-only)."""
 
     @pytest.fixture
     def service(self) -> EmbeddingService:
@@ -52,7 +26,8 @@ class TestEmbeddingService:
         await service.initialize()
 
         assert service._initialized
-        # Service may or may not be available depending on dependencies
+        # Mock-only service never reports as available.
+        assert not service.is_available()
 
     @pytest.mark.asyncio
     async def test_singleton(self) -> None:
@@ -63,10 +38,10 @@ class TestEmbeddingService:
         assert svc1 is svc2
 
     @pytest.mark.asyncio
-    async def test_generate_embedding_fallback(self, service: EmbeddingService) -> None:
-        """Test embedding generation with fallback mode."""
-        # Force fallback mode
-        service._available = False
+    async def test_generate_embedding_returns_mock_vector(
+        self, service: EmbeddingService
+    ) -> None:
+        """Test mock embedding generation."""
         service._initialized = True
 
         text = "test conversation about Python development"
@@ -82,8 +57,7 @@ class TestEmbeddingService:
 
     @pytest.mark.asyncio
     async def test_fallback_deterministic(self, service: EmbeddingService) -> None:
-        """Test that fallback embeddings are deterministic."""
-        service._available = False
+        """Test that mock embeddings are deterministic."""
         service._initialized = True
 
         text = "deterministic test"
@@ -95,8 +69,7 @@ class TestEmbeddingService:
 
     @pytest.mark.asyncio
     async def test_fallback_different_texts(self, service: EmbeddingService) -> None:
-        """Test that different texts produce different fallback embeddings."""
-        service._available = False
+        """Test that different texts produce different mock embeddings."""
         service._initialized = True
 
         emb1 = await service.generate_embedding("text one")
@@ -106,9 +79,8 @@ class TestEmbeddingService:
         assert not np.allclose(emb1, emb2)
 
     @pytest.mark.asyncio
-    async def test_batch_embeddings_fallback(self, service: EmbeddingService) -> None:
-        """Test batch embedding generation with fallback."""
-        service._available = False
+    async def test_batch_embeddings(self, service: EmbeddingService) -> None:
+        """Test batch embedding generation."""
         service._initialized = True
 
         texts = [
@@ -128,7 +100,6 @@ class TestEmbeddingService:
     @pytest.mark.asyncio
     async def test_batch_embeddings_empty(self, service: EmbeddingService) -> None:
         """Test batch embedding with empty list."""
-        service._available = False
         service._initialized = True
 
         embeddings = await service.generate_batch_embeddings([])
@@ -136,76 +107,14 @@ class TestEmbeddingService:
         assert embeddings == []
 
     @pytest.mark.asyncio
-    async def test_real_model_path_initializes_and_generates_embeddings(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """A mocked sentence-transformers install should exercise the real-model branches."""
-        service = EmbeddingService(model_name="fake-model")
-
-        fake_module = ModuleType("sentence_transformers")
-        fake_module.SentenceTransformer = _FakeSentenceTransformer
-        monkeypatch.setitem(sys.modules, "sentence_transformers", fake_module)
-        monkeypatch.setattr(embeddings_module.asyncio, "get_event_loop", lambda: _ImmediateLoop())
-        monkeypatch.setattr(embeddings_module, "record_counter", lambda *args, **kwargs: None)
-        monkeypatch.setattr(embeddings_module, "record_histogram", lambda *args, **kwargs: None)
-
-        import akosha.observability as observability_module
-
-        monkeypatch.setattr(
-            observability_module,
-            "add_span_attributes",
-            lambda *args, **kwargs: None,
-        )
-
-        await service.initialize()
-
-        assert service._initialized is True
-        assert service.is_available() is True
-        assert isinstance(service._model, _FakeSentenceTransformer)
-
-        single = await service.generate_embedding("real-model text")
-        assert isinstance(single, np.ndarray)
-        assert single.shape == (384,)
-        assert single.dtype == np.float32
-
-        batch = await service.generate_batch_embeddings(["first", "second", "third"])
-        assert len(batch) == 3
-        assert all(emb.shape == (384,) for emb in batch)
-        assert service._model.encode_calls[0][0] == "real-model text"
-        assert service._model.encode_calls[1][0] == ["first", "second", "third"]
-
-    @pytest.mark.asyncio
     async def test_initialize_returns_early_when_already_initialized(self) -> None:
         """Repeated initialize calls should be cheap no-ops."""
         service = EmbeddingService()
         service._initialized = True
-        service._available = True
 
         await service.initialize()
 
         assert service._initialized is True
-        assert service.is_available() is True
-
-    @pytest.mark.asyncio
-    async def test_initialize_falls_back_when_model_load_fails(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Unexpected model-loading failures should still enable fallback mode."""
-        service = EmbeddingService(model_name="broken-model")
-
-        class _BrokenSentenceTransformer:
-            def __init__(self, model_name: str) -> None:
-                raise RuntimeError(f"failed to load {model_name}")
-
-        fake_module = ModuleType("sentence_transformers")
-        fake_module.SentenceTransformer = _BrokenSentenceTransformer
-        monkeypatch.setitem(sys.modules, "sentence_transformers", fake_module)
-        monkeypatch.setattr(embeddings_module.asyncio, "get_event_loop", lambda: _ImmediateLoop())
-
-        await service.initialize()
-
-        assert service._initialized is True
-        assert service.is_available() is False
 
     @pytest.mark.asyncio
     async def test_generate_methods_auto_initialize_when_needed(
@@ -216,7 +125,6 @@ class TestEmbeddingService:
 
         async def fake_initialize() -> None:
             service._initialized = True
-            service._available = False
 
         service.initialize = fake_initialize  # type: ignore[method-assign]
         monkeypatch.setattr(embeddings_module, "record_counter", lambda *args, **kwargs: None)
@@ -241,10 +149,9 @@ class TestEmbeddingService:
     async def test_fallback_embedding_zero_norm_stays_zero(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A zero-valued fallback vector should skip normalization cleanly."""
+        """A zero-valued mock vector should skip normalization cleanly."""
         service = EmbeddingService()
         service._initialized = True
-        service._available = False
 
         monkeypatch.setattr(embeddings_module.random.Random, "gauss", lambda self, mu, sigma: 0.0)
         monkeypatch.setattr(embeddings_module, "record_counter", lambda *args, **kwargs: None)
@@ -305,90 +212,3 @@ class TestEmbeddingService:
         results = await service.rank_by_similarity(query, [])
 
         assert results == []
-
-    @pytest.mark.skip(
-        reason="sentence_transformers not installed - graceful degradation tested instead"
-    )
-    @pytest.mark.asyncio
-    async def test_mock_model_loading(self) -> None:
-        """Test model loading with mock."""
-        service = EmbeddingService()
-
-        # Mock the import and model loading
-        with patch("sentence_transformers.SentenceTransformer") as mock_st_class:
-            # Mock model instance
-            mock_model = MagicMock()
-            mock_model.encode.return_value = np.random.randn(384).astype(np.float32)
-
-            # Mock the SentenceTransformer class to return our mock model
-            mock_st_class.return_value = mock_model
-
-            await service.initialize()
-
-            assert service._initialized
-            assert service.is_available()
-
-    @pytest.mark.skip(
-        reason="sentence_transformers not installed - graceful degradation tested instead"
-    )
-    @pytest.mark.asyncio
-    async def test_real_embedding_generation_mock(self) -> None:
-        """Test real embedding generation with mocked model."""
-        service = EmbeddingService()
-
-        # Mock the model loading and encoding
-        with patch("sentence_transformers.SentenceTransformer") as mock_st_class:
-            mock_model = MagicMock()
-            mock_model.encode.return_value = np.random.randn(384).astype(np.float32)
-            mock_st_class.return_value = mock_model
-
-            await service.initialize()
-
-            # Generate embedding
-            text = "test conversation"
-            embedding = await service.generate_embedding(text)
-
-            assert isinstance(embedding, np.ndarray)
-            assert embedding.shape == (384,)
-
-            # Verify model.encode was called
-            mock_model.encode.assert_called_once_with(text)
-
-    @pytest.mark.skip(
-        reason="sentence_transformers not installed - graceful degradation tested instead"
-    )
-    @pytest.mark.asyncio
-    async def test_batch_real_embeddings_mock(self) -> None:
-        """Test batch embedding generation with mocked model."""
-        service = EmbeddingService()
-
-        with patch("sentence_transformers.SentenceTransformer") as mock_st_class:
-            mock_model = MagicMock()
-            mock_model.encode.return_value = np.random.randn(3, 384).astype(np.float32)
-            mock_st_class.return_value = mock_model
-
-            await service.initialize()
-
-            texts = ["text1", "text2", "text3"]
-            embeddings = await service.generate_batch_embeddings(texts)
-
-            assert len(embeddings) == 3
-
-            # Verify model.encode was called with batch
-            mock_model.encode.assert_called_once()
-
-    @pytest.mark.skip(
-        reason="sentence_transformers not installed - graceful degradation tested instead"
-    )
-    @pytest.mark.asyncio
-    async def test_initialization_only_once(self, service: EmbeddingService) -> None:
-        """Test that initialization only runs once."""
-        service._available = False
-        service._initialized = True
-
-        # First call should not re-initialize
-        with patch("sentence_transformers.SentenceTransformer") as mock_st_class:
-            await service.initialize()
-
-            # Should not have attempted to load since already initialized
-            mock_st_class.assert_not_called()

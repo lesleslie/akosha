@@ -28,10 +28,8 @@ Graceful degradation:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import random
-from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -42,90 +40,59 @@ logger = logging.getLogger(__name__)
 
 
 class EmbeddingService:
-    """Local embedding generation service.
+    """Deterministic mock embedding service.
 
-    Uses all-MiniLM-L6-v2 model (384-dimensional embeddings) for semantic
-    similarity search. Model runs locally via ONNX for privacy.
+    Returns 384-dimensional float32 vectors derived from the input text
+    hash. There is no real ONNX / sentence-transformers / fastembed runtime
+    in this process — see the module docstring for why this is mock-only.
+
+    ``is_available()`` always returns False; callers that need real
+    embeddings should route through the configured MCP-side provider
+    (Ollama, OpenAI).
 
     Attributes:
-        _model: sentence-transformers model (lazy loaded)
-        _initialized: Whether model has been loaded
+        model_name: Retained for API compatibility; informational only.
+        _initialized: Whether the singleton has been lazily prepared.
     """
 
     def __init__(self, model_name: str = "all-MiniLM-L6-v2") -> None:
         """Initialize embedding service.
 
         Args:
-            model_name: HuggingFace model name (default: all-MiniLM-L6-v2)
+            model_name: Retained for API compatibility; the runtime is
+                mock-only regardless of value.
         """
         self.model_name = model_name
-        self._model: Any = None
         self._initialized = False
-        self._available = False
         self._embedding_dim = 384  # all-MiniLM-L6-v2 dimension
 
-        logger.info(f"Embedding service created with model: {model_name}")
+        logger.info(
+            f"Embedding service created (mock-only, model_name={model_name} retained for API compat)"
+        )
 
     async def initialize(self) -> None:
-        """Initialize embedding model (lazy loading).
+        """Mark the service as initialized (mock-only; no model to load).
 
-        Attempts to load sentence-transformers model. If unavailable,
-        marks service as unavailable and continues with fallback mode.
+        Kept as an async method so callers and tests can rely on the
+        original lazy-initialization contract.
         """
         if self._initialized:
             return
 
-        logger.info(f"Initializing embedding model: {self.model_name}")
-
-        try:
-            # Try importing sentence-transformers
-            from sentence_transformers import SentenceTransformer  # ty: ignore[unresolved-import]
-
-            logger.debug("sentence-transformers available, loading model...")
-
-            # Load model in executor thread to avoid blocking
-            loop = asyncio.get_event_loop()
-            self._model = await loop.run_in_executor(
-                None,
-                self._load_model_sync,
-                SentenceTransformer,
-            )
-
-            self._available = True
-            self._initialized = True
-            logger.info(f"✅ Embedding model loaded: {self.model_name} (dim={self._embedding_dim})")
-
-        except ImportError as e:
-            logger.warning(
-                f"⚠️ sentence-transformers not available: {e}. Using fallback embeddings (mock)."
-            )
-            self._available = False
-            self._initialized = True
-
-        except Exception as e:
-            logger.error(f"❌ Failed to load embedding model: {e}. Using fallback.")
-            self._available = False
-            self._initialized = True
-
-    @staticmethod
-    def _load_model_sync(model_class: type[Any]) -> Any:
-        """Load model synchronously (runs in executor thread).
-
-        Args:
-            model_class: SentenceTransformer class
-
-        Returns:
-            Loaded model instance
-        """
-        return model_class("all-MiniLM-L6-v2")
+        logger.info(
+            f"Embedding service initialized (mock-only, dim={self._embedding_dim})"
+        )
+        self._initialized = True
 
     def is_available(self) -> bool:
-        """Check if embedding service is available.
+        """Check if real embeddings are available.
 
         Returns:
-            True if real embeddings available, False if using fallback
+            Always False: this service only produces deterministic mock
+            embeddings. Callers needing real embeddings must route to an
+            MCP-side provider.
         """
-        return self._available
+        return False
 
     @traced("generate_embedding")
     async def generate_embedding(
@@ -148,35 +115,17 @@ class EmbeddingService:
         add_span_attributes(
             {
                 "embedding.text_length": len(text),
-                "embedding.mode": "real" if self._available else "fallback",
+                "embedding.mode": "mock",
             }
         )
 
-        if self._available and self._model:
-            # Real embedding generation
-            loop = asyncio.get_event_loop()
-            embedding = await loop.run_in_executor(
-                None,
-                self._model.encode,
-                text,
-            )
-            result = np.array(embedding, dtype=np.float32)
+        result = self._generate_fallback_embedding(text)
 
-            # Record metrics
-            record_counter("embedding.generated", 1, {"mode": "real"})
-            record_histogram("embedding.text_length", len(text), {"mode": "real"})
+        # Record metrics
+        record_counter("embedding.generated", 1, {"mode": "mock"})
+        record_histogram("embedding.text_length", len(text), {"mode": "mock"})
 
-            return result
-        else:
-            # Fallback: Mock embedding based on text hash
-            logger.debug("Using fallback embedding generation")
-            result = self._generate_fallback_embedding(text)
-
-            # Record metrics
-            record_counter("embedding.generated", 1, {"mode": "fallback"})
-            record_histogram("embedding.text_length", len(text), {"mode": "fallback"})
-
-            return result
+        return result
 
     @traced("generate_batch_embeddings")
     async def generate_batch_embeddings(
@@ -188,8 +137,8 @@ class EmbeddingService:
 
         Args:
             texts: List of input texts
-            batch_size: Batch size for processing
-
+            batch_size: Retained for API compatibility; mock generation
+                does not benefit from a batch dimension.
         Returns:
             List of embedding vectors
         """
@@ -208,32 +157,14 @@ class EmbeddingService:
             }
         )
 
-        if self._available and self._model:
-            # Batch embedding generation
-            loop = asyncio.get_event_loop()
-            embeddings = await loop.run_in_executor(
-                None,
-                self._model.encode,
-                texts,
-                {"batch_size": batch_size},
-            )
-            result = [np.array(emb, dtype=np.float32) for emb in embeddings]
+        logger.debug(f"Generating mock embeddings for {len(texts)} texts")
+        result = [self._generate_fallback_embedding(text) for text in texts]
 
-            # Record metrics
-            record_histogram("embedding.batch_size", len(texts), {"mode": "real"})
-            record_counter("embedding.batch.generated", 1, {"mode": "real"})
+        # Record metrics
+        record_histogram("embedding.batch_size", len(texts), {"mode": "mock"})
+        record_counter("embedding.batch.generated", 1, {"mode": "mock"})
 
-            return result
-        else:
-            # Fallback: Generate mock embeddings individually
-            logger.debug(f"Using fallback embeddings for {len(texts)} texts")
-            result = [self._generate_fallback_embedding(text) for text in texts]
-
-            # Record metrics
-            record_histogram("embedding.batch_size", len(texts), {"mode": "fallback"})
-            record_counter("embedding.batch.generated", 1, {"mode": "fallback"})
-
-            return result
+        return result
 
     def _generate_fallback_embedding(self, text: str) -> npt.NDArray[np.float32]:
         """Generate fallback embedding when model unavailable.
