@@ -108,7 +108,7 @@ DEFAULT_MERMAID_PREFIXES: tuple[str, ...] = (
 
 # Allow-list for the jsdom install. Like mermaid, jsdom is dynamically
 # imported and executed as code. We trust only the locally-vendored
-# `node_modules/jsdom/` installed in the crackerjack repo by `npm install`
+# `node_modules/jsdom/` installed in the akosha repo by `npm install`
 # (which pins the version in package.json). The path is `<repo>/node_modules/`.
 DEFAULT_JSDOM_LOCATIONS: tuple[str, ...] = (
     "node_modules/jsdom/lib/api.js",
@@ -120,7 +120,7 @@ def _locate_mermaid_core() -> Path | None:
 
     Resolution order (fail-closed; returns None if no trusted path):
 
-    1. ``CRACKERJACK_MERMAID_CORE`` env var (operator-pinned). Must pass
+    1. ``AKOSHA_MERMAID_CORE`` env var (operator-pinned). Must pass
        the allow-list check.
     2. ``mmdc`` symlink resolution, validated against the allow-list.
 
@@ -130,13 +130,13 @@ def _locate_mermaid_core() -> Path | None:
     resolve to a verified, allow-listed install.
     """
     # 1. Explicit env var override (preferred for CI / production).
-    env_override = os.environ.get("CRACKERJACK_MERMAID_CORE")
+    env_override = os.environ.get("AKOSHA_MERMAID_CORE")
     if env_override:
         path = Path(env_override).resolve()
         if _is_trusted_mermaid_path(path):
             return path
         raise RuntimeError(
-            f"CRACKERJACK_MERMAID_CORE={env_override} is not under a "
+            f"AKOSHA_MERMAID_CORE={env_override} is not under a "
             f"trusted mermaid-cli prefix; refusing to import. Allowed "
             f"prefixes: {DEFAULT_MERMAID_PREFIXES}"
         )
@@ -171,24 +171,24 @@ def _locate_mermaid_core() -> Path | None:
 def _locate_jsdom() -> Path | None:
     """Return the absolute path to the locally-installed jsdom package.
 
-    Looks for the `node_modules/jsdom/` directory under the crackerjack
-    repo root (where the wave-9 dev dep is installed). The result is
+    Looks for the `node_modules/jsdom/` directory under the akosha
+    repo root (where the wave-11 dev dep is installed). The result is
     the package's main entry point, `jsdom/lib/api.js`, which exposes
     the `JSDOM` class.
 
-    Override via ``CRACKERJACK_JSDOM`` env var for CI where the
-    crackerjack repo lives at a different path.
+    Override via ``AKOSHA_JSDOM`` env var for CI where the
+    akosha repo lives at a different path.
     """
-    env_override = os.environ.get("CRACKERJACK_JSDOM")
+    env_override = os.environ.get("AKOSHA_JSDOM")
     if env_override:
         path = Path(env_override).resolve()
         if path.is_file():
             return path
         raise RuntimeError(
-            f"CRACKERJACK_JSDOM={env_override} does not exist or is not a file"
+            f"AKOSHA_JSDOM={env_override} does not exist or is not a file"
         )
 
-    # Walk up from this file to find the crackerjack repo root.
+    # Walk up from this file to find the akosha repo root.
     repo_root = Path(__file__).resolve()
     while repo_root != repo_root.parent:
         candidate = repo_root / "node_modules" / "jsdom" / "lib" / "api.js"
@@ -213,7 +213,7 @@ def validate_mermaid_blocks(
     """Run mermaid.parse() on each block via Node.js subprocess.
 
     Returns a list of MermaidValidationError. Empty list means every block
-    passed. The Node.js runner is `crackerjack/bin/validate-mermaid.mjs`,
+    passed. The Node.js runner is `akosha/tools/mermaid_validator/validate_mermaid.mjs`,
     which uses `mermaid.parse()` (lexer-only, no chrome needed).
     """
     if not blocks:
@@ -235,8 +235,8 @@ def validate_mermaid_blocks(
     if not jsdom:
         raise RuntimeError(
             "could not find jsdom at node_modules/jsdom/lib/api.js; "
-            "run `npm install` in the crackerjack repo to install the "
-            "wave-9 dev dep, or set CRACKERJACK_JSDOM to its absolute path"
+            "run `npm install` in the akosha repo to install the "
+            "wave-11 dev dep, or set AKOSHA_JSDOM to its absolute path"
         )
 
     payload = json.dumps(
@@ -311,7 +311,7 @@ def find_broken_mermaid_blocks(
 
 
 def print_errors(errors: list[MermaidValidationError]) -> None:
-    """Pretty-print the broken blocks for `crackerjack docs check-mermaid`."""
+    """Pretty-print the broken blocks for `akosha docs check-mermaid`."""
     if not errors:
         console.print("[green]✓ All mermaid blocks parse cleanly.[/green]")
         return

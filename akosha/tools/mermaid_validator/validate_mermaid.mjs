@@ -4,8 +4,8 @@
 // objects from stdin (one per fenced mermaid block), calls mermaid.parse() for
 // each, and prints a JSON array of {file, line, status, error?} to stdout.
 //
-// Designed for the crackerjack CI guard (test_mermaid_renders.py +
-// `crackerjack docs check-mermaid`). Uses mermaid.parse() — the lexer-only
+// Designed for the akosha CI guard (test_mermaid_renders.py +
+// `akosha docs check-mermaid`). Uses mermaid.parse() — the lexer-only
 // path — so it does NOT need a Chrome/Puppeteer runtime. The mermaid v11
 // library still loads DOMPurify and `addHook` at import time, so we set up
 // a minimal DOM via jsdom before importing mermaid.
@@ -13,7 +13,7 @@
 // Run:
 //   node validate-mermaid.mjs <path-to-mermaid-core.mjs> [<path-to-jsdom>]
 //
-// The Python wrapper (crackerjack.services.mermaid_renderer) computes both
+// The Python wrapper (akosha.tools.mermaid_validator.renderer) computes both
 // absolute paths and passes them as argv[2] and argv[3]. Each path is loaded
 // via dynamic `import()` because Node ESM does NOT honor NODE_PATH for
 // static imports (v18+).
