@@ -274,6 +274,7 @@ sequenceDiagram
     LS->>CLI: register_all_tools(...)
     CLI->>DH: PUT component_endpoint/akosha = http://localhost:8682/mcp
     Note over CLI,DH: 5 attempts exponential backoff, then 5-min heartbeat
+    Note over CLI,HS: search_all_systems currently returns a single mock record (Contract 5.2)
     LS->>FA: start() (background task every 60s)
     LS->>DH: list_services / get component_endpoint/{name}
     DH-->>FA: registered component URLs
