@@ -259,7 +259,7 @@ sequenceDiagram
     autonumber
     participant CLI as akosha mcp server (port 8682)
     participant LS as lifespan(server)
-    participant EMB as EmbeddingService
+    participant EMB as EmbeddingService (mock-only)
     participant HS as HotStore (DuckDB or pgvector)
     participant KG as KnowledgeGraphBuilder
     participant DH as Dhara (port 8683)
