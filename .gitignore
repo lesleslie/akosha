@@ -174,3 +174,14 @@ tests/archived/
 *.backup
 *.bak
 *.backup.json
+
+# ============================================================================
+# Node.js - Wave-11 mermaid CI guard
+# ============================================================================
+# jsdom is the dev dep for the wave-11 mermaid CI guard (see
+# akosha/tools/mermaid_validator/validate_mermaid.mjs). The package.json
+# + package-lock.json ARE committed; only the resolved artifacts are
+# excluded.
+node_modules/
+# Allow the empty placeholder so a fresh clone gets a usable `npm install`.
+!node_modules/.gitkeep

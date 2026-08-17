@@ -350,7 +350,7 @@ flowchart TD
     A[Client Request] --> B[MCP Server]
     B --> C[Rate Limit Check]
     C --> D[Cache Lookup]
-    D --> E{L1 Cache Hit?<br/>(in-process DuckDB)}
+    D --> E{"L1 Cache Hit?<br/>(in-process DuckDB)"}
     E -->|Yes| F[Return Cached]
     E -->|No| G[Distributed Query]
     G --> H[Fan-out to Shards]
