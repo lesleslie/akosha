@@ -440,11 +440,6 @@ graph TB
         Worker --> Hot[Hot Store Pods]
         API --> Query[Query Servers]
         Query --> Hot
-
-        subgraph "Sidecars"
-            Hot --> Redis[Redis Cache]
-            Query --> Redis
-        end
     end
 
     subgraph "Cloud Storage"
