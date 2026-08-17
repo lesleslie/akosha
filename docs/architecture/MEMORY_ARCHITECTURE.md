@@ -750,7 +750,7 @@ ______________________________________________________________________
 
 | Mode | Model | Latency per text (typical) | Throughput (batch) |
 |------|-------|---------------------------|---------------------|
-| `real` | all-MiniLM-L6-v2 via sentence-transformers ONNX | 15-50 ms (executor thread, non-blocking) | 200-500 texts/sec at batch_size=32 |
+| `real` | (not used in this process; route via configured MCP-side provider) | n/a (mock is the only path) | n/a |
 | `fallback` | deterministic hash-based mock | \<1 ms | n/a |
 
 The model loads lazily in `EmbeddingService.initialize()` via
