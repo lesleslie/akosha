@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.5] - 2026-08-17
+
+### Added
+
+- akosha: Mirror wave-11 mermaid CI guard from crackerjack
+
+### Fixed
+
+- akosha: Align CLAUDE.md Core Components with actual files
+- akosha: Annotate L1 cache as in-process DuckDB in query flow
+- akosha: Delete dead sentence-transformers runtime from EmbeddingService
+- akosha: Mark real-embedding row as not-used in this process
+- akosha: Remove dead embeddings install path from README
+- akosha: Remove Redis L2 sidecar from K8s deployment diagram
+- akosha: Rename EMB participant to EmbeddingService (mock)
+- akosha: Update embedding table to reflect mock-only EmbeddingService
+- Rename wave-11 mirror references from 'crackerjack' to 'akosha'
+
+### Documentation
+
+- Add SB push path to Session-Buddy → Akosha ASCII flow
+- akosha: Add Contract 5.2 note to Phase 0 sequence diagram
+- akosha: Fix 3 README contradictions from wave-1 verifier
+- audit: Apply 2026-08-12 drift fixes
+
+### Internal
+
+- gitignore: Add .coverage* + untrack .coverage-ratchet.json (bodai 2026-08-17)
+- gitignore: Ignore docs/archive/test-artifacts/, untrack coverage dumps
+
 ## [0.9.4] - 2026-08-12
 
 ### Internal

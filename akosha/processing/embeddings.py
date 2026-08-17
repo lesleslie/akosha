@@ -79,9 +79,7 @@ class EmbeddingService:
         if self._initialized:
             return
 
-        logger.info(
-            f"Embedding service initialized (mock-only, dim={self._embedding_dim})"
-        )
+        logger.info(f"Embedding service initialized (mock-only, dim={self._embedding_dim})")
         self._initialized = True
 
     def is_available(self) -> bool:

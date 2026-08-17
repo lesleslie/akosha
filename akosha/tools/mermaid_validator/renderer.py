@@ -110,9 +110,7 @@ DEFAULT_MERMAID_PREFIXES: tuple[str, ...] = (
 # imported and executed as code. We trust only the locally-vendored
 # `node_modules/jsdom/` installed in the akosha repo by `npm install`
 # (which pins the version in package.json). The path is `<repo>/node_modules/`.
-DEFAULT_JSDOM_LOCATIONS: tuple[str, ...] = (
-    "node_modules/jsdom/lib/api.js",
-)
+DEFAULT_JSDOM_LOCATIONS: tuple[str, ...] = ("node_modules/jsdom/lib/api.js",)
 
 
 def _locate_mermaid_core() -> Path | None:
@@ -184,9 +182,7 @@ def _locate_jsdom() -> Path | None:
         path = Path(env_override).resolve()
         if path.is_file():
             return path
-        raise RuntimeError(
-            f"AKOSHA_JSDOM={env_override} does not exist or is not a file"
-        )
+        raise RuntimeError(f"AKOSHA_JSDOM={env_override} does not exist or is not a file")
 
     # Walk up from this file to find the akosha repo root.
     repo_root = Path(__file__).resolve()
@@ -201,24 +197,11 @@ def _locate_jsdom() -> Path | None:
 def _is_trusted_mermaid_path(path: Path) -> bool:
     """Allow-list check: `path` must live under a known-good mermaid prefix."""
     resolved = str(path.resolve())
-    return any(
-        resolved.startswith(prefix) for prefix in DEFAULT_MERMAID_PREFIXES
-    )
+    return any(resolved.startswith(prefix) for prefix in DEFAULT_MERMAID_PREFIXES)
 
 
-def validate_mermaid_blocks(
-    blocks: list[MermaidBlock],
-    timeout: float = 30.0,
-) -> list[MermaidValidationError]:
-    """Run mermaid.parse() on each block via Node.js subprocess.
-
-    Returns a list of MermaidValidationError. Empty list means every block
-    passed. The Node.js runner is `akosha/tools/mermaid_validator/validate_mermaid.mjs`,
-    which uses `mermaid.parse()` (lexer-only, no chrome needed).
-    """
-    if not blocks:
-        return []
-
+def _resolve_validator_paths() -> tuple[Path, Path, Path]:
+    """Locate the runner script, mermaid-core, and jsdom. Raises on any miss."""
     runner = Path(__file__).parent / "validate_mermaid.mjs"
     if not runner.exists():
         raise FileNotFoundError(f"validate_mermaid.mjs not found at {runner}")
@@ -239,13 +222,18 @@ def validate_mermaid_blocks(
             "wave-11 dev dep, or set AKOSHA_JSDOM to its absolute path"
         )
 
-    payload = json.dumps(
-        [
-            {"file": str(b.file), "line": b.line, "code": b.code}
-            for b in blocks
-        ]
-    )
+    return runner, mermaid_core, jsdom
 
+
+def _run_validator_subprocess(
+    runner: Path,
+    mermaid_core: Path,
+    jsdom: Path,
+    payload: str,
+    timeout: float,
+    block_count: int,
+) -> str:
+    """Run the Node validator subprocess and return its stdout. Raises on failure."""
     try:
         completed = subprocess.run(
             ["node", str(runner), str(mermaid_core), str(jsdom)],
@@ -261,8 +249,7 @@ def validate_mermaid_blocks(
         ) from e
     except subprocess.TimeoutExpired as e:
         raise RuntimeError(
-            f"validate-mermaid.mjs timed out after {timeout}s on {len(blocks)} "
-            f"blocks"
+            f"validate-mermaid.mjs timed out after {timeout}s on {block_count} blocks"
         ) from e
 
     if completed.returncode != 0:
@@ -271,25 +258,51 @@ def validate_mermaid_blocks(
             f"{completed.stderr.strip()[:500]}"
         )
 
+    return completed.stdout
+
+
+def _collect_errors(stdout: str) -> list[MermaidValidationError]:
+    """Parse validator stdout JSON into a list of error entries."""
     try:
-        results = json.loads(completed.stdout)
+        results = json.loads(stdout)
     except json.JSONDecodeError as e:
         raise RuntimeError(
             f"validate-mermaid.mjs returned invalid JSON: {e}; "
-            f"stdout={completed.stdout[:200]!r}"
+            f"stdout={stdout[:200]!r}"
         ) from e
 
-    errors: list[MermaidValidationError] = []
-    for entry in results:
-        if entry.get("status") == "error":
-            errors.append(
-                MermaidValidationError(
-                    file=Path(entry["file"]),
-                    line=entry["line"],
-                    error=entry.get("error", "<unknown error>"),
-                )
-            )
-    return errors
+    return [
+        MermaidValidationError(
+            file=Path(entry["file"]),
+            line=entry["line"],
+            error=entry.get("error", "<unknown error>"),
+        )
+        for entry in results
+        if entry.get("status") == "error"
+    ]
+
+
+def validate_mermaid_blocks(
+    blocks: list[MermaidBlock],
+    timeout: float = 30.0,
+) -> list[MermaidValidationError]:
+    """Run mermaid.parse() on each block via Node.js subprocess.
+
+    Returns a list of MermaidValidationError. Empty list means every block
+    passed. The Node.js runner is `akosha/tools/mermaid_validator/validate_mermaid.mjs`,
+    which uses `mermaid.parse()` (lexer-only, no chrome needed).
+    """
+    if not blocks:
+        return []
+
+    runner, mermaid_core, jsdom = _resolve_validator_paths()
+    payload = json.dumps(
+        [{"file": str(b.file), "line": b.line, "code": b.code} for b in blocks]
+    )
+    stdout = _run_validator_subprocess(
+        runner, mermaid_core, jsdom, payload, timeout, len(blocks)
+    )
+    return _collect_errors(stdout)
 
 
 def find_broken_mermaid_blocks(

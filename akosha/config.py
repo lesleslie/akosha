@@ -278,8 +278,12 @@ class AkoshaConfig(OneiricMCPConfig):  # type: ignore[reportUntypedBaseClass]
     eventbridge: EventBridgeConfig = Field(default_factory=EventBridgeConfig)
 
     # API
-    api_port: int = Field(default_factory=lambda: int(os.getenv("AKOSHA_API_PORT", str(DEFAULT_MCP_PORT))))
-    mcp_port: int = Field(default_factory=lambda: int(os.getenv("AKOSHA_MCP_PORT", str(DEFAULT_MCP_PORT))))
+    api_port: int = Field(
+        default_factory=lambda: int(os.getenv("AKOSHA_API_PORT", str(DEFAULT_MCP_PORT)))
+    )
+    mcp_port: int = Field(
+        default_factory=lambda: int(os.getenv("AKOSHA_MCP_PORT", str(DEFAULT_MCP_PORT)))
+    )
     debug: bool = False
 
     # Processing
