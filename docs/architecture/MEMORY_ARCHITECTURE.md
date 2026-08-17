@@ -297,7 +297,7 @@ they exercise.
 
 | Tool | What it reads | Use when |
 |------|---------------|----------|
-| `generate_embedding` | Calls `EmbeddingService.generate_embedding` (all-MiniLM-L6-v2 via sentence-transformers ONNX, fallback mock if unavailable) | Inline vectorization for an ad-hoc search or semantic classification |
+| `generate_embedding` | Calls `EmbeddingService.generate_embedding` (mock-only in-process; real embeddings must be routed through a configured MCP-side provider like Ollama or OpenAI) | Inline vectorization for an ad-hoc search or semantic classification |
 | `generate_batch_embeddings` | Same, vectorized | Bulk-ingest pipelines, code-graph pre-embedding |
 
 Both return `mode: "real" | "fallback"` so callers can degrade
