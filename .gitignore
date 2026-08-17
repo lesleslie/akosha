@@ -186,3 +186,9 @@ tests/archived/
 node_modules/
 # Allow the empty placeholder so a fresh clone gets a usable `npm install`.
 !node_modules/.gitkeep
+
+
+# Archived test artifacts - emit to /tmp instead of git
+docs/archive/test-artifacts/
+# Belt-and-suspenders: any coverage*.json dump regardless of location
+coverage*.json
