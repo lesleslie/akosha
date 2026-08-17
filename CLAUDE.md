@@ -352,6 +352,7 @@ Session-Buddy → S3://session-buddy-memories/systems/{id}/
                             Akosha Worker (polls)
                                   ↓
                            Hot Store → Warm Store → Cold Store
+SB Push (store_memory) → Hot Store
 ```
 
 ### Mahavishnu Integration
