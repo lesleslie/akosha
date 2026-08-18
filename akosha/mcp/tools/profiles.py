@@ -8,11 +8,23 @@ Profile tiers:
     MINIMAL:  Health probes only.
     STANDARD: Adds core Akosha memory aggregation tools.
     FULL:     Everything including Session-Buddy and PyCharm integration.
+
+The dispatch surface (REGISTRATION_MAP + AKOSHA_MANDATORY_GROUPS) is
+consumed by :func:`mcp_common.tools.dispatch._apply_tool_profile_async`
+when called from :func:`akosha.mcp.server.create_app`'s lifespan.
 """
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from mcp_common.tools import ToolProfile
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from fastmcp import FastMCP
+
 
 MINIMAL_REGISTRATIONS: list[str] = [
     "register_health_tools_akosha",
@@ -86,11 +98,64 @@ def get_active_profile(env_var: str = "AKOSHA_TOOL_PROFILE") -> ToolProfile:
     return ToolProfile.from_env(env_var)
 
 
+# ---------------------------------------------------------------------------
+# W0 apply_tool_profile dispatch surface.
+#
+# REGISTRATION_MAP routes each group key from PROFILE_REGISTRATIONS to a
+# per-group registration callable (taking the FastMCP app). AKOSHA_MANDATORY_GROUPS
+# is a set of registration_map keys whose registrars run AFTER per-profile
+# dispatch at every profile (always-on). Set to a subset of
+# REGISTRATION_MAP.keys(); the W0 helper raises if a mandatory key is missing
+# from the map.
+# ---------------------------------------------------------------------------
+
+# Lazy import to avoid pulling group_registers at module load — the per-group
+# wrappers themselves lazy-import their inner modules.
+def _build_registration_map() -> dict[str, Callable[[FastMCP], Awaitable[None] | None]]:
+    """Build the {group_key: register_fn(app)} map.
+
+    Local import keeps ``akosha.mcp.tools.profiles`` importable without the
+    per-group register modules being fully resolved (avoids circular imports
+    via the legacy ``register_all_tools`` path).
+    """
+    from akosha.mcp.tools.group_registers import (
+        register_akosha_group,
+        register_eventbridge_group,
+        register_fitness_group,
+        register_health_akosha_group,
+        register_otel_query_group,
+        register_pycharm_group,
+        register_session_buddy_group,
+    )
+
+    return {
+        "register_health_tools_akosha": register_health_akosha_group,
+        "register_akosha_tools": register_akosha_group,
+        "register_session_buddy_tools": register_session_buddy_group,
+        "register_pycharm_tools": register_pycharm_group,
+        "register_otel_query_tools": register_otel_query_group,
+        "register_fitness_tools": register_fitness_group,
+        "register_eventbridge_tools": register_eventbridge_group,
+    }
+
+
+REGISTRATION_MAP: dict[str, Callable[[FastMCP], Awaitable[None] | None]] = (
+    _build_registration_map()
+)
+
+# Always-on groups: registered at every profile level in addition to the
+# per-profile list. Health checks must be reachable from any profile tier
+# (load balancers / orchestrators depend on them).
+AKOSHA_MANDATORY_GROUPS: set[str] = {"register_health_tools_akosha"}
+
+
 __all__ = [
+    "AKOSHA_MANDATORY_GROUPS",
     "FULL_REGISTRATIONS",
     "MINIMAL_REGISTRATIONS",
     "PROFILE_REGISTRATIONS",
     "REGISTRATION_DESCRIPTIONS",
+    "REGISTRATION_MAP",
     "REGISTRATION_TOOLS",
     "STANDARD_REGISTRATIONS",
     "get_active_profile",

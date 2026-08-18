@@ -319,18 +319,31 @@ def create_app(mode: Any | None = None) -> FastMCP:
         else:
             cold_storage = None
 
-        # Register MCP tools with Phase 2 services
-        from akosha.mcp.tools import register_all_tools
+        # Apply ToolProfile dispatch via the W0 helper from mcp-common 0.18.0.
+        #
+        # Replaces the legacy ``register_all_tools`` path (which read
+        # AKOSHA_TOOL_PROFILE directly and dispatched per-group manually).
+        # PROFILE_REGISTRATIONS routes the per-tier lists to per-group
+        # callables in REGISTRATION_MAP; AKOSHA_MANDATORY_GROUPS guarantees
+        # health probes are reachable from any profile tier.
+        from mcp_common.tools.dispatch import _apply_tool_profile
 
-        # Use the framework-passed `server` parameter (which IS the FastMCP
-        # instance) instead of a closure-captured `app`. The lifespan is
-        # defined before the constructor, so no closure name is available.
-        register_all_tools(
+        from akosha.mcp.tools.profiles import (
+            AKOSHA_MANDATORY_GROUPS,
+            PROFILE_REGISTRATIONS,
+            REGISTRATION_MAP,
+        )
+
+        await _apply_tool_profile(
             server,
-            embedding_service=embedding_service,
-            analytics_service=analytics_service,
-            graph_builder=graph_builder,
-            hot_store=hot_store,
+            profile_env_var="AKOSHA_TOOL_PROFILE",
+            registrations=PROFILE_REGISTRATIONS,
+            registration_map=REGISTRATION_MAP,
+            register_all_fn=None,
+            mandatory_groups=AKOSHA_MANDATORY_GROUPS,
+            essential_tool_names=set(),
+            discovery_fn=None,
+            yaml_loader=None,
         )
 
         # Phase 0: register this component's MCP endpoint to Dhara

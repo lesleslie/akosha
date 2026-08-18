@@ -91,6 +91,16 @@ def patched_lifespan(monkeypatch: pytest.MonkeyPatch):
     register_all_tools = MagicMock()
     monkeypatch.setattr("akosha.mcp.tools.register_all_tools", register_all_tools)
 
+    # The W1.3 refactor moved tool registration from the legacy
+    # ``register_all_tools`` call site to ``_apply_tool_profile`` (called
+    # from inside ``akosha.mcp.server``'s lifespan). Mock the new entry
+    # point at its import source so the lifespan doesn't try to call
+    # ``mcp.tool()`` on the DummyFastMCP test fixture.
+    apply_tool_profile = AsyncMock()
+    monkeypatch.setattr(
+        "mcp_common.tools.dispatch._apply_tool_profile", apply_tool_profile
+    )
+
     return {
         "embedding_service": embedding_service,
         "analytics_service": analytics_service,
@@ -99,6 +109,7 @@ def patched_lifespan(monkeypatch: pytest.MonkeyPatch):
         "telemetry": telemetry,
         "shutdown_telemetry": shutdown_telemetry,
         "register_all_tools": register_all_tools,
+        "apply_tool_profile": apply_tool_profile,
         "cache_client": cache_client,
         "cold_storage": cold_storage,
     }
@@ -145,7 +156,7 @@ async def test_create_app_standard_mode_lifespan(
 
     patched_lifespan["embedding_service"].initialize.assert_awaited_once()
     patched_lifespan["hot_store"].initialize.assert_awaited_once()
-    patched_lifespan["register_all_tools"].assert_called_once()
+    patched_lifespan["apply_tool_profile"].assert_awaited_once()
     patched_lifespan["shutdown_telemetry"].assert_called_once()
 
 

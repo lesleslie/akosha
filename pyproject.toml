@@ -35,6 +35,7 @@ dependencies = [
     "pyarrow>=16.0.0",
     "pytrendy>=0.2",
     "pandas>=2.0.0",
+    "mcp-common>=0.18.0",  # ToolProfile dispatch (W0 helper)
 ]
 
 [project.scripts]

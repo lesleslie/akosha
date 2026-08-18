@@ -1,0 +1,18 @@
+[
+  "discover_tools",
+  "find_path",
+  "generate_batch_embeddings",
+  "generate_embedding",
+  "get_fitness_analyzer_status",
+  "get_graph_statistics",
+  "get_liveness",
+  "get_readiness",
+  "health_check_all",
+  "health_check_service",
+  "publish_to_eventbridge",
+  "query_knowledge_graph",
+  "run_fitness_analysis",
+  "search_all_systems",
+  "wait_for_all_dependencies",
+  "wait_for_dependency"
+]

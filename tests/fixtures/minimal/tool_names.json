@@ -1,0 +1,9 @@
+[
+  "discover_tools",
+  "get_liveness",
+  "get_readiness",
+  "health_check_all",
+  "health_check_service",
+  "wait_for_all_dependencies",
+  "wait_for_dependency"
+]
