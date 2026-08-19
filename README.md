@@ -101,10 +101,10 @@ kubectl apply -f kubernetes/
 
 # 3. Verify deployment
 kubectl get pods -n akosha
-kubectl port-forward -n akosha svc/akosha-api 8000:8000
+kubectl port-forward -n akosha svc/akosha-api 8682:8682
 
 # 4. Check metrics
-curl http://localhost:8000/metrics
+curl http://localhost:8682/metrics
 ```
 
 See [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) for complete production setup.
@@ -171,14 +171,9 @@ Create a `.env` file in the Akosha directory:
 ```bash
 # Cloudflare R2 Configuration (Cold Storage)
 AKOSHA_COLD_BUCKET=your-bucket-name
-AKOSHA_COLD_ENDPOINT=https://your-account.r2.cloudflarestorage.com
 AKOSHA_COLD_REGION=auto
 
-# Optional: Embedding Model
-AKOSHA_EMBEDDING_MODEL=all-MiniLM-L6-v2
-
-# Optional: Storage Paths
-AKOSHA_HOT_PATH=/tmp/akosha/hot
+# Optional: Storage Paths (warm tier only; hot tier is in-memory)
 AKOSHA_WARM_PATH=/tmp/akosha/warm
 ```
 

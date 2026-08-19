@@ -285,9 +285,14 @@ class AkoshaConfig(OneiricMCPConfig):  # type: ignore[reportUntypedBaseClass]
         default_factory=lambda: int(os.getenv("AKOSHA_MCP_PORT", str(DEFAULT_MCP_PORT)))
     )
     debug: bool = False
+    log_level: str = Field(
+        default_factory=lambda: os.getenv("AKOSHA_LOG_LEVEL", "INFO")
+    )
 
     # Processing
-    ingestion_workers: int = 3
+    ingestion_workers: int = Field(
+        default_factory=lambda: int(os.getenv("AKOSHA_INGESTION_WORKERS", "3"))
+    )
     max_concurrent_ingests: int = 100
     shard_count: int = 256
 

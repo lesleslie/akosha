@@ -1254,7 +1254,7 @@ set -euo pipefail
 
 # Configuration
 WARM_PATH="${AKOSHA_WARM_PATH:-/data/akosha/warm}"
-BACKUP_BUCKET="${AKOSHA_BACKUP_BUCKET:-akosha-backups}"
+BACKUP_BUCKET="${AKOSHA_COLD_BUCKET:-akosha-backups}"
 BACKUP_PREFIX="warm/$(date +%Y/%m/%d)"
 ENVIRONMENT="${AKOSHA_ENVIRONMENT:-production}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -1373,7 +1373,7 @@ fi
 
 set -euo pipefail
 
-BACKUP_BUCKET="${AKOSHA_BACKUP_BUCKET:-akosha-backups}"
+BACKUP_BUCKET="${AKOSHA_COLD_BUCKET:-akosha-backups}"
 BACKUP_DATE="${1:-$(date +%Y/%m/%d)}"
 WARM_PATH="${AKOSHA_WARM_PATH:-/data/akosha/warm}"
 
@@ -1431,7 +1431,7 @@ spec:
               env:
                 - name: AKOSHA_WARM_PATH
                   value: "/data/akosha/warm"
-                - name: AKOSHA_BACKUP_BUCKET
+                - name: AKOSHA_COLD_BUCKET
                   value: "akosha-backups-prod"
                 - name: AKOSHA_ENVIRONMENT
                   value: "production"
@@ -2006,7 +2006,7 @@ export AKOSHA_COLD_BUCKET=akosha-cold-prod
 export AKOSHA_COLD_REGION=us-west-2
 
 # Backup configuration
-export AKOSHA_BACKUP_BUCKET=akosha-backups-prod
+export AKOSHA_COLD_BUCKET=akosha-backups-prod
 export AKOSHA_BACKUP_RETENTION_DAYS=30
 
 # Monitoring

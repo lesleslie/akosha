@@ -236,7 +236,7 @@ storage:
 
   s3-hot:
     provider: "s3"
-    bucket_name: "${AKOSHA_HOT_BUCKET:akosha-hot-${env}}"
+    bucket_name: "akosha-hot-${env}"
     region: "${AWS_REGION:us-east-1}"
     storage_class: "STANDARD"  # S3 Standard
     tier: "hot"
@@ -251,7 +251,7 @@ storage:
 
   s3-warm:
     provider: "s3"
-    bucket_name: "${AKOSHA_WARM_BUCKET:akosha-warm-${env}}"
+    bucket_name: "akosha-warm-${env}"
     region: "${AWS_REGION:us-east-1}"
     storage_class: "STANDARD_IA"  # Infrequent Access
     tier: "warm"
@@ -394,7 +394,7 @@ class AkoshaStorageSettings:
                     provider="s3-hot",
                     stack_level=100,
                     factory=lambda: S3StorageAdapter(
-                        bucket_name=os.getenv("AKOSHA_HOT_BUCKET"),
+                        bucket_name=os.getenv("AKOSHA_COLD_BUCKET"),
                         storage_class="STANDARD",
                     ),
                     description="S3 Standard storage for hot tier",
@@ -417,7 +417,7 @@ class AkoshaStorageSettings:
                     provider="s3-warm",
                     stack_level=50,
                     factory=lambda: S3StorageAdapter(
-                        bucket_name=os.getenv("AKOSHA_WARM_BUCKET"),
+                        bucket_name=os.getenv("AKOSHA_COLD_BUCKET"),
                         storage_class="STANDARD_IA",
                     ),
                     description="S3 Infrequent Access for warm tier",
@@ -828,7 +828,7 @@ def register_akosha_storage_adapters(resolver: Resolver) -> None:
                 provider="s3-hot",
                 stack_level=100,
                 factory=lambda: S3HotStorageAdapter(
-                    bucket_name=os.getenv("AKOSHA_HOT_BUCKET"),
+                    bucket_name=os.getenv("AKOSHA_COLD_BUCKET"),
                     region=os.getenv("AWS_REGION", "us-east-1"),
                     storage_class="STANDARD",
                 ),
@@ -868,7 +868,7 @@ def register_akosha_storage_adapters(resolver: Resolver) -> None:
                 provider="s3-warm",
                 stack_level=50,
                 factory=lambda: S3WarmStorageAdapter(
-                    bucket_name=os.getenv("AKOSHA_WARM_BUCKET"),
+                    bucket_name=os.getenv("AKOSHA_COLD_BUCKET"),
                     region=os.getenv("AWS_REGION", "us-east-1"),
                     storage_class="STANDARD_IA",
                 ),

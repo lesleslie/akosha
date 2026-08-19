@@ -177,7 +177,6 @@ chmod +x scripts/backup_warm_storage.sh
 
 # Test backup manually
 AKOSHA_WARM_PATH=~/.akosha/dev/warm \
-AKOSHA_BACKUP_BUCKET=akosha-backups-test \
 ./scripts/backup_warm_storage.sh
 ```
 

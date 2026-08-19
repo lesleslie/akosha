@@ -346,8 +346,8 @@ data:
   AKOSHA__STORAGE__WARM__BACKEND: "duckdb-ssd"
   AKOSHA__STORAGE__COLD__BACKEND: "s3"
   AKOSHA__STORAGE__COLD__BUCKET: "akosha-prod"
-  AKOSHA__INGESTION__WORKERS: "3"
-  AKOSHA__LOG__LEVEL: "INFO"
+  AKOSHA_INGESTION_WORKERS: "3"
+  AKOSHA_LOG_LEVEL: "INFO"
 
 ---
 apiVersion: apps/v1
@@ -373,11 +373,11 @@ spec:
         - containerPort: 8000
           name: http
         env:
-        - name: AKOSHA__LOG_LEVEL
+        - name: AKOSHA_LOG_LEVEL
           valueFrom:
             configMapKeyRef:
               name: akosha-config
-              key: AKOSHA__LOG__LEVEL
+              key: AKOSHA_LOG_LEVEL
         resources:
           requests:
             memory: "256Mi"

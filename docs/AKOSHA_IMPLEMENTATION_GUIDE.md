@@ -50,7 +50,7 @@ storage:
   # Hot tier: S3 Standard + Redis cache
   s3-hot:
     provider: "s3"
-    bucket_name: "${AKOSHA_HOT_BUCKET:akosha-hot-dev}"
+    bucket_name: "akosha-hot-dev"
     region: "${AWS_REGION:us-east-1}"
     storage_class: "STANDARD"
     tier: "hot"
@@ -65,7 +65,7 @@ storage:
   # Warm tier: S3 Infrequent Access
   s3-warm:
     provider: "s3"
-    bucket_name: "${AKOSHA_WARM_BUCKET:akosha-warm-dev}"
+    bucket_name: "akosha-warm-dev"
     region: "${AWS_REGION:us-east-1}"
     storage_class: "STANDARD_IA"
     tier: "warm"
@@ -287,7 +287,7 @@ def register_akosha_adapters(resolver: Resolver) -> None:
                 provider="s3-hot",
                 stack_level=100,
                 factory=lambda: S3StorageAdapter(
-                    bucket_name=os.getenv("AKOSHA_HOT_BUCKET", "akosha-hot-dev"),
+                    bucket_name=os.getenv("AKOSHA_COLD_BUCKET", "akosha-cold-dev"),
                     region=os.getenv("AWS_REGION", "us-east-1"),
                     storage_class="STANDARD",
                     tier="hot",
@@ -301,7 +301,7 @@ def register_akosha_adapters(resolver: Resolver) -> None:
                 provider="s3-warm",
                 stack_level=50,
                 factory=lambda: S3StorageAdapter(
-                    bucket_name=os.getenv("AKOSHA_WARM_BUCKET", "akosha-warm-dev"),
+                    bucket_name=os.getenv("AKOSHA_COLD_BUCKET", "akosha-cold-dev"),
                     region=os.getenv("AWS_REGION", "us-east-1"),
                     storage_class="STANDARD_IA",
                     tier="warm",
