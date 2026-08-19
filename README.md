@@ -8,7 +8,7 @@
 
 Universal memory aggregation and cross-system analytics for the Bodai ecosystem.
 
-**Version:** 0.9.4
+**Version:** 0.9.5
 **Status:** Active pilot deployment for the current phase
 
 ## Bodai Ecosystem Role
@@ -392,11 +392,11 @@ akosha start --host 0.0.0.0 --port 8000
 
 Akosha exposes its tools via the `AKOSHA_TOOL_PROFILE` environment variable.
 The list below is the **FULL profile** (25 tools), which is the default.
-Profiles: **MINIMAL** (6 tools, health probes only) → **STANDARD** (14 tools,
-adds core memory aggregation) → **FULL** (25 tools, adds Session-Buddy,
+Profiles: **MINIMAL** (6 tools, health probes only) → **STANDARD** (17 tools,
+adds core memory aggregation) → **FULL** (28 tools, adds Session-Buddy,
 PyCharm, OTel, fitness, and EventBridge integrations).
 
-Source of truth: `akosha/mcp/tools/profiles.py:48-81`
+Source of truth: `akosha/mcp/tools/profiles.py:48-92`
 (`REGISTRATION_TOOLS`).
 
 **Health & Dependency Probes (6):**
@@ -421,15 +421,15 @@ Source of truth: `akosha/mcp/tools/profiles.py:48-81`
 
 **Session-Buddy Integration (2):**
 
-- `ingest_session_memory` - Direct HTTP memory ingestion from Session-Buddy
-- `get_cross_system_summary` - Cross-system memory summary
+- `store_memory` - Direct HTTP memory ingestion from Session-Buddy
+- `batch_store_memories` - Batch memory ingestion across systems
 
 **PyCharm / IDE Integration (5):**
 
-- `get_ide_diagnostics` - Pull file-level diagnostics from PyCharm
-- `search_code` - Project-wide code search via PyCharm index
-- `get_symbol_info` - Symbol metadata
-- `find_usages` - Symbol usage lookup
+- `search_code_patterns` - Project-wide code pattern search via PyCharm index
+- `get_code_problems` - Pull file-level diagnostics from PyCharm
+- `find_function_usage` - Symbol usage lookup
+- `analyze_imports` - Import structure analysis
 - `pycharm_health` - PyCharm MCP connectivity
 
 **OpenTelemetry Trace Queries (1):**
