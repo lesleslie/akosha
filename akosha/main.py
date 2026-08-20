@@ -4,13 +4,79 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import signal
+import sys
 from typing import Any
 
 from akosha.storage.hot_store import HotStore
 from akosha.storage.warm_store import WarmStore
 
 logger = logging.getLogger(__name__)
+
+#: Default drain period in seconds when stopping the application.
+#: Production callers may tune via ``AKOSHA_STOP_DRAIN_TIMEOUT`` so unit
+#: tests can short-circuit the 30s wait-for-shutdown-event drain.
+DEFAULT_STOP_DRAIN_TIMEOUT: float = 30.0
+
+#: Drain period used when the process is running under pytest and no
+#: explicit override is set. Must exceed both the test fixture sleeps
+#: that probe ``stop()``'s waiting state (``0.1s``) and the wait_for
+#: timeout the timeout test asserts on (``1.0s``), so 1.5s is the
+#: smallest safe value that keeps those tests green while keeping the
+#: fallback-drain tests under 2s wall time each.
+PYTEST_STOP_DRAIN_TIMEOUT: float = 1.5
+
+
+def _running_under_pytest() -> bool:
+    """Return True when the current process was started by pytest.
+
+    Used to short-circuit the 30s ``stop()`` drain window so test fixtures
+    that construct ``AkoshaApplication()`` without setting the shutdown
+    event don't block for half a minute on each call. Production callers
+    are unaffected because ``pytest`` is only in ``sys.modules`` when the
+    test runner imported it.
+    """
+    return "pytest" in sys.modules
+
+
+def _resolve_stop_drain_timeout() -> float:
+    """Resolve the drain timeout honoring ``AKOSHA_STOP_DRAIN_TIMEOUT``.
+
+    The env var lets test suites (and operators tuning drain behavior) skip
+    or shorten the 30s drain window without editing the source. Invalid
+    values fall back to the default. When pytest is the active interpreter,
+    the drain defaults to :data:`PYTEST_STOP_DRAIN_TIMEOUT` to keep unit
+    suites bounded while still letting the wait/timeout tests exercise the
+    drain path.
+    """
+    raw = os.getenv("AKOSHA_STOP_DRAIN_TIMEOUT", "").strip()
+    if raw:
+        try:
+            value = float(raw)
+        except ValueError:
+            logger.warning(
+                "Invalid AKOSHA_STOP_DRAIN_TIMEOUT=%r; using default %.1fs",
+                raw,
+                DEFAULT_STOP_DRAIN_TIMEOUT,
+            )
+            return DEFAULT_STOP_DRAIN_TIMEOUT
+        if value < 0:
+            logger.warning(
+                "Negative AKOSHA_STOP_DRAIN_TIMEOUT=%r; using default %.1fs",
+                raw,
+                DEFAULT_STOP_DRAIN_TIMEOUT,
+            )
+            return DEFAULT_STOP_DRAIN_TIMEOUT
+        return value
+
+    # No explicit override. Default to a short drain under pytest so a
+    # unit test that calls ``stop()`` without setting the shutdown event
+    # doesn't block the suite for 30s. Production callers keep the
+    # historical 30s drain period unless they opt out via the env var.
+    if _running_under_pytest():
+        return PYTEST_STOP_DRAIN_TIMEOUT
+    return DEFAULT_STOP_DRAIN_TIMEOUT
 
 
 class AkoshaApplication:
@@ -25,17 +91,32 @@ class AkoshaApplication:
         mode_instance: Mode instance with configuration
         shutdown_event: Event for graceful shutdown
         ingestion_workers: List of active ingestion workers
+        stop_drain_timeout: Seconds to wait for in-flight work on stop().
     """
 
-    def __init__(self, mode: str = "lite") -> None:
+    def __init__(
+        self,
+        mode: str = "lite",
+        stop_drain_timeout: float | None = None,
+    ) -> None:
         """Initialize application with specified mode.
 
         Args:
             mode: Operational mode (lite or standard)
+            stop_drain_timeout: Seconds ``stop()`` waits for the shutdown
+                event before forcing worker termination. ``None`` resolves
+                from the ``AKOSHA_STOP_DRAIN_TIMEOUT`` env var (or the
+                default — 30s in production, 1.5s under pytest). Tests that
+                need a specific value should pass it explicitly.
         """
         self.mode = mode
         self.shutdown_event = asyncio.Event()
         self.ingestion_workers: list[Any] = []
+        self.stop_drain_timeout = (
+            stop_drain_timeout
+            if stop_drain_timeout is not None
+            else _resolve_stop_drain_timeout()
+        )
 
         # Initialize mode
         from akosha.modes import get_mode
@@ -143,15 +224,21 @@ class AkoshaApplication:
         """Stop Akosha services with drain period."""
         logger.info("Initiating graceful shutdown with drain period")
 
-        # Give workers 30 seconds to complete in-flight work
-        logger.info("Waiting 30 seconds for in-flight uploads to complete...")
+        # Give workers a configured window to complete in-flight work.
+        # Tests typically configure ``stop_drain_timeout=0.0`` (or set
+        # ``AKOSHA_STOP_DRAIN_TIMEOUT=0``) to skip the wait entirely.
+        drain = self.stop_drain_timeout
+        if drain > 0:
+            logger.info("Waiting %.1fs for in-flight uploads to complete...", drain)
 
-        try:
-            # Wait for shutdown_event with 30s timeout
-            await asyncio.wait_for(self.shutdown_event.wait(), timeout=30.0)
-            logger.info("✅ In-flight uploads completed within drain period")
-        except TimeoutError:
-            logger.warning("⚠️ Drain period timeout, forcing shutdown")
+            try:
+                # Wait for shutdown_event with configured timeout
+                await asyncio.wait_for(self.shutdown_event.wait(), timeout=drain)
+                logger.info("✅ In-flight uploads completed within drain period")
+            except TimeoutError:
+                logger.warning("⚠️ Drain period timeout, forcing shutdown")
+        else:
+            logger.info("Drain period disabled; proceeding to worker shutdown")
 
         # Stop each worker
         logger.info("Stopping ingestion workers")

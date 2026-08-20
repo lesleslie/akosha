@@ -67,10 +67,15 @@ def _get_mcp_url() -> str:
     return f"http://{host}:{mcp_port}/mcp"
 
 
-async def _register_to_dhara_once(dhara_url: str, key: str, mcp_url: str) -> bool:
+async def _register_to_dhara_once(dhara_url: str, key: str, mcp_url: str) -> str:
     """Single attempt to write component_endpoint/{name} -> mcp_url to Dhara.
 
-    Returns True on success, False on failure.
+    Returns:
+        ``"success"`` when Dhara accepted the put; ``"retry"`` for transient
+        errors (timeouts, connection refused) that the bounded-retry loop
+        in :func:`_register_component_to_dhara` should keep trying; or
+        ``"give_up"`` for non-transient errors (HTTP 4xx/5xx) where retrying
+        would just waste startup time.
     """
     import httpx
 
@@ -81,9 +86,18 @@ async def _register_to_dhara_once(dhara_url: str, key: str, mcp_url: str) -> boo
                 json={"name": "put", "arguments": {"key": key, "value": mcp_url}},
             )
             response.raise_for_status()
-            return True
+            return "success"
+    except httpx.HTTPStatusError:
+        # Dhara explicitly rejected the put (4xx/5xx). Retrying won't fix
+        # an API bug; bail so lifespan startup doesn't sit in a 31s backoff.
+        return "give_up"
+    except (httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError):
+        # Transient — Dhara might come up, the network might recover.
+        return "retry"
     except Exception:
-        return False
+        # Unknown failure mode: default to retry so we don't silently drop
+        # a fixable hiccup.
+        return "retry"
 
 
 # Module-level task reference so shutdown can cancel the heartbeat loop
@@ -104,6 +118,14 @@ async def _register_component_to_dhara(mcp_url: str) -> None:
     """
     import asyncio
 
+    # Test/opt-out escape hatch. The startup retry loop waits ~31s when Dhara
+    # is unreachable; without this, every lifespan entry in an offline test
+    # suite hangs for 31s. Setting ``AKOSHA_SKIP_DHARA_REGISTRATION=1``
+    # short-circuits both Phase 1 (retry) and Phase 2 (heartbeat).
+    if os.getenv("AKOSHA_SKIP_DHARA_REGISTRATION", "").lower() in ("1", "true", "yes"):
+        logger.debug("Phase 0: skipped via AKOSHA_SKIP_DHARA_REGISTRATION")
+        return
+
     dhara_url = os.getenv("DHARA_MCP_URL", DHARA_DEFAULT_URL)
     key = "component_endpoint/akosha"
 
@@ -117,8 +139,19 @@ async def _register_component_to_dhara(mcp_url: str) -> None:
     # to the heartbeat (which retries every 5 minutes).
     MAX_STARTUP_ATTEMPTS = 5
     for attempt in range(MAX_STARTUP_ATTEMPTS):
-        if await _register_to_dhara_once(dhara_url, key, mcp_url):
-            logger.info("Phase 0: registered akosha endpoint to Dhara: %s -> %s", key, mcp_url)
+        outcome = await _register_to_dhara_once(dhara_url, key, mcp_url)
+        if outcome == "success":
+            logger.info(
+                "Phase 0: registered akosha endpoint to Dhara: %s -> %s",
+                key,
+                mcp_url,
+            )
+            break
+        if outcome == "give_up":
+            logger.warning(
+                "Phase 0: non-retryable registration failure for %s — skipping retries",
+                key,
+            )
             break
         wait = min(2**attempt, 32)
         logger.debug(
@@ -138,7 +171,8 @@ async def _register_component_to_dhara(mcp_url: str) -> None:
     async def heartbeat() -> None:
         while True:
             await asyncio.sleep(300)  # 5 minutes
-            if not await _register_to_dhara_once(dhara_url, key, mcp_url):
+            outcome = await _register_to_dhara_once(dhara_url, key, mcp_url)
+            if outcome != "success":
                 logger.debug("Phase 0 heartbeat: failed to refresh %s", key)
 
     # Guard against create_app() being called twice without an intervening
