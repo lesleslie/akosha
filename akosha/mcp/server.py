@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import os
 from contextlib import asynccontextmanager, suppress
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from fastmcp import FastMCP
 
@@ -300,7 +300,6 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # Initialize Phase 2 services
         from akosha.processing.analytics import TimeSeriesAnalytics
         from akosha.processing.embeddings import get_embedding_service
-        from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
         from akosha.storage import create_hot_store
 
         # Check if we're in lite mode
@@ -328,16 +327,12 @@ def create_app(mode: Any | None = None) -> FastMCP:
             f"{'real' if embedding_service.is_available() else 'fallback'} mode"
         )
 
-        # In lite mode, skip analytics and knowledge graph
+        # In lite mode, skip analytics services
         if not is_lite_mode:
             analytics_service = TimeSeriesAnalytics()
             logger.info("Time-series analytics service initialized")
-
-            graph_builder = KnowledgeGraphBuilder()
-            logger.info("Knowledge graph builder initialized")
         else:
             analytics_service = None
-            graph_builder = None
 
         # Initialize hot store using factory (Task 1.1a: wire PgvectorHotStore)
         hot_store = create_hot_store()
@@ -371,7 +366,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         await _apply_tool_profile(
             server,
             profile_env_var="AKOSHA_TOOL_PROFILE",
-            registrations=PROFILE_REGISTRATIONS,
+            registrations=cast("Any", PROFILE_REGISTRATIONS),
             registration_map=REGISTRATION_MAP,
             register_all_fn=None,
             mandatory_groups=AKOSHA_MANDATORY_GROUPS,

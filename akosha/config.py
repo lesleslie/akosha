@@ -285,9 +285,7 @@ class AkoshaConfig(OneiricMCPConfig):  # type: ignore[reportUntypedBaseClass]
         default_factory=lambda: int(os.getenv("AKOSHA_MCP_PORT", str(DEFAULT_MCP_PORT)))
     )
     debug: bool = False
-    log_level: str = Field(
-        default_factory=lambda: os.getenv("AKOSHA_LOG_LEVEL", "INFO")
-    )
+    log_level: str = Field(default_factory=lambda: os.getenv("AKOSHA_LOG_LEVEL", "INFO"))
 
     # Processing
     ingestion_workers: int = Field(

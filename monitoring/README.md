@@ -132,7 +132,7 @@ services:
     ports:
       - "3001:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-changeme}
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - grafana-data:/var/lib/grafana
@@ -251,7 +251,7 @@ Dashboards are automatically loaded when mounted to `/etc/grafana/provisioning/d
 curl -X POST \
   -H "Content-Type: application/json" \
   -d @monitoring/grafana/embedding-performance.json \
-  http://admin:admin@localhost:3001/api/dashboards/db
+  http://${GRAFANA_USER}:${GRAFANA_PASSWORD}@localhost:3001/api/dashboards/db
 ```
 
 ## Metrics Reference

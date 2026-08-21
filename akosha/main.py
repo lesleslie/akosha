@@ -113,9 +113,7 @@ class AkoshaApplication:
         self.shutdown_event = asyncio.Event()
         self.ingestion_workers: list[Any] = []
         self.stop_drain_timeout = (
-            stop_drain_timeout
-            if stop_drain_timeout is not None
-            else _resolve_stop_drain_timeout()
+            stop_drain_timeout if stop_drain_timeout is not None else _resolve_stop_drain_timeout()
         )
 
         # Initialize mode

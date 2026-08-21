@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-08-21
+
+### Added
+
+- akosha: Apply ToolProfile dispatch via mcp-common 0.18.0
+
+### Fixed
+
+- akosha: Mcp_server_lifespan + changepoint_analytics + graceful_shutdown — 22 tests
+- akosha: Sync port defaults (2026-08-19)
+- akosha: Sync version stamps (2026-08-19)
+- akosha: Test_mcp_tool_inventory.py — 3 tests
+- akosha: Wire fitness Dhara populate + profile subsets + W0 schema
+- docs+code(akosha): fix MCP-tool-hallucination audit findings (2026-08-19)
+
+### Documentation
+
+- akosha: Fix documented-but-not-wired audit findings (2026-08-19)
+
+### Testing
+
+- akosha: Add doc-drift CI guard (2026-08-19)
+
 ## [0.9.5] - 2026-08-17
 
 ### Added
@@ -32,7 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
-- gitignore: Add .coverage* + untrack .coverage-ratchet.json (bodai 2026-08-17)
+- gitignore: Add .coverage\* + untrack .coverage-ratchet.json (bodai 2026-08-17)
 - gitignore: Ignore docs/archive/test-artifacts/, untrack coverage dumps
 
 ## [0.9.4] - 2026-08-12

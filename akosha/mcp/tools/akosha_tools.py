@@ -42,9 +42,9 @@ from akosha.security import require_auth
 
 def register_akosha_tools(
     registry: FastMCPToolRegistry,
-    embedding_service: EmbeddingService,
-    analytics_service: TimeSeriesAnalytics,
-    graph_builder: KnowledgeGraphBuilder,
+    embedding_service: EmbeddingService | None = None,
+    analytics_service: TimeSeriesAnalytics | None = None,
+    graph_builder: KnowledgeGraphBuilder | None = None,
     changepoint_analytics: ChangePointAnalytics | None = None,
 ) -> None:
     """Register all Akosha MCP tools.
@@ -54,9 +54,12 @@ def register_akosha_tools(
 
     Args:
         registry: FastMCP tool registry instance for tool registration
-        embedding_service: Embedding generation service for semantic search
-        analytics_service: Time-series analytics service for trend analysis
-        graph_builder: Knowledge graph builder for relationship queries
+        embedding_service: Embedding generation service for semantic search.
+            When ``None`` (e.g. lite mode), embedding + search tools are skipped.
+        analytics_service: Time-series analytics service for trend analysis.
+            When ``None`` (e.g. lite mode), analytics tools are skipped.
+        graph_builder: Knowledge graph builder for relationship queries.
+            When ``None`` (e.g. lite mode), knowledge-graph tools are skipped.
         changepoint_analytics: Optional pytrendy-backed changepoint analytics service.
             When provided, registers the `analyze_changepoints` MCP tool. When None
             (default), that tool is omitted — callers without a Dhara client skip it.
@@ -84,7 +87,7 @@ def register_akosha_tools(
 
 def register_embedding_tools(
     registry: FastMCPToolRegistry,
-    embedding_service: EmbeddingService,
+    embedding_service: EmbeddingService | None,
 ) -> None:
     """Register embedding generation tools.
 
@@ -100,9 +103,17 @@ def register_embedding_tools(
         - generate_embedding: Generate embedding for single text
         - generate_batch_embeddings: Generate embeddings for multiple texts
     """
-    from akosha.mcp.tools.tool_registry import ToolCategory, ToolMetadata
-
     logger = logging.getLogger(__name__)
+
+    if embedding_service is None:
+        logger.warning(
+            "Skipping embedding tool registration: embedding_service is None "
+            "(likely lite mode). generate_embedding and generate_batch_embeddings "
+            "will be unavailable."
+        )
+        return
+
+    from akosha.mcp.tools.tool_registry import ToolCategory, ToolMetadata
 
     @registry.register(
         ToolMetadata(
@@ -238,7 +249,7 @@ def register_embedding_tools(
 
 def register_search_tools(
     registry: FastMCPToolRegistry,
-    embedding_service: EmbeddingService,
+    embedding_service: EmbeddingService | None,
 ) -> None:
     """Register cross-system search tools.
 
@@ -253,9 +264,16 @@ def register_search_tools(
     Tools registered:
         - search_all_systems: Semantic search across all system memories
     """
-    from akosha.mcp.tools.tool_registry import ToolCategory, ToolMetadata
-
     logger = logging.getLogger(__name__)
+
+    if embedding_service is None:
+        logger.warning(
+            "Skipping search tool registration: embedding_service is None "
+            "(likely lite mode). search_all_systems will be unavailable."
+        )
+        return
+
+    from akosha.mcp.tools.tool_registry import ToolCategory, ToolMetadata
 
     @registry.register(
         ToolMetadata(
@@ -873,7 +891,7 @@ def register_analytics_tools(
 
 def register_graph_tools(
     registry: FastMCPToolRegistry,
-    graph_builder: KnowledgeGraphBuilder,
+    graph_builder: KnowledgeGraphBuilder | None,
 ) -> None:
     """Register knowledge graph tools.
 
@@ -890,9 +908,17 @@ def register_graph_tools(
         - find_path: Find shortest path between entities
         - get_graph_statistics: Get graph metadata and statistics
     """
-    from akosha.mcp.tools.tool_registry import ToolCategory, ToolMetadata
-
     logger = logging.getLogger(__name__)
+
+    if graph_builder is None:
+        logger.warning(
+            "Skipping graph tool registration: graph_builder is None "
+            "(likely lite mode). query_knowledge_graph, find_path, and "
+            "get_graph_statistics will be unavailable."
+        )
+        return
+
+    from akosha.mcp.tools.tool_registry import ToolCategory, ToolMetadata
 
     @registry.register(
         ToolMetadata(

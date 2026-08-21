@@ -459,7 +459,7 @@ security:
 # Redis configuration
 export AKOSHA_REDIS_HOST=localhost
 export AKOSHA_REDIS_PORT=6379
-export AKOSHA_REDIS_PASSWORD=secret
+export AKOSHA_REDIS_PASSWORD=${REDIS_PASSWORD:-changeme}
 
 # Cloud storage
 export AWS_S3_BUCKET=akosha-cold-data

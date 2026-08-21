@@ -149,7 +149,7 @@ kubectl create secret generic akosha-auth-config \
 kubectl create secret generic akosha-redis-config \
   --from-literal=redis-host='redis.cache.local' \
   --from-literal=redis-port='6379' \
-  --from-literal=redis-password='YOUR_REDIS_PASSWORD'
+  --from-literal=redis-password='${REDIS_PASSWORD}'
 ```
 
 ### 4. Create ConfigMaps

@@ -271,7 +271,7 @@ services:
     ports:
       - "3001:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-changeme}
     volumes:
       - ./monitoring/grafana:/etc/grafana/provisioning/dashboards
 

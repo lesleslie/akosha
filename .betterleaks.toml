@@ -1,0 +1,31 @@
+# Betterleaks scanner configuration for akosha.
+#
+# This file is loaded automatically by betterleaks when scanning the project
+# root (precedence: --config flag > env vars > .betterleaks.toml at target).
+# See `betterleaks dir --help` for the full precedence rules.
+#
+# We use [[allowlists]] to exclude paths that are scanned by betterleaks but
+# are not part of the project's source content. Betterleaks walks the
+# filesystem and ignores .gitignore, so we have to exclude these here.
+
+title = "Akosha Betterleaks Config"
+
+# Git worktrees: registered working trees that betterleaks scans because
+# they live inside the project root. They mirror main's content, so any
+# sanitized placeholders will propagate to them when work is merged; we
+# exclude them now to stop duplicate findings during local development.
+[[allowlists]]
+description = "Git worktrees (scanned filesystem, not source content)"
+paths = [
+    '''.worktrees/''',
+]
+
+# Local Python virtualenv and the cached reports betterleaks itself writes.
+[[allowlists]]
+description = "Tooling artifacts (venv, scanner reports, caches)"
+paths = [
+    '''.venv/''',
+    '''.cache/betterleaks-report.json''',
+    '''.cache/gitleaks-report.json''',
+    '''htmlcov/''',
+]

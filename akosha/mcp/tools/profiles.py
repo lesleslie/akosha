@@ -112,6 +112,7 @@ def get_active_profile(env_var: str = "AKOSHA_TOOL_PROFILE") -> ToolProfile:
 # from the map.
 # ---------------------------------------------------------------------------
 
+
 # Lazy import to avoid pulling group_registers at module load — the per-group
 # wrappers themselves lazy-import their inner modules.
 def _build_registration_map() -> dict[str, Callable[[FastMCP], Awaitable[None] | None]]:
@@ -142,9 +143,7 @@ def _build_registration_map() -> dict[str, Callable[[FastMCP], Awaitable[None] |
     }
 
 
-REGISTRATION_MAP: dict[str, Callable[[FastMCP], Awaitable[None] | None]] = (
-    _build_registration_map()
-)
+REGISTRATION_MAP: dict[str, Callable[[FastMCP], Awaitable[None] | None]] = _build_registration_map()
 
 # Always-on groups: registered at every profile level in addition to the
 # per-profile list. Health checks must be reachable from any profile tier

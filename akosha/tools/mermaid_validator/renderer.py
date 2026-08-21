@@ -254,8 +254,7 @@ def _run_validator_subprocess(
 
     if completed.returncode != 0:
         raise RuntimeError(
-            f"validate-mermaid.mjs exited {completed.returncode}: "
-            f"{completed.stderr.strip()[:500]}"
+            f"validate-mermaid.mjs exited {completed.returncode}: {completed.stderr.strip()[:500]}"
         )
 
     return completed.stdout
@@ -267,8 +266,7 @@ def _collect_errors(stdout: str) -> list[MermaidValidationError]:
         results = json.loads(stdout)
     except json.JSONDecodeError as e:
         raise RuntimeError(
-            f"validate-mermaid.mjs returned invalid JSON: {e}; "
-            f"stdout={stdout[:200]!r}"
+            f"validate-mermaid.mjs returned invalid JSON: {e}; stdout={stdout[:200]!r}"
         ) from e
 
     return [
@@ -296,12 +294,8 @@ def validate_mermaid_blocks(
         return []
 
     runner, mermaid_core, jsdom = _resolve_validator_paths()
-    payload = json.dumps(
-        [{"file": str(b.file), "line": b.line, "code": b.code} for b in blocks]
-    )
-    stdout = _run_validator_subprocess(
-        runner, mermaid_core, jsdom, payload, timeout, len(blocks)
-    )
+    payload = json.dumps([{"file": str(b.file), "line": b.line, "code": b.code} for b in blocks])
+    stdout = _run_validator_subprocess(runner, mermaid_core, jsdom, payload, timeout, len(blocks))
     return _collect_errors(stdout)
 
 
