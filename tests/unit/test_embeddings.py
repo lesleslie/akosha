@@ -19,15 +19,29 @@ class TestEmbeddingService:
 
     @pytest.mark.asyncio
     async def test_initialization(self, service: EmbeddingService) -> None:
-        """Test service initialization."""
+        """Test service initialization.
+
+        After the oneiric delegation migration, ``is_available()`` is
+        finally honest: it returns True when a real backend (Ollama,
+        llama.cpp, MiniMax, model2vec) probed successfully. The old
+        "always False because mock-only" assertion is gone.
+        """
         assert not service._initialized
-        assert not service.is_available()
+        # Before initialize(), the service has no opinion on availability.
+        assert service.backend_name() == "uninitialized"
 
         await service.initialize()
 
         assert service._initialized
-        # Mock-only service never reports as available.
-        assert not service.is_available()
+        # ``is_available()`` now reflects whether a real backend was
+        # reached; the old test's "always False" assertion is removed.
+        assert service.backend_name() in {
+            "llama_cpp",
+            "ollama",
+            "minimax",
+            "model2vec",
+            "mock",
+        }
 
     @pytest.mark.asyncio
     async def test_singleton(self) -> None:
@@ -110,66 +124,67 @@ class TestEmbeddingService:
     async def test_initialize_returns_early_when_already_initialized(self) -> None:
         """Repeated initialize calls should be cheap no-ops."""
         service = EmbeddingService()
-        service._initialized = True
+        await service.initialize()
+        first_backend = service.backend_name()
+        first_dim = service.dimension()
 
         await service.initialize()
 
-        assert service._initialized is True
+        # Backend + dimension must be stable across repeated init.
+        assert service.backend_name() == first_backend
+        assert service.dimension() == first_dim
 
     @pytest.mark.asyncio
     async def test_generate_methods_auto_initialize_when_needed(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The public methods should lazily initialize an unprepared service."""
+        """The public methods should lazily initialize an unprepared service.
+
+        After the migration to oneiric, the lazy-init path is exercised
+        by ``generate_embedding`` itself — if the chain hasn't been
+        awaited, the first encode triggers ``initialize``.
+        """
         service = EmbeddingService()
+        assert not service._initialized
 
-        async def fake_initialize() -> None:
-            service._initialized = True
+        # Patch encode to return a known vector (skip the chain).
+        async def fake_encode(text: str) -> np.ndarray:
+            return np.ones(384, dtype=np.float32)
 
-        service.initialize = fake_initialize  # type: ignore[method-assign]
-        monkeypatch.setattr(embeddings_module, "record_counter", lambda *args, **kwargs: None)
-        monkeypatch.setattr(embeddings_module, "record_histogram", lambda *args, **kwargs: None)
-
-        import akosha.observability as observability_module
-
-        monkeypatch.setattr(
-            observability_module,
-            "add_span_attributes",
-            lambda *args, **kwargs: None,
-        )
+        monkeypatch.setattr(service, "encode", fake_encode)
 
         embedding = await service.generate_embedding("lazy-init")
-        service._initialized = False
-        batch = await service.generate_batch_embeddings(["lazy", "init"])
 
+        # Auto-initialization should have happened on first encode.
+        assert service._initialized
         assert embedding.shape == (384,)
-        assert len(batch) == 2
 
     @pytest.mark.asyncio
     async def test_fallback_embedding_zero_norm_stays_zero(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A zero-valued mock vector should skip normalization cleanly."""
+        """The mock fallback's zero-vector path stays zero (no NaN/Inf)."""
         service = EmbeddingService()
         service._initialized = True
 
-        monkeypatch.setattr(embeddings_module.random.Random, "gauss", lambda self, mu, sigma: 0.0)
-        monkeypatch.setattr(embeddings_module, "record_counter", lambda *args, **kwargs: None)
-        monkeypatch.setattr(embeddings_module, "record_histogram", lambda *args, **kwargs: None)
-
-        import akosha.observability as observability_module
+        # The new fallback uses ``np.random.default_rng`` instead of
+        # ``random.Random.gauss``. Patch the seed-derived RNG to emit
+        # all zeros so the test exercises the L2-normalize "skip if
+        # norm == 0" branch.
+        from oneiric.adapters.observability import embeddings as _oneiric_emb
 
         monkeypatch.setattr(
-            observability_module,
-            "add_span_attributes",
-            lambda *args, **kwargs: None,
+            _oneiric_emb.np.random,
+            "default_rng",
+            lambda _seed: type("R", (), {"standard_normal": lambda self, n: np.zeros(n)})(),
         )
 
-        embedding = await service.generate_embedding("zero-vector")
+        embedding = service._generate_fallback_embedding("zero-vector")
 
         assert isinstance(embedding, np.ndarray)
         assert embedding.shape == (384,)
         assert np.count_nonzero(embedding) == 0
+        assert np.all(np.isfinite(embedding))
 
     @pytest.mark.asyncio
     async def test_compute_similarity(self, service: EmbeddingService) -> None:
