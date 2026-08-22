@@ -46,6 +46,14 @@ def _audit_action() -> WorkflowAuditAction:
                 "api_key",
                 "access_token",
                 "refresh_token",
+                "bearer",
+                "cookie",
+                "session_id",
+                "csrf",
+                "x-api-key",
+                "x-auth-token",
+                "x-csrf-token",
+                "set-cookie",
             ],
         )
     )
@@ -239,8 +247,16 @@ async def _audit_entry(
     """Build the canonical audit envelope via ``WorkflowAuditAction``.
 
     Returns the kit's emitted record ready to serialize. The kit redacts any
-    field whose key matches the configured ``redact_fields`` list, so secrets
-    inside ``details`` never reach the JSONL sink or structlog handler.
+    field whose key matches the configured ``redact_fields`` list (lowercase,
+    case-sensitive exact match), so secrets inside ``details`` never reach
+    the JSONL sink or structlog handler.
+
+    Case sensitivity: ``WorkflowAuditAction._redact`` is case-sensitive, so
+    keys are lowercased recursively before submission. This catches
+    HTTP-header-cased variants (``Authorization``, ``Bearer``) that would
+    otherwise slip past the lowercase redact list. The flat envelope's
+    top-level keys (``user_id``/``action``/``resource``/``result``) stay
+    canonical-case because they're set by the wrapper, not user input.
 
     The kit nests the call-site payload under ``details.details``; we extract
     the user-provided inner dict to preserve the historical flat envelope
@@ -254,7 +270,7 @@ async def _audit_entry(
                 "user_id": user_id,
                 "resource": resource,
                 "result": result,
-                "details": details,
+                "details": _lowercase_keys(details),
             },
             "include_timestamp": True,
         }
@@ -268,6 +284,19 @@ async def _audit_entry(
         "result": result,
         "details": sanitized.get("details", {}),
     }
+
+
+def _lowercase_keys(value: Any) -> Any:
+    """Recursively lowercase dict keys so case-sensitive redaction catches
+    HTTP-header-cased variants (Authorization, Bearer, etc.).
+
+    List items are walked; non-dict/list values pass through unchanged.
+    """
+    if isinstance(value, dict):
+        return {k.lower(): _lowercase_keys(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_lowercase_keys(item) for item in value]
+    return value
 
 
 # Global audit logger instance

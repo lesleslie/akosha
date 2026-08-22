@@ -85,6 +85,43 @@ async def test_audit_logger_writes_canonical_envelope(tmp_path: Path) -> None:
     assert entry["details"]["metadata"]["token"] == "***"
 
 
+@pytest.mark.asyncio
+async def test_audit_logger_redacts_cased_http_headers(tmp_path: Path) -> None:
+    """W3 review H1 fix: HTTP-header-cased variants (Authorization, Bearer)
+    must be redacted even though the kit's redact list is lowercase.
+
+    The wrapper lowercases keys recursively before submission so the
+    case-sensitive ``WorkflowAuditAction._redact`` matches them. Also
+    covers X-API-Key, Cookie, Set-Cookie, and CSRF after extending the
+    redact_fields list.
+    """
+    log_file = tmp_path / "audit.log"
+    logger = AuditLogger(log_file=str(log_file))
+
+    await logger.log(
+        user_id="u-1",
+        action="auth",
+        resource="token:abc",
+        result="success",
+        details={
+            "Authorization": "Bearer leaked-token",
+            "headers": {
+                "X-API-Key": "secret-key",
+                "Cookie": "session=stolen",
+                "Set-Cookie": "auth=stolen",
+                "X-CSRF-Token": "csrf-leaked",
+            },
+        },
+    )
+
+    entry = json.loads(log_file.read_text().strip())
+    assert entry["details"]["authorization"] == "***"
+    assert entry["details"]["headers"]["x-api-key"] == "***"
+    assert entry["details"]["headers"]["cookie"] == "***"
+    assert entry["details"]["headers"]["set-cookie"] == "***"
+    assert entry["details"]["headers"]["x-csrf-token"] == "***"
+
+
 def test_pii_mask_fields_constant_is_complete() -> None:
     """The constant covers the canonical PII surface expected by the ecosystem."""
     required = {"email", "password", "token", "api_key", "authorization"}
