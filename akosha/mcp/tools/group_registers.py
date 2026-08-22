@@ -34,29 +34,47 @@ def register_health_akosha_group(app: FastMCP) -> None:
 def register_akosha_group(app: FastMCP) -> None:
     """Register core Akosha memory-aggregation tools.
 
-    Services are passed as ``None`` to preserve the lite-mode behavior:
-    the implementation skips the analytics subset when ``analytics_service``
-    is unavailable, matching the pre-refactor fixture baseline.
+    Resolves services via the same factories the lifespan uses (see
+    ``akosha.mcp.server`` ``lifespan``). This keeps registration aligned
+    with what the lifespan already initialises — without this, every
+    embedding / search / analytics / graph tool group is silently dropped
+    because the W0 dispatch path passes only ``app`` to each group.
+
+    Lite-mode handling is preserved: callers that explicitly want to skip
+    the analytics subset can pass ``analytics_service=None`` via
+    ``register_akosha_tools`` directly — this wrapper mirrors the
+    pre-refactor ``register_all_tools`` behaviour of always wiring up
+    services that the lifespan has initialised.
     """
     from akosha.mcp.tools.akosha_tools import register_akosha_tools
     from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
+    from akosha.processing.analytics import TimeSeriesAnalytics
+    from akosha.processing.embeddings import get_embedding_service
+    from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
+
+    # ``get_embedding_service`` returns a process-wide singleton that the
+    # lifespan has already initialised — same instance as ``server.py``
+    # passes through the lifespan context dict.
+    embedding_service = get_embedding_service()
+    analytics_service = TimeSeriesAnalytics()
+    graph_builder = KnowledgeGraphBuilder()
 
     registry = FastMCPToolRegistry(app)
     register_akosha_tools(
         registry,
-        embedding_service=None,
-        analytics_service=None,
-        graph_builder=None,
+        embedding_service=embedding_service,
+        analytics_service=analytics_service,
+        graph_builder=graph_builder,
     )
     logger.info("Registered Akosha core tools")
 
 
-def register_session_buddy_group(app: FastMCP) -> None:
+async def register_session_buddy_group(app: FastMCP) -> None:
     """Register Session-Buddy integration tools. Skipped if hot_store cannot be built."""
     from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
     from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
 
-    hot_store = _try_create_hot_store()
+    hot_store = await _try_create_hot_store()
     if hot_store is None:
         logger.info("Skipping Session-Buddy tools: hot_store unavailable")
         return
@@ -65,12 +83,12 @@ def register_session_buddy_group(app: FastMCP) -> None:
     logger.info("Registered Session-Buddy integration tools")
 
 
-def register_pycharm_group(app: FastMCP) -> None:
+async def register_pycharm_group(app: FastMCP) -> None:
     """Register PyCharm integration tools. Skipped if hot_store cannot be built."""
     from akosha.mcp.tools.pycharm_tools import register_pycharm_tools
     from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
 
-    hot_store = _try_create_hot_store()
+    hot_store = await _try_create_hot_store()
     if hot_store is None:
         logger.info("Skipping PyCharm tools: hot_store unavailable")
         return
@@ -79,11 +97,11 @@ def register_pycharm_group(app: FastMCP) -> None:
     logger.info("Registered PyCharm integration tools")
 
 
-def register_otel_query_group(app: FastMCP) -> None:
+async def register_otel_query_group(app: FastMCP) -> None:
     """Register OTel trace query tools. Skipped if hot_store cannot be built."""
     from akosha.mcp.tools.otel_tools import register_otel_query_tools
 
-    hot_store = _try_create_hot_store()
+    hot_store = await _try_create_hot_store()
     if hot_store is None:
         logger.info("Skipping OTel query tools: hot_store unavailable")
         return
@@ -144,12 +162,21 @@ def register_eventbridge_group(app: FastMCP) -> None:
     logger.info("Registered EventBridge publisher tools")
 
 
-def _try_create_hot_store():
-    """Best-effort hot-store creation matching the legacy skip-if-missing pattern."""
+async def _try_create_hot_store():
+    """Best-effort hot-store creation + initialization matching the legacy skip-if-missing pattern.
+
+    Returns an *initialised* ``HotStore`` (DuckDB connection opened, schema
+    created). The pre-fix version constructed the store but never called
+    ``.initialize()``, so every dependent tool (``search_code_patterns``,
+    ``find_function_usage``, etc.) crashed at runtime with
+    ``RuntimeError("Hot store not initialized")``.
+    """
     try:
         from akosha.storage import create_hot_store
 
-        return create_hot_store()
+        store = create_hot_store()
+        await store.initialize()
+        return store
     except Exception as exc:
         logger.debug("create_hot_store() failed: %s", exc)
         return None

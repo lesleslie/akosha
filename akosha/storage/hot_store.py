@@ -92,6 +92,17 @@ class HotStore:
             except Exception as e:
                 logger.warning(f"Composite index creation failed: {e}")
 
+            # Create the code_graphs table in the same initialization pass so
+            # ``search_code_patterns`` / ``find_function_usage`` don't fail with
+            # ``Catalog Error: Table with name code_graphs does not exist!``
+            # when the tool runs against a freshly-initialised store. The
+            # SQL is run inline (without re-acquiring ``_lock``) — we are
+            # already inside the lock here, and ``asyncio.Lock`` is NOT
+            # reentrant, so calling ``initialize_code_graphs_table`` would
+            # deadlock. ``_create_code_graphs_schema`` is the lock-free
+            # implementation shared with the public method.
+            self._create_code_graphs_schema(self.conn)
+
             logger.info("Hot store initialized")
 
     async def insert(self, record: HotRecord) -> None:
@@ -328,48 +339,56 @@ class HotStore:
             if not self.conn:
                 raise RuntimeError("Hot store not initialized")
 
-            # Create code_graphs table
-            self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS code_graphs (
-                    repo_path VARCHAR,
-                    commit_hash VARCHAR,
-                    nodes_count INTEGER,
-                    graph_data JSON,
-                    metadata JSON,
-                    ingested_at TIMESTAMP DEFAULT NOW(),
-                    PRIMARY KEY (repo_path, commit_hash)
-                )
-            """)
-
-            # Create indexes for common queries
-            try:
-                self.conn.execute("""
-                    CREATE INDEX IF NOT EXISTS code_graphs_repo_index
-                    ON code_graphs (repo_path)
-                """)
-                logger.info("Created code_graphs repo_path index")
-            except Exception as e:
-                logger.warning(f"code_graphs repo_path index creation failed: {e}")
-
-            try:
-                self.conn.execute("""
-                    CREATE INDEX IF NOT EXISTS code_graphs_nodes_index
-                    ON code_graphs (nodes_count DESC)
-                """)
-                logger.info("Created code_graphs nodes_count index")
-            except Exception as e:
-                logger.warning(f"code_graphs nodes_count index creation failed: {e}")
-
-            try:
-                self.conn.execute("""
-                    CREATE INDEX IF NOT EXISTS code_graphs_ingested_index
-                    ON code_graphs (ingested_at DESC)
-                """)
-                logger.info("Created code_graphs ingested_at index")
-            except Exception as e:
-                logger.warning(f"code_graphs ingested_at index creation failed: {e}")
-
+            self._create_code_graphs_schema(self.conn)
             logger.info("Code graphs table initialized")
+
+    def _create_code_graphs_schema(self, conn: duckdb.DuckDBPyConnection) -> None:
+        """Create the code_graphs table + indexes. Lock-free helper.
+
+        Shared by ``initialize`` (which already holds ``_lock``) and the
+        public ``initialize_code_graphs_table`` (which acquires it).
+        ``asyncio.Lock`` is NOT reentrant, so this method MUST NOT acquire
+        the lock — callers are responsible for serialisation.
+        """
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS code_graphs (
+                repo_path VARCHAR,
+                commit_hash VARCHAR,
+                nodes_count INTEGER,
+                graph_data JSON,
+                metadata JSON,
+                ingested_at TIMESTAMP DEFAULT NOW(),
+                PRIMARY KEY (repo_path, commit_hash)
+            )
+        """)
+
+        # Create indexes for common queries
+        try:
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS code_graphs_repo_index
+                ON code_graphs (repo_path)
+            """)
+            logger.info("Created code_graphs repo_path index")
+        except Exception as e:
+            logger.warning(f"code_graphs repo_path index creation failed: {e}")
+
+        try:
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS code_graphs_nodes_index
+                ON code_graphs (nodes_count DESC)
+            """)
+            logger.info("Created code_graphs nodes_count index")
+        except Exception as e:
+            logger.warning(f"code_graphs nodes_count index creation failed: {e}")
+
+        try:
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS code_graphs_ingested_index
+                ON code_graphs (ingested_at DESC)
+            """)
+            logger.info("Created code_graphs ingested_at index")
+        except Exception as e:
+            logger.warning(f"code_graphs ingested_at index creation failed: {e}")
 
     async def store_code_graph(
         self,
