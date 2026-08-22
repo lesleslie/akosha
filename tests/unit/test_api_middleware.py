@@ -345,11 +345,16 @@ class TestRequireRole:
 
 
 class TestAuditLogger:
-    """Tests for AuditLogger."""
+    """Tests for AuditLogger.
 
-    def test_log_creates_json_entry(self, tmp_path):
+    Wave 3 (W3): ``AuditLogger.log`` is async because it routes the envelope
+    through ``WorkflowAuditAction.execute``. Tests use ``pytest-asyncio``
+    auto-mode to await the call.
+    """
+
+    async def test_log_creates_json_entry(self, tmp_path):
         logger = AuditLogger(log_file=str(tmp_path / "audit.log"))
-        logger.log("user-1", "create", "resource-1", "success")
+        await logger.log("user-1", "create", "resource-1", "success")
         content = (tmp_path / "audit.log").read_text()
         entry = json.loads(content.strip())
         assert entry["user_id"] == "user-1"
@@ -357,39 +362,39 @@ class TestAuditLogger:
         assert entry["resource"] == "resource-1"
         assert entry["result"] == "success"
 
-    def test_log_includes_timestamp(self, tmp_path):
+    async def test_log_includes_timestamp(self, tmp_path):
         logger = AuditLogger(log_file=str(tmp_path / "audit.log"))
-        logger.log("user-1", "read", "resource-1", "success")
+        await logger.log("user-1", "read", "resource-1", "success")
         content = (tmp_path / "audit.log").read_text()
         entry = json.loads(content.strip())
         assert "timestamp" in entry
         assert "T" in entry["timestamp"]
 
-    def test_log_handles_file_write_error(self, tmp_path):
+    async def test_log_handles_file_write_error(self, tmp_path):
         logger = AuditLogger(log_file=str(tmp_path / "nonexistent" / "audit.log"))
-        logger.log("user-1", "create", "resource-1", "success")
+        await logger.log("user-1", "create", "resource-1", "success")
         # Should not raise, just log error
 
-    def test_log_details_default_to_empty_dict(self, tmp_path):
+    async def test_log_details_default_to_empty_dict(self, tmp_path):
         logger = AuditLogger(log_file=str(tmp_path / "audit.log"))
-        logger.log("user-1", "delete", "resource-1", "success")
+        await logger.log("user-1", "delete", "resource-1", "success")
         content = (tmp_path / "audit.log").read_text()
         entry = json.loads(content.strip())
         assert entry["details"] == {}
 
-    def test_log_with_details(self, tmp_path):
+    async def test_log_with_details(self, tmp_path):
         logger = AuditLogger(log_file=str(tmp_path / "audit.log"))
         details = {"reason": "cleanup", "count": 5}
-        logger.log("user-1", "delete", "resource-1", "success", details=details)
+        await logger.log("user-1", "delete", "resource-1", "success", details=details)
         content = (tmp_path / "audit.log").read_text()
         entry = json.loads(content.strip())
         assert entry["details"]["reason"] == "cleanup"
         assert entry["details"]["count"] == 5
 
-    def test_log_multiple_entries(self, tmp_path):
+    async def test_log_multiple_entries(self, tmp_path):
         logger = AuditLogger(log_file=str(tmp_path / "audit.log"))
-        logger.log("user-1", "create", "r1", "success")
-        logger.log("user-2", "delete", "r2", "failure")
+        await logger.log("user-1", "create", "r1", "success")
+        await logger.log("user-2", "delete", "r2", "failure")
         content = (tmp_path / "audit.log").read_text()
         lines = content.strip().split("\n")
         assert len(lines) == 2

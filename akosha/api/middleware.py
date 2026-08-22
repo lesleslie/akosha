@@ -1,18 +1,54 @@
 """Authentication and authorization middleware for Akosha API.
 
 Implements JWT verification, RBAC, and audit logging.
+
+Wave 3 (W3): the ``AuditLogger.log`` method delegates the structured audit
+payload to ``oneiric.actions.workflow.WorkflowAuditAction`` so the redaction
+list (``secret`` / ``token`` / ``password`` / ``key``) and the timestamp shape
+are identical to every other Bodai component.
 """
 
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime
+from functools import lru_cache
 from logging import getLogger
 from typing import Any
 
 from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from oneiric.actions.workflow import (
+    WorkflowAuditAction,
+    WorkflowAuditSettings,
+)
 
 logger = getLogger(__name__)
+
+
+@lru_cache(maxsize=1)
+def _audit_action() -> WorkflowAuditAction:
+    """Return the process-wide audit action used by ``AuditLogger.log``.
+
+    Channels the canonical ``workflow.audit`` envelope with Akosha's own
+    channel tag so events surface cleanly in the cross-component audit feed.
+    """
+
+    return WorkflowAuditAction(
+        settings=WorkflowAuditSettings(
+            channel="akosha-audit",
+            default_event="akosha.audit",
+            redact_fields=[
+                "secret",
+                "token",
+                "password",
+                "key",
+                "authorization",
+                "api_key",
+                "access_token",
+                "refresh_token",
+            ],
+        )
+    )
 
 security = HTTPBearer()
 
@@ -149,7 +185,7 @@ class AuditLogger:
     def __init__(self, log_file: str = "/var/log/akosha/audit.log"):
         self.log_file = log_file
 
-    def log(
+    async def log(
         self,
         user_id: str,
         action: str,
@@ -165,15 +201,19 @@ class AuditLogger:
             resource: Resource affected (conversation_id, upload_id, etc.)
             result: Result (success, failure, error)
             details: Additional details
+
+        Wave 3 (W3): the structured audit envelope is produced by
+        ``WorkflowAuditAction`` so redaction and timestamp format match every
+        other Bodai component. The JSONL sink still receives the canonical
+        envelope so existing log consumers keep working.
         """
-        audit_entry = {
-            "timestamp": datetime.now(UTC).isoformat(),
-            "user_id": user_id,
-            "action": action,
-            "resource": resource,
-            "result": result,
-            "details": details or {},
-        }
+        audit_entry = await _audit_entry(
+            user_id=user_id,
+            action=action,
+            resource=resource,
+            result=result,
+            details=details or {},
+        )
 
         try:
             with open(self.log_file, "a") as f:  # noqa: PTH123
@@ -186,6 +226,48 @@ class AuditLogger:
             f"AUDIT: {user_id} {action} {resource} - {result}",
             extra={"audit": audit_entry},
         )
+
+
+async def _audit_entry(
+    *,
+    user_id: str,
+    action: str,
+    resource: str,
+    result: str,
+    details: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the canonical audit envelope via ``WorkflowAuditAction``.
+
+    Returns the kit's emitted record ready to serialize. The kit redacts any
+    field whose key matches the configured ``redact_fields`` list, so secrets
+    inside ``details`` never reach the JSONL sink or structlog handler.
+
+    The kit nests the call-site payload under ``details.details``; we extract
+    the user-provided inner dict to preserve the historical flat envelope
+    shape that downstream JSONL consumers expect.
+    """
+    record = await _audit_action().execute(
+        {
+            "event": action,
+            "channel": "akosha-audit",
+            "details": {
+                "user_id": user_id,
+                "resource": resource,
+                "result": result,
+                "details": details,
+            },
+            "include_timestamp": True,
+        }
+    )
+    sanitized = record["details"]
+    return {
+        "timestamp": record.get("timestamp", datetime.now(UTC).isoformat()),
+        "user_id": user_id,
+        "action": action,
+        "resource": resource,
+        "result": result,
+        "details": sanitized.get("details", {}),
+    }
 
 
 # Global audit logger instance

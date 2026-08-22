@@ -13,8 +13,10 @@ import functools
 import inspect
 import logging
 from contextlib import contextmanager
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
+from oneiric.actions.data import DataSanitizeAction, DataSanitizeSettings
 from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
@@ -351,3 +353,72 @@ def shutdown_telemetry() -> None:
         meter_provider.shutdown()
 
     logger.info("✅ Telemetry shutdown complete")
+
+
+# ---------------------------------------------------------------------------
+# Wave 3 (W3): oneiric.actions.data.DataSanitizeAction adoption
+# ---------------------------------------------------------------------------
+# Use ``sanitize_span_attributes(...)`` (sync) or ``asanitize_span_attributes(...)``
+# (async) to pre-process a dict of OTel attributes before passing it to
+# ``traced`` / ``trace.get_tracer().start_as_current_span``. PII handling matches
+# every other Bodai component via the canonical ``data.sanitize`` envelope.
+
+_PII_MASK_FIELDS: tuple[str, ...] = (
+    "email",
+    "password",
+    "token",
+    "api_key",
+    "apikey",
+    "authorization",
+    "auth",
+    "access_token",
+    "refresh_token",
+    "secret",
+    "session_id",
+    "cookie",
+)
+
+
+@lru_cache(maxsize=1)
+def _sanitize_action() -> DataSanitizeAction:
+    """Return the process-wide PII sanitize action."""
+    return DataSanitizeAction(
+        settings=DataSanitizeSettings(
+            drop_fields=[],
+            mask_fields=list(_PII_MASK_FIELDS),
+            mask_value="***",
+            case_sensitive=False,
+        )
+    )
+
+
+def sanitize_span_attributes(attributes: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of ``attributes`` with PII fields masked (sync).
+
+    Raises:
+        RuntimeError: if called from inside a running event loop. Use
+            ``asanitize_span_attributes`` instead.
+    """
+    import asyncio
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(_asanitize_span_attributes_impl(attributes))
+    raise RuntimeError(
+        "sanitize_span_attributes called from a running event loop; "
+        "use 'await asanitize_span_attributes(attributes)' instead."
+    )
+
+
+async def asanitize_span_attributes(attributes: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of ``attributes`` with PII fields masked (async)."""
+    return await _asanitize_span_attributes_impl(attributes)
+
+
+async def _asanitize_span_attributes_impl(attributes: dict[str, Any]) -> dict[str, Any]:
+    """Shared implementation for sync + async sanitize span attributes."""
+    result = await _sanitize_action().execute(
+        {"data": attributes, "mask_value": "***"}
+    )
+    return result["data"]
