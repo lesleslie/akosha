@@ -26,12 +26,9 @@ changes across the Bodai ecosystem.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Any
-
 import numpy as np
-from oneiric.adapters.observability.embeddings import EmbeddingService as _OneiricEmbeddingService
 from oneiric.adapters.observability.embedding_settings import EmbeddingSettings
+from oneiric.adapters.observability.embeddings import EmbeddingService as _OneiricEmbeddingService
 
 __all__ = [
     "EmbeddingService",
@@ -98,7 +95,7 @@ class EmbeddingService(_OneiricEmbeddingService):
     async def generate_batch_embeddings(
         self,
         texts: list[str],
-        batch_size: int = 32,
+        batch_size: int = 32,  # noqa: ARG002 - retained for API compatibility
     ) -> list[np.ndarray]:
         """Legacy akosha alias for ``encode_batch``.
 
@@ -135,9 +132,7 @@ class EmbeddingService(_OneiricEmbeddingService):
         if not candidate_embeddings:
             return []
         candidate_matrix = np.asarray(candidate_embeddings, dtype=np.float32)
-        similarities = candidate_matrix @ np.asarray(
-            query_embedding, dtype=np.float32
-        )
+        similarities = candidate_matrix @ np.asarray(query_embedding, dtype=np.float32)
         k = min(limit, len(similarities))
         top_k_indices = np.argpartition(-similarities, k - 1)[:k]
         top_k_indices = top_k_indices[np.argsort(-similarities[top_k_indices])]

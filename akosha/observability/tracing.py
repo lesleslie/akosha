@@ -418,7 +418,5 @@ async def asanitize_span_attributes(attributes: dict[str, Any]) -> dict[str, Any
 
 async def _asanitize_span_attributes_impl(attributes: dict[str, Any]) -> dict[str, Any]:
     """Shared implementation for sync + async sanitize span attributes."""
-    result = await _sanitize_action().execute(
-        {"data": attributes, "mask_value": "***"}
-    )
+    result = await _sanitize_action().execute({"data": attributes, "mask_value": "***"})
     return result["data"]

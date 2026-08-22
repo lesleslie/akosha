@@ -58,6 +58,7 @@ def _audit_action() -> WorkflowAuditAction:
         )
     )
 
+
 security = HTTPBearer()
 
 
