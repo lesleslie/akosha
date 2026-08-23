@@ -524,3 +524,11 @@ Crackerjack provides 11 specialized AI agents for code improvement:
 Access these via Crackerjack MCP server (port 8676).
 
 <!-- CRACKERJACK_END -->
+
+## Oneiric action kits
+
+Before writing common primitives (HMAC, token gen, schema validation,
+retries, redaction, HTTP probing, serialization, compression, hashing,
+data transforms), check `oneiric.actions` — catalog lives at
+`oneiric/docs/action-kits.md` in the oneiric project. Discovery hint:
+`mahavishnu/.claude/decisions/promote-oneiric-action-kits.md`.
