@@ -91,7 +91,7 @@ async def _register_to_dhara_once(dhara_url: str, key: str, mcp_url: str) -> str
         # Dhara explicitly rejected the put (4xx/5xx). Retrying won't fix
         # an API bug; bail so lifespan startup doesn't sit in a 31s backoff.
         return "give_up"
-    except (httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError):
+    except httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError:
         # Transient — Dhara might come up, the network might recover.
         return "retry"
     except Exception:

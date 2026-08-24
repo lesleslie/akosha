@@ -126,7 +126,7 @@ class ChangePointAnalytics:
                 continue
             try:
                 ts = datetime.fromisoformat(ts_raw)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 continue
             rows.append({"date": ts, "value": float(value)})
 

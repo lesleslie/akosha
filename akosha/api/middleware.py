@@ -8,12 +8,16 @@ list (``secret`` / ``token`` / ``password`` / ``key``) and the timestamp shape
 are identical to every other Bodai component.
 """
 
+from __future__ import annotations
+
 import json
-from collections.abc import Callable
 from datetime import UTC, datetime
 from functools import lru_cache
 from logging import getLogger
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -76,7 +80,7 @@ class AuthConfig:
         self.required_claims = required_claims or ["sub", "email", "roles"]
 
     @classmethod
-    def from_env(cls) -> "AuthConfig":
+    def from_env(cls) -> AuthConfig:
         """Load configuration from environment variables."""
         import os
 

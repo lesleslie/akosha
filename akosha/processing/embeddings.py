@@ -89,7 +89,7 @@ class EmbeddingService(_OneiricEmbeddingService):
             await self.initialize()
         try:
             return await self.encode(text)
-        except (RuntimeError, OSError, ValueError):
+        except RuntimeError, OSError, ValueError:
             return self._generate_fallback_embedding(text)
 
     async def generate_batch_embeddings(
@@ -109,7 +109,7 @@ class EmbeddingService(_OneiricEmbeddingService):
             return []
         try:
             return await self.encode_batch(texts)
-        except (RuntimeError, OSError, ValueError):
+        except RuntimeError, OSError, ValueError:
             return [self._generate_fallback_embedding(t) for t in texts]
 
     async def compute_similarity(

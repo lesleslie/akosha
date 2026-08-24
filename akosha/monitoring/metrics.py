@@ -4,9 +4,15 @@ from __future__ import annotations
 Provides instrumentation for ingestion, query, and storage operations.
 """
 
+from __future__ import annotations
+
 import logging
-from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from fastapi import FastAPI, Request
 
 from prometheus_client import Counter, Gauge, Histogram
 
@@ -297,7 +303,6 @@ def track_migration(
 # FastAPI integration
 # =============================================================================
 
-from fastapi import FastAPI, Request  # noqa: E402
 from starlette.responses import Response  # noqa: E402
 
 

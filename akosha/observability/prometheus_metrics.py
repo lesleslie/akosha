@@ -1223,7 +1223,7 @@ def _parse_labeled_metric(line: str) -> tuple[str, str, float] | None:
         labels = name_part.split("{", 1)[1]
         value = float(value_part.strip())
         return metric_name, labels, value
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         return None
 
 
