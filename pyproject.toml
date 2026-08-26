@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "akosha"
@@ -150,8 +150,8 @@ exclude_deps = [
 ]
 
 
-[tool.setuptools.packages.find]
-include = ["akosha*"]
+[tool.hatch.build.targets.wheel]
+packages = ["akosha"]
 
 # PEP 735 dependency-groups (replaces [project.optional-dependencies]).
 # Install with: uv sync --group dev --group embeddings
