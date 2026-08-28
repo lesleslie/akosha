@@ -41,6 +41,9 @@ dependencies = [
 [project.scripts]
 akosha = "akosha.cli:app"
 
+[project.entry-points."bodai.apps"]
+akosha = "akosha.cli:app"
+
 [project.license]
 text = "BSD-3-CLAUSE"
 
