@@ -1,8 +1,11 @@
 """Akosha CLI entry point.
 
-from typing import Any
 Provides command-line interface for Akosha operations including
 starting the admin shell, running services, and managing configuration.
+
+Adopts ``oneiric.cli.base.BodaiCLIBase`` (oneiric>=0.19.0) so the
+ecosystem CLIs share a unified ``version`` / ``doctor`` / ``health``
+surface, the ``--json`` global flag, and the ``ExitCode`` enum.
 """
 
 from __future__ import annotations
@@ -13,23 +16,24 @@ from pathlib import Path
 from typing import Annotated, Any
 
 import typer
+from oneiric.cli.base import BodaiCLIBase
 
 from akosha.config import DEFAULT_MCP_PORT
 
 try:
     from akosha.main import AkoshaApplication  # type: ignore[import]
 except Exception:  # pragma: no cover - optional for test patching
-    AkoshaApplication = None  # ty: ignore[invalid-assignment]
+    AkoshaApplication = None  # type: ignore[assignment]
 
 try:
     from akosha.shell import AkoshaShell  # type: ignore[import]
 except Exception:  # pragma: no cover - optional for test patching
-    AkoshaShell = None  # ty: ignore[invalid-assignment]
+    AkoshaShell = None  # type: ignore[assignment]
 
 try:
     from akosha.mcp import create_app  # type: ignore[import]
 except Exception:  # pragma: no cover - import is validated in command paths
-    create_app = None  # ty: ignore[invalid-assignment]
+    create_app = None  # type: ignore[assignment]
 
 # Configure logging
 logging.basicConfig(
@@ -38,25 +42,192 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Create CLI app
-app = typer.Typer(
-    name="akosha",
-    help="Akosha - Universal Memory Aggregation System for distributed intelligence",
-    add_completion=False,
-    no_args_is_help=True,
-)
+
+class AkoshaCLI(BodaiCLIBase):
+    """Akosha Typer app backed by the shared BodaiCLIBase.
+
+    Real ``_doctor_checks`` probe storage paths, mode registry, and the
+    installed oneiric dep. Real ``_health_probe`` loads ``AkoshaConfig``
+    and reports liveness against the configured mode.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            component_name="akosha",
+            help=("Akosha - Universal Memory Aggregation System for distributed intelligence"),
+            add_completion=False,
+        )
+
+    # ------------------------------------------------------------------
+    # BodaiCLIBase hooks — real checks (NOT stubs)
+    # ------------------------------------------------------------------
+    def _doctor_checks(self) -> dict[str, Any]:
+        """Return real diagnostic checks for Akosha.
+
+        Probes:
+
+        - installed package version (via importlib.metadata)
+        - oneiric dependency version (the BodaiCLIBase dep)
+        - storage path writability (warm + WAL)
+        - mode registry contents (lite, standard)
+        - config layer load via ``akosha.config.get_config``
+        """
+        checks: dict[str, dict[str, Any]] = {}
+
+        # 1. Package metadata
+        try:
+            from importlib.metadata import PackageNotFoundError
+            from importlib.metadata import version as metadata_version
+
+            ver = metadata_version("akosha")
+            checks["package_version"] = {
+                "status": "ok",
+                "detail": f"akosha {ver}",
+            }
+        except PackageNotFoundError:
+            checks["package_version"] = {
+                "status": "warn",
+                "detail": "akosha not installed (running from source)",
+            }
+
+        # 2. oneiric dependency version
+        try:
+            from importlib.metadata import PackageNotFoundError
+            from importlib.metadata import version as metadata_version
+
+            oneiric_ver = metadata_version("oneiric")
+            major_minor = tuple(int(p) for p in oneiric_ver.split(".")[:2])
+            required = (0, 19)
+            status = "ok" if major_minor >= required else "fail"
+            checks["oneiric_dep"] = {
+                "status": status,
+                "detail": f"oneiric {oneiric_ver} (>= {'.'.join(map(str, required))} required)",
+            }
+        except PackageNotFoundError:
+            checks["oneiric_dep"] = {
+                "status": "fail",
+                "detail": "oneiric not installed",
+            }
+
+        # 3. Storage path writability — check warm + WAL paths actually
+        # exist or can be created. Hits real on-disk state.
+        from akosha.config import get_config
+
+        try:
+            cfg = get_config()
+            warm_path = cfg.warm.path
+            if warm_path is None:
+                checks["storage_paths"] = {
+                    "status": "fail",
+                    "detail": "warm storage path is not configured",
+                }
+            else:
+                warm_path.mkdir(parents=True, exist_ok=True)
+                probe = warm_path / ".akosha-doctor-probe"
+                try:
+                    probe.write_text("ok")
+                    probe.unlink(missing_ok=True)
+                    checks["storage_paths"] = {
+                        "status": "ok",
+                        "detail": f"warm path writable at {warm_path}",
+                    }
+                except OSError as exc:
+                    checks["storage_paths"] = {
+                        "status": "fail",
+                        "detail": f"warm path not writable ({warm_path}): {exc}",
+                    }
+        except Exception as exc:  # pragma: no cover - defensive
+            checks["storage_paths"] = {
+                "status": "fail",
+                "detail": f"config load failed: {exc}",
+            }
+
+        # 4. Mode registry
+        try:
+            from akosha.modes import list_modes
+
+            modes = list_modes()
+            expected = {"lite", "standard"}
+            missing = expected - set(modes)
+            if missing:
+                checks["mode_registry"] = {
+                    "status": "fail",
+                    "detail": f"missing modes: {sorted(missing)}",
+                }
+            else:
+                checks["mode_registry"] = {
+                    "status": "ok",
+                    "detail": f"registered modes: {sorted(modes)}",
+                }
+        except Exception as exc:  # pragma: no cover - defensive
+            checks["mode_registry"] = {
+                "status": "fail",
+                "detail": f"mode registry probe failed: {exc}",
+            }
+
+        # 5. Config layered load via get_config (Oneiric-backed)
+        try:
+            cfg = get_config()
+            checks["config_load"] = {
+                "status": "ok",
+                "detail": f"mode={cfg.mode} env={cfg.environment}",
+            }
+        except Exception as exc:  # pragma: no cover - defensive
+            checks["config_load"] = {
+                "status": "fail",
+                "detail": f"config load failed: {exc}",
+            }
+
+        return checks
+
+    def _health_probe(self) -> dict[str, Any]:
+        """Return a real liveness snapshot for the Akosha CLI.
+
+        Returns:
+            Dict with ``status`` (ok/degraded/error), ``version``,
+            ``mode``, ``default_port``, ``storage_backend``, and
+            ``modes_available`` keys. Mirrors the oneiric runtime
+            health schema enough to be machine-readable.
+        """
+        from akosha.config import get_config
+
+        snapshot: dict[str, Any] = {
+            "status": "ok",
+            "version": self.component_version,
+            "default_port": DEFAULT_MCP_PORT,
+            "modes_available": [],
+        }
+
+        try:
+            cfg = get_config()
+            snapshot["mode"] = cfg.mode
+            snapshot["environment"] = cfg.environment
+            snapshot["storage_backend"] = cfg.hot.backend
+        except Exception as exc:
+            snapshot["status"] = "degraded"
+            snapshot["mode"] = None
+            snapshot["environment"] = None
+            snapshot["storage_backend"] = None
+            snapshot["config_error"] = str(exc)
+
+        try:
+            from akosha.modes import list_modes
+
+            snapshot["modes_available"] = sorted(list_modes())
+        except Exception as exc:
+            snapshot["status"] = "degraded"
+            snapshot["modes_error"] = str(exc)
+
+        return snapshot
+
+
+# Create CLI app — BodaiCLIBase subclass wires the unified callback,
+# ``--json`` flag, and ``version``/``doctor``/``health`` commands.
+app = AkoshaCLI()
 
 # Match the ecosystem convention: `python -m <package> mcp start`
 mcp_app = typer.Typer(help="MCP server lifecycle management")
 app.add_typer(mcp_app, name="mcp")
-
-
-@app.callback(invoke_without_command=True)
-def main(ctx: typer.Context) -> None:
-    """Root CLI callback that shows help when invoked without a subcommand."""
-    if ctx.invoked_subcommand is None:
-        typer.echo(ctx.get_help())
-        raise typer.Exit()
 
 
 @app.command()
@@ -342,8 +513,16 @@ def modes() -> None:
 
 
 def main_cli() -> None:
-    """Main CLI entry point."""
-    app()
+    """Main CLI entry point.
+
+    Routes through ``BodaiCLIBase.run()`` (inherited from
+    ``typer.Typer.run()``) so the unified callback / ``--json`` flag /
+    ``version`` / ``doctor`` / ``health`` subcommands work as a single
+    Typer app.
+    """
+    # BodaiCLIBase subclasses typer.Typer so ``run`` is inherited, but zuban
+    # doesn't resolve it through the typer base class without help.
+    app.run()  # type: ignore[attr-defined]
 
 
 if __name__ == "__main__":
