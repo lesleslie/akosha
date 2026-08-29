@@ -3,7 +3,7 @@
 Provides command-line interface for Akosha operations including
 starting the admin shell, running services, and managing configuration.
 
-Adopts ``oneiric.cli.base.BodaiCLIBase`` (oneiric>=0.19.0) so the
+Adopts ``oneiric.cli.base.OneiricCLIBase`` (oneiric>=0.19.0) so the
 ecosystem CLIs share a unified ``version`` / ``doctor`` / ``health``
 surface, the ``--json`` global flag, and the ``ExitCode`` enum.
 """
@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 import typer
-from oneiric.cli.base import BodaiCLIBase
+from oneiric.cli.base import OneiricCLIBase
 
 from akosha.config import DEFAULT_MCP_PORT
 
@@ -43,8 +43,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class AkoshaCLI(BodaiCLIBase):
-    """Akosha Typer app backed by the shared BodaiCLIBase.
+class AkoshaCLI(OneiricCLIBase):
+    """Akosha Typer app backed by the shared OneiricCLIBase.
 
     Real ``_doctor_checks`` probe storage paths, mode registry, and the
     installed oneiric dep. Real ``_health_probe`` loads ``AkoshaConfig``
@@ -59,7 +59,7 @@ class AkoshaCLI(BodaiCLIBase):
         )
 
     # ------------------------------------------------------------------
-    # BodaiCLIBase hooks — real checks (NOT stubs)
+    # OneiricCLIBase hooks — real checks (NOT stubs)
     # ------------------------------------------------------------------
     def _doctor_checks(self) -> dict[str, Any]:
         """Return real diagnostic checks for Akosha.
@@ -67,7 +67,7 @@ class AkoshaCLI(BodaiCLIBase):
         Probes:
 
         - installed package version (via importlib.metadata)
-        - oneiric dependency version (the BodaiCLIBase dep)
+        - oneiric dependency version (the OneiricCLIBase dep)
         - storage path writability (warm + WAL)
         - mode registry contents (lite, standard)
         - config layer load via ``akosha.config.get_config``
@@ -221,7 +221,7 @@ class AkoshaCLI(BodaiCLIBase):
         return snapshot
 
 
-# Create CLI app — BodaiCLIBase subclass wires the unified callback,
+# Create CLI app — OneiricCLIBase subclass wires the unified callback,
 # ``--json`` flag, and ``version``/``doctor``/``health`` commands.
 app = AkoshaCLI()
 
@@ -515,12 +515,12 @@ def modes() -> None:
 def main_cli() -> None:
     """Main CLI entry point.
 
-    Routes through ``BodaiCLIBase.run()`` (inherited from
+    Routes through ``OneiricCLIBase.run()`` (inherited from
     ``typer.Typer.run()``) so the unified callback / ``--json`` flag /
     ``version`` / ``doctor`` / ``health`` subcommands work as a single
     Typer app.
     """
-    # BodaiCLIBase subclasses typer.Typer so ``run`` is inherited, but zuban
+    # OneiricCLIBase subclasses typer.Typer so ``run`` is inherited, but zuban
     # doesn't resolve it through the typer base class without help.
     app.run()  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
 

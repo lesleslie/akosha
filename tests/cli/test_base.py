@@ -1,14 +1,14 @@
-"""Tests for the Akosha BodaiCLIBase adoption.
+"""Tests for the Akosha OneiricCLIBase adoption.
 
 Verifies the Phase 3 Task 4.4 wiring:
 
 - The ``AkoshaCLI`` subclass instantiates with ``component_name="akosha"``
-  and inherits from ``BodaiCLIBase``.
+  and inherits from ``OneiricCLIBase``.
 - ``_doctor_checks()`` returns a non-empty dict with REAL check entries
   (not a stub returning ``{}``).
 - ``_health_probe()`` returns a real snapshot dict (not an
   ``UNAVAILABLE`` stub).
-- ``BodaiCLIBase.run()`` (via ``app.run()`` / Typer wiring) exposes the
+- ``OneiricCLIBase.run()`` (via ``app.run()`` / Typer wiring) exposes the
   expected global subcommands: ``version``, ``doctor``, ``health``.
 
 These tests are the contract the gates assert before merge; stubs would
@@ -28,7 +28,7 @@ from akosha.cli import AkoshaCLI, app
 
 
 def _instantiate_cli() -> AkoshaCLI:
-    """Build a fresh CLI instance — BodaiCLIBase registers globals in __init__."""
+    """Build a fresh CLI instance — OneiricCLIBase registers globals in __init__."""
     return AkoshaCLI()
 
 
@@ -49,13 +49,13 @@ def _extract_json(stdout: str) -> dict[str, Any]:
 # ----------------------------------------------------------------------
 # Component identity
 # ----------------------------------------------------------------------
-def test_akosha_cli_inherits_from_bodai_cli_base() -> None:
-    """AkoshaCLI must subclass BodaiCLIBase to inherit the global commands."""
-    from oneiric.cli.base import BodaiCLIBase
+def test_akosha_cli_inherits_from_oneiric_cli_base() -> None:
+    """AkoshaCLI must subclass OneiricCLIBase to inherit the global commands."""
+    from oneiric.cli.base import OneiricCLIBase
 
     cli = _instantiate_cli()
-    assert isinstance(cli, BodaiCLIBase)
-    # BodaiCLIBase extends typer.Typer; the CLI is therefore a real Typer app.
+    assert isinstance(cli, OneiricCLIBase)
+    # OneiricCLIBase extends typer.Typer; the CLI is therefore a real Typer app.
     import typer
 
     assert isinstance(cli, typer.Typer)
@@ -166,14 +166,14 @@ def test_health_probe_default_port_matches_akosha_default() -> None:
 
 
 # ----------------------------------------------------------------------
-# BodaiCLIBase.run() — typer wiring
+# OneiricCLIBase.run() — typer wiring
 # ----------------------------------------------------------------------
 def test_app_run_exposes_version_command() -> None:
-    """``version`` is registered by BodaiCLIBase and must work end-to-end."""
+    """``version`` is registered by OneiricCLIBase and must work end-to-end."""
     runner = CliRunner()
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
-    # BodaiCLIBase prints "{component_name}: {version}" — must include the
+    # OneiricCLIBase prints "{component_name}: {version}" — must include the
     # component name and resolved version, but tolerate either capitalization.
     stdout = result.stdout.lower()
     assert "akosha" in stdout
@@ -250,7 +250,7 @@ def test_app_existing_akosha_commands_still_registered() -> None:
     ["info", "modes", "version", "doctor", "health"],
 )
 def test_app_subcommands_resolvable(cmd_name: str) -> None:
-    """Every Bodai + Akosha subcommand should be discoverable in the Typer app."""
+    """Every OneiricCLIBase + Akosha subcommand should be discoverable in the Typer app."""
     runner = CliRunner()
     # ``--help`` succeeds for a registered command; fails for an unknown one.
     result = runner.invoke(app, [cmd_name, "--help"])
