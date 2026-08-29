@@ -421,15 +421,16 @@ def get_config(config_path: str | None = None) -> AkoshaConfig:
             explicit_data = yaml.safe_load(file.read_text()) or {}
 
     # Anchor at the package install location so the lookup is
-    # CWD-independent. ``load_settings`` resolves Layer 1 (project
-    # committed config) via ``Path("settings") / {project_name}.yaml``
-    # which is CWD-relative; passing the absolute settings path here
-    # loads it as the explicit-config layer (highest priority) and
-    # bypasses the CWD assumption.
+    # CWD-independent. oneiric's load_settings accepts ``project_root=``
+    # to anchor Layer 6-7 (``settings/{project_name}.yaml`` and
+    # ``settings/local.yaml``) at the package directory, while still
+    # honoring Layer 1-5 (explicit path, env vars, XDG). Do NOT use
+    # ``path=`` here — that short-circuits the explicit-config layer
+    # and disables XDG lookup at ``~/.config/{project_name}/*.yaml``.
     project_root = Path(__file__).resolve().parent.parent
     settings_obj = _oneiric_load(
-        path=project_root / "settings" / "akosha.yaml",
         project_name="akosha",
+        project_root=project_root,
     )
 
     # Strip values that don't match an AkoshaConfig field. ``OneiricSettings``
