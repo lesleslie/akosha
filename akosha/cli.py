@@ -23,17 +23,17 @@ from akosha.config import DEFAULT_MCP_PORT
 try:
     from akosha.main import AkoshaApplication  # type: ignore[import]
 except Exception:  # pragma: no cover - optional for test patching
-    AkoshaApplication = None  # type: ignore[assignment]
+    AkoshaApplication = None  # ty: ignore[invalid-assignment]
 
 try:
     from akosha.shell import AkoshaShell  # type: ignore[import]
 except Exception:  # pragma: no cover - optional for test patching
-    AkoshaShell = None  # type: ignore[assignment]
+    AkoshaShell = None  # ty: ignore[invalid-assignment]
 
 try:
     from akosha.mcp import create_app  # type: ignore[import]
 except Exception:  # pragma: no cover - import is validated in command paths
-    create_app = None  # type: ignore[assignment]
+    create_app = None  # ty: ignore[invalid-assignment]
 
 # Configure logging
 logging.basicConfig(

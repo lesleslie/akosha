@@ -158,6 +158,15 @@ exclude_deps = [
 [tool.hatch.build.targets.wheel]
 packages = ["akosha"]
 
+[tool.ty]
+src = { include = ["akosha/**/*.py"] }
+
+[tool.ty.rules]
+# Same `# ty: ignore` directive can report UNUSED in interactive shell but
+# suppress a real error under crackerjack (stricter ty config). Treat
+# unused-ignore as informational only so directives work in both contexts.
+unused-ignore-comment = "ignore"
+
 # PEP 735 dependency-groups (replaces [project.optional-dependencies]).
 # Install with: uv sync --group dev --group embeddings
 # Dev workflow and feature groups for local development and optional features.
