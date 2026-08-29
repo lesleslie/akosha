@@ -294,6 +294,21 @@ class AkoshaConfig(OneiricMCPConfig):  # type: ignore[reportUntypedBaseClass]
     max_concurrent_ingests: int = 100
     shard_count: int = 256
 
+    # Admin shell — alpha commands (Plan Task 3.2.1)
+    # Five distributed-intelligence helpers in `akosha shell`:
+    # aggregate, search, detect, graph, trends. These touch live storage
+    # so they default OFF; opt in by setting the field or
+    # `AKOSHA_ALPHA_SHELL_COMMANDS_ENABLED=true`.
+    alpha_shell_commands_enabled: bool = Field(
+        default=False,
+        description=(
+            "Enable 5 alpha shell commands (aggregate, search, detect, "
+            "graph, trends) in the IPython namespace. Default false; "
+            "the shell prints a one-line banner pointing at "
+            "akosha/docs/ADMIN_SHELL.md when disabled."
+        ),
+    )
+
     # Monitoring
     metrics_enabled: bool = True
     prometheus_port: int = Field(

@@ -21,6 +21,28 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _read_alpha_shell_flag(app: Any) -> bool:
+    """Return the alpha-shell-commands flag from app.config.
+
+    Walks the common shapes (`app.config.alpha_shell_commands_enabled`,
+    `app.config.settings.alpha_shell_commands_enabled`) and tolerates
+    `app is None` so unit tests can construct an AkoshaShell with a
+    stub app without importing the full AkoshaApplication.
+    """
+    if app is None:
+        return False
+    cfg = getattr(app, "config", None)
+    if cfg is None:
+        return False
+    for holder in (cfg, getattr(cfg, "settings", None)):
+        if holder is None:
+            continue
+        flag = getattr(holder, "alpha_shell_commands_enabled", None)
+        if flag is not None:
+            return bool(flag)
+    return False
+
+
 class AkoshaShell(AdminShell):
     """Akosha admin shell for distributed intelligence and pattern recognition.
 
@@ -95,22 +117,40 @@ class AkoshaShell(AdminShell):
     def _add_akasha_namespace(self) -> None:
         """Add Akosha-specific helpers to shell namespace.
 
-        Adds async command wrappers that automatically run coroutines
-        in the event loop for convenient shell usage.
+        The five distributed-intelligence commands (aggregate, search,
+        detect, graph, trends) are gated behind
+        ``AikoshaConfig.alpha_shell_commands_enabled`` (default ``False``).
+        When disabled, they're absent from the namespace and a one-line
+        banner is printed instead. Plan Task 3.2.1.
         """
-        self.namespace.update(
-            {
-                # Intelligence commands
-                "aggregate": lambda *args, **kwargs: asyncio.run(self._aggregate(*args, **kwargs)),
-                "search": lambda *args, **kwargs: asyncio.run(self._search(*args, **kwargs)),
-                "detect": lambda *args, **kwargs: asyncio.run(self._detect(*args, **kwargs)),
-                "graph": lambda *args, **kwargs: asyncio.run(self._graph(*args, **kwargs)),
-                "trends": lambda *args, **kwargs: asyncio.run(self._trends(*args, **kwargs)),
-                # Adapters
-                "adapters": self._get_adapters_info,
-                "version": self._get_component_version,
-            }
-        )
+        alpha_enabled = _read_alpha_shell_flag(self.app)
+
+        entries: dict[str, Any] = {
+            # Always-available helpers
+            "adapters": self._get_adapters_info,
+            "version": self._get_component_version,
+        }
+        if alpha_enabled:
+            entries.update(
+                {
+                    # Intelligence commands — alpha-gated
+                    "aggregate": lambda *args, **kwargs: asyncio.run(self._aggregate(*args, **kwargs)),
+                    "search": lambda *args, **kwargs: asyncio.run(self._search(*args, **kwargs)),
+                    "detect": lambda *args, **kwargs: asyncio.run(self._detect(*args, **kwargs)),
+                    "graph": lambda *args, **kwargs: asyncio.run(self._graph(*args, **kwargs)),
+                    "trends": lambda *args, **kwargs: asyncio.run(self._trends(*args, **kwargs)),
+                }
+            )
+        else:
+            from rich import print as rprint
+
+            rprint(
+                "[dim]5 alpha shell commands (aggregate, search, detect, "
+                "graph, trends) are disabled. Set "
+                "alpha_shell_commands_enabled=true to enable. See "
+                "akosha/docs/ADMIN_SHELL.md.[/dim]"
+            )
+        self.namespace.update(entries)
 
     async def _aggregate(
         self,
