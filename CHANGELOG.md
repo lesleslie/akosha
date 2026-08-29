@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] - 2026-08-28
+
+### Added
+
+- akosha: Adopt BodaiCLIBase + real doctor/health (Phase 3 Task 4.4)
+- akosha: Bodai.apps entry-point (Phase 5.1)
+
+### Fixed
+
+- akosha: Anchor load_settings() path at package install location
+- akosha: Anchor load_settings() project_root at package install location
+
+### Documentation
+
+- readme: Bump Python badge from 3.13+ to 3.14+
+
+### Internal
+
+- build: Standardize akosha on hatchling backend
+- deps: Bump oneiric floor to >=0.19.1
+
 ## [0.12.0] - 2026-08-24
 
 ### Internal
