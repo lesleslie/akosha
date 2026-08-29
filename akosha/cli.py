@@ -522,7 +522,7 @@ def main_cli() -> None:
     """
     # BodaiCLIBase subclasses typer.Typer so ``run`` is inherited, but zuban
     # doesn't resolve it through the typer base class without help.
-    app.run()  # type: ignore[attr-defined]
+    app.run()  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
 
 
 if __name__ == "__main__":

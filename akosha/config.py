@@ -420,10 +420,16 @@ def get_config(config_path: str | None = None) -> AkoshaConfig:
 
             explicit_data = yaml.safe_load(file.read_text()) or {}
 
+    # Anchor at the package install location so the lookup is
+    # CWD-independent. ``load_settings`` resolves Layer 1 (project
+    # committed config) via ``Path("settings") / {project_name}.yaml``
+    # which is CWD-relative; passing the absolute settings path here
+    # loads it as the explicit-config layer (highest priority) and
+    # bypasses the CWD assumption.
+    project_root = Path(__file__).resolve().parent.parent
     settings_obj = _oneiric_load(
-        path=None,
+        path=project_root / "settings" / "akosha.yaml",
         project_name="akosha",
-        project_root=Path(__file__).resolve().parent.parent,
     )
 
     # Strip values that don't match an AkoshaConfig field. ``OneiricSettings``
