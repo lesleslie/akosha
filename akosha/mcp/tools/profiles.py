@@ -39,6 +39,8 @@ FULL_REGISTRATIONS: list[str] = [
     "register_otel_query_tools",
     "register_fitness_tools",
     "register_eventbridge_tools",
+    # Phase 1 cross-repo capability search
+    "register_cross_repo_tools",
 ]
 
 PROFILE_REGISTRATIONS: dict[ToolProfile, list[str]] = {
@@ -55,6 +57,7 @@ REGISTRATION_DESCRIPTIONS: dict[str, str] = {
     "register_otel_query_tools": "OTel trace queries by system_id and attribute filters (Bodai feedback loop)",
     "register_fitness_tools": "Fitness analysis for Bodai routing feedback loop (failure rate, p99 latency per task class)",
     "register_eventbridge_tools": "EventBridge publisher: emit Akosha analytics events to the unified Bodai queue",
+    "register_cross_repo_tools": "Phase 1 cross-repo capability search (Bodai component adapter/tool/error catalog)",
 }
 
 REGISTRATION_TOOLS: dict[str, list[str]] = {
@@ -93,6 +96,7 @@ REGISTRATION_TOOLS: dict[str, list[str]] = {
         "get_fitness_analyzer_status",
     ],
     "register_eventbridge_tools": ["publish_to_eventbridge"],
+    "register_cross_repo_tools": ["cross_repo_capability_search"],
 }
 
 
@@ -124,6 +128,7 @@ def _build_registration_map() -> dict[str, Callable[[FastMCP], Awaitable[None] |
     """
     from akosha.mcp.tools.group_registers import (
         register_akosha_group,
+        register_cross_repo_group,
         register_eventbridge_group,
         register_fitness_group,
         register_health_akosha_group,
@@ -140,6 +145,7 @@ def _build_registration_map() -> dict[str, Callable[[FastMCP], Awaitable[None] |
         "register_otel_query_tools": register_otel_query_group,
         "register_fitness_tools": register_fitness_group,
         "register_eventbridge_tools": register_eventbridge_group,
+        "register_cross_repo_tools": register_cross_repo_group,
     }
 
 

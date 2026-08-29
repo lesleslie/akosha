@@ -69,6 +69,22 @@ def register_akosha_group(app: FastMCP) -> None:
     logger.info("Registered Akosha core tools")
 
 
+def register_cross_repo_group(app: FastMCP) -> None:
+    """Register Phase 1 cross-repo capability search tools.
+
+    The capability catalog is seeded at module import time and lives in
+    ``akosha.mcp.tools.cross_repo_tools``. No service dependencies, no
+    embedding-service required — registration is safe to run at any
+    profile tier including lite mode.
+    """
+    from akosha.mcp.tools.cross_repo_tools import register_cross_repo_tools
+    from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
+
+    registry = FastMCPToolRegistry(app)
+    register_cross_repo_tools(registry)
+    logger.info("Registered cross-repo capability search tools")
+
+
 async def register_session_buddy_group(app: FastMCP) -> None:
     """Register Session-Buddy integration tools. Skipped if hot_store cannot be built."""
     from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
@@ -184,6 +200,7 @@ async def _try_create_hot_store():
 
 __all__ = [
     "register_akosha_group",
+    "register_cross_repo_group",
     "register_eventbridge_group",
     "register_fitness_group",
     "register_health_akosha_group",

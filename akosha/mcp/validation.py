@@ -619,6 +619,55 @@ class FindPathRequest(BaseModel):
         return self
 
 
+class CrossRepoCapabilitySearchRequest(BaseModel):
+    """Validation schema for ``cross_repo_capability_search`` MCP tool (Phase 1).
+
+    The query supports any of the indexed Bodai components: ``mahavishnu``,
+    ``akosha``, ``session-buddy``, ``dhara``, ``crackerjack``, ``oneiric``,
+    and named MCP servers (``*-mcp``). ``repo_filter`` narrows the search to
+    a single component by its registered path or repo key.
+    """
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Natural-language search query describing the capability.",
+    )
+    repo_filter: str | None = Field(
+        default=None,
+        max_length=200,
+        description="Optional repo key/path filter (e.g. 'mahavishnu', 'session-buddy').",
+    )
+    kind_filter: str | None = Field(
+        default=None,
+        max_length=50,
+        description="Optional capability-kind filter: 'tool' | 'adapter' | 'error'.",
+    )
+    limit: int = Field(
+        default=20,
+        ge=1,
+        le=100,
+        description="Maximum number of capabilities to return.",
+    )
+    min_score: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Minimum similarity score (0-1).",
+    )
+
+    @field_validator("repo_filter", "kind_filter")
+    @classmethod
+    def validate_filter(cls, v: str | None) -> str | None:
+        """Sanitize filter values - allow alphanumerics, dashes, underscores, dots."""
+        if v is None:
+            return v
+        if not re.match(r"^[a-zA-Z0-9_\-./:]+$", v):
+            raise ValueError("filter contains invalid characters")
+        return v
+
+
 # ============================================================================
 # Validation Utilities
 # ============================================================================
@@ -655,6 +704,8 @@ def validate_request(schema: type[T], **kwargs: Any) -> T:  # noqa: UP047  # typ
 __all__ = [
     "AnalyzeTrendsRequest",
     "CorrelateSystemsRequest",
+    # Phase 1 cross-repo capability search
+    "CrossRepoCapabilitySearchRequest",
     "DetectAnomaliesRequest",
     "FindPathRequest",
     "GenerateBatchEmbeddingsRequest",
