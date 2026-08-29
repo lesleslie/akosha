@@ -420,7 +420,11 @@ def get_config(config_path: str | None = None) -> AkoshaConfig:
 
             explicit_data = yaml.safe_load(file.read_text()) or {}
 
-    settings_obj = _oneiric_load(path=None, project_name="akosha")
+    settings_obj = _oneiric_load(
+        path=None,
+        project_name="akosha",
+        project_root=Path(__file__).resolve().parent.parent,
+    )
 
     # Strip values that don't match an AkoshaConfig field. ``OneiricSettings``
     # includes inherited fields (``http_port``, ``cache_dir``, etc.) from
