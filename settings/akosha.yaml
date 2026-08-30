@@ -72,6 +72,11 @@ eventbridge:
 # Plan: docs/plans/2026-08-29-akosha-websocket-search.md Sub-plan A.
 hot_store:
   enabled: true
+  # Backend selector. One of:
+  #   duckdb-memory   in-memory DuckDB (default; lost on restart)
+  #   pgvector        Postgres + pgvector extension (production)
+  # Plan: docs/plans/2026-08-29-pgvector-default.md Phase 1.
+  backend: duckdb-memory
   database_path: ":memory:"
   retention_minutes: 60
   # Embedding vector dim baked into the DuckDB FLOAT[N] schema at
@@ -82,6 +87,14 @@ hot_store:
   # resolves via ``akosha.processing.embedding_dim.resolve_embedding_dim``.
   # Plan: docs/plans/2026-08-29-embedding-dim-fix.md Phase 4.
   embedding_dimension: 384  # auto-detected at runtime; override to pin
+  # Required when backend=pgvector. Format: postgresql://user@host:port/db.
+  # The pgvector extension must be installed (``CREATE EXTENSION vector;``)
+  # before the application starts; otherwise PgvectorAdapter.init() fails.
+  pg_url: ""
+  # Collection name inside the pgvector database. Defaults to
+  # "akosha_conversations" which matches PgvectorHotStore's internal
+  # collection constant. Operators typically don't need to change this.
+  pg_collection: "akosha_conversations"
 
 # WebSocket invocations subscriber (Dhara -> HotStore).
 # Populated when websocket_invocations_subscriber.enabled is true.

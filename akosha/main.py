@@ -176,13 +176,20 @@ class AkoshaApplication:
 
         try:
             resolved_dim = resolve_embedding_dim(get_embedding_service())
-            self.hot_store = create_hot_store(embedding_dim=resolved_dim)
+            hot_cfg = self._read_hot_store_config()
+            self.hot_store = create_hot_store(
+                backend=hot_cfg["backend"],
+                pg_url=hot_cfg["pg_url"],
+                database_path=hot_cfg["database_path"],
+                embedding_dim=resolved_dim,
+            )
             await self.hot_store.initialize()
             logger.info(
                 "HotStore initialized for in-memory websocket invocation search "
-                "(%s, dim=%d)",
+                "(%s, dim=%d, backend=%s)",
                 type(self.hot_store).__name__,
                 resolved_dim,
+                hot_cfg["backend"],
             )
         except Exception as exc:
             logger.warning(
@@ -398,6 +405,59 @@ class AkoshaApplication:
                     defaults["per_event_timeout_seconds"],
                 )
             ),
+        }
+
+    @staticmethod
+    def _read_hot_store_config() -> dict[str, Any]:
+        """Read the ``hot_store`` block from settings.
+
+        Plan: docs/plans/2026-08-29-pgvector-default.md Phase 1.
+
+        Mirrors the ``_read_subscriber_config`` and
+        ``_read_bodai_subscriber_config`` patterns: parse the YAML file
+        from ``<repo>/settings/akosha.yaml`` and return safe defaults
+        when the block is missing or the file is unreachable. Returns
+        only the keys ``create_hot_store`` cares about — ``backend``,
+        ``pg_url``, ``database_path``. Embedding dimension is resolved
+        separately by :func:`akosha.processing.embedding_dim.resolve_embedding_dim`
+        because it depends on the active embedding service at runtime.
+        """
+        from pathlib import Path
+
+        defaults: dict[str, Any] = {
+            "enabled": True,
+            "backend": "duckdb-memory",
+            "database_path": ":memory:",
+            "pg_url": "",
+        }
+        try:
+            import yaml
+        except ImportError:
+            logger.warning(
+                "PyYAML unavailable; hot_store defaults to duckdb-memory in-memory"
+            )
+            return defaults
+
+        akosha_root = Path(__file__).resolve().parents[2]
+        settings_path = akosha_root / "settings" / "akosha.yaml"
+        if not settings_path.exists():
+            return defaults
+        try:
+            with settings_path.open() as handle:
+                cfg = yaml.safe_load(handle) or {}
+        except (OSError, yaml.YAMLError) as exc:
+            logger.warning(
+                "Could not read %s (%s); hot_store defaults to duckdb-memory in-memory",
+                settings_path,
+                exc,
+            )
+            return defaults
+        hot = cfg.get("hot_store") or {}
+        return {
+            "enabled": bool(hot.get("enabled", defaults["enabled"])),
+            "backend": str(hot.get("backend", defaults["backend"])),
+            "database_path": str(hot.get("database_path", defaults["database_path"])),
+            "pg_url": str(hot.get("pg_url", defaults["pg_url"])),
         }
 
     def _wire_eventbridge_publisher(self) -> None:
