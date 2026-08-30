@@ -405,7 +405,7 @@ def register_search_tools(
                 # "store online but no data" — treat as informational.
                 if results:
                     mode = "real"
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning("search_all_systems: hot_store query failed: %s", exc)
                 mode = "fallback"
 

@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-08-30
+
+### Added
+
+- akosha: Add cross_repo_capability_search MCP tool (Phase 1)
+- akosha: Add embedding_dim resolver (Phase 1)
+- akosha: Add WebSocketInvocationsSubscriber (Sub-plan B)
+- akosha: BodaiToolInvocationSubscriber (Phase 2 push subscriber)
+- akosha: HotStore dim validation + schema-size config (Phase 2)
+- akosha: Initialise embedding service before HotStore (Phase 3)
+- akosha: Orchestrator routes push vs poll (Phase 3 push subscriber)
+- akosha: Subscriber comment + settings knob + feature-tracking (Phase 4)
+- akosha: Thread backend+pg_url from settings into create_hot_store (Phase 1)
+- akosha: Wire DharaHttpClient into subscriber (Followup 4)
+- akosha: Wire HotStore into production bootstrap (Sub-plan A)
+- akosha: Wire search_all_systems to hot_store (Sub-plan C)
+
+### Fixed
+
+- akosha: Silence ty/refurb warnings across six files
+
+### Documentation
+
+- akosha: Warn against file-backed DuckDB on serverless (Phase 3)
+- feature-tracking: Add Akosha websocket-search adoption entry
+- feature-tracking: Mark push-subscriber Followup 3 resolved
+
+### Testing
+
+- Pgvector e2e integration tests gated on AKOSHA_TEST_PGVECTOR_URL
+
+### Internal
+
+- akosha: Pin asyncpg + pgvector in vector-pg dependency group
+- akosha: Silence ruff SIM105/ERA001/TC003 in three files
+
 ## [0.13.0] - 2026-08-29
 
 ### Added

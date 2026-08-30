@@ -93,7 +93,7 @@ def resolve_embedding_dim(
         if callable(dim_method):
             try:
                 live_dim = dim_method()
-            except Exception as exc:  # noqa: BLE001 - defensive
+            except Exception as exc:
                 logger.debug(
                     "akosha.embedding_dim.dimension_call_failed",
                     extra={"error": str(exc)},
@@ -113,7 +113,7 @@ def resolve_embedding_dim(
         if callable(backend_name):
             try:
                 name = backend_name()
-            except Exception as exc:  # noqa: BLE001 - defensive
+            except Exception as exc:
                 logger.debug(
                     "akosha.embedding_dim.backend_name_failed",
                     extra={"error": str(exc)},

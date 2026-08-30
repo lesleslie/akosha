@@ -53,9 +53,7 @@ class DharaHttpClient:
             timeout_seconds: HTTP request timeout. Matches the 10-second
                 precedent at ``akosha/mcp/server.py:83``.
         """
-        self._base_url = (
-            base_url or os.getenv("DHARA_MCP_URL", DHARA_DEFAULT_URL)
-        ).rstrip("/")
+        self._base_url = (base_url or os.getenv("DHARA_MCP_URL", DHARA_DEFAULT_URL)).rstrip("/")
         self._timeout = timeout_seconds
         # Lazy client -- created on first call so import-time doesn't
         # require httpx event-loop initialization.
@@ -89,10 +87,8 @@ class DharaHttpClient:
             # Dhara returns MCP-format:
             # ``{"content": [{"type": "text", "text": "<json string>"}]}``.
             return self._parse_mcp_content(data, prefix)
-        except Exception as exc:  # noqa: BLE001 - best-effort subscriber
-            logger.debug(
-                "DharaHttpClient.list_prefix(%r) failed: %s", prefix, exc
-            )
+        except Exception as exc:
+            logger.debug("DharaHttpClient.list_prefix(%r) failed: %s", prefix, exc)
             return []
 
     async def put(self, key: str, value: dict[str, Any]) -> bool:
@@ -109,14 +105,12 @@ class DharaHttpClient:
             )
             response.raise_for_status()
             return True
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.debug("DharaHttpClient.put(%r) failed: %s", key, exc)
             return False
 
     @staticmethod
-    def _parse_mcp_content(
-        data: Any, prefix: str
-    ) -> list[tuple[str, dict[str, Any]]]:
+    def _parse_mcp_content(data: Any, prefix: str) -> list[tuple[str, dict[str, Any]]]:
         """Parse MCP-format tool-call response into ``[(key, value), ...]``.
 
         Dhara wraps payloads in ``{"content": [{"type": "text", "text":
@@ -128,11 +122,7 @@ class DharaHttpClient:
             content = data.get("content") if isinstance(data, dict) else None
             if not content:
                 return []
-            text = (
-                content[0].get("text")
-                if isinstance(content, list) and content
-                else None
-            )
+            text = content[0].get("text") if isinstance(content, list) and content else None
             if not text:
                 return []
             parsed = json.loads(text)
@@ -140,9 +130,7 @@ class DharaHttpClient:
                 return [
                     (item["key"], item["value"])
                     for item in parsed
-                    if isinstance(item, dict)
-                    and "key" in item
-                    and "value" in item
+                    if isinstance(item, dict) and "key" in item and "value" in item
                 ]
             return []
         except (json.JSONDecodeError, KeyError, TypeError, IndexError) as exc:
