@@ -61,7 +61,7 @@ BODAI_COMPONENT_KEYS: tuple[str, ...] = (
 #
 # Each entry is a dict with:
 #   repo         : canonical repo key
-#   kind         : "tool" | "adapter" | "error"
+#   kind         : one of "tool", "adapter", or "error"
 #   name         : short identifier
 #   summary      : one-line description
 #   doc_hint     : path or anchor where the symbol is documented
@@ -368,12 +368,7 @@ def _score(capability: dict[str, Any], query_tokens: set[str]) -> float:
     name_overlap = len(query_tokens & name_tokens) / len(query_tokens)
     kind_overlap = 1.0 if (query_tokens & kind_tokens) else 0.0
 
-    score = (
-        0.55 * tag_overlap
-        + 0.25 * summary_overlap
-        + 0.15 * name_overlap
-        + 0.05 * kind_overlap
-    )
+    score = 0.55 * tag_overlap + 0.25 * summary_overlap + 0.15 * name_overlap + 0.05 * kind_overlap
 
     return round(min(1.0, score), 4)
 

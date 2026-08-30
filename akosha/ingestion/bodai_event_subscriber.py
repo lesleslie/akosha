@@ -1,4 +1,4 @@
-"""A kosha -> bodai:events Redis Streams subscriber (push mode).
+r"""A kosha -> bodai:events Redis Streams subscriber (push mode).
 
 Plan: docs/plans/2026-08-29-push-subscriber.md Phase 2.
 
@@ -32,6 +32,7 @@ Fail-soft contract:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from datetime import UTC, datetime
@@ -94,7 +95,7 @@ def _create_redis_client(redis_url: str) -> Any | None:
 
 
 class BodaiToolInvocationSubscriber:
-    """Consume ``bodai:events`` Redis stream into HotStore.
+    r"""Consume ``bodai:events`` Redis stream into HotStore.
 
     Mirrors ``WebSocketInvocationsSubscriber``'s shape
     (``start``/``stop``/``_running``/``_task``) so the orchestrator can
@@ -176,9 +177,7 @@ class BodaiToolInvocationSubscriber:
         if self._running:
             return
         if self._hot_store is None:
-            logger.debug(
-                "BodaiToolInvocationSubscriber: no hot_store, skipping start"
-            )
+            logger.debug("BodaiToolInvocationSubscriber: no hot_store, skipping start")
             return
 
         client = _create_redis_client(self._redis_url)
@@ -194,25 +193,21 @@ class BodaiToolInvocationSubscriber:
         # it and leave _running=False so the orchestrator falls back.
         try:
             await self._ensure_consumer_group(client)
-        except Exception as exc:  # noqa: BLE001 - log + swallow per fail-soft contract
+        except Exception as exc:
             logger.warning(
                 "akosha.bodai_subscriber.fallback_to_poll: xgroup_create failed: %s",
                 exc,
             )
-            try:
+            with contextlib.suppress(Exception):
                 await client.aclose()
-            except Exception:  # noqa: BLE001
-                pass
             return
 
         # Resolve the resume id BEFORE the loop starts so we don't have
         # to deal with nested-asyncio gymnastics from inside the loop.
         try:
             resume_id = await self._resume_id_async()
-        except Exception as exc:  # noqa: BLE001 - fail-soft
-            logger.warning(
-                "akosha.bodai_subscriber: resume id resolution failed: %s", exc
-            )
+        except Exception as exc:
+            logger.warning("akosha.bodai_subscriber: resume id resolution failed: %s", exc)
             resume_id = ">"
 
         self._redis_client = client
@@ -241,17 +236,15 @@ class BodaiToolInvocationSubscriber:
                 await self._task
             except asyncio.CancelledError:
                 pass
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning("BodaiToolInvocationSubscriber task raised: %s", exc)
         self._task = None
         if self._redis_client is not None:
             try:
                 await self._redis_client.aclose()
-            except Exception:  # noqa: BLE001
-                try:
+            except Exception:
+                with contextlib.suppress(Exception):
                     await self._redis_client.close()
-                except Exception:  # noqa: BLE001
-                    pass
             self._redis_client = None
         logger.info("BodaiToolInvocationSubscriber stopped")
 
@@ -275,7 +268,7 @@ class BodaiToolInvocationSubscriber:
                 STREAM_NAME,
                 self._consumer_group,
             )
-        except Exception as exc:  # noqa: BLE001 - tolerate BUSYGROUP
+        except Exception as exc:
             # BUSYGROUP is normal on restart; anything else logs at WARNING.
             msg = str(exc).lower()
             if "busygroup" not in msg:
@@ -302,12 +295,11 @@ class BodaiToolInvocationSubscriber:
         try:
             ms_str, seq_str = watermark.rsplit("-", 1)
             return f"{ms_str}-{int(seq_str) + 1}"
-        except (ValueError, AttributeError):
+        except ValueError, AttributeError:
             # Malformed watermark (shouldn't happen — we wrote it).
             # Be safe and resume from ">" rather than corrupt history.
             logger.warning(
-                "BodaiToolInvocationSubscriber: malformed watermark %r; "
-                "resuming from '>'",
+                "BodaiToolInvocationSubscriber: malformed watermark %r; resuming from '>'",
                 watermark,
             )
             return ">"
@@ -332,10 +324,8 @@ class BodaiToolInvocationSubscriber:
                 system_id=SYSTEM_ID_MAHAVISHNU,
                 limit=50,
             )
-        except Exception as exc:  # noqa: BLE001 - fail-soft
-            logger.warning(
-                "BodaiToolInvocationSubscriber: watermark read failed: %s", exc
-            )
+        except Exception as exc:
+            logger.warning("BodaiToolInvocationSubscriber: watermark read failed: %s", exc)
             return None
         for row in results:
             if not isinstance(row, dict):
@@ -348,7 +338,7 @@ class BodaiToolInvocationSubscriber:
             if isinstance(meta, str):
                 try:
                     meta = json.loads(meta)
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     meta = None
             if not isinstance(meta, dict):
                 continue
@@ -378,9 +368,10 @@ class BodaiToolInvocationSubscriber:
                 )
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:  # noqa: BLE001 - log + backoff
+            except Exception as exc:
                 logger.warning(
-                    "akosha.bodai_subscriber: xreadgroup error: %s", exc,
+                    "akosha.bodai_subscriber: xreadgroup error: %s",
+                    exc,
                     exc_info=True,
                 )
                 await self._sleep_with_cancel(backoff)
@@ -404,10 +395,9 @@ class BodaiToolInvocationSubscriber:
         try:
             ms_str, seq_str = watermark.rsplit("-", 1)
             return f"{ms_str}-{int(seq_str) + 1}"
-        except (ValueError, AttributeError):
+        except ValueError, AttributeError:
             logger.warning(
-                "BodaiToolInvocationSubscriber: malformed watermark %r; "
-                "resuming from '>'",
+                "BodaiToolInvocationSubscriber: malformed watermark %r; resuming from '>'",
                 watermark,
             )
             return ">"
@@ -423,7 +413,7 @@ class BodaiToolInvocationSubscriber:
         """``asyncio.sleep`` that respects ``_running`` for prompt cancellation."""
         try:
             await asyncio.wait_for(self._wait_until_stopped(), timeout=seconds)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return
 
     async def _wait_until_stopped(self) -> None:
@@ -431,9 +421,7 @@ class BodaiToolInvocationSubscriber:
         while self._running:
             await asyncio.sleep(0.05)
 
-    async def _process_response(
-        self, response: Any, *, client: Any
-    ) -> None:
+    async def _process_response(self, response: Any, *, client: Any) -> None:
         """Decode, index, XACK each entry in an ``xreadgroup`` response.
 
         ``response`` shape from redis-py: ``[[stream_name, [(id, fields), ...]]]``
@@ -484,7 +472,7 @@ class BodaiToolInvocationSubscriber:
                 self._index_envelope(inner_payload, event_id=event_id),
                 timeout=self._per_event_timeout_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "akosha.bodai_subscriber: indexing timed out after %.1fs "
                 "(message_id=%s); not acking for retry",
@@ -492,7 +480,7 @@ class BodaiToolInvocationSubscriber:
                 message_id,
             )
             return
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning(
                 "akosha.bodai_subscriber: indexing failed for message_id=%s: %s",
                 message_id,
@@ -534,9 +522,7 @@ class BodaiToolInvocationSubscriber:
             payload[key_str] = value
         return message_id, payload
 
-    def _decode_envelope(
-        self, message_payload: dict[str, Any]
-    ) -> dict[str, Any] | None:
+    def _decode_envelope(self, message_payload: dict[str, Any]) -> dict[str, Any] | None:
         """Decode the redis-stream payload into an envelope.
 
         Tolerates three shapes (Phase 1 actual shape is the second):
@@ -568,9 +554,7 @@ class BodaiToolInvocationSubscriber:
                 "topic": str(decoded.get("topic") or decoded.get("event_type") or ""),
                 "payload": decoded.get("payload") or {},
                 "event_id": str(
-                    decoded.get("event_id")
-                    or (decoded.get("headers") or {}).get("event_id")
-                    or ""
+                    decoded.get("event_id") or (decoded.get("headers") or {}).get("event_id") or ""
                 ),
                 "headers": decoded.get("headers") or {},
             }
@@ -587,9 +571,7 @@ class BodaiToolInvocationSubscriber:
             payload = json.loads(payload_json)
             headers = json.loads(headers_json) if headers_json not in (None, "", b"") else {}
         except (ValueError, TypeError) as exc:
-            logger.warning(
-                "akosha.bodai_subscriber: failed to parse triplet: %s", exc
-            )
+            logger.warning("akosha.bodai_subscriber: failed to parse triplet: %s", exc)
             return None
         if not isinstance(payload, dict):
             payload = {}
@@ -598,18 +580,12 @@ class BodaiToolInvocationSubscriber:
         return {
             "topic": topic,
             "payload": payload,
-            "event_id": str(
-                event_id
-                or headers.get("event_id")
-                or ""
-            ),
+            "event_id": str(event_id or headers.get("event_id") or ""),
             "headers": headers,
             "source": source,
         }
 
-    async def _index_envelope(
-        self, payload: dict[str, Any], *, event_id: str
-    ) -> bool:
+    async def _index_envelope(self, payload: dict[str, Any], *, event_id: str) -> bool:
         """Embed ``payload`` and insert a HotRecord; return True on success.
 
         Returns ``False`` (without raising) when the schema version
@@ -698,7 +674,7 @@ class BodaiToolInvocationSubscriber:
                 metadata={"last_message_id": message_id},
             )
             await self._hot_store.insert(record)
-        except Exception as exc:  # noqa: BLE001 - watermark is best-effort
+        except Exception as exc:
             logger.warning(
                 "akosha.bodai_subscriber: watermark update failed (message_id=%s): %s",
                 message_id,
@@ -709,7 +685,7 @@ class BodaiToolInvocationSubscriber:
         """XACK the message; log + swallow transport errors."""
         try:
             await client.xack(STREAM_NAME, self._consumer_group, message_id)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning(
                 "akosha.bodai_subscriber: xack failed for message_id=%s: %s",
                 message_id,

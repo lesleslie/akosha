@@ -7,7 +7,6 @@ import hashlib
 import json
 import logging
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import duckdb
@@ -15,6 +14,8 @@ import duckdb
 from akosha.processing.embedding_dim import resolve_embedding_dim
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from akosha.models import HotRecord
 
 logger = logging.getLogger(__name__)
