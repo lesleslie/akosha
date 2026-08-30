@@ -165,6 +165,32 @@ class AkoshaApplication:
             )
             self.hot_store = None
 
+        # WebSocket invocations subscriber (Dhara -> HotStore). Sub-plan B
+        # reads ``websocket_invocations_subscriber`` settings from
+        # ``settings/akosha.yaml``. ``dhara_handle=None`` here because the
+        # Dhara client wiring is a follow-up; the subscriber's _tick short-
+        # circuits when the handle is None, so this is a fail-soft no-op.
+        try:
+            from akosha.ingestion.websocket_invocations_subscriber import (
+                WebSocketInvocationsSubscriber,
+            )
+
+            sub_cfg = self._read_subscriber_config()
+            if sub_cfg["enabled"]:
+                self.websocket_invocations_subscriber = (
+                    WebSocketInvocationsSubscriber(
+                        hot_store=self.hot_store,
+                        dhara_handle=None,
+                        poll_interval_seconds=sub_cfg["poll_interval_seconds"],
+                    )
+                )
+                await self.websocket_invocations_subscriber.start()
+        except Exception as exc:
+            logger.warning(
+                "WebSocketInvocationsSubscriber init failed: %s", exc
+            )
+            self.websocket_invocations_subscriber = None
+
         # Setup signal handlers
         logger.info("Setting up signal handlers for graceful shutdown")
         signal.signal(signal.SIGTERM, self._handle_shutdown)
@@ -214,6 +240,50 @@ class AkoshaApplication:
         signal_name = "SIGINT" if signum == signal.SIGINT else "SIGTERM"
         logger.info(f"Received {signal_name} signal, initiating graceful shutdown")
         self.shutdown_event.set()
+
+    @staticmethod
+    def _read_subscriber_config() -> dict[str, Any]:
+        """Read the ``websocket_invocations_subscriber`` block from settings.
+
+        Returns the parsed ``enabled`` and ``poll_interval_seconds``
+        values, with safe defaults when the block is missing or the
+        settings file is unreachable. ``self.cfg`` is intentionally not
+        used here because AkoshaApplication does not own a config
+        instance — the YAML file is the canonical source for these
+        subscriber toggles (see settings/akosha.yaml).
+
+        The default path resolves from the akosha package layout: the
+        file lives at ``<repo>/settings/akosha.yaml``. ``parents[2]``
+        from ``akosha/main.py`` points at the akosha package root, which
+        is one level under the repo root where ``settings/`` lives.
+        """
+        from pathlib import Path
+
+        try:
+            import yaml
+        except ImportError:
+            logger.warning(
+                "PyYAML unavailable; websocket_invocations_subscriber disabled"
+            )
+            return {"enabled": False, "poll_interval_seconds": 5.0}
+
+        akosha_root = Path(__file__).resolve().parents[2]
+        settings_path = akosha_root / "settings" / "akosha.yaml"
+        if not settings_path.exists():
+            return {"enabled": False, "poll_interval_seconds": 5.0}
+        try:
+            with settings_path.open() as handle:
+                cfg = yaml.safe_load(handle) or {}
+        except (OSError, yaml.YAMLError) as exc:
+            logger.warning(
+                "Could not read %s (%s); subscriber disabled", settings_path, exc
+            )
+            return {"enabled": False, "poll_interval_seconds": 5.0}
+        sub = cfg.get("websocket_invocations_subscriber") or {}
+        return {
+            "enabled": bool(sub.get("enabled", False)),
+            "poll_interval_seconds": float(sub.get("poll_interval_seconds", 5)),
+        }
 
     def _wire_eventbridge_publisher(self) -> None:
         """Resolve and inject the EventBridge publisher at app startup.
@@ -274,6 +344,17 @@ class AkoshaApplication:
                 await worker.stop()
             else:
                 logger.warning(f"Worker missing stop method: {worker}")
+
+        # Stop WebSocket invocations subscriber (Sub-plan B). Mirror of the
+        # init path: graceful no-op when the attribute is unset.
+        if self.websocket_invocations_subscriber is not None:
+            try:
+                await self.websocket_invocations_subscriber.stop()
+            except Exception as exc:
+                logger.warning(
+                    "WebSocketInvocationsSubscriber stop failed: %s", exc
+                )
+            self.websocket_invocations_subscriber = None
 
         # Close HotStore (mirror of test_storage() pattern, lines 271-272).
         if self.hot_store is not None:
