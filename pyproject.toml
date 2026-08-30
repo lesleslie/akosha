@@ -152,6 +152,8 @@ exclude_deps = [
     "pybreaker",
     "pydantic-settings",
     "dhara",
+    "asyncpg",
+    "pgvector",
 ]
 
 
@@ -168,7 +170,7 @@ src = { include = ["akosha/**/*.py"] }
 unused-ignore-comment = "ignore"
 
 # PEP 735 dependency-groups (replaces [project.optional-dependencies]).
-# Install with: uv sync --group dev --group embeddings
+# Install with: uv sync --group dev --group vector-pg
 # Dev workflow and feature groups for local development and optional features.
 [dependency-groups]
 dev = [
@@ -185,7 +187,11 @@ dev = [
     "session-buddy>=0.18.0",
 ]
 
-# embeddings group intentionally empty — onnxruntime removed.
-# Akosha uses Ollama/OpenAI for embeddings via MCP. No native ONNX
-# inference needed; avoids conflicts with session-buddy.
-embeddings = []
+# vector-pg group: pgvector backend for HotStore.
+# Production deployments using `backend: pgvector` need asyncpg + pgvector
+# at runtime; the dev group pulls them in for tests too so the
+# `tests/integration/test_pgvector_hot_store_e2e.py` canary activates.
+vector-pg = [
+    "asyncpg>=0.29.0",
+    "pgvector>=0.3.0",
+]
