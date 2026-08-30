@@ -74,6 +74,14 @@ hot_store:
   enabled: true
   database_path: ":memory:"
   retention_minutes: 60
+  # Embedding vector dim baked into the DuckDB FLOAT[N] schema at
+  # startup. 384 is the historical mock fallback (matches the
+  # all-MiniLM-L6-v2 shape); production deployments should override
+  # this to match the active embedding backend's dim (e.g. 768 for
+  # llama_cpp / ollama, 1024 for MiniMax). When unset, the runtime
+  # resolves via ``akosha.processing.embedding_dim.resolve_embedding_dim``.
+  # Plan: docs/plans/2026-08-29-embedding-dim-fix.md Phase 4.
+  embedding_dimension: 384  # auto-detected at runtime; override to pin
 
 # WebSocket invocations subscriber (Dhara -> HotStore).
 # Populated when websocket_invocations_subscriber.enabled is true.

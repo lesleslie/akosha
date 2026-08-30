@@ -164,7 +164,13 @@ class WebSocketInvocationsSubscriber:
             return
         embedding_service = get_embedding_service()
         vec = await embedding_service.generate_embedding(content)
-        # ndarray -> list[float] for the FLOAT[384] HotStore schema.
+        # ndarray -> list[float] for the FLOAT[N] HotStore schema (N is
+        # the active embedding backend's dim; see Phase 2 of
+        # docs/plans/2026-08-29-embedding-dim-fix.md). Dim validation is
+        # enforced inside ``HotStore.insert()`` (fail-loud ValueError);
+        # the fail-soft contract here is preserved by the
+        # ``_tick`` exception handler — dim mismatches log at WARNING
+        # and the subscriber continues with the next row.
         embedding = vec.tolist() if hasattr(vec, "tolist") else list(vec)
         record = HotRecord(
             system_id=SYSTEM_ID_MAHAVISHNU,

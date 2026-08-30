@@ -332,7 +332,90 @@ class TestIdempotency:
 
 
 # ---------------------------------------------------------------------------
-# 6. End-to-end integration: DharaHttpClient -> subscriber -> HotStore
+# 6. Subscriber respects the active embedding backend's dim
+# ---------------------------------------------------------------------------
+
+
+class TestSubscriberRespectsBackendDim:
+    """The subscriber passes through whatever dim the embedding service produces.
+
+    Dim validation now lives in ``HotStore.insert`` (Phase 2 of
+    docs/plans/2026-08-29-embedding-dim-fix.md). The subscriber itself
+    does not check dims — it embeds whatever the service hands back.
+    These tests pin that pass-through behaviour for both the 384 default
+    and a 768 real backend.
+    """
+
+    @pytest.mark.asyncio
+    async def test_subscriber_uses_backend_dim(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A 768-dim embedding service produces 768-dim records that
+        insert into a 768-dim HotStore without ValueError.
+
+        Mirrors the integration contract from
+        ``docs/plans/2026-08-29-embedding-dim-fix.md`` Phase 4 — the
+        subscriber inherits whatever dim the service produces; the
+        HotStore is built (elsewhere, by ``AkoshaApplication.start``)
+        with the matching dim.
+        """
+        fake_svc = MagicMock()
+        fake_svc.generate_embedding = AsyncMock(
+            return_value=np.zeros(768, dtype=np.float32)
+        )
+        monkeypatch.setattr(
+            f"{SUB_MODULE}.get_embedding_service", MagicMock(return_value=fake_svc)
+        )
+
+        # Real HotStore (not mock) so the dim check actually fires.
+        from akosha.storage.hot_store import HotStore
+
+        hot_store = HotStore(embedding_dim=768)
+        await hot_store.initialize()
+
+        try:
+            dhara = _make_fake_dhara(
+                rows=[
+                    (
+                        "websocket_tool_invocation/v1/1700000000000",
+                        {
+                            "version": "1.0.0",
+                            "tool": "websocket_get_status",
+                            "surface": "websocket",
+                            "result": "ok",
+                            "duration_ms": 12,
+                            "error": "",
+                            "timestamp": "2026-08-29T12:00:00",
+                        },
+                    ),
+                ]
+            )
+            from akosha.ingestion.websocket_invocations_subscriber import (
+                WebSocketInvocationsSubscriber,
+            )
+
+            sub = WebSocketInvocationsSubscriber(
+                hot_store=hot_store,
+                dhara_handle=dhara,
+                poll_interval_seconds=0.01,
+            )
+            await sub._tick()
+
+            # Real HotStore accepted the 768-dim record — the
+            # ``_embedding_dim`` baked into the schema is what allows it.
+            assert hot_store._embedding_dim == 768
+            # The row was indexed into the real store.
+            count = hot_store.conn.execute(
+                "SELECT COUNT(*) FROM conversations"
+            ).fetchone()[0]
+            assert count == 1
+        finally:
+            await hot_store.close()
+
+
+# ---------------------------------------------------------------------------
+# 7. End-to-end integration: DharaHttpClient -> subscriber -> HotStore
 # ---------------------------------------------------------------------------
 
 

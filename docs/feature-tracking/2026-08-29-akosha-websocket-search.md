@@ -64,10 +64,21 @@ date so any future regression that removes the entry fails the gate.
 
 ## Followups
 
-- [ ] Embedding dimension mismatch: the real `EmbeddingService` returns
+- [x] Embedding dimension mismatch: the real `EmbeddingService` returns
       768-dim vectors but the HotStore schema is `FLOAT[384]`. Production
       inserts will fail unless someone pads, swaps the model, or migrates
-      the schema. Flagged by Task 2's deviation report.
+      the schema. **Resolved** by
+      `docs/plans/2026-08-29-embedding-dim-fix.md` (Phase 1-4 shipped
+      2026-08-29): schema dim is now a constructor param, resolved via
+      `akosha.processing.embedding_dim.resolve_embedding_dim`; insert()
+      and search_similar() raise `ValueError` on dim mismatch (fail-loud);
+      `AkoshaApplication.start()` initialises the embedding service before
+      constructing the HotStore. Pinning tests:
+      `tests/unit/processing/test_embedding_dim.py` (7 cases),
+      `tests/unit/storage/test_hot_store_dim_validation.py` (8 cases),
+      `tests/test_embedding_dim_match.py` (2 cases),
+      `tests/unit/ingestion/test_websocket_invocations_subscriber.py`
+      (`TestSubscriberRespectsBackendDim`).
 - [ ] HotStore defaults to in-memory DuckDB; production deployments
       will lose indexed rows on restart. Future plan: file-backed DuckDB
       or pgvector-backed store.
