@@ -76,7 +76,7 @@ async def test_register_akosha_group_wires_embedding_service(
         lambda: graph_stub,
     )
 
-    register_akosha_group(app)
+    await register_akosha_group(app)
 
     # The hardcoded ``None`` regression made every tool group skip registration.
     # After the fix, embedding tools must appear in the registry.
@@ -110,7 +110,7 @@ async def test_register_akosha_group_wires_analytics_and_graph(
         lambda: graph_stub,
     )
 
-    register_akosha_group(app)
+    await register_akosha_group(app)
 
     # detect_anomalies comes from register_analytics_tools; query_knowledge_graph
     # comes from register_graph_tools. Both should be present when services wire.

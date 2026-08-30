@@ -46,6 +46,7 @@ def register_akosha_tools(
     analytics_service: TimeSeriesAnalytics | None = None,
     graph_builder: KnowledgeGraphBuilder | None = None,
     changepoint_analytics: ChangePointAnalytics | None = None,
+    hot_store: Any | None = None,
 ) -> None:
     """Register all Akosha MCP tools.
 
@@ -63,6 +64,9 @@ def register_akosha_tools(
         changepoint_analytics: Optional pytrendy-backed changepoint analytics service.
             When provided, registers the `analyze_changepoints` MCP tool. When None
             (default), that tool is omitted — callers without a Dhara client skip it.
+        hot_store: Optional HotStore for ``search_all_systems`` to query. When
+            ``None`` (lite mode / CI), ``search_all_systems`` falls back to an
+            informational result instead of crashing.
 
     Example:
         >>> from fastmcp import FastMCP
@@ -80,7 +84,7 @@ def register_akosha_tools(
         ... )
     """
     register_embedding_tools(registry, embedding_service)
-    register_search_tools(registry, embedding_service)
+    register_search_tools(registry, embedding_service, hot_store=hot_store)
     register_analytics_tools(registry, analytics_service, changepoint_analytics)
     register_graph_tools(registry, graph_builder)
 
@@ -250,16 +254,21 @@ def register_embedding_tools(
 def register_search_tools(
     registry: FastMCPToolRegistry,
     embedding_service: EmbeddingService | None,
+    hot_store: Any | None = None,
 ) -> None:
     """Register cross-system search tools.
 
     Registers tools for searching across all system memories using semantic
-    similarity. Search functionality will be enhanced once the hot store
-    is fully implemented.
+    similarity backed by the optional ``HotStore``. When ``hot_store`` is
+    ``None`` (lite mode / CI), ``search_all_systems`` returns an
+    informational fallback rather than crashing.
 
     Args:
         registry: FastMCP tool registry instance
         embedding_service: Embedding generation service for query encoding
+        hot_store: Optional HotStore for vector retrieval. When ``None``,
+            ``search_all_systems`` returns a single informational fallback
+            row instead of a crash. Defaults to ``None``.
 
     Tools registered:
         - search_all_systems: Semantic search across all system memories
@@ -359,26 +368,68 @@ def register_search_tools(
 
         logger.info(f"Searching all systems: query='{query}', limit={limit}")
 
-        # Generate query embedding (not used until hot store is implemented)
-        _ = await embedding_service.generate_embedding(query)
+        # Generate the query embedding and normalise to list[float] for DuckDB.
+        query_vec = await embedding_service.generate_embedding(query)
+        query_embedding = query_vec.tolist() if hasattr(query_vec, "tolist") else list(query_vec)
 
-        # TODO: Search hot store when implemented
-        # For now, return mock results
-        results = [
-            {
-                "system_id": system_id or "system-1",
-                "conversation_id": "conv-1",
-                "content": f"Mock result for: {query}",
-                "similarity": 0.85,
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
-        ]
+        mode = "fallback"
+        results: list[dict[str, Any]] = []
+        if hot_store is not None:
+            try:
+                # Filter to websocket invocations (system_id="mahavishnu"); ignore
+                # user-supplied system_id so the operator query always hits the
+                # websocket corpus. (Sub-plan C of
+                # docs/plans/2026-08-29-akosha-websocket-search.md)
+                raw_results = await hot_store.search_similar(
+                    query_embedding=query_embedding,
+                    system_id="mahavishnu",
+                    limit=limit,
+                    threshold=threshold,
+                )
+                results = [
+                    {
+                        "system_id": r["system_id"],
+                        "conversation_id": r["conversation_id"],
+                        "content": r["content"],
+                        "similarity": r.get("similarity"),
+                        "timestamp": (
+                            r["timestamp"].isoformat()
+                            if hasattr(r["timestamp"], "isoformat")
+                            else r["timestamp"]
+                        ),
+                    }
+                    for r in raw_results
+                ]
+                # Only flip ``mode`` to ``"real"`` when we actually surfaced
+                # rows. Empty result sets are indistinguishable from
+                # "store online but no data" — treat as informational.
+                if results:
+                    mode = "real"
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("search_all_systems: hot_store query failed: %s", exc)
+                mode = "fallback"
+
+        if not results:
+            # Informational fallback — never return the hard-coded mock.
+            results = [
+                {
+                    "system_id": "mahavishnu",
+                    "conversation_id": "none",
+                    "content": (
+                        "No websocket invocations indexed yet. Ensure the "
+                        "WebSocketInvocationsSubscriber is enabled and "
+                        "Mahavishnu has emitted audit rows."
+                    ),
+                    "similarity": None,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+            ]
 
         return {
             "query": query,
             "total_results": len(results),
             "results": results,
-            "mode": "real" if embedding_service.is_available() else "fallback",
+            "mode": mode,
         }
 
 

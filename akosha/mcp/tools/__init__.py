@@ -114,6 +114,7 @@ def register_all_tools(
             embedding_service=embedding_service,
             analytics_service=analytics_service,
             graph_builder=graph_builder,
+            hot_store=hot_store,
         )
         logger.info("Registered Akosha core tools")
 

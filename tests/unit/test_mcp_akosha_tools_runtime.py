@@ -46,7 +46,14 @@ def embedding_service() -> MagicMock:
     service.generate_batch_embeddings = AsyncMock(
         side_effect=[[Vector([0.3] * 384), Vector([0.4] * 384)], []]
     )
-    service.is_available = MagicMock(side_effect=[True, False, True, False])
+    # Sub-plan C: ``search_all_systems`` no longer consults ``is_available``
+    # — its ``mode`` is now driven by whether ``hot_store.search_similar``
+    # returned rows. The cycling fixture still drives the
+    # ``generate_embedding`` / ``generate_batch_embeddings`` mode flags:
+    # 1. generate_embedding → real
+    # 2. generate_batch_embeddings(["alpha","beta"]) → real
+    # 3. generate_batch_embeddings(["gamma"]) → fallback (empty batch)
+    service.is_available = MagicMock(side_effect=[True, True, False])
     return service
 
 
@@ -149,8 +156,12 @@ async def test_tool_runtime_branches(
     search = await search_all_systems(
         query="JWT auth", limit=2, threshold=0.8, system_id="system-x"
     )
+    # Sub-plan C: search_all_systems always queries the websocket invocations
+    # corpus (``system_id="mahavishnu"``); the operator-supplied system_id is
+    # ignored. Without a wired ``hot_store`` (this test registers tools without
+    # one), the function returns a single informational fallback row.
     assert search["total_results"] == 1
-    assert search["results"][0]["system_id"] == "system-x"
+    assert search["results"][0]["system_id"] == "mahavishnu"
     assert search["mode"] == "fallback"
 
     batch = await generate_batch_embeddings(texts=["alpha", "beta"], batch_size=2)

@@ -31,7 +31,7 @@ def register_health_akosha_group(app: FastMCP) -> None:
     logger.info("Registered health check tools")
 
 
-def register_akosha_group(app: FastMCP) -> None:
+async def register_akosha_group(app: FastMCP) -> None:
     """Register core Akosha memory-aggregation tools.
 
     Resolves services via the same factories the lifespan uses (see
@@ -45,6 +45,13 @@ def register_akosha_group(app: FastMCP) -> None:
     ``register_akosha_tools`` directly — this wrapper mirrors the
     pre-refactor ``register_all_tools`` behaviour of always wiring up
     services that the lifespan has initialised.
+
+    Hot-store wiring (Sub-plan C): best-effort ``HotStore`` creation is
+    threaded through to ``register_akosha_tools`` so
+    ``search_all_systems`` reads real data instead of returning the
+    legacy hard-coded mock. When creation fails (lite mode / DuckDB
+    missing), ``hot_store`` is ``None`` and the tool falls back to an
+    informational result.
     """
     from akosha.mcp.tools.akosha_tools import register_akosha_tools
     from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
@@ -59,12 +66,20 @@ def register_akosha_group(app: FastMCP) -> None:
     analytics_service = TimeSeriesAnalytics()
     graph_builder = KnowledgeGraphBuilder()
 
+    # Best-effort HotStore creation via the shared async helper. Mirrors
+    # the pattern used by ``register_session_buddy_group`` /
+    # ``register_pycharm_group`` — when creation fails (lite mode /
+    # DuckDB missing), ``hot_store`` ends up ``None`` and the tool falls
+    # back to the informational branch.
+    hot_store = await _try_create_hot_store()
+
     registry = FastMCPToolRegistry(app)
     register_akosha_tools(
         registry,
         embedding_service=embedding_service,
         analytics_service=analytics_service,
         graph_builder=graph_builder,
+        hot_store=hot_store,
     )
     logger.info("Registered Akosha core tools")
 
