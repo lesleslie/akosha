@@ -7,49 +7,82 @@ import hashlib
 import json
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import duckdb
 
-if TYPE_CHECKING:
-    from pathlib import Path
+from akosha.processing.embedding_dim import resolve_embedding_dim
 
+if TYPE_CHECKING:
     from akosha.models import HotRecord
 
 logger = logging.getLogger(__name__)
 
 
 class HotStore:
-    """Hot store with DuckDB in-memory storage."""
+    """Hot store with DuckDB in-memory storage.
 
-    def __init__(self, database_path: str | Path = ":memory:") -> None:
+    Embedding dim is configurable via the ``embedding_dim`` constructor
+    argument; ``None`` resolves via
+    :func:`akosha.processing.embedding_dim.resolve_embedding_dim` which
+    defaults to the active embedding backend's dim at startup, falling
+    back to 384 when no service is initialized. The resolved dim is
+    baked into the DuckDB schema (``FLOAT[N]``) at ``initialize()`` time,
+    so callers MUST set ``embedding_dim`` to the value their embedding
+    service will produce *before* the first ``initialize()`` call.
+    """
+
+    def __init__(
+        self,
+        database_path: str | Path = ":memory:",
+        embedding_dim: int | None = None,
+    ) -> None:
         """Initialize hot store.
 
         Args:
             database_path: DuckDB database path (":memory:" for in-memory)
+            embedding_dim: Embedding vector dimension. ``None`` resolves
+                via :func:`resolve_embedding_dim` so the schema dim
+                matches the active backend; pass an explicit ``int`` to
+                pin it (e.g. in tests that never call
+                ``get_embedding_service().initialize()``).
         """
         self.db_path = database_path
         self.conn: duckdb.DuckDBPyConnection | None = None
         self._lock = asyncio.Lock()
+        # Schema dim is baked into the CREATE TABLE DDL at initialize()
+        # time — capture it now so the SQL can interpolate
+        # ``FLOAT[<resolved>]`` as a literal. ``int(self._embedding_dim)``
+        # is guaranteed safe because ``resolve_embedding_dim`` always
+        # returns an ``int``.
+        self._embedding_dim: int = (
+            int(embedding_dim) if embedding_dim is not None else int(resolve_embedding_dim())
+        )
 
     async def initialize(self) -> None:
         """Initialize database schema."""
         async with self._lock:
             self.conn = duckdb.connect(str(self.db_path))
 
-            # Create conversations table with HNSW index support
-            self.conn.execute("""
+            # Create conversations table with HNSW index support.
+            # ``embedding FLOAT[N]`` is interpolated at __init__ time so
+            # the schema dim matches the active backend; this MUST match
+            # the dim the embedding service produces or insert() raises.
+            self.conn.execute(
+                f"""
                 CREATE TABLE IF NOT EXISTS conversations (
                     system_id VARCHAR,
                     conversation_id VARCHAR PRIMARY KEY,
                     content TEXT,
-                    embedding FLOAT[384],
+                    embedding FLOAT[{int(self._embedding_dim)}],
                     timestamp TIMESTAMP,
                     metadata JSON,
                     content_hash VARCHAR,
                     uploaded_at TIMESTAMP DEFAULT NOW()
                 )
-            """)
+            """
+            )
 
             # Create HNSW index for vector search
             try:
@@ -110,7 +143,34 @@ class HotStore:
 
         Args:
             record: Hot record to insert
+
+        Raises:
+            ValueError: If ``len(record.embedding) != self._embedding_dim``.
+                This is the fail-loud contract — a dim mismatch indicates
+                the embedding backend changed (or was misconfigured)
+                since ``__init__`` baked the schema. Catching this at
+                the subscriber layer keeps the fail-soft behaviour for
+                per-row failures.
         """
+        # Fail loud BEFORE acquiring the lock — the check is cheap and
+        # the value error is the signal callers (e.g.
+        # websocket_invocations_subscriber) hook into for fail-soft
+        # logging.
+        actual_dim = len(record.embedding)
+        if actual_dim != self._embedding_dim:
+            logger.warning(
+                "akosha.hot_store.dim_mismatch",
+                extra={
+                    "expected": self._embedding_dim,
+                    "actual": actual_dim,
+                    "conversation_id": record.conversation_id,
+                },
+            )
+            raise ValueError(
+                f"HotStore.insert: embedding dim mismatch "
+                f"(expected {self._embedding_dim}, got {actual_dim})"
+            )
+
         async with self._lock:
             if not self.conn:
                 raise RuntimeError("Hot store not initialized")
@@ -142,14 +202,34 @@ class HotStore:
         """Search for similar conversations using vector similarity.
 
         Args:
-            query_embedding: Query vector (FLOAT[384])
+            query_embedding: Query vector (FLOAT[N], dim matches schema)
             system_id: Optional system filter
             limit: Maximum results to return
             threshold: Minimum similarity score (0-1)
 
         Returns:
             List of similar conversations with metadata
+
+        Raises:
+            ValueError: If ``len(query_embedding) != self._embedding_dim``.
+                Fails fast before hitting DuckDB so callers see a clear
+                dim-mismatch signal instead of an opaque CAST error.
         """
+        query_dim = len(query_embedding)
+        if query_dim != self._embedding_dim:
+            logger.warning(
+                "akosha.hot_store.dim_mismatch",
+                extra={
+                    "expected": self._embedding_dim,
+                    "actual": query_dim,
+                    "operation": "search_similar",
+                },
+            )
+            raise ValueError(
+                f"HotStore.search_similar: query dim mismatch "
+                f"(expected {self._embedding_dim}, got {query_dim})"
+            )
+
         async with self._lock:
             if not self.conn:
                 raise RuntimeError("Hot store not initialized")
@@ -198,14 +278,14 @@ class HotStore:
                 """
                 results = self.conn.execute(query, [limit]).fetchall()
             elif system_id:
-                query = """
+                query = f"""
                     SELECT
                         system_id,
                         conversation_id,
                         content,
                         timestamp,
                         metadata,
-                        array_cosine_similarity(embedding, ?::FLOAT[384]) as similarity
+                        array_cosine_similarity(embedding, ?::FLOAT[{int(self._embedding_dim)}]) as similarity
                     FROM conversations
                     WHERE system_id = ?
                     ORDER BY similarity DESC
@@ -213,14 +293,14 @@ class HotStore:
                 """
                 results = self.conn.execute(query, [query_embedding, system_id, limit]).fetchall()
             else:
-                query = """
+                query = f"""
                     SELECT
                         system_id,
                         conversation_id,
                         content,
                         timestamp,
                         metadata,
-                        array_cosine_similarity(embedding, ?::FLOAT[384]) as similarity
+                        array_cosine_similarity(embedding, ?::FLOAT[{int(self._embedding_dim)}]) as similarity
                     FROM conversations
                     ORDER BY similarity DESC
                     LIMIT ?

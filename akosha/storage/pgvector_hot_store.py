@@ -20,13 +20,20 @@ from typing import TYPE_CHECKING, Any
 from oneiric.adapters.vector.pgvector import PgvectorAdapter, PgvectorSettings
 from oneiric.adapters.vector.vector_types import VectorDocument
 
+from akosha.processing.embedding_dim import resolve_embedding_dim
+
 if TYPE_CHECKING:
     from akosha.models import HotRecord
 
 logger = logging.getLogger(__name__)
 
 _COLLECTION_NAME = "conversations"
-_EMBEDDING_DIMENSION = 384
+#: Sentinel for ``__init__``: ``None`` means "resolve via the
+#: embedding_dim contract at construction time". The pre-fix default of
+#: 384 is preserved as ``_DEFAULT_LEGACY_DIMENSION`` for any caller that
+#: passes ``embedding_dimension=384`` explicitly (e.g. legacy tests).
+_DEFAULT_LEGACY_DIMENSION = 384
+_EMBEDDING_DIMENSION: int | None = None  # resolve at __init__ time
 
 
 class PgvectorHotStore:
@@ -42,16 +49,27 @@ class PgvectorHotStore:
         self,
         pg_url: str,
         *,
-        embedding_dimension: int = _EMBEDDING_DIMENSION,
+        embedding_dimension: int | None = _EMBEDDING_DIMENSION,
     ) -> None:
         """Initialize PgvectorHotStore.
 
         Args:
             pg_url: PostgreSQL connection string (DSN format).
-            embedding_dimension: Embedding vector dimension (default 384 for all-MiniLM-L6-v2).
+            embedding_dimension: Embedding vector dimension. ``None``
+                (the default) resolves via
+                :func:`akosha.processing.embedding_dim.resolve_embedding_dim`
+                so the pgvector collection dim matches the active
+                backend; pass an explicit ``int`` to pin it.
         """
         self._pg_url = pg_url
-        self._embedding_dimension = embedding_dimension
+        if embedding_dimension is None:
+            self._embedding_dimension: int = int(resolve_embedding_dim())
+        elif embedding_dimension == _DEFAULT_LEGACY_DIMENSION:
+            # Honour explicit "384" the same way the historical default
+            # did — operator chose to pin the legacy mock dim.
+            self._embedding_dimension = _DEFAULT_LEGACY_DIMENSION
+        else:
+            self._embedding_dimension = int(embedding_dimension)
         self._adapter: PgvectorAdapter | None = None
         self._lock = asyncio.Lock()
 
@@ -75,9 +93,29 @@ class PgvectorHotStore:
 
         Args:
             record: HotRecord with system_id, conversation_id, content, embedding, timestamp, metadata.
+
+        Raises:
+            ValueError: If ``len(record.embedding) != self._embedding_dimension``.
+                Fail-loud contract mirrors ``HotStore.insert`` so the
+                pgvector backend cannot silently accept a wrong-dim row.
         """
         if self._adapter is None:
             raise RuntimeError("PgvectorHotStore not initialized. Call initialize() first.")
+
+        actual_dim = len(record.embedding)
+        if actual_dim != self._embedding_dimension:
+            logger.warning(
+                "akosha.pgvector_hot_store.dim_mismatch",
+                extra={
+                    "expected": self._embedding_dimension,
+                    "actual": actual_dim,
+                    "conversation_id": record.conversation_id,
+                },
+            )
+            raise ValueError(
+                f"PgvectorHotStore.insert: embedding dim mismatch "
+                f"(expected {self._embedding_dimension}, got {actual_dim})"
+            )
 
         # Map HotRecord → VectorDocument
         doc = VectorDocument(

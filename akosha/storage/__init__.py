@@ -47,12 +47,20 @@ __all__ = [
 ]
 
 
-def create_hot_store(pg_url: str = "") -> HotStore | PgvectorHotStore:
+def create_hot_store(
+    pg_url: str = "",
+    embedding_dim: int | None = None,
+) -> HotStore | PgvectorHotStore:
     """Create a hot store instance based on AKOSHA__STORAGE__HOT__BACKEND env var.
 
     Args:
         pg_url: PostgreSQL connection string for pgvector backend.
                 Can also be set via AKOSHA__STORAGE__HOT__PG_URL env var.
+        embedding_dim: Optional embedding vector dimension to thread
+            through to the underlying store. ``None`` lets the store
+            resolve via the embedding-dim contract (defaulting to 384).
+            Pass an explicit ``int`` when the embedding backend's dim is
+            already known (e.g. from ``AkoshaApplication.start``).
 
     Returns:
         PgvectorHotStore when AKOSHA__STORAGE__HOT__BACKEND=pgvector and pg_url is set,
@@ -62,6 +70,9 @@ def create_hot_store(pg_url: str = "") -> HotStore | PgvectorHotStore:
     resolved_pg_url = pg_url or os.getenv("AKOSHA__STORAGE__HOT__PG_URL", "")
 
     if backend == "pgvector" and resolved_pg_url:
-        return PgvectorHotStore(pg_url=resolved_pg_url)
+        return PgvectorHotStore(
+            pg_url=resolved_pg_url,
+            embedding_dimension=embedding_dim,
+        )
 
-    return HotStore(database_path=":memory:")
+    return HotStore(database_path=":memory:", embedding_dim=embedding_dim)
