@@ -210,17 +210,33 @@ class AkoshaApplication:
             self.dhara_client = None
 
         try:
+            from akosha.ingestion.bodai_event_subscriber import (
+                BodaiToolInvocationSubscriber,
+            )
             from akosha.ingestion.websocket_invocations_subscriber import (
                 WebSocketInvocationsSubscriber,
             )
 
             sub_cfg = self._read_subscriber_config()
             if sub_cfg["enabled"]:
+                push_cfg = self._read_bodai_subscriber_config()
+                bodai_sub: BodaiToolInvocationSubscriber | None = None
+                if push_cfg["enabled"]:
+                    bodai_sub = BodaiToolInvocationSubscriber(
+                        redis_url=push_cfg["redis_url"],
+                        consumer_group=push_cfg["consumer_group"],
+                        hot_store=self.hot_store,
+                        xreadgroup_block_ms=push_cfg["xreadgroup_block_ms"],
+                        per_event_timeout_seconds=push_cfg[
+                            "per_event_timeout_seconds"
+                        ],
+                    )
                 self.websocket_invocations_subscriber = (
                     WebSocketInvocationsSubscriber(
                         hot_store=self.hot_store,
                         dhara_handle=self.dhara_client,
                         poll_interval_seconds=sub_cfg["poll_interval_seconds"],
+                        bodai_subscriber=bodai_sub,
                     )
                 )
                 await self.websocket_invocations_subscriber.start()
@@ -322,6 +338,66 @@ class AkoshaApplication:
         return {
             "enabled": bool(sub.get("enabled", False)),
             "poll_interval_seconds": float(sub.get("poll_interval_seconds", 5)),
+        }
+
+    @staticmethod
+    def _read_bodai_subscriber_config() -> dict[str, Any]:
+        """Read the ``bodai_tool_invocation_subscriber`` block from settings.
+
+        Plan: docs/plans/2026-08-29-push-subscriber.md Phase 3.
+
+        Returns safe defaults when the block is missing or the
+        settings file is unreachable — the push subscriber is opt-in
+        (default ``enabled=False``) so a missing YAML entry does not
+        silently enable it.
+        """
+        from pathlib import Path
+
+        defaults: dict[str, Any] = {
+            "enabled": False,
+            "redis_url": "redis://localhost:6379/0",
+            "consumer_group": "akosha-tool-invocation-indexers",
+            "xreadgroup_block_ms": 1500,
+            "per_event_timeout_seconds": 30.0,
+        }
+        try:
+            import yaml
+        except ImportError:
+            logger.warning(
+                "PyYAML unavailable; bodai_tool_invocation_subscriber disabled"
+            )
+            return defaults
+
+        akosha_root = Path(__file__).resolve().parents[2]
+        settings_path = akosha_root / "settings" / "akosha.yaml"
+        if not settings_path.exists():
+            return defaults
+        try:
+            with settings_path.open() as handle:
+                cfg = yaml.safe_load(handle) or {}
+        except (OSError, yaml.YAMLError) as exc:
+            logger.warning(
+                "Could not read %s (%s); bodai subscriber disabled",
+                settings_path,
+                exc,
+            )
+            return defaults
+        sub = cfg.get("bodai_tool_invocation_subscriber") or {}
+        return {
+            "enabled": bool(sub.get("enabled", defaults["enabled"])),
+            "redis_url": str(sub.get("redis_url", defaults["redis_url"])),
+            "consumer_group": str(
+                sub.get("consumer_group", defaults["consumer_group"])
+            ),
+            "xreadgroup_block_ms": int(
+                sub.get("xreadgroup_block_ms", defaults["xreadgroup_block_ms"])
+            ),
+            "per_event_timeout_seconds": float(
+                sub.get(
+                    "per_event_timeout_seconds",
+                    defaults["per_event_timeout_seconds"],
+                )
+            ),
         }
 
     def _wire_eventbridge_publisher(self) -> None:

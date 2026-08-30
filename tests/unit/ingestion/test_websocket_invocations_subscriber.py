@@ -517,3 +517,186 @@ def _fake_embedding_service() -> MagicMock:
 def _now_utc() -> datetime:
     """Today's UTC timestamp, used for default fallback comparisons."""
     return datetime.now(UTC)
+
+
+# ---------------------------------------------------------------------------
+# 8. Phase 3: orchestrator routes push vs poll
+# ---------------------------------------------------------------------------
+
+
+class TestOrchestratorPushPollRouting:
+    """When ``bodai_subscriber`` is provided, the orchestrator defers
+    ingestion to it and skips the poll loop. When ``bodai_subscriber``
+    is None or fails to start, the historical poll path runs.
+
+    Plan: docs/plans/2026-08-29-push-subscriber.md Phase 3.
+    """
+
+    @pytest.mark.asyncio
+    async def test_bodai_subscriber_takes_precedence_over_poll(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A started ``BodaiToolInvocationSubscriber`` suppresses the poll loop.
+
+        The orchestrator's ``_tick`` is never called because the
+        push subscriber owns ingestion (``source="push"``).
+        """
+        _patch_embedding_service(monkeypatch)
+        hot_store = _make_fake_hot_store()
+        dhara = _make_fake_dhara()
+
+        # Build a mock bodai subscriber that looks "running" after start().
+        bodai = MagicMock()
+        bodai.start = AsyncMock()
+        bodai.stop = AsyncMock()
+        # ``running`` is checked synchronously after ``await start()``.
+        # We attach it as a plain attribute, then mutate AFTER start
+        # runs (matches the real subscriber's contract).
+        bodai.running = False
+
+        async def fake_start() -> None:
+            bodai.running = True
+
+        bodai.start.side_effect = fake_start
+
+        from akosha.ingestion.websocket_invocations_subscriber import (
+            WebSocketInvocationsSubscriber,
+        )
+
+        sub = WebSocketInvocationsSubscriber(
+            hot_store=hot_store,
+            dhara_handle=dhara,
+            poll_interval_seconds=60.0,  # would loop forever if started
+            bodai_subscriber=bodai,
+        )
+
+        await sub.start()
+        try:
+            assert sub.source == "push"
+            assert sub._task is None  # poll loop NOT spawned
+            assert dhara.list_prefix.await_count == 0
+            # The push subscriber's start() was awaited exactly once.
+            bodai.start.assert_awaited_once()
+        finally:
+            await sub.stop()
+
+        # stop() teardown called bodai.stop() first.
+        bodai.stop.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_poll_when_bodai_subscriber_disabled(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``bodai_subscriber=None`` keeps the historical poll path active."""
+        _patch_embedding_service(monkeypatch)
+        hot_store = _make_fake_hot_store()
+        dhara = _make_fake_dhara()  # returns no rows
+
+        from akosha.ingestion.websocket_invocations_subscriber import (
+            WebSocketInvocationsSubscriber,
+        )
+
+        # Replace asyncio.sleep with a fast variant so the poll loop
+        # spins without sleeping real wall-clock time.
+        real_sleep = asyncio.sleep
+        sleeps: list[float] = []
+
+        async def fast_sleep(delay: float) -> None:
+            sleeps.append(delay)
+            await real_sleep(0)
+
+        monkeypatch.setattr("asyncio.sleep", fast_sleep)
+
+        sub = WebSocketInvocationsSubscriber(
+            hot_store=hot_store,
+            dhara_handle=dhara,
+            poll_interval_seconds=0.01,
+            bodai_subscriber=None,
+        )
+        await sub.start()
+        try:
+            assert sub.source == "poll"
+            assert sub._task is not None
+            await real_sleep(0.05)
+            # Multiple ticks must have happened.
+            assert dhara.list_prefix.await_count >= 2, (
+                f"expected at least 2 list_prefix calls, "
+                f"got {dhara.list_prefix.await_count}"
+            )
+        finally:
+            await sub.stop()
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_poll_when_bodai_subscriber_fails_to_start(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A bodai subscriber whose ``start()`` raises falls back to poll."""
+        _patch_embedding_service(monkeypatch)
+        hot_store = _make_fake_hot_store()
+        dhara = _make_fake_dhara()
+
+        bodai = MagicMock()
+        bodai.start = AsyncMock(side_effect=RuntimeError("redis down"))
+        bodai.stop = AsyncMock()
+
+        from akosha.ingestion.websocket_invocations_subscriber import (
+            WebSocketInvocationsSubscriber,
+        )
+
+        sub = WebSocketInvocationsSubscriber(
+            hot_store=hot_store,
+            dhara_handle=dhara,
+            poll_interval_seconds=60.0,
+            bodai_subscriber=bodai,
+        )
+
+        await sub.start()
+        try:
+            # Push failed -> orchestrator discarded the push subscriber
+            # and started the poll loop instead.
+            assert sub.source == "poll"
+            assert sub._task is not None
+            assert sub._bodai_subscriber is None
+        finally:
+            await sub.stop()
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_poll_when_bodai_subscriber_idles(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When ``bodai_subscriber.start()`` succeeds but ``running=False`` (Redis unreachable),
+        the orchestrator falls back to the poll loop transparently.
+        """
+        _patch_embedding_service(monkeypatch)
+        hot_store = _make_fake_hot_store()
+        dhara = _make_fake_dhara()
+
+        # Real BodaiToolInvocationSubscriber-shaped mock: start() returns
+        # but running stays False (mirrors the fail-soft contract when
+        # redis.asyncio is unavailable).
+        bodai = MagicMock()
+        bodai.start = AsyncMock()  # returns without setting running=True
+        bodai.running = False
+        bodai.stop = AsyncMock()
+
+        from akosha.ingestion.websocket_invocations_subscriber import (
+            WebSocketInvocationsSubscriber,
+        )
+
+        sub = WebSocketInvocationsSubscriber(
+            hot_store=hot_store,
+            dhara_handle=dhara,
+            poll_interval_seconds=60.0,
+            bodai_subscriber=bodai,
+        )
+        await sub.start()
+        try:
+            # Push subscriber did not flip running=True -> poll loop active.
+            assert sub.source == "poll"
+            assert sub._task is not None
+        finally:
+            await sub.stop()
