@@ -143,8 +143,8 @@ class BodaiToolInvocationSubscriber:
         self._redis_url = redis_url
         self._consumer_group = consumer_group
         self._hot_store = hot_store
-        self._xreadgroup_block_ms = int(xreadgroup_block_ms)
-        self._per_event_timeout_seconds = float(per_event_timeout_seconds)
+        self._xreadgroup_block_ms = xreadgroup_block_ms
+        self._per_event_timeout_seconds = per_event_timeout_seconds
         self._consumer_name = consumer_name
         self._running = False
         self._task: asyncio.Task[None] | None = None
@@ -634,10 +634,8 @@ class BodaiToolInvocationSubscriber:
         """Best-effort ISO-8601 parse; falls back to now()."""
         ts = payload.get("timestamp")
         if isinstance(ts, str):
-            try:
+            with contextlib.suppress(ValueError):
                 return datetime.fromisoformat(ts)
-            except ValueError:
-                pass
         return datetime.now(UTC)
 
     async def _update_watermark(self, message_id: str) -> None:

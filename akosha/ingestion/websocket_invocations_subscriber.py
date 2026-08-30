@@ -28,8 +28,9 @@ deduplication is left to the HotStore's own content-hash check
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from akosha.models import HotRecord
@@ -120,9 +121,7 @@ class WebSocketInvocationsSubscriber:
         if self._running:
             return
         if self._hot_store is None:
-            logger.debug(
-                "WebSocketInvocationsSubscriber: no hot_store, skipping start"
-            )
+            logger.debug("WebSocketInvocationsSubscriber: no hot_store, skipping start")
             return
 
         # Push-first: when a push subscriber is provided AND its
@@ -133,21 +132,19 @@ class WebSocketInvocationsSubscriber:
         if self._bodai_subscriber is not None:
             try:
                 await self._bodai_subscriber.start()
-            except Exception as exc:  # noqa: BLE001 - log + fall back
+            except Exception as exc:
                 logger.warning(
                     "akosha.subscriber.fallback_to_poll: bodai subscriber start failed: %s",
                     exc,
                 )
                 self._bodai_subscriber = None
-            if (
-                self._bodai_subscriber is not None
-                and getattr(self._bodai_subscriber, "running", False)
+            if self._bodai_subscriber is not None and getattr(
+                self._bodai_subscriber, "running", False
             ):
                 self._running = True
                 self._source = "push"
                 logger.info(
-                    "WebSocketInvocationsSubscriber: source=push "
-                    "(bodai subscriber owns ingestion)",
+                    "WebSocketInvocationsSubscriber: source=push (bodai subscriber owns ingestion)",
                 )
                 return
 
@@ -172,7 +169,7 @@ class WebSocketInvocationsSubscriber:
         if self._bodai_subscriber is not None:
             try:
                 await self._bodai_subscriber.stop()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning(
                     "WebSocketInvocationsSubscriber: bodai subscriber stop failed: %s",
                     exc,
@@ -281,8 +278,6 @@ class WebSocketInvocationsSubscriber:
         """Best-effort ISO-8601 timestamp parse; falls back to now()."""
         ts = payload.get("timestamp")
         if isinstance(ts, str):
-            try:
+            with contextlib.suppress(ValueError):
                 return datetime.fromisoformat(ts)
-            except ValueError:
-                pass
-        return datetime.utcnow()
+        return datetime.now(tz=UTC)

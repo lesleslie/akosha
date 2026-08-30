@@ -67,11 +67,11 @@ class HotStore:
         self._lock = asyncio.Lock()
         # Schema dim is baked into the CREATE TABLE DDL at initialize()
         # time — capture it now so the SQL can interpolate
-        # ``FLOAT[<resolved>]`` as a literal. ``int(self._embedding_dim)``
-        # is guaranteed safe because ``resolve_embedding_dim`` always
-        # returns an ``int``.
+        # ``FLOAT[<resolved>]`` as a literal. ``resolve_embedding_dim``
+        # always returns an ``int``; the conditional handles the
+        # caller-supplied ``embedding_dim`` which is already typed ``int``.
         self._embedding_dim: int = (
-            int(embedding_dim) if embedding_dim is not None else int(resolve_embedding_dim())
+            embedding_dim if embedding_dim is not None else resolve_embedding_dim()
         )
 
     async def initialize(self) -> None:
@@ -89,7 +89,7 @@ class HotStore:
                     system_id VARCHAR,
                     conversation_id VARCHAR PRIMARY KEY,
                     content TEXT,
-                    embedding FLOAT[{int(self._embedding_dim)}],
+                    embedding FLOAT[{self._embedding_dim}],
                     timestamp TIMESTAMP,
                     metadata JSON,
                     content_hash VARCHAR,
@@ -299,7 +299,7 @@ class HotStore:
                         content,
                         timestamp,
                         metadata,
-                        array_cosine_similarity(embedding, ?::FLOAT[{int(self._embedding_dim)}]) as similarity
+                        array_cosine_similarity(embedding, ?::FLOAT[{self._embedding_dim}]) as similarity
                     FROM conversations
                     WHERE system_id = ?
                     ORDER BY similarity DESC
@@ -314,7 +314,7 @@ class HotStore:
                         content,
                         timestamp,
                         metadata,
-                        array_cosine_similarity(embedding, ?::FLOAT[{int(self._embedding_dim)}]) as similarity
+                        array_cosine_similarity(embedding, ?::FLOAT[{self._embedding_dim}]) as similarity
                     FROM conversations
                     ORDER BY similarity DESC
                     LIMIT ?

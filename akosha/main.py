@@ -7,11 +7,14 @@ import logging
 import os
 import signal
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from akosha.storage import create_hot_store
 from akosha.storage.hot_store import HotStore
 from akosha.storage.warm_store import WarmStore
+
+if TYPE_CHECKING:
+    from akosha.storage.pgvector_hot_store import PgvectorHotStore
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +122,10 @@ class AkoshaApplication:
         # HotStore for in-memory websocket invocation search (Phase 2 Item B).
         # Populated by ``start()``; closed by ``stop()``. None when init fails
         # or when the feature is disabled in settings (graceful no-op).
-        self.hot_store: HotStore | None = None
+        # Type is the full union returned by ``create_hot_store`` —
+        # ``HotStore | PgvectorHotStore | None`` — because the pgvector
+        # backend shares the interface but is not a ``HotStore`` subclass.
+        self.hot_store: HotStore | PgvectorHotStore | None = None
         # Dhara HTTP client for the WebSocket invocations subscriber. Lazily
         # constructed in ``start()``; closed in ``stop()``. ``None`` when
         # construction fails or Dhara is not configured -- the subscriber's
@@ -177,24 +183,24 @@ class AkoshaApplication:
         try:
             resolved_dim = resolve_embedding_dim(get_embedding_service())
             hot_cfg = self._read_hot_store_config()
-            self.hot_store = create_hot_store(
+            hot_store: HotStore | PgvectorHotStore | None = create_hot_store(
                 backend=hot_cfg["backend"],
                 pg_url=hot_cfg["pg_url"],
                 database_path=hot_cfg["database_path"],
                 embedding_dim=resolved_dim,
             )
-            await self.hot_store.initialize()
+            if hot_store is not None:
+                await hot_store.initialize()
+            self.hot_store = hot_store
             logger.info(
                 "HotStore initialized for in-memory websocket invocation search "
                 "(%s, dim=%d, backend=%s)",
-                type(self.hot_store).__name__,
+                type(hot_store).__name__,
                 resolved_dim,
                 hot_cfg["backend"],
             )
         except Exception as exc:
-            logger.warning(
-                "HotStore init failed (%s); search_all_systems will fall back", exc
-            )
+            logger.warning("HotStore init failed (%s); search_all_systems will fall back", exc)
             self.hot_store = None
 
         # WebSocket invocations subscriber (Dhara -> HotStore). Sub-plan B
@@ -206,10 +212,8 @@ class AkoshaApplication:
             from akosha.storage.dhara_http_client import DharaHttpClient
 
             self.dhara_client = DharaHttpClient()
-            logger.debug(
-                "DharaHttpClient constructed for WebSocket invocations subscriber"
-            )
-        except Exception as exc:  # noqa: BLE001
+            logger.debug("DharaHttpClient constructed for WebSocket invocations subscriber")
+        except Exception as exc:
             logger.warning(
                 "DharaHttpClient construction failed (%s); subscriber will no-op",
                 exc,
@@ -234,23 +238,17 @@ class AkoshaApplication:
                         consumer_group=push_cfg["consumer_group"],
                         hot_store=self.hot_store,
                         xreadgroup_block_ms=push_cfg["xreadgroup_block_ms"],
-                        per_event_timeout_seconds=push_cfg[
-                            "per_event_timeout_seconds"
-                        ],
+                        per_event_timeout_seconds=push_cfg["per_event_timeout_seconds"],
                     )
-                self.websocket_invocations_subscriber = (
-                    WebSocketInvocationsSubscriber(
-                        hot_store=self.hot_store,
-                        dhara_handle=self.dhara_client,
-                        poll_interval_seconds=sub_cfg["poll_interval_seconds"],
-                        bodai_subscriber=bodai_sub,
-                    )
+                self.websocket_invocations_subscriber = WebSocketInvocationsSubscriber(
+                    hot_store=self.hot_store,
+                    dhara_handle=self.dhara_client,
+                    poll_interval_seconds=sub_cfg["poll_interval_seconds"],
+                    bodai_subscriber=bodai_sub,
                 )
                 await self.websocket_invocations_subscriber.start()
         except Exception as exc:
-            logger.warning(
-                "WebSocketInvocationsSubscriber init failed: %s", exc
-            )
+            logger.warning("WebSocketInvocationsSubscriber init failed: %s", exc)
             self.websocket_invocations_subscriber = None
 
         # Setup signal handlers
@@ -324,9 +322,7 @@ class AkoshaApplication:
         try:
             import yaml
         except ImportError:
-            logger.warning(
-                "PyYAML unavailable; websocket_invocations_subscriber disabled"
-            )
+            logger.warning("PyYAML unavailable; websocket_invocations_subscriber disabled")
             return {"enabled": False, "poll_interval_seconds": 5.0}
 
         akosha_root = Path(__file__).resolve().parents[2]
@@ -337,9 +333,7 @@ class AkoshaApplication:
             with settings_path.open() as handle:
                 cfg = yaml.safe_load(handle) or {}
         except (OSError, yaml.YAMLError) as exc:
-            logger.warning(
-                "Could not read %s (%s); subscriber disabled", settings_path, exc
-            )
+            logger.warning("Could not read %s (%s); subscriber disabled", settings_path, exc)
             return {"enabled": False, "poll_interval_seconds": 5.0}
         sub = cfg.get("websocket_invocations_subscriber") or {}
         return {
@@ -370,9 +364,7 @@ class AkoshaApplication:
         try:
             import yaml
         except ImportError:
-            logger.warning(
-                "PyYAML unavailable; bodai_tool_invocation_subscriber disabled"
-            )
+            logger.warning("PyYAML unavailable; bodai_tool_invocation_subscriber disabled")
             return defaults
 
         akosha_root = Path(__file__).resolve().parents[2]
@@ -393,9 +385,7 @@ class AkoshaApplication:
         return {
             "enabled": bool(sub.get("enabled", defaults["enabled"])),
             "redis_url": str(sub.get("redis_url", defaults["redis_url"])),
-            "consumer_group": str(
-                sub.get("consumer_group", defaults["consumer_group"])
-            ),
+            "consumer_group": str(sub.get("consumer_group", defaults["consumer_group"])),
             "xreadgroup_block_ms": int(
                 sub.get("xreadgroup_block_ms", defaults["xreadgroup_block_ms"])
             ),
@@ -433,9 +423,7 @@ class AkoshaApplication:
         try:
             import yaml
         except ImportError:
-            logger.warning(
-                "PyYAML unavailable; hot_store defaults to duckdb-memory in-memory"
-            )
+            logger.warning("PyYAML unavailable; hot_store defaults to duckdb-memory in-memory")
             return defaults
 
         akosha_root = Path(__file__).resolve().parents[2]
@@ -526,9 +514,7 @@ class AkoshaApplication:
             try:
                 await self.websocket_invocations_subscriber.stop()
             except Exception as exc:
-                logger.warning(
-                    "WebSocketInvocationsSubscriber stop failed: %s", exc
-                )
+                logger.warning("WebSocketInvocationsSubscriber stop failed: %s", exc)
             self.websocket_invocations_subscriber = None
 
         # Close Dhara HTTP client (Followup 4). Mirrors the HotStore close
@@ -536,7 +522,7 @@ class AkoshaApplication:
         if self.dhara_client is not None:
             try:
                 await self.dhara_client.aclose()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning("DharaHttpClient close failed: %s", exc)
             self.dhara_client = None
 

@@ -63,13 +63,13 @@ class PgvectorHotStore:
         """
         self._pg_url = pg_url
         if embedding_dimension is None:
-            self._embedding_dimension: int = int(resolve_embedding_dim())
+            self._embedding_dimension: int = resolve_embedding_dim()
         elif embedding_dimension == _DEFAULT_LEGACY_DIMENSION:
             # Honour explicit "384" the same way the historical default
             # did — operator chose to pin the legacy mock dim.
             self._embedding_dimension = _DEFAULT_LEGACY_DIMENSION
         else:
-            self._embedding_dimension = int(embedding_dimension)
+            self._embedding_dimension = embedding_dimension
         self._adapter: PgvectorAdapter | None = None
         self._lock = asyncio.Lock()
 

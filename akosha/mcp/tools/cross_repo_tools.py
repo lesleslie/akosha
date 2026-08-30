@@ -28,6 +28,7 @@ breaking the contract.
 from __future__ import annotations
 
 import logging
+import operator
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -483,7 +484,7 @@ def register_cross_repo_tools(
             if score >= min_score:
                 scored.append((score, cap))
 
-        scored.sort(key=lambda pair: pair[0], reverse=True)
+        scored.sort(key=operator.itemgetter(0), reverse=True)
         top = scored[:limit]
 
         results = [
