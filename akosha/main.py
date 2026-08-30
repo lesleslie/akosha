@@ -9,6 +9,7 @@ import signal
 import sys
 from typing import Any
 
+from akosha.storage import create_hot_store
 from akosha.storage.hot_store import HotStore
 from akosha.storage.warm_store import WarmStore
 
@@ -115,6 +116,14 @@ class AkoshaApplication:
         self.stop_drain_timeout = (
             stop_drain_timeout if stop_drain_timeout is not None else _resolve_stop_drain_timeout()
         )
+        # HotStore for in-memory websocket invocation search (Phase 2 Item B).
+        # Populated by ``start()``; closed by ``stop()``. None when init fails
+        # or when the feature is disabled in settings (graceful no-op).
+        self.hot_store: HotStore | None = None
+        # WebSocket invocations subscriber (Dhara -> HotStore). Wired in
+        # Sub-plan B (separate task); the attribute lives here so the
+        # start/stop lifecycle is consistent.
+        self.websocket_invocations_subscriber: Any = None
 
         # Initialize mode
         from akosha.modes import get_mode
@@ -136,6 +145,25 @@ class AkoshaApplication:
         # provided the resolver clears any existing publisher and the
         # ``publish_*`` functions become no-ops.
         self._wire_eventbridge_publisher()
+
+        # Hot store for websocket invocation search (Phase 2 Item B).
+        # ``create_hot_store`` returns HotStore (DuckDB in-memory by default)
+        # or PgvectorHotStore when AKOSHA__STORAGE__HOT__BACKEND=pgvector
+        # is set. Graceful no-op when init fails or when the feature is
+        # disabled in settings — search_all_systems will fall back to an
+        # informational "no rows indexed yet" response.
+        try:
+            self.hot_store = create_hot_store()
+            await self.hot_store.initialize()
+            logger.info(
+                "HotStore initialized for in-memory websocket invocation search (%s)",
+                type(self.hot_store).__name__,
+            )
+        except Exception as exc:
+            logger.warning(
+                "HotStore init failed (%s); search_all_systems will fall back", exc
+            )
+            self.hot_store = None
 
         # Setup signal handlers
         logger.info("Setting up signal handlers for graceful shutdown")
@@ -246,6 +274,15 @@ class AkoshaApplication:
                 await worker.stop()
             else:
                 logger.warning(f"Worker missing stop method: {worker}")
+
+        # Close HotStore (mirror of test_storage() pattern, lines 271-272).
+        if self.hot_store is not None:
+            try:
+                await self.hot_store.close()
+                logger.info("HotStore closed")
+            except Exception as exc:
+                logger.warning("HotStore close failed: %s", exc)
+            self.hot_store = None
 
         logger.info("✅ Akosha application shutdown complete")
 

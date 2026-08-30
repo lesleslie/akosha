@@ -64,3 +64,20 @@ eventbridge:
   max_concurrency: 5
   timeout_seconds: 5.0
   dry_run: true
+
+# Hot store (DuckDB-backed) for vector search across indexed system
+# memories. Used by mcp__akosha__search_all_systems to serve real
+# results instead of mock data. In-memory by default; set
+# database_path to a file path for persistence across restarts.
+# Plan: docs/plans/2026-08-29-akosha-websocket-search.md Sub-plan A.
+hot_store:
+  enabled: true
+  database_path: ":memory:"
+  retention_minutes: 60
+
+# WebSocket invocations subscriber (Dhara -> HotStore).
+# Populated when websocket_invocations_subscriber.enabled is true.
+# Sub-plan B wiring lives in akosha/ingestion/websocket_invocations_subscriber.py.
+websocket_invocations_subscriber:
+  enabled: false  # default off; flip to true to activate
+  poll_interval_seconds: 5
