@@ -331,6 +331,101 @@ class TestIdempotency:
         assert handle.list_prefix.await_count == 2
 
 
+# ---------------------------------------------------------------------------
+# 6. End-to-end integration: DharaHttpClient -> subscriber -> HotStore
+# ---------------------------------------------------------------------------
+
+
+class TestDharaHttpClientIntegration:
+    @pytest.mark.asyncio
+    async def test_subscriber_indexes_rows_via_dhara_http_client(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Replace the mock Dhara handle with a real ``DharaHttpClient`` whose
+        underlying httpx call is mocked to return Dhara-format responses.
+
+        Followup 4 of the websocket-search plan: after this ships, the
+        subscriber's ``list_prefix`` actually reaches Dhara via HTTP
+        rather than short-circuiting on ``dhara_handle=None``. This test
+        proves the wiring end-to-end without standing up a real Dhara.
+        """
+        import httpx
+
+        from akosha.storage.dhara_http_client import DharaHttpClient
+
+        _patch_embedding_service(monkeypatch)
+        hot_store = _make_fake_hot_store()
+
+        # Build the Dhara-format response envelope the real Dhara MCP
+        # server emits: ``{"content": [{"type": "text", "text": "<json>"}]}``
+        # where ``<json>`` is the JSON-encoded list of {key, value} pairs.
+        dhara_payload = [
+            {
+                "key": "websocket_tool_invocation/v1/1700000000000",
+                "value": {
+                    "version": "1.0.0",
+                    "tool": "websocket_get_status",
+                    "surface": "websocket",
+                    "result": "ok",
+                    "duration_ms": 12,
+                    "error": "",
+                    "timestamp": "2026-08-29T12:00:00",
+                },
+            }
+        ]
+        import json as _json
+
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.json = MagicMock(
+            return_value={
+                "content": [
+                    {"type": "text", "text": _json.dumps(dhara_payload)}
+                ]
+            }
+        )
+        mock_response.raise_for_status = MagicMock(return_value=None)
+
+        # Construct the real client, then inject a stub httpx.AsyncClient
+        # so the post() call returns our envelope without a network hop.
+        client = DharaHttpClient(base_url="http://dhara.test.invalid")
+        stub_httpx = AsyncMock(spec=httpx.AsyncClient)
+        stub_httpx.post = AsyncMock(return_value=mock_response)
+        stub_httpx.aclose = AsyncMock(return_value=None)
+        client._client = stub_httpx
+
+        from akosha.ingestion.websocket_invocations_subscriber import (
+            WebSocketInvocationsSubscriber,
+        )
+
+        sub = WebSocketInvocationsSubscriber(
+            hot_store=hot_store,
+            dhara_handle=client,
+            poll_interval_seconds=0.01,
+        )
+        await sub._tick()
+
+        # The HTTP POST should have hit the Dhara MCP ``list_prefix`` tool.
+        stub_httpx.post.assert_awaited_once()
+        post_kwargs = stub_httpx.post.await_args.kwargs
+        assert post_kwargs["json"]["name"] == "list_prefix"
+        assert post_kwargs["json"]["arguments"]["prefix"] == (
+            "websocket_tool_invocation/v1/"
+        )
+        assert stub_httpx.post.await_args.args[0] == (
+            "http://dhara.test.invalid/tools/call"
+        )
+
+        # And the parsed row should have made it into the HotStore.
+        hot_store.insert.assert_awaited_once()
+        record: HotRecord = hot_store.insert.await_args.args[0]
+        assert isinstance(record, HotRecord)
+        assert record.system_id == "mahavishnu"
+        assert record.conversation_id == (
+            "websocket_tool_invocation/v1/1700000000000"
+        )
+
+
 def _fake_embedding_service() -> MagicMock:
     """Standalone helper used by direct call sites if needed."""
     return _make_fake_embedding_service()

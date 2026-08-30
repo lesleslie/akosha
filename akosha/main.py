@@ -120,6 +120,11 @@ class AkoshaApplication:
         # Populated by ``start()``; closed by ``stop()``. None when init fails
         # or when the feature is disabled in settings (graceful no-op).
         self.hot_store: HotStore | None = None
+        # Dhara HTTP client for the WebSocket invocations subscriber. Lazily
+        # constructed in ``start()``; closed in ``stop()``. ``None`` when
+        # construction fails or Dhara is not configured -- the subscriber's
+        # ``_tick`` short-circuits on a ``None`` handle, so this is fail-soft.
+        self.dhara_client: Any = None
         # WebSocket invocations subscriber (Dhara -> HotStore). Wired in
         # Sub-plan B (separate task); the attribute lives here so the
         # start/stop lifecycle is consistent.
@@ -167,9 +172,23 @@ class AkoshaApplication:
 
         # WebSocket invocations subscriber (Dhara -> HotStore). Sub-plan B
         # reads ``websocket_invocations_subscriber`` settings from
-        # ``settings/akosha.yaml``. ``dhara_handle=None`` here because the
-        # Dhara client wiring is a follow-up; the subscriber's _tick short-
-        # circuits when the handle is None, so this is a fail-soft no-op.
+        # ``settings/akosha.yaml``. The Dhara HTTP client is constructed
+        # best-effort here; the subscriber's list_prefix() returns [] on any
+        # error, so a misconfigured or unreachable Dhara stays fail-soft.
+        try:
+            from akosha.storage.dhara_http_client import DharaHttpClient
+
+            self.dhara_client = DharaHttpClient()
+            logger.debug(
+                "DharaHttpClient constructed for WebSocket invocations subscriber"
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "DharaHttpClient construction failed (%s); subscriber will no-op",
+                exc,
+            )
+            self.dhara_client = None
+
         try:
             from akosha.ingestion.websocket_invocations_subscriber import (
                 WebSocketInvocationsSubscriber,
@@ -180,7 +199,7 @@ class AkoshaApplication:
                 self.websocket_invocations_subscriber = (
                     WebSocketInvocationsSubscriber(
                         hot_store=self.hot_store,
-                        dhara_handle=None,
+                        dhara_handle=self.dhara_client,
                         poll_interval_seconds=sub_cfg["poll_interval_seconds"],
                     )
                 )
@@ -355,6 +374,15 @@ class AkoshaApplication:
                     "WebSocketInvocationsSubscriber stop failed: %s", exc
                 )
             self.websocket_invocations_subscriber = None
+
+        # Close Dhara HTTP client (Followup 4). Mirrors the HotStore close
+        # pattern: best-effort, log at WARNING on failure, never raise.
+        if self.dhara_client is not None:
+            try:
+                await self.dhara_client.aclose()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("DharaHttpClient close failed: %s", exc)
+            self.dhara_client = None
 
         # Close HotStore (mirror of test_storage() pattern, lines 271-272).
         if self.hot_store is not None:
