@@ -81,7 +81,15 @@ date so any future regression that removes the entry fails the gate.
       (`TestSubscriberRespectsBackendDim`).
 - [ ] HotStore defaults to in-memory DuckDB; production deployments
       will lose indexed rows on restart. Future plan: file-backed DuckDB
-      or pgvector-backed store.
+      or pgvector-backed store. **Resolved** by Followup 2 (pgvector as
+      production default) below — `settings/akosha.yaml:hot_store.backend`
+      now accepts `pgvector`, `AkoshaApplication.start()` threads
+      `backend + pg_url` into `create_hot_store()`, and the
+      `PgvectorHotStore` class (already complete from prior work)
+      becomes the production path. Plan:
+      `/Users/les/Projects/mahavishnu/.claude/worktrees/cleanup-v2-plan-finalization/docs/plans/2026-08-29-pgvector-default.md`.
+      See **Serverless deployment notes** below for the operator
+      walkthrough.
 - [ ] Sub-plan B's subscriber polls every 5s by default. Push-based
       Dhara subscriptions would be lower-latency but require new
       infrastructure that doesn't exist yet. **Resolved** by Followup 3
@@ -187,3 +195,90 @@ until the operator flips the bit.
   generic HotStore upsert API (we own the schema — the watermark is
   private to this subscriber; widening the HotStore's surface area
   for one private row wasn't worth the API churn).
+
+## Followup 2 — pgvector as production default (resolved 2026-08-30)
+
+Plan: `/Users/les/Projects/mahavishnu/.claude/worktrees/cleanup-v2-plan-finalization/docs/plans/2026-08-29-pgvector-default.md`.
+
+Three-commit rollout shipped on local akosha main:
+
+- **Phase 1** (`34a6f35`) — `settings/akosha.yaml:hot_store` grew
+  `backend`, `pg_url`, `pg_collection` fields. `create_hot_store()` now
+  accepts `backend` + `pg_url` kwargs with fail-soft WARNING when
+  `backend="pgvector"` but no pg_url is set. `AkoshaApplication.start()`
+  threads settings into the factory via a new `_read_hot_store_config()`
+  helper. 8 new unit tests pin the wiring.
+- **Phase 2** (`1fe089d`) — `tests/integration/test_pgvector_hot_store_e2e.py`
+  with 5 cases (insert/search round-trip, threshold filtering, system_id
+  filter isolation, dim mismatch, watermark persistence), gated on
+  `AKOSHA_TEST_PGVECTOR_URL`. CI without docker skips cleanly.
+- **Phase 3** (this commit) — `HotStore` docstring warns against
+  file-backed DuckDB on serverless; this section documents the
+  operator path.
+
+### Serverless deployment notes
+
+**Why pgvector over DuckDB for production:**
+
+- **In-memory DuckDB** (`hot_store.database_path: ":memory:"`) loses
+  every indexed row on restart. Fine for unit tests, dev, and short
+  single-shot deployments; not fine for anything that survives a
+  container recycle.
+- **File-backed DuckDB** (`hot_store.database_path: "/var/lib/akosha/hotstore.duckdb"`)
+  is **NOT recommended** on serverless platforms. Ephemeral filesystems
+  do not survive container restarts — the file is silently lost even
+  though no error is raised. This is the deployment class that motivated
+  Followup 2.
+- **pgvector** is the recommended production backend. Postgres + the
+  `vector` extension gives durable storage, native cosine-distance
+  indexing, and operator tools that DuckDB can't match (point-in-time
+  recovery, replication, observability via pg_stat_statements, etc.).
+
+**Local dev (homebrew path):**
+
+```bash
+brew install postgresql@16 pgvector
+brew services start postgresql@16
+createdb akosha
+psql -d akosha -c "CREATE EXTENSION vector;"
+```
+
+Then in `settings/akosha.yaml` or via env vars:
+
+```yaml
+hot_store:
+  backend: pgvector
+  pg_url: "postgresql://akosha@localhost:5432/akosha"
+```
+
+or
+
+```bash
+export AKOSHA__STORAGE__HOT__BACKEND=pgvector
+export AKOSHA__STORAGE__HOT__PG_URL="postgresql://akosha@localhost:5432/akosha"
+```
+
+The factory's `pg_url` env-var fallback is preserved for Phase 2
+back-compat callers; a Phase 2 followup will remove it once operators
+are fully migrated to the YAML config.
+
+**CI integration tests:**
+
+The e2e suite at `tests/integration/test_pgvector_hot_store_e2e.py`
+activates when `AKOSHA_TEST_PGVECTOR_URL` is set:
+
+```bash
+AKOSHA_TEST_PGVECTOR_URL="postgresql://akosha@localhost:5432/akosha" \
+  pytest tests/integration/test_pgvector_hot_store_e2e.py -v
+```
+
+CI without docker: `pytest -m "not integration"` skips the file
+cleanly. The `asyncpg`/`pgvector` Python packages and the `oneiric`
+pgvector adapter are optional runtime deps; the file-level
+`pytest.importorskip` keeps the suite green when any of them is
+missing. **KNOWN DEVIATION**: the upstream oneiric pgvector adapter
+currently generates `WITH (lists := N)` for ivfflat index options,
+which Postgres 18 rejects with a syntax error at `:=`. The bug lives
+in oneiric — the canary probe in the test file detects this and
+skips the suite with a clear message. Once upstream fixes the SQL,
+the e2e tests activate automatically (no further changes here).

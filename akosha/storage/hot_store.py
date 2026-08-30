@@ -23,6 +23,19 @@ logger = logging.getLogger(__name__)
 class HotStore:
     """Hot store with DuckDB in-memory storage.
 
+    .. warning::
+
+        **This is the development / test backend.** In-memory DuckDB
+        loses all indexed rows on restart. **File-backed DuckDB is NOT
+        recommended** for serverless or ephemeral-filesystem deployments:
+        the filesystem does not survive container restarts, so the file
+        is silently lost. For production deployments that require
+        persistence, use :class:`akosha.storage.PgvectorHotStore` —
+        pgvector-backed storage on Postgres survives restarts and is
+        the recommended production default.
+
+        Plan: docs/plans/2026-08-29-pgvector-default.md Phase 3.
+
     Embedding dim is configurable via the ``embedding_dim`` constructor
     argument; ``None`` resolves via
     :func:`akosha.processing.embedding_dim.resolve_embedding_dim` which
