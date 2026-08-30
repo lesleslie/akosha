@@ -157,12 +157,32 @@ class AkoshaApplication:
         # is set. Graceful no-op when init fails or when the feature is
         # disabled in settings — search_all_systems will fall back to an
         # informational "no rows indexed yet" response.
+        #
+        # HotStore schema dim is baked into CREATE TABLE at __init__ time,
+        # so the embedding backend must initialise first; otherwise the
+        # schema is fixed at the mock-default 384 and any non-mock
+        # backend silently fails on insert. The oneiric shim's
+        # ``initialize()`` is idempotent — calling it twice is a no-op.
+        from akosha.processing.embedding_dim import resolve_embedding_dim
+        from akosha.processing.embeddings import get_embedding_service
+
         try:
-            self.hot_store = create_hot_store()
+            await get_embedding_service().initialize()
+        except Exception as exc:
+            logger.warning(
+                "Embedding service init failed (%s); HotStore will fall back to default dim",
+                exc,
+            )
+
+        try:
+            resolved_dim = resolve_embedding_dim(get_embedding_service())
+            self.hot_store = create_hot_store(embedding_dim=resolved_dim)
             await self.hot_store.initialize()
             logger.info(
-                "HotStore initialized for in-memory websocket invocation search (%s)",
+                "HotStore initialized for in-memory websocket invocation search "
+                "(%s, dim=%d)",
                 type(self.hot_store).__name__,
+                resolved_dim,
             )
         except Exception as exc:
             logger.warning(
