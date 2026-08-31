@@ -12,7 +12,7 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-import httpx
+import httpx2 as httpx
 
 if TYPE_CHECKING:
     from akosha.storage.hot_store import HotStore

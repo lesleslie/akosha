@@ -231,7 +231,7 @@ class TestDiscoverCodeGraphs:
 
     @pytest.mark.asyncio
     async def test_http_error(self):
-        import httpx
+        import httpx2 as httpx
 
         from akosha.ingestion.code_graph_ingester import CodeGraphIngester
 
@@ -342,7 +342,7 @@ class TestIngestCodeGraph:
 
     @pytest.mark.asyncio
     async def test_http_error(self):
-        import httpx
+        import httpx2 as httpx
 
         from akosha.ingestion.code_graph_ingester import CodeGraphIngester
 

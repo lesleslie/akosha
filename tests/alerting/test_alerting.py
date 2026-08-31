@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 from akosha.alerting import (
@@ -390,7 +390,7 @@ class TestAlertManager:
         mock_client = _make_async_httpx_mock()
         mock_client.post = AsyncMock(return_value=mock_response)
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("httpx2.AsyncClient", return_value=mock_client):
             result = await manager.send_alert(alert)
 
         assert result["status"] == "complete"
@@ -411,7 +411,7 @@ class TestAlertManager:
         mock_client = _make_async_httpx_mock()
         mock_client.post.side_effect = httpx.HTTPError("Connection failed")
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("httpx2.AsyncClient", return_value=mock_client):
             result = await manager.send_alert(alert)
 
         assert result["status"] == "complete"
@@ -442,7 +442,7 @@ class TestAlertManager:
         mock_client = _make_async_httpx_mock()
         mock_client.post = AsyncMock(return_value=mock_response)
 
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch("httpx2.AsyncClient", return_value=mock_client):
             result = await manager.check_and_alert(
                 AlertType.HIGH_LATENCY,
                 1500.0,  # Above threshold
@@ -529,7 +529,7 @@ class TestConvenienceFunctions:
                 AlertType.HIGH_LATENCY, "http://example.com/webhook"
             )
 
-            with patch("httpx.AsyncClient", return_value=mock_client):
+            with patch("httpx2.AsyncClient", return_value=mock_client):
                 result = await send_alert(
                     alert_type=AlertType.HIGH_LATENCY,
                     message="Test alert",
@@ -561,7 +561,7 @@ class TestConvenienceFunctions:
             mock_client = _make_async_httpx_mock()
             mock_client.post = AsyncMock(return_value=mock_response)
 
-            with patch("httpx.AsyncClient", return_value=mock_client):
+            with patch("httpx2.AsyncClient", return_value=mock_client):
                 result = await check_metric_and_alert(
                     alert_type=AlertType.HIGH_LATENCY,
                     value=1500.0,

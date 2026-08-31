@@ -23,7 +23,7 @@ import logging
 import os
 from typing import Any
 
-import httpx
+import httpx2 as httpx
 
 logger = logging.getLogger(__name__)
 

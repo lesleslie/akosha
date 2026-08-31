@@ -4,12 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "akosha"
-version = "0.14.1"
+version = "0.14.2"
 description = "Universal Memory Aggregation System - Cross-system intelligence for Session-Buddy"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.115.0",
+    "httpx2>=0.28.1",
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "duckdb>=0.10.0",

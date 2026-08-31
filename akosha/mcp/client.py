@@ -186,7 +186,7 @@ class DharaServiceRegistryClient:
         status: str | None = None,
     ) -> list[dict[str, Any]]:
         """Call Dhara's list_services tool via HTTP POST."""
-        import httpx
+        import httpx2 as httpx
 
         payload: dict[str, Any] = {"name": "list_services", "arguments": {}}
         args = payload["arguments"]  # type: ignore[assignment]
@@ -218,7 +218,7 @@ class DharaServiceRegistryClient:
 
     async def get(self, key: str) -> dict[str, Any] | None:
         """Get a single key/value record from Dhara KV store."""
-        import httpx
+        import httpx2 as httpx
 
         payload: dict[str, Any] = {"name": "get", "arguments": {"key": key}}
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -248,7 +248,7 @@ class DharaServiceRegistryClient:
         Phase 0 spec: component endpoints are stored as KV records under
         the 'component_endpoint/' prefix, keyed as 'component_endpoint/{name}'.
         """
-        import httpx
+        import httpx2 as httpx
 
         payload: dict[str, Any] = {"name": "list_prefix", "arguments": {"prefix": prefix}}
         async with httpx.AsyncClient(timeout=self.timeout) as client:

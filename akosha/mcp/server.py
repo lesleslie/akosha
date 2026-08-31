@@ -77,7 +77,7 @@ async def _register_to_dhara_once(dhara_url: str, key: str, mcp_url: str) -> str
         ``"give_up"`` for non-transient errors (HTTP 4xx/5xx) where retrying
         would just waste startup time.
     """
-    import httpx
+    import httpx2 as httpx
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:

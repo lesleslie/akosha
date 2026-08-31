@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 from akosha.storage.dhara_http_client import DharaHttpClient

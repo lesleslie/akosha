@@ -433,7 +433,7 @@ class TestDharaHttpClientIntegration:
         rather than short-circuiting on ``dhara_handle=None``. This test
         proves the wiring end-to-end without standing up a real Dhara.
         """
-        import httpx
+        import httpx2 as httpx
 
         from akosha.storage.dhara_http_client import DharaHttpClient
 

@@ -20,7 +20,8 @@ from enum import StrEnum
 from logging import INFO as LOG_LEVEL
 from typing import Any
 
-import httpx
+import httpx2 as httpx
+from oneiric.adapters.http import HTTPClientAdapter, HTTPClientSettings
 
 
 def get_logger(name: str = __name__) -> logging.Logger:
@@ -299,7 +300,28 @@ class AlertManager:
         self.deduplicator = AlertDeduplicator()
         self.detector = PatternDetector()
         self._webhook_timeout = 10.0  # seconds
+        self._http: HTTPClientAdapter | None = None
         logger.info("AlertManager initialized")
+
+    async def _get_http(self) -> HTTPClientAdapter:
+        """Lazy-init the shared oneiric HTTPClientAdapter.
+
+        Routing alerting through ``HTTPClientAdapter`` gives us free
+        observability spans and trace-context propagation on every webhook
+        POST, instead of paying for ``httpx.AsyncClient`` lifecycle in
+        every ``send_alert`` call.
+        """
+        if self._http is None:
+            adapter = HTTPClientAdapter(HTTPClientSettings(timeout=self._webhook_timeout))
+            await adapter.init()
+            self._http = adapter
+        return self._http
+
+    async def close(self) -> None:
+        """Release the shared ``HTTPClientAdapter`` (idempotent)."""
+        if self._http is not None:
+            await self._http.cleanup()
+            self._http = None
 
     def register_webhook(self, alert_type: AlertType, webhook_url: str) -> None:
         """Register webhook URL for alerts.
@@ -341,35 +363,35 @@ class AlertManager:
 
         # Send to all webhooks
         results: list[dict[str, Any]] = []
-        async with httpx.AsyncClient(timeout=self._webhook_timeout) as client:
-            for url in webhook_urls:
-                try:
-                    response = await client.post(
-                        url,
-                        json=alert.to_dict(),
-                        timeout=5.0,
-                    )
-                    response.raise_for_status()
+        adapter = await self._get_http()
+        for url in webhook_urls:
+            try:
+                response = await adapter.post(
+                    url,
+                    json=alert.to_dict(),
+                    timeout=5.0,
+                )
+                response.raise_for_status()
 
-                    results.append(
-                        {
-                            "url": url,
-                            "status": "sent",
-                            "status_code": response.status_code,
-                        }
-                    )
+                results.append(
+                    {
+                        "url": url,
+                        "status": "sent",
+                        "status_code": response.status_code,
+                    }
+                )
 
-                    logger.info(f"Alert {alert.id} sent to {url}")
+                logger.info(f"Alert {alert.id} sent to {url}")
 
-                except httpx.HTTPError as e:
-                    logger.error(f"Failed to send alert to {url}: {e}")
-                    results.append(
-                        {
-                            "url": url,
-                            "status": "failed",
-                            "error": str(e),
-                        }
-                    )
+            except httpx.HTTPError as e:
+                logger.error(f"Failed to send alert to {url}: {e}")
+                results.append(
+                    {
+                        "url": url,
+                        "status": "failed",
+                        "error": str(e),
+                    }
+                )
 
         return {
             "status": "complete",

@@ -88,7 +88,7 @@ class TestRegisterToDharaOnce:
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
 
-        with patch("httpx.AsyncClient") as mock_client_cls:
+        with patch("httpx2.AsyncClient") as mock_client_cls:
             mock_instance = MagicMock()
             mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
             mock_instance.__aexit__ = AsyncMock(return_value=None)
@@ -116,11 +116,11 @@ class TestRegisterToDharaOnce:
     @pytest.mark.asyncio
     async def test_returns_false_on_http_error(self, patched_server_module: dict[str, Any]) -> None:
         """Should return False when Dhara returns an HTTP error."""
-        import httpx
+        import httpx2 as httpx
 
         _register_to_dhara_once = patched_server_module["_register_to_dhara_once"]
 
-        with patch("httpx.AsyncClient") as mock_client_cls:
+        with patch("httpx2.AsyncClient") as mock_client_cls:
             mock_instance = MagicMock()
             mock_instance.__aenter__ = AsyncMock(side_effect=httpx.HTTPError("connection refused"))
             mock_client_cls.return_value = mock_instance
@@ -138,7 +138,7 @@ class TestRegisterToDharaOnce:
         """Should return False on any other exception."""
         _register_to_dhara_once = patched_server_module["_register_to_dhara_once"]
 
-        with patch("httpx.AsyncClient") as mock_client_cls:
+        with patch("httpx2.AsyncClient") as mock_client_cls:
             mock_instance = MagicMock()
             mock_instance.__aenter__ = AsyncMock(side_effect=OSError("unexpected"))
             mock_client_cls.return_value = mock_instance

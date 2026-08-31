@@ -182,7 +182,7 @@ class FitnessAnalyzer:
 
     async def _write_to_dhara(self, key: str, value: dict[str, Any]) -> None:
         """Write a fitness signal to Dhara via MCP HTTP."""
-        import httpx
+        import httpx2 as httpx
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
