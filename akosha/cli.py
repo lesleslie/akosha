@@ -429,7 +429,15 @@ def _start_server(
     logger.info(f"   Mode: {mode_instance.mode_config.description}")
     logger.info(f"   External services required: {mode_instance.requires_external_services}")
 
-    app_instance.run(transport="streamable-http", host=host, port=port, path="/mcp")
+    # Override FastMCP's hardcoded 2s graceful-shutdown timeout so the
+    # lifespan teardown can complete cleanup without being cancelled.
+    app_instance.run(
+        transport="streamable-http",
+        host=host,
+        port=port,
+        path="/mcp",
+        uvicorn_config={"timeout_graceful_shutdown": 30},
+    )
 
 
 @app.command()
