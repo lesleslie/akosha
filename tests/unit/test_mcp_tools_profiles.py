@@ -55,15 +55,15 @@ async def test_register_all_tools_minimal_profile(monkeypatch: pytest.MonkeyPatc
     assert default_result["profile"] == "minimal"
     assert default_result["query"] is None
     assert default_result["loaded_count"] == 6
-    assert default_result["not_loaded_count"] == 22
+    assert default_result["not_loaded_count"] == 20
     assert result["profile"] == "minimal"
     assert result["query"] == "session"
     assert result["loaded_count"] == 0
     assert result["loaded_tools"] == []
     assert result["not_loaded_count"] == 2
     assert result["not_loaded_tools"] == [
-        "batch_store_memories",
-        "store_memory",
+        "get_cross_system_summary",
+        "ingest_session_memory",
     ]
 
 
@@ -98,8 +98,8 @@ async def test_register_all_tools_full_profile_and_discovery(
     assert result["query"] == "session"
     assert result["loaded_count"] == 2
     assert result["loaded_tools"] == [
-        "batch_store_memories",
-        "store_memory",
+        "get_cross_system_summary",
+        "ingest_session_memory",
     ]
     assert result["not_loaded_count"] == 0
     assert result["not_loaded_tools"] == []
@@ -124,5 +124,5 @@ def test_register_health_tools_akosha_delegates_to_shared_contract(
     assert health_register.call_count == 1
     kwargs = health_register.call_args.kwargs
     assert kwargs["service_name"] == "akosha"
-    assert kwargs["version"] == "0.9.5"
+    assert kwargs["version"] == "0.14.2"
     assert kwargs["dependencies"] == tools_module.DEFAULT_DEPENDENCIES

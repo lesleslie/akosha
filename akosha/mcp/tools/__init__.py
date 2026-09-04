@@ -37,7 +37,7 @@ from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
 logger = logging.getLogger(__name__)
 
 SERVICE_NAME = "akosha"
-SERVICE_VERSION = "0.9.5"
+SERVICE_VERSION = "0.14.2"
 SERVICE_START_TIME = time.time()
 
 DEFAULT_DEPENDENCIES: dict[str, DependencyConfig] = {
@@ -170,6 +170,14 @@ def register_all_tools(
             "Registered EventBridge publisher tools (per-call re-read of "
             "AkoshaConfig().eventbridge.enabled)"
         )
+
+    if "register_cross_repo_tools" in allowed:
+        from akosha.mcp.tools.cross_repo_tools import register_cross_repo_tools
+        from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
+
+        cross_repo_registry = FastMCPToolRegistry(app)
+        register_cross_repo_tools(cross_repo_registry)
+        logger.info("Registered cross-repo capability search tools")
 
     # Always register the discovery meta-tool
     _register_discovery_tool(app, profile)

@@ -65,11 +65,19 @@ class TestToolRegistration:
         assert mock_registry.register.call_count > 0
 
     def test_register_akosha_tools_with_none_services(self, mock_registry):
-        """Test registration with None services."""
-        # Should handle None services gracefully
+        """Test registration with None services.
+
+        The current contract is: when a service is None, the corresponding
+        tool group is skipped (logged via ``logger.warning``) and
+        ``registry.register`` is NOT called. Tools cannot function
+        without their backing service, so registering a tool that will
+        error at call-time is worse than skipping it.
+        """
+        # Should handle None services gracefully (no exception).
         register_akosha_tools(mock_registry, None, None, None)
 
-        assert mock_registry.register.call_count > 0
+        # No tools registered because every required service was None.
+        assert mock_registry.register.call_count == 0
 
     def test_register_embedding_tools(self, mock_registry, mock_embedding_service):
         """Test embedding tools registration."""
@@ -145,11 +153,18 @@ class TestServiceAvailability:
             register_embedding_tools(None, mock_embedding_service)
 
     def test_registration_with_invalid_services(self, mock_registry):
-        """Test registration with invalid services."""
-        # Should handle None services
+        """Test registration with invalid services.
+
+        When the embedding service is None the embedding-tools group is
+        skipped (logged via ``logger.warning``) and ``registry.register``
+        is NOT called. The contract is "do not register tools that
+        cannot function".
+        """
+        # Should handle None services gracefully (no exception).
         register_embedding_tools(mock_registry, None)
 
-        assert mock_registry.register.call_count > 0
+        # No registration because the service was None.
+        assert mock_registry.register.call_count == 0
 
 
 class TestToolCategories:

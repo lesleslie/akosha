@@ -49,6 +49,7 @@ _DOC_TOOLS: set[str] = {
     "run_fitness_analysis",
     "get_fitness_analyzer_status",
     "publish_to_eventbridge",
+    "cross_repo_capability_search",
 }
 
 
@@ -98,11 +99,11 @@ def test_full_profile_count_matches_documented_count() -> None:
     registered = {t for tools in REGISTRATION_TOOLS.values() for t in tools}
     documented = _read_readme_tools()
     documented_tools = {name for name in documented if "_" in name}
-    assert len(registered) == 25, (
-        f"Expected 25 FULL-profile tools, found {len(registered)}"
+    assert len(registered) == 26, (
+        f"Expected 26 FULL-profile tools, found {len(registered)}"
     )
-    assert len(documented_tools) == 25, (
-        f"README documents {len(documented_tools)} tools but expected 25"
+    assert len(documented_tools) == 26, (
+        f"README documents {len(documented_tools)} tools but expected 26"
     )
 
 

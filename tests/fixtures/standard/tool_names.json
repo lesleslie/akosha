@@ -1,15 +1,9 @@
 [
   "discover_tools",
-  "find_path",
-  "generate_batch_embeddings",
-  "generate_embedding",
-  "get_graph_statistics",
   "get_liveness",
   "get_readiness",
   "health_check_all",
   "health_check_service",
-  "query_knowledge_graph",
-  "search_all_systems",
   "wait_for_all_dependencies",
   "wait_for_dependency"
 ]

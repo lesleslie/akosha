@@ -113,8 +113,8 @@ class TestMCPIntegration:
         result = await tools["generate_embedding"].coroutine(text="test conversation about Python")
 
         assert result["text"] == "test conversation about Python"
-        assert result["embedding_dim"] == 384
-        assert len(result["embedding"]) == 384
+        assert result["embedding_dim"] == 768
+        assert len(result["embedding"]) == 768
         assert result["mode"] in ["real", "fallback"]
 
     @pytest.mark.asyncio

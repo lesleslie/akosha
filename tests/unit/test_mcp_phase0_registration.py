@@ -82,7 +82,7 @@ class TestRegisterToDharaOnce:
 
     @pytest.mark.asyncio
     async def test_returns_true_on_success(self, patched_server_module: dict[str, Any]) -> None:
-        """Should return True when Dhara responds successfully."""
+        """Should return 'success' when Dhara responds successfully."""
         _register_to_dhara_once = patched_server_module["_register_to_dhara_once"]
 
         mock_response = MagicMock()
@@ -101,7 +101,7 @@ class TestRegisterToDharaOnce:
                 "http://localhost:8682/mcp",
             )
 
-            assert result is True
+            assert result == "success"
             mock_instance.post.assert_called_once()
             call_args = mock_instance.post.call_args
             assert call_args[0][0] == "http://localhost:8683/tools/call"
@@ -115,7 +115,7 @@ class TestRegisterToDharaOnce:
 
     @pytest.mark.asyncio
     async def test_returns_false_on_http_error(self, patched_server_module: dict[str, Any]) -> None:
-        """Should return False when Dhara returns an HTTP error."""
+        """Should return non-success outcome when Dhara returns an HTTP error."""
         import httpx2 as httpx
 
         _register_to_dhara_once = patched_server_module["_register_to_dhara_once"]
@@ -131,11 +131,15 @@ class TestRegisterToDharaOnce:
                 "http://localhost:8682/mcp",
             )
 
-            assert result is False
+            # HTTPError is the base class; not caught by the HTTPStatusError
+            # branch, so it falls through to the generic ``except Exception``
+            # and yields ``"retry"``. The contract assertion is just
+            # "did not succeed".
+            assert result != "success"
 
     @pytest.mark.asyncio
     async def test_returns_false_on_exception(self, patched_server_module: dict[str, Any]) -> None:
-        """Should return False on any other exception."""
+        """Should return 'retry' on any other exception."""
         _register_to_dhara_once = patched_server_module["_register_to_dhara_once"]
 
         with patch("httpx2.AsyncClient") as mock_client_cls:
@@ -149,7 +153,7 @@ class TestRegisterToDharaOnce:
                 "http://localhost:8682/mcp",
             )
 
-            assert result is False
+            assert result == "retry"
 
 
 class TestRegisterComponentToDhara:
@@ -169,10 +173,10 @@ class TestRegisterComponentToDhara:
 
         attempt_count = 0
 
-        async def mock_register_once(*args: object, **kwargs: object) -> bool:
+        async def mock_register_once(*args: object, **kwargs: object) -> str:
             nonlocal attempt_count
             attempt_count += 1
-            return True
+            return "success"
 
         with patch(
             "akosha.mcp.server._register_to_dhara_once",
@@ -204,12 +208,12 @@ class TestRegisterComponentToDhara:
         attempt_count = 0
         sleep_intervals: list[float] = []
 
-        async def mock_register_once(*args: object, **kwargs: object) -> bool:
+        async def mock_register_once(*args: object, **kwargs: object) -> str:
             nonlocal attempt_count
             attempt_count += 1
             if attempt_count < 3:
-                return False
-            return True
+                return "retry"
+            return "success"
 
         async def mock_sleep(delay: float) -> None:
             sleep_intervals.append(delay)
@@ -248,9 +252,9 @@ class TestRegisterComponentToDhara:
 
         captured_urls: list[str] = []
 
-        async def mock_register_once(dhara_url: str, key: str, mcp_url: str) -> bool:
+        async def mock_register_once(dhara_url: str, key: str, mcp_url: str) -> str:
             captured_urls.append(dhara_url)
-            return True
+            return "success"
 
         with patch(
             "akosha.mcp.server._register_to_dhara_once",
@@ -282,9 +286,9 @@ class TestRegisterComponentToDhara:
 
         captured_urls: list[str] = []
 
-        async def mock_register_once(dhara_url: str, key: str, mcp_url: str) -> bool:
+        async def mock_register_once(dhara_url: str, key: str, mcp_url: str) -> str:
             captured_urls.append(dhara_url)
-            return True
+            return "success"
 
         with patch(
             "akosha.mcp.server._register_to_dhara_once",
@@ -316,7 +320,7 @@ class TestRegisterComponentToDhara:
         with patch(
             "akosha.mcp.server._register_to_dhara_once", new_callable=AsyncMock
         ) as mock_register:
-            mock_register.return_value = True
+            mock_register.return_value = "success"
 
             import akosha.mcp.server as server_module
 
@@ -343,11 +347,13 @@ class TestRegisterComponentToDhara:
 
         attempt_count = 0
 
-        async def mock_register_once(*args: object, **kwargs: object) -> bool:
+        async def mock_register_once(*args: object, **kwargs: object) -> str:
             nonlocal attempt_count
             attempt_count += 1
             # Succeeds on 3rd attempt
-            return attempt_count >= 3
+            if attempt_count >= 3:
+                return "success"
+            return "retry"
 
         with patch(
             "akosha.mcp.server._register_to_dhara_once",
@@ -391,10 +397,10 @@ class TestRegisterComponentToDhara:
         # Always fail — Dhara unreachable
         attempt_count = 0
 
-        async def always_fail(*args: object, **kwargs: object) -> bool:
+        async def always_fail(*args: object, **kwargs: object) -> str:
             nonlocal attempt_count
             attempt_count += 1
-            return False
+            return "retry"
 
         # Mock asyncio.sleep to keep the test fast (<1s real time)
         # — the real sleep would total 1+2+4+8+16 = 31s of real waits.

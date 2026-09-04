@@ -17,7 +17,7 @@ class TestServerConstants:
     def test_app_constants(self):
         """Test application constants."""
         assert APP_NAME == "akosha-mcp"
-        assert APP_VERSION == "0.9.5"
+        assert APP_VERSION == "0.14.2"
 
     def test_constants_are_strings(self):
         """Test that constants are proper strings."""

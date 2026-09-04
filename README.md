@@ -8,7 +8,7 @@
 
 Universal memory aggregation and cross-system analytics for the Bodai ecosystem.
 
-**Version:** 0.9.5
+**Version:** 0.14.2
 **Status:** Active pilot deployment for the current phase
 
 ## Bodai Ecosystem Role
@@ -439,6 +439,10 @@ Source of truth: `akosha/mcp/tools/profiles.py:60-95`
 **EventBridge Publisher (1):**
 
 - `publish_to_eventbridge` - Emit analytics events to the Bodai EventBridge
+
+**Cross-Repo Capability Search (1):**
+
+- `cross_repo_capability_search` - Phase 1 cross-repo capability search (Bodai component adapter/tool/error catalog)
 
 ______________________________________________________________________
 

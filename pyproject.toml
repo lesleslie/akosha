@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "akosha"
-version = "0.14.2"
+version = "0.14.3"
 description = "Universal Memory Aggregation System - Cross-system intelligence for Session-Buddy"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -186,6 +186,7 @@ dev = [
     "pyright>=1.1.0",
     "crackerjack>=0.70.0",
     "session-buddy>=0.18.0",
+    "fakeredis>=2.20.0",  # fakeredis.aioredis for tests/unit/ingestion/test_bodai_event_subscriber.py
 ]
 
 # vector-pg group: pgvector backend for HotStore.
