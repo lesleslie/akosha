@@ -470,14 +470,25 @@ def mcp_start(
 
 @app.command()
 def version() -> None:
-    """Show Akosha version information."""
-    try:
-        import importlib.metadata
+    """Show Akosha version information.
 
+    Raises ``typer.BadParameter`` (exit code 2) when the package
+    metadata cannot be located — the operator is running against
+    a broken install and needs the remediation hint, not a
+    silent 'unknown'. Any other exception (e.g. a broken
+    ``importlib.metadata`` backend) propagates so the traceback
+    reaches stderr.
+    """
+    import importlib.metadata
+
+    try:
         ver = importlib.metadata.version("akosha")
-        typer.echo(f"Akosha version: {ver}")
-    except Exception:
-        typer.echo("Akosha version: unknown")
+    except importlib.metadata.PackageNotFoundError as exc:
+        raise typer.BadParameter(
+            "Akosha is not installed; cannot determine version. "
+            "Reinstall with `uv pip install -e .`"
+        ) from exc
+    typer.echo(f"Akosha version: {ver}")
 
 
 @app.command()
