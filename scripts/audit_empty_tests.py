@@ -54,6 +54,26 @@ def _has_assertion_or_raises(func: ast.FunctionDef) -> bool:
     for stmt in ast.walk(func):
         if isinstance(stmt, ast.Assert):
             return True
+        # ``with pytest.raises(...):`` — the context manager wraps a
+        # call to pytest.raises which IS an assertion (it expects the
+        # block to raise).
+        if isinstance(stmt, ast.With):
+            for item in stmt.items:
+                call = item.context_expr
+                if isinstance(call, ast.Call):
+                    func_node = call.func
+                    if isinstance(func_node, ast.Attribute) and func_node.attr in {
+                        "raises",
+                        "fail",
+                        "fail_regex",
+                    }:
+                        return True
+                    if isinstance(func_node, ast.Name) and func_node.id in {
+                        "raises",
+                        "fail",
+                        "fail_regex",
+                    }:
+                        return True
         if isinstance(stmt, ast.Raise) and isinstance(stmt.exc, ast.Call):
             func_node = stmt.exc.func
             if isinstance(func_node, ast.Attribute) and func_node.attr in {
