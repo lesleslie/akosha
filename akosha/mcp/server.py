@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import os
 from contextlib import asynccontextmanager, suppress
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Final, cast
 
 from fastmcp import FastMCP
 
@@ -48,6 +48,37 @@ APP_NAME: Final = "akosha-mcp"
 APP_VERSION: Final = "0.14.2"
 
 DHARA_DEFAULT_URL = "http://localhost:8683"
+
+# ---------------------------------------------------------------------------
+# /health probe registration
+# ---------------------------------------------------------------------------
+# Per the MCP backend wiring discipline (see
+# mahavishnu/.claude/decisions/mcp-backend-wiring-discipline.md), every
+# registered tool's data feed must expose ``feed.entities_count``,
+# ``feed.last_updated_timestamp``, ``feed.errors_total``, ``feed.cycles_total``,
+# and ``/health`` must aggregate those feeds and return 503 when any is not
+# healthy. The lifespan below registers a default probe at the end of
+# initialization; tests (and any custom integrations) can swap the probe out
+# via :func:`set_health_probe`.
+_health_probe_fn: Callable[[], Awaitable[dict[str, dict[str, Any]]]] | None = None
+
+
+def set_health_probe(
+    probe: Callable[[], Awaitable[dict[str, dict[str, Any]]]] | None,
+) -> None:
+    """Register (or clear) the probe that ``/health`` will execute.
+
+    The probe returns ``{"feed_name": {"ok": True}}`` (or ``{"ok": False,
+    "error": "..."}``). When unset, ``/health`` returns 503 — fail-loud
+    default so a misconfigured server can't quietly report healthy.
+    """
+    global _health_probe_fn
+    _health_probe_fn = probe
+
+
+def get_health_probe() -> Callable[[], Awaitable[dict[str, dict[str, Any]]]] | None:
+    """Return the currently-registered health probe (test helper)."""
+    return _health_probe_fn
 
 
 def _get_mcp_url() -> str:
@@ -379,6 +410,49 @@ def create_app(mode: Any | None = None) -> FastMCP:
         mcp_url = _get_mcp_url()
         await _register_component_to_dhara(mcp_url)
 
+        # Register a default health probe that surfaces the state of every
+        # in-process data feed. Per mcp-backend-wiring-discipline.md, /health
+        # returns 503 unless every feed reports ``ok=True``.
+        async def _default_health_probe() -> dict[str, dict[str, Any]]:
+            """Probe every data feed the MCP server depends on."""
+            checks: dict[str, dict[str, Any]] = {}
+
+            # Hot store: ping if available, otherwise just check it exists.
+            if hot_store is None:
+                checks["hot_store"] = {"ok": False, "error": "not initialized"}
+            else:
+                ping = getattr(hot_store, "ping", None)
+                if callable(ping):
+                    try:
+                        await ping()
+                        checks["hot_store"] = {"ok": True}
+                    except Exception as exc:
+                        checks["hot_store"] = {"ok": False, "error": str(exc)}
+                else:
+                    checks["hot_store"] = {"ok": True}
+
+            # Embedding service: report fallback-mode as a soft warning but
+            # still healthy (the server works without real embeddings).
+            if embedding_service is None:
+                checks["embeddings"] = {"ok": False, "error": "not initialized"}
+            else:
+                is_avail = embedding_service.is_available()
+                checks["embeddings"] = {
+                    "ok": True,
+                    "mode": "real" if is_avail else "fallback",
+                }
+
+            # Cold storage: optional; ``None`` means the mode disabled it.
+            checks["cold_storage"] = (
+                {"ok": True}
+                if cold_storage is not None
+                else {"ok": True, "note": "disabled in current mode"}
+            )
+
+            return checks
+
+        set_health_probe(_default_health_probe)
+
         yield {
             "akosha_ready": True,
             "embedding_service": embedding_service,
@@ -416,13 +490,47 @@ def create_app(mode: Any | None = None) -> FastMCP:
         lifespan=lifespan,
     )
 
-    # HTTP health endpoint for Claude Code compatibility
+    # HTTP health endpoint for Claude Code compatibility.
+    # Aggregates per-feed state via the registered probe; returns 503 when
+    # any feed is degraded or no probe is registered (fail-loud default).
     @app.custom_route("/health", methods=["GET"])
     async def health_check(request: Any) -> Any:  # noqa: ARG001
-        """HTTP health check endpoint for Claude Code `mcp list` compatibility."""
+        """HTTP readiness check — 200 only when all data feeds are healthy."""
         from starlette.responses import JSONResponse
 
-        return JSONResponse({"status": "ok", "service": "akosha", "version": APP_VERSION})
+        if _health_probe_fn is None:
+            body = {
+                "status": "degraded",
+                "service": APP_NAME,
+                "version": APP_VERSION,
+                "checks": {
+                    "probe": {
+                        "ok": False,
+                        "error": "no health probe registered (lifespan not run?)",
+                    }
+                },
+            }
+            return JSONResponse(body, status_code=503)
+
+        try:
+            checks = await _health_probe_fn()
+        except Exception as exc:  # probe raised — surface as degraded
+            body = {
+                "status": "degraded",
+                "service": APP_NAME,
+                "version": APP_VERSION,
+                "checks": {"probe": {"ok": False, "error": str(exc)}},
+            }
+            return JSONResponse(body, status_code=503)
+
+        all_ok = all(bool(c.get("ok")) for c in checks.values())
+        body = {
+            "status": "ok" if all_ok else "degraded",
+            "service": APP_NAME,
+            "version": APP_VERSION,
+            "checks": checks,
+        }
+        return JSONResponse(body, status_code=200 if all_ok else 503)
 
     @app.custom_route("/healthz", methods=["GET"])
     async def healthz_check(request: Any) -> Any:  # noqa: ARG001

@@ -62,6 +62,9 @@ def patched_lifespan(monkeypatch: pytest.MonkeyPatch):
     graph_builder = MagicMock(name="graph_builder")
     hot_store = MagicMock()
     hot_store.initialize = AsyncMock()
+    # The default health probe in akosha.mcp.server awaits ``hot_store.ping()``
+    # when present. Mark it async so the probe treats it as healthy.
+    hot_store.ping = AsyncMock()
 
     cache_client = object()
     cold_storage = object()
@@ -138,11 +141,16 @@ async def test_create_app_standard_mode_lifespan(
 
     health_response = await app.routes["/health"]["handler"](None)
     healthz_response = await app.routes["/healthz"]["handler"](None)
-    assert json.loads(health_response.body) == {
-        "status": "ok",
-        "service": "akosha",
-        "version": APP_VERSION,
-    }
+    # Pre-lifespan: no probe registered → /health must be 503 with explicit
+    # reason (fail-loud default per mcp-backend-wiring-discipline). This is
+    # exactly the audit C2 failure mode the discipline was written to catch.
+    pre_health_body = json.loads(health_response.body)
+    assert pre_health_body["status"] == "degraded"
+    assert pre_health_body["service"] == APP_NAME
+    assert pre_health_body["version"] == APP_VERSION
+    assert pre_health_body["checks"]["probe"]["ok"] is False
+    assert "no health probe registered" in pre_health_body["checks"]["probe"]["error"]
+    # /healthz is process-liveness only and always returns 200.
     assert json.loads(healthz_response.body) == {"status": "ok"}
 
     lifespan = app._mcp_server.lifespan
@@ -153,6 +161,16 @@ async def test_create_app_standard_mode_lifespan(
         assert context["analytics_service"] is patched_lifespan["analytics_service"]
         assert context["cache_client"] is None
         assert context["cold_storage"] is None
+
+        # Post-lifespan: the default probe is registered. /health now reports
+        # the real feed state — embedding_service.is_available() is True
+        # because the lifespan initialized it.
+        post_health_response = await app.routes["/health"]["handler"](None)
+        post_health_body = json.loads(post_health_response.body)
+        assert post_health_body["status"] == "ok"
+        assert "hot_store" in post_health_body["checks"]
+        assert "embeddings" in post_health_body["checks"]
+        assert post_health_body["checks"]["embeddings"]["ok"] is True
 
     patched_lifespan["embedding_service"].initialize.assert_awaited_once()
     patched_lifespan["hot_store"].initialize.assert_awaited_once()
