@@ -126,19 +126,21 @@ class AkoshaShell(AdminShell):
             limit: Maximum results to return
 
         Returns:
-            Aggregation results with metadata
+            ``status="stub"`` envelope with feature-tracking pointer until
+            Wave 5 wires the data feeds.
         """
         logger.info(f"Aggregating data: query={query}, filters={filters}, limit={limit}")
 
-        # TODO: Implement actual aggregation logic
         return {
-            "status": "success",
+            "status": "stub",
+            "command": "aggregate",
+            "message": (
+                "Not yet implemented; tracked in "
+                "docs/feature-tracking/2026-09-05-akosha-hardening.md"
+            ),
             "query": query,
             "filters": filters,
             "limit": limit,
-            "results": [],
-            "count": 0,
-            "message": "Aggregation endpoint - implement distributed query logic",
         }
 
     async def _search(
@@ -155,19 +157,21 @@ class AkoshaShell(AdminShell):
             limit: Maximum results to return
 
         Returns:
-            Search results with relevance scores
+            ``status="stub"`` envelope with feature-tracking pointer until
+            Wave 5 wires the data feeds.
         """
         logger.info(f"Searching memory: query={query}, index={index}, limit={limit}")
 
-        # TODO: Implement actual search logic
         return {
-            "status": "success",
+            "status": "stub",
+            "command": "search",
+            "message": (
+                "Not yet implemented; tracked in "
+                "docs/feature-tracking/2026-09-05-akosha-hardening.md"
+            ),
             "query": query,
             "index": index,
             "limit": limit,
-            "results": [],
-            "count": 0,
-            "message": "Search endpoint - implement vector similarity search",
         }
 
     async def _detect(
@@ -184,19 +188,21 @@ class AkoshaShell(AdminShell):
             window: Time window in seconds
 
         Returns:
-            Anomaly detection results
+            ``status="stub"`` envelope with feature-tracking pointer until
+            Wave 5 wires the data feeds.
         """
         logger.info(f"Detecting anomalies: metric={metric}, threshold={threshold}, window={window}")
 
-        # TODO: Implement actual anomaly detection
         return {
-            "status": "success",
+            "status": "stub",
+            "command": "detect",
+            "message": (
+                "Not yet implemented; tracked in "
+                "docs/feature-tracking/2026-09-05-akosha-hardening.md"
+            ),
             "metric": metric,
             "threshold": threshold,
             "window": window,
-            "anomalies": [],
-            "count": 0,
-            "message": "Anomaly detection endpoint - implement ML-based detection",
         }
 
     async def _graph(
@@ -213,21 +219,23 @@ class AkoshaShell(AdminShell):
             depth: Maximum traversal depth
 
         Returns:
-            Knowledge graph query results
+            ``status="stub"`` envelope with feature-tracking pointer until
+            Wave 5 wires the data feeds.
         """
         logger.info(
             f"Querying knowledge graph: query={query}, node_type={node_type}, depth={depth}"
         )
 
-        # TODO: Implement actual graph queries
         return {
-            "status": "success",
+            "status": "stub",
+            "command": "graph",
+            "message": (
+                "Not yet implemented; tracked in "
+                "docs/feature-tracking/2026-09-05-akosha-hardening.md"
+            ),
             "query": query,
             "node_type": node_type,
             "depth": depth,
-            "nodes": [],
-            "edges": [],
-            "message": "Graph query endpoint - implement graph traversal",
         }
 
     async def _trends(
@@ -244,20 +252,23 @@ class AkoshaShell(AdminShell):
             granularity: Data granularity in seconds
 
         Returns:
-            Trend analysis results
+            ``status="stub"`` envelope with feature-tracking pointer until
+            Wave 5 wires the data feeds.
         """
         logger.info(
             f"Analyzing trends: metric={metric}, window={window}, granularity={granularity}"
         )
 
-        # TODO: Implement actual trend analysis
         return {
-            "status": "success",
+            "status": "stub",
+            "command": "trends",
+            "message": (
+                "Not yet implemented; tracked in "
+                "docs/feature-tracking/2026-09-05-akosha-hardening.md"
+            ),
             "metric": metric,
             "window": window,
             "granularity": granularity,
-            "trends": [],
-            "message": "Trend analysis endpoint - implement time-series analysis",
         }
 
     def _get_banner(self) -> str:
