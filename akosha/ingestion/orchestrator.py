@@ -69,16 +69,47 @@ class BootstrapOrchestrator:
         return True
 
     async def report_health(self) -> dict[str, Any]:
-        """Report health status.
+        """Active health probe — pings the injected mahavishnu client.
 
-        Returns:
-            Dict with: status, fallback_mode, last_mahavishnu_contact
+        Returns a dict with:
+        - ``status``: "normal" | "fallback" | "degraded"
+            (degraded = ping attempted but failed)
+        - ``fallback_mode``: bool, mirrors self.fallback_mode
+        - ``last_mahavishnu_contact``: ISO timestamp of the most recent
+            *self-attested* heartbeat (legacy field; ``last_actual_ping``
+            is the new ground truth)
+        - ``last_actual_ping``: ISO timestamp of the most recent
+            successful ping, or ``None`` if no client is configured
+            or the last ping failed
+        - ``ping_result``: dict from the ping call (when successful)
+        - ``ping_error``: error string (when ping failed)
+        - ``timestamp``: ISO timestamp of this ``report_health`` call
         """
-        status = "fallback" if self.fallback_mode else "normal"
-
-        return {
-            "status": status,
+        result: dict[str, Any] = {
+            "status": "fallback" if self.fallback_mode else "normal",
             "fallback_mode": self.fallback_mode,
             "last_mahavishnu_contact": self.last_heartbeat.isoformat(),
+            "last_actual_ping": None,
             "timestamp": datetime.now(UTC).isoformat(),
         }
+
+        client = self.mahavishnu_client
+        ping = getattr(client, "ping", None) if client is not None else None
+        if not callable(ping):
+            return result
+
+        try:
+            ping_result = await ping()
+        except Exception as exc:
+            # Audit M3: surface the failure as status="degraded".
+            # KeyboardInterrupt and other BaseException subclasses
+            # are NOT caught here (Exception, not BaseException).
+            result["status"] = "degraded"
+            result["ping_error"] = str(exc)
+            return result
+
+        result["last_actual_ping"] = datetime.now(UTC).isoformat()
+        result["ping_result"] = ping_result
+        if result["status"] == "fallback":
+            result["status"] = "fallback"  # already correct
+        return result
