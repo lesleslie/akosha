@@ -264,45 +264,47 @@ async def _compute_graph_similarity(
 ) -> float:
     """Compute structural similarity between two code graphs.
 
+    Empty graphs (no nodes) → ``0.0`` (legitimate "no overlap").
+    Every other failure (``None`` graph, malformed input that the
+    dict-protocol can't handle) **propagates** to the caller — audit
+    H1 found that a bare ``except Exception: return 0.0`` was masking
+    refactor-cluster signals as fake-zero similarity.
+
     Args:
         graph1: First code graph data
         graph2: Second code graph data
 
     Returns:
-        Similarity score between 0 and 1
+        Similarity score between 0 and 1.
     """
-    try:
-        # Extract node types
-        nodes1 = graph1.get("nodes", {})
-        nodes2 = graph2.get("nodes", {})
+    # Extract node types
+    nodes1 = graph1.get("nodes", {})
+    nodes2 = graph2.get("nodes", {})
 
-        # Count node types
-        types1: dict[str, int] = {}
-        for node in nodes1.values():
-            if isinstance(node, dict):
-                node_type = node.get("type", "unknown")
-                types1[node_type] = types1.get(node_type, 0) + 1
+    # Count node types
+    types1: dict[str, int] = {}
+    for node in nodes1.values():
+        if isinstance(node, dict):
+            node_type = node.get("type", "unknown")
+            types1[node_type] = types1.get(node_type, 0) + 1
 
-        types2: dict[str, int] = {}
-        for node in nodes2.values():
-            if isinstance(node, dict):
-                node_type = node.get("type", "unknown")
-                types2[node_type] = types2.get(node_type, 0) + 1
+    types2: dict[str, int] = {}
+    for node in nodes2.values():
+        if isinstance(node, dict):
+            node_type = node.get("type", "unknown")
+            types2[node_type] = types2.get(node_type, 0) + 1
 
-        if not types1 or not types2:
-            return 0.0
-
-        # Compute cosine similarity of type distributions
-        all_types = set(types1.keys()) | set(types2.keys())
-
-        dot_product = sum(types1.get(t, 0) * types2.get(t, 0) for t in all_types)
-        norm1 = sum(v**2 for v in types1.values()) ** 0.5
-        norm2 = sum(v**2 for v in types2.values()) ** 0.5
-
-        if 0.0 in (norm1, norm2):
-            return 0.0
-
-        return float(dot_product / (norm1 * norm2))
-
-    except Exception:
+    if not types1 or not types2:
         return 0.0
+
+    # Compute cosine similarity of type distributions
+    all_types = set(types1.keys()) | set(types2.keys())
+
+    dot_product = sum(types1.get(t, 0) * types2.get(t, 0) for t in all_types)
+    norm1 = sum(v**2 for v in types1.values()) ** 0.5
+    norm2 = sum(v**2 for v in types2.values()) ** 0.5
+
+    if 0.0 in (norm1, norm2):
+        return 0.0
+
+    return float(dot_product / (norm1 * norm2))

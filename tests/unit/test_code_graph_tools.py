@@ -85,10 +85,42 @@ class TestComputeGraphSimilarity:
         assert result == 0.0
 
     @pytest.mark.asyncio
-    async def test_exception_returns_zero(self):
+    async def test_exception_propagates_when_graph_is_none(self):
+        """audit H1: ``None`` graph is a programmer error — must surface, not zero."""
         from akosha.mcp.tools.code_graph_tools import _compute_graph_similarity
 
-        result = await _compute_graph_similarity(None, {"nodes": {}})
+        with pytest.raises((AttributeError, TypeError)):
+            await _compute_graph_similarity(None, {"nodes": {}})
+
+    @pytest.mark.asyncio
+    async def test_exception_propagates_when_internal_helper_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """audit H1: bare except was hiding every error path as 0.0.
+
+        We patch ``dict.get`` on the test graph so the internal loop
+        raises — the helper itself has no internal call-out we could
+        patch (it's all inlined dict ops), so this is the cleanest way
+        to force a mid-function failure.
+        """
+        from akosha.mcp.tools.code_graph_tools import _compute_graph_similarity
+
+        class ExplodingDict(dict):
+            def get(self, *a: object, **kw: object) -> object:
+                raise RuntimeError("boom")
+
+        graph1 = ExplodingDict({"nodes": {"n1": {"type": "Foo"}}})
+        graph2 = {"nodes": {"n1": {"type": "Bar"}}}
+        # The first ``graph1.get`` raises — verify it propagates.
+        with pytest.raises(RuntimeError, match="boom"):
+            await _compute_graph_similarity(graph1, graph2)  # type: ignore[arg-type]
+
+    @pytest.mark.asyncio
+    async def test_similarity_zero_on_both_empty(self):
+        """The only path that legitimately returns 0.0 is empty graphs."""
+        from akosha.mcp.tools.code_graph_tools import _compute_graph_similarity
+
+        result = await _compute_graph_similarity({"nodes": {}}, {"nodes": {}})
         assert result == 0.0
 
     @pytest.mark.asyncio
