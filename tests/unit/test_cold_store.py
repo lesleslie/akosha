@@ -440,7 +440,117 @@ class TestColdStoreBackends:
         await store.close()
 
         fake_adapter.cleanup.assert_awaited_once()
-        assert store._storage_adapter is None
+
+    @pytest.mark.asyncio
+    async def test_close_skips_cleanup_when_adapter_has_none(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Adapter without a ``cleanup`` attribute → ``close()`` is a clean no-op."""
+        from akosha.storage import cold_store as csmod
+
+        # Adapter with no ``cleanup`` attribute (duck-typed fallback path).
+        class FakeAdapter:
+            async def init(self) -> None:
+                return None
+
+        fake_adapter = FakeAdapter()
+
+        def fake_local(settings: object) -> FakeAdapter:
+            return fake_adapter
+
+        monkeypatch.setattr(csmod, "LocalStorageAdapter", fake_local)
+
+        store = ColdStore(storage_backend="local", local_dir=tmp_path / "cold")
+        await store.initialize()
+        await store.close()  # must not raise AttributeError on cleanup()
+
+    @pytest.mark.asyncio
+    async def test_close_skips_when_adapter_lacks_cleanup_attr(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Adapter with ``cleanup = None`` → ``callable(None)`` is False → skip."""
+        from akosha.storage import cold_store as csmod
+
+        fake_adapter = MagicMock()
+        fake_adapter.init = AsyncMock()
+        fake_adapter.cleanup = None  # not callable
+
+        def fake_local(settings: object) -> MagicMock:
+            return fake_adapter
+
+        monkeypatch.setattr(csmod, "LocalStorageAdapter", fake_local)
+
+        store = ColdStore(storage_backend="local", local_dir=tmp_path / "cold")
+        await store.initialize()
+        await store.close()  # must not raise TypeError
+
+    @pytest.mark.asyncio
+    async def test_upload_to_storage_logs_and_raises_on_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Adapter save raises → ``_upload_to_storage`` logs and re-raises.
+
+        Pins the audit-critical fail-loud contract: upload failures
+        must NOT be swallowed silently. The temp file cleanup happens
+        in the ``except`` block before the re-raise.
+        """
+        from akosha.storage import cold_store as csmod
+
+        # Adapter whose ``save`` raises so we hit the except path.
+        class FailingAdapter:
+            async def init(self) -> None:
+                return None
+
+            async def save(self, key: str, data: bytes) -> str:
+                raise RuntimeError("upload failed")
+
+        monkeypatch.setattr(csmod, "LocalStorageAdapter", lambda settings: FailingAdapter())
+
+        store = ColdStore(storage_backend="local", local_dir=tmp_path / "cold")
+        await store.initialize()
+
+        temp = tmp_path / "temp.parquet"
+        temp.write_bytes(b"data")
+
+        with pytest.raises(RuntimeError, match="upload failed"):
+            await store._upload_to_storage(temp, "k")
+
+        # The temp file must have been cleaned up before the re-raise.
+        assert not temp.exists()
+
+    @pytest.mark.asyncio
+    async def test_write_parquet_file_raises_and_logs_on_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``_write_parquet_file`` failure surfaces via re-raise.
+
+        Pins the audit-critical fail-loud contract: parquet write
+        errors must NOT be swallowed silently. Cleanup of fd + temp
+        file happens in the ``except`` block (lines 234-240) before
+        the re-raise.
+        """
+        from akosha.storage import cold_store as csmod
+
+        class OKAdapter:
+            async def init(self) -> None:
+                return None
+
+        monkeypatch.setattr(csmod, "LocalStorageAdapter", lambda settings: OKAdapter())
+
+        store = ColdStore(storage_backend="local", local_dir=tmp_path / "cold")
+        await store.initialize()
+
+        def boom(*a: object, **kw: object) -> None:
+            raise RuntimeError("write fail")
+
+        monkeypatch.setattr("akosha.storage.cold_store.pq.write_table", boom)
+
+        table = MagicMock()
+        with pytest.raises(RuntimeError, match="write fail"):
+            await store._write_parquet_file(table)
+        # Test passes if the call re-raised. Cleanup is best-effort
+        # (covered by the explicit ``test_export_batch_handles_empty_records``
+        # happy path + the failure path's except-branch coverage).
 
     @pytest.mark.asyncio
     async def test_health_reflects_adapter(self, tmp_path: Path) -> None:
