@@ -88,3 +88,55 @@ class TestResolveEmbeddingDimUninitialized:
         )
 
         assert resolve_embedding_dim(service) == 384
+
+
+class TestResolveEmbeddingDimExceptionPaths:
+    """Cover the defensive try/except branches — exercises the missing lines."""
+
+    def test_dimension_method_raises_falls_back_to_attribute(self) -> None:
+        """If ``dimension()`` raises (e.g. backend misconfigured), use ``_backend_dim``."""
+        service = SimpleNamespace(
+            _backend_dim=512,
+            dimension=lambda: (_ for _ in ()).throw(RuntimeError("backend down")),
+            backend_name=lambda: "mock",
+        )
+
+        assert resolve_embedding_dim(service) == 512
+
+    def test_dimension_method_raises_and_no_attribute_falls_back_to_table(self) -> None:
+        """Dimension raises, attribute missing → check backend_name table."""
+        service = SimpleNamespace(
+            dimension=lambda: (_ for _ in ()).throw(ConnectionError("nope")),
+            backend_name=lambda: "minimax",
+        )
+
+        assert resolve_embedding_dim(service) == 1024
+
+    def test_backend_name_raises_falls_back_to_default(self) -> None:
+        """If ``backend_name()`` raises, we still return the 384 fallback."""
+        service = SimpleNamespace(
+            _backend_dim=None,
+            dimension=lambda: None,
+            backend_name=lambda: (_ for _ in ()).throw(RuntimeError("name lookup broke")),
+        )
+
+        assert resolve_embedding_dim(service) == DEFAULT_DIMENSION
+
+    def test_dimension_returns_non_int_falls_back_to_attribute(self) -> None:
+        """``dimension()`` returning a string (or other non-int) → use ``_backend_dim``."""
+        service = SimpleNamespace(
+            _backend_dim=256,
+            dimension=lambda: "not-an-int",
+            backend_name=lambda: "mock",
+        )
+
+        assert resolve_embedding_dim(service) == 256
+
+    def test_dimension_returns_non_int_no_attribute_uses_table(self) -> None:
+        """``dimension()`` returning non-int and no attribute → check backend_name table."""
+        service = SimpleNamespace(
+            dimension=lambda: ["also", "not", "int"],
+            backend_name=lambda: "model2vec",
+        )
+
+        assert resolve_embedding_dim(service) == 256
