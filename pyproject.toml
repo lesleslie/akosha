@@ -98,7 +98,7 @@ addopts = [
     "--cov=akosha",
     "--cov-report=term-missing",
     "--cov-report=html",
-    "--cov-fail-under=87.61723329425557",
+    "--cov-fail-under=89.0",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
