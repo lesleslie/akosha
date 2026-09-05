@@ -37,6 +37,7 @@ dependencies = [
     "pytrendy>=0.2",
     "pandas>=2.0.0",
     "aiohttp>=3.12.14",  # audit C5: imported in akosha/api/middleware.py:116
+    "datasketch>=0.6.0",  # audit H2: MinHash for fuzzy deduplication
     "mcp-common>=0.18.0",  # ToolProfile dispatch (W0 helper)
 ]
 

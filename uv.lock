@@ -135,6 +135,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "circuitbreaker" },
+    { name = "datasketch" },
     { name = "dhara" },
     { name = "duckdb" },
     { name = "fastapi" },
@@ -188,6 +189,7 @@ vector-pg = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.12.14" },
     { name = "circuitbreaker", specifier = ">=2.0.0" },
+    { name = "datasketch", specifier = ">=0.6.0" },
     { name = "dhara", specifier = ">=0.8.2" },
     { name = "duckdb", specifier = ">=0.10.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
@@ -1094,6 +1096,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/e6/4e/9d8d4ac3be590cc6553047bfdd53dc6ed776fe3e180ad77559629b0d1c66/cyclopts-4.24.0.tar.gz", hash = "sha256:9bf9da3f09a0ff74aa6621e1644abfdde3b22158b0c09b5aaa6f82bd0c31c526", size = 200331, upload-time = "2026-09-03T13:02:13.314Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/83/9d/be0c38b950999b73befa59006dacd8f83e5ec5c3d3172b61883beacecc56/cyclopts-4.24.0-py3-none-any.whl", hash = "sha256:b3e44fd301ea498f0b30578d6192a9d9565fd0098e736bd9c8ca0a33f6989659", size = 240417, upload-time = "2026-09-03T13:02:11.96Z" },
+]
+
+[[package]]
+name = "datasketch"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/da/ae/bbcdeab67ebfe27747896618bca0f8113e79d534c5af2b06ce6693c981de/datasketch-2.0.0.tar.gz", hash = "sha256:e0570e170f7e64b8d6fb1cc2e4ce36a9f7036c5100167e50a0770addc50558c2", size = 98666, upload-time = "2026-07-05T06:36:30.681Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/54/df/9e79bf1fb2f660507dbd00d24730d107595a2f599f2524a96344149c95f1/datasketch-2.0.0-py3-none-any.whl", hash = "sha256:aea5ffafcce776e03d085740e78b874e778d779b07ee11ca636ca51b3fef09ed", size = 107247, upload-time = "2026-07-05T06:36:29.222Z" },
 ]
 
 [[package]]
