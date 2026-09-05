@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pyarrow as pa
 import pytest
@@ -15,11 +16,18 @@ class TestSecureTempFileCreation:
     """Test secure temporary file creation in cold store."""
 
     @pytest.fixture
-    async def cold_store(self) -> ColdStore:
-        """Create cold store instance."""
-        store = ColdStore(bucket="test-bucket")
+    async def cold_store(self, tmp_path: Path) -> ColdStore:
+        """Create cold store instance backed by local adapter."""
+        store = ColdStore(
+            bucket="test-bucket",
+            storage_backend="local",
+            local_dir=tmp_path / "cold",
+        )
         await store.initialize()
-        return store
+        try:
+            yield store
+        finally:
+            await store.close()
 
     @pytest.mark.asyncio
     @pytest.mark.security
@@ -229,11 +237,18 @@ class TestSymlinkAttackPrevention:
     """Test that symlink attacks are prevented."""
 
     @pytest.fixture
-    async def cold_store(self) -> ColdStore:
-        """Create cold store instance."""
-        store = ColdStore(bucket="test-bucket")
+    async def cold_store(self, tmp_path: Path) -> ColdStore:
+        """Create cold store instance backed by local adapter."""
+        store = ColdStore(
+            bucket="test-bucket",
+            storage_backend="local",
+            local_dir=tmp_path / "cold",
+        )
         await store.initialize()
-        return store
+        try:
+            yield store
+        finally:
+            await store.close()
 
     @pytest.mark.asyncio
     @pytest.mark.security
