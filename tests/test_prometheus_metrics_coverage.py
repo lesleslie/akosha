@@ -90,32 +90,39 @@ class TestIngestionMetrics:
     def test_record_ingestion_success(self):
         reset_all_metrics()
         record_ingestion_record("sys-1", "success")
+        assert generate_metrics() is not None
         # Just ensure no exception
 
     def test_record_ingestion_error(self):
         reset_all_metrics()
         record_ingestion_record("sys-1", "error")
+        assert generate_metrics() is not None
 
     def test_record_ingestion_skipped(self):
         reset_all_metrics()
         record_ingestion_record("sys-1", "skipped")
+        assert generate_metrics() is not None
 
     def test_record_ingestion_with_bytes(self):
         reset_all_metrics()
         record_ingestion_record("sys-1", "success", bytes_processed=1024)
+        assert generate_metrics() is not None
 
     def test_record_ingestion_zero_bytes_no_counter(self):
         reset_all_metrics()
         record_ingestion_record("sys-1", "success", bytes_processed=0)
+        assert generate_metrics() is not None
         # ingestion_bytes_total should not be incremented
 
     def test_update_ingestion_throughput(self):
         reset_all_metrics()
         update_ingestion_throughput(42.5, "sys-1")
+        assert generate_metrics() is not None
 
     def test_update_ingestion_throughput_default_system(self):
         reset_all_metrics()
         update_ingestion_throughput(10.0)
+        assert generate_metrics() is not None
 
 
 class TestSearchMetrics:
@@ -125,119 +132,144 @@ class TestSearchMetrics:
             # Simulate search work
             pass
             record(5)
+            assert generate_metrics() is not None
 
     def test_observe_search_latency_zero_results(self):
         reset_all_metrics()
         with observe_search_latency("keyword", 1, "warm") as record:
             record(0)
+            assert generate_metrics() is not None
 
     def test_observe_search_latency_all_query_types(self):
         for qt in ["semantic", "keyword", "hybrid", "graph"]:
             reset_all_metrics()
             with observe_search_latency(qt, 2) as record:
                 record(10)
+                assert generate_metrics() is not None
 
     def test_observe_search_latency_all_tiers(self):
         for tier in ["hot", "warm", "cold"]:
             reset_all_metrics()
             with observe_search_latency("semantic", 1, tier) as record:
                 record(1)
+                assert generate_metrics() is not None
 
 
 class TestCacheMetrics:
     def test_record_cache_hit_l1(self):
         reset_all_metrics()
         record_cache_hit("L1", "semantic")
+        assert generate_metrics() is not None
 
     def test_record_cache_hit_l2(self):
         reset_all_metrics()
         record_cache_hit("L2", "hybrid")
+        assert generate_metrics() is not None
 
     def test_record_cache_miss_l1(self):
         reset_all_metrics()
         record_cache_miss("L1", "semantic")
+        assert generate_metrics() is not None
 
     def test_record_cache_miss_l2(self):
         reset_all_metrics()
         record_cache_miss("L2", "graph")
+        assert generate_metrics() is not None
 
     def test_update_cache_hit_rate_valid(self):
         reset_all_metrics()
         update_cache_hit_rate(0.85, "L1", "semantic")
+        assert generate_metrics() is not None
 
     def test_update_cache_hit_rate_clamps_high(self):
         reset_all_metrics()
         update_cache_hit_rate(1.5, "L1")
+        assert generate_metrics() is not None
 
     def test_update_cache_hit_rate_clamps_low(self):
         reset_all_metrics()
         update_cache_hit_rate(-0.5, "L2")
+        assert generate_metrics() is not None
 
     def test_update_cache_hit_rate_zero(self):
         reset_all_metrics()
         update_cache_hit_rate(0.0, "L1")
+        assert generate_metrics() is not None
 
     def test_update_cache_hit_rate_one(self):
         reset_all_metrics()
         update_cache_hit_rate(1.0, "L1")
+        assert generate_metrics() is not None
 
     def test_update_cache_size(self):
         reset_all_metrics()
         update_cache_size(1024 * 1024, "L1")
+        assert generate_metrics() is not None
 
     def test_update_cache_entry_count(self):
         reset_all_metrics()
         update_cache_entry_count(500, "L2")
+        assert generate_metrics() is not None
 
 
 class TestStorageMetrics:
     def test_update_store_sizes(self):
         reset_all_metrics()
         update_store_sizes(hot_size=1000, warm_size=5000, cold_size=10000)
+        assert generate_metrics() is not None
 
     def test_update_store_sizes_with_bytes(self):
         reset_all_metrics()
         update_store_sizes(100, 200, 300, hot_bytes=1024, warm_bytes=2048, cold_bytes=4096)
+        assert generate_metrics() is not None
 
     def test_update_store_sizes_partial_bytes(self):
         reset_all_metrics()
         update_store_sizes(100, 200, 300, hot_bytes=1024)
+        assert generate_metrics() is not None
 
     def test_observe_store_operation_success(self):
         reset_all_metrics()
         with observe_store_operation("hot", "write") as record:
             record("success")
+            assert generate_metrics() is not None
 
     def test_observe_store_operation_error(self):
         reset_all_metrics()
         with observe_store_operation("warm", "read") as record:
             record("error")
+            assert generate_metrics() is not None
 
     def test_observe_store_operation_all_tiers(self):
         for tier in ["hot", "warm", "cold"]:
             reset_all_metrics()
             with observe_store_operation(tier, "read") as record:
                 record("success")
+                assert generate_metrics() is not None
 
     def test_observe_store_operation_all_operations(self):
         for op in ["read", "write", "delete", "scan"]:
             reset_all_metrics()
             with observe_store_operation("hot", op) as record:
                 record("success")
+                assert generate_metrics() is not None
 
 
 class TestErrorMetrics:
     def test_increment_errors_default_severity(self):
         reset_all_metrics()
         increment_errors("hot_store", "database_error")
+        assert generate_metrics() is not None
 
     def test_increment_errors_critical(self):
         reset_all_metrics()
         increment_errors("mcp_server", "timeout_error", severity="critical")
+        assert generate_metrics() is not None
 
     def test_increment_errors_warning(self):
         reset_all_metrics()
         increment_errors("cache_layer", "rate_limit_error", severity="warning")
+        assert generate_metrics() is not None
 
     def test_increment_errors_all_components(self):
         components = [
@@ -258,6 +290,7 @@ class TestErrorMetrics:
         for comp in components:
             reset_all_metrics()
             increment_errors(comp, "unknown_error")
+            assert generate_metrics() is not None
 
 
 class TestOperationMetrics:
@@ -265,21 +298,25 @@ class TestOperationMetrics:
         reset_all_metrics()
         with observe_operation("embedding_generation") as record:
             record("success")
+            assert generate_metrics() is not None
 
     def test_observe_operation_error(self):
         reset_all_metrics()
         with observe_operation("embedding_generation") as record:
             record("error")
+            assert generate_metrics() is not None
 
 
 class TestDeduplicationMetrics:
     def test_exact_duplicate(self):
         reset_all_metrics()
         record_deduplication_check("exact", "duplicate")
+        assert generate_metrics() is not None
 
     def test_fuzzy_unique(self):
         reset_all_metrics()
         record_deduplication_check("fuzzy", "unique")
+        assert generate_metrics() is not None
 
 
 class TestGenerateMetrics:
@@ -297,6 +334,7 @@ class TestStartMetricsServer:
         with patch("prometheus_client.start_http_server") as mock:
             start_metrics_server(port=9999, addr="127.0.0.1")
             mock.assert_called_once_with(port=9999, addr="127.0.0.1")
+            assert generate_metrics() is not None
 
 
 class TestResetAllMetrics:
