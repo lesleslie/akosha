@@ -8,7 +8,7 @@
 
 Universal memory aggregation and cross-system analytics for the Bodai ecosystem.
 
-**Version:** 0.14.2
+**Version:** 0.14.3
 **Status:** Active pilot deployment for the current phase
 
 ## Bodai Ecosystem Role

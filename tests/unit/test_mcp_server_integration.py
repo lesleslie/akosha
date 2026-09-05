@@ -23,7 +23,7 @@ class TestServerIntegration:
 
         assert isinstance(app, FastMCP)
         assert app.name == "akosha-mcp"
-        assert app.version == "0.14.2"
+        assert app.version == "0.14.3"
 
     def test_app_with_custom_configuration(self):
         """Test app creation with custom configuration."""
@@ -250,7 +250,7 @@ class TestConfigurationIntegration:
 
         # Verify server configuration
         assert app.name == "akosha-mcp"
-        assert app.version == "0.14.2"
+        assert app.version == "0.14.3"
 
 
 class TestLoadIntegration:
