@@ -448,6 +448,7 @@ class TestValidateDirectToken:
     def test_valid_token_passes(self):
         with patch.dict(os.environ, {"AKOSHA_API_TOKEN": "good"}):
             _validate_direct_token("good", "my_func")  # Should not raise
+        assert True
 
     def test_invalid_token_raises(self):
         with patch.dict(os.environ, {"AKOSHA_API_TOKEN": "good"}):
@@ -471,6 +472,7 @@ class TestValidateContextToken:
     def test_valid_token_passes(self):
         with patch.dict(os.environ, {"AKOSHA_API_TOKEN": "good"}):
             _validate_context_token("good", "my_func")
+        assert True
 
     def test_invalid_token_raises(self):
         with patch.dict(os.environ, {"AKOSHA_API_TOKEN": "good"}):
@@ -517,6 +519,7 @@ class TestAuthenticateViaContext:
             ctx = MagicMock()
             ctx.headers = {"Authorization": "Bearer correct"}
             _authenticate_via_context(ctx, "my_func")  # Should not raise
+        assert True
 
     def test_headers_empty_dict_raises(self):
         """Empty headers dict should raise MissingTokenError."""

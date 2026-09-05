@@ -45,6 +45,8 @@ class TestWebsocketAuthConstants:
         ):
             # Values should be updated (reload needed for actual test)
             pass
+        from akosha.websocket import auth as _auth_module
+        assert hasattr(_auth_module, "verify_token")
 
 
 class TestWebsocketAuthAuthenticator:

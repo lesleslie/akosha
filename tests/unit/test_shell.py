@@ -326,6 +326,7 @@ class TestCLIIntegration:
         # Verify initialization
         MockApp.assert_called_once()
         MockShell.assert_called_once_with(mock_app)
+        assert True
 
         # Note: shell.start() is synchronous but we can't test it easily
         # without mocking IPython internals

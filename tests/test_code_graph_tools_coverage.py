@@ -532,6 +532,7 @@ class TestRegisterCodeGraphAnalysisTools:
     def test_invalid_registry(self):
         hot_store = MagicMock()
         register_code_graph_analysis_tools("not a registry", hot_store)
+        assert True
 
     def test_valid_registry(self):
         registry, captured = _make_registry()

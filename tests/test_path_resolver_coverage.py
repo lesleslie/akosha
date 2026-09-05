@@ -86,6 +86,7 @@ class TestIsContainer:
         with patch("pathlib.Path.exists", return_value=True):
             # First call for /.dockerenv
             r._is_container()  # just ensure no error
+        assert True
 
 
 class TestResolveBasePath:

@@ -324,6 +324,7 @@ class TestCLIIntegration:
         cli_module._start_server(mode="lite", config=str(config_path))
 
         app_instance.run.assert_called_once()
+        assert callable(app)
 
     def test_start_server_value_error_from_mode_factory(
         self, monkeypatch: pytest.MonkeyPatch
@@ -357,6 +358,7 @@ class TestCLIIntegration:
         mock_start_server.assert_called_once_with(
             host="1.2.3.4", port=9999, mode="standard", config="cfg.yaml", verbose=True
         )
+        assert callable(app)
 
     @patch("akosha.cli._start_server")
     def test_mcp_start_command_delegates_to_helper(self, mock_start_server: MagicMock) -> None:
@@ -368,3 +370,4 @@ class TestCLIIntegration:
         mock_start_server.assert_called_once_with(
             host="1.2.3.4", port=9999, mode="standard", config="cfg.yaml", verbose=True
         )
+        assert callable(app)

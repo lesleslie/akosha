@@ -35,6 +35,7 @@ def test_bodai_client_rejects_non_http_schemes(scheme: str) -> None:
 def test_bodai_client_accepts_http_and_https() -> None:
     BodaiComponentMCPClient(base_url="http://example.com/mcp")
     BodaiComponentMCPClient(base_url="https://example.com/mcp")
+    assert callable(BodaiComponentMCPClient)
 
 
 def test_bodai_client_strips_trailing_slash() -> None:

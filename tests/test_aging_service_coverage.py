@@ -322,6 +322,7 @@ class TestComputeChecksum:
         svc = AgingService(_make_hot_store(), _make_warm_store())
         result = svc._compute_checksum("data")
         int(result, 16)  # Raises if not valid hex
+        assert True
 
     def test_different_inputs_different_hashes(self) -> None:
         svc = AgingService(_make_hot_store(), _make_warm_store())

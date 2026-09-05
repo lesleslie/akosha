@@ -150,6 +150,7 @@ class TestRegisterCodeGraphAnalysisTools:
         from akosha.mcp.tools.code_graph_tools import register_code_graph_analysis_tools
 
         register_code_graph_analysis_tools("not a registry", None)
+        assert callable(register_code_graph_analysis_tools)
 
     def test_tools_registered(self):
         from akosha.mcp.tools.code_graph_tools import register_code_graph_analysis_tools

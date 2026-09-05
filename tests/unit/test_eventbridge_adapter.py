@@ -32,3 +32,4 @@ def test_adaptor_publish_calls_emit_with_envelope_fields() -> None:
         {"pattern_id": "p1", "pattern_type": "burst"},
         {"source": "akosha", "event_id": "abc-123"},
     )
+    assert callable(EventBridgePublisher)

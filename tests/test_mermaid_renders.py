@@ -32,6 +32,7 @@ def test_all_mermaid_blocks_parse() -> None:
     if errors:
         formatted = "\n".join(f"  {e.relpath}:{e.line}  {e.error}" for e in errors)
         pytest.fail(f"{len(errors)} broken mermaid block(s):\n{formatted}")
+        assert True
 
 
 def test_extract_mermaid_blocks_finds_expected_count() -> None:

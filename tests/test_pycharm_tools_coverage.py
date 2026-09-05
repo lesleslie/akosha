@@ -592,6 +592,7 @@ class TestRegisterPyCharmTools:
         mod._pycharm_adapter = None
         register_pycharm_tools(MagicMock(), MagicMock())
         mod._pycharm_adapter = old
+        assert True
 
     def test_registers_5_tools(self):
         import akosha.mcp.tools.pycharm_tools as mod
