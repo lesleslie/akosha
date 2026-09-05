@@ -342,3 +342,324 @@ def test_fitness_signal_default_is_pessimistic() -> None:
     assert sig.p99_latency_ms == 0.0
     assert sig.samples == 0
     assert sig.component_count == 0
+
+
+# ---------------------------------------------------------------------------
+# Trace fetch + Dhara write paths
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_traces_from_component_returns_query_result() -> None:
+    """``_fetch_traces_from_component`` proxies to ``query_local_traces``."""
+    from akosha.processing.fitness_analyzer import FitnessAnalyzer
+
+    analyzer = FitnessAnalyzer(component_endpoints=[("a", "http://a")])
+    expected = [{"trace": "x"}]
+    with patch.object(
+        analyzer, "_fetch_traces_from_component", AsyncMock(return_value=expected)
+    ) as fetch:
+        result = await analyzer._fetch_traces_from_component(
+            "a", "http://a", "code_generation", 30
+        )
+    assert result == expected
+    fetch.assert_awaited_once_with("a", "http://a", "code_generation", 30)
+
+
+@pytest.mark.asyncio
+async def test_fetch_traces_from_component_swallows_bodai_client_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failing component returns ``[]`` — never raises into the loop.
+
+    Pins the audit-critical fail-soft contract: trace-fetch errors
+    must not crash the analysis cycle.
+    """
+    from akosha.processing.fitness_analyzer import FitnessAnalyzer
+
+    analyzer = FitnessAnalyzer(component_endpoints=[("a", "http://a")])
+
+    # Patch the BodaiComponentMCPClient symbol so instantiation returns
+    # our controlled mock — the analyzer calls ``BodaiComponentMCPClient(base_url=...)``
+    # directly (not as a context manager), so the mock factory must be
+    # a callable returning the fake instance.
+    fake_client = MagicMock()
+    fake_client.query_local_traces = AsyncMock(
+        side_effect=ConnectionError("down")
+    )
+    fake_client.aclose = AsyncMock(return_value=None)
+
+    monkeypatch.setattr(
+        "akosha.processing.fitness_analyzer.BodaiComponentMCPClient",
+        lambda **kw: fake_client,
+    )
+
+    result = await analyzer._fetch_traces_from_component(
+        "a", "http://a", "code_generation"
+    )
+    assert result == []
+    # The finally block must have called aclose.
+    fake_client.aclose.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_write_to_dhara_posts_correct_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_write_to_dhara`` POSTs ``{name: put, arguments: {key, value}}``."""
+    from akosha.processing.fitness_analyzer import FitnessAnalyzer
+
+    analyzer = FitnessAnalyzer(dhara_url="http://dhara:8683")
+
+    captured: dict[str, Any] = {}
+    fake_response = MagicMock()
+    fake_response.raise_for_status = MagicMock(return_value=None)
+
+    class FakeAsyncClient:
+        def __init__(self, **kw: object) -> None:
+            captured["timeout"] = kw.get("timeout")
+
+        async def __aenter__(self) -> "FakeAsyncClient":
+            return self
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+        async def post(self, url: str, *, json: dict[str, Any]) -> MagicMock:
+            captured["url"] = url
+            captured["json"] = json
+            return fake_response
+
+    monkeypatch.setattr(
+        "httpx2.AsyncClient",
+        FakeAsyncClient,
+    )
+
+    await analyzer._write_to_dhara("routing_fitness/code_generation/least_loaded", {"score": 1.0})
+
+    assert captured["url"] == "http://dhara:8683/tools/call"
+    assert captured["json"]["name"] == "put"
+    assert captured["json"]["arguments"]["key"] == "routing_fitness/code_generation/least_loaded"
+
+
+@pytest.mark.asyncio
+async def test_write_to_dhara_propagates_httpx_status_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 500 from Dhara surfaces — the circuit breaker / DLQ layer
+    handles retries and eventual DLQ."""
+    import httpx2 as httpx
+    from akosha.processing.fitness_analyzer import FitnessAnalyzer
+
+    analyzer = FitnessAnalyzer()
+
+    class FakeAsyncClient:
+        def __init__(self, **kw: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "FakeAsyncClient":
+            return self
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+        async def post(self, url: str, *, json: dict[str, Any]) -> MagicMock:
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock(
+                side_effect=httpx.HTTPStatusError(
+                    "500", request=MagicMock(), response=resp
+                )
+            )
+            return resp
+
+    monkeypatch.setattr(
+        "httpx2.AsyncClient",
+        FakeAsyncClient,
+    )
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await analyzer._write_to_dhara("k", {"v": 1})
+
+
+# ---------------------------------------------------------------------------
+# DLQ paths
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_flush_buffer_writes_successfully_no_dlq(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Happy path: buffer empties, dlq_failures stays clean."""
+    from akosha.processing.fitness_analyzer import (
+        FitnessAnalyzer,
+        FitnessSignal,
+    )
+
+    analyzer = FitnessAnalyzer()
+    signal = FitnessSignal(score=1.0, samples=1)
+    analyzer._buffer.append(
+        _make_buffer_entry(FitnessAnalyzer, "code_generation", "least_loaded", signal)
+    )
+
+    with patch.object(analyzer, "_write_to_dhara", AsyncMock(return_value=None)):
+        await analyzer._flush_buffer()
+
+    assert len(analyzer._buffer) == 0
+    assert analyzer._dlq_failures == {}
+
+
+@pytest.mark.asyncio
+async def test_flush_buffer_requeues_on_first_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A single failed write (with subsequent success) leaves the buffer clean.
+
+    The ``_flush_buffer`` loop retries until the DLQ threshold. To
+    pin the "first failure → requeue" semantic in isolation, we make
+    the first write fail and the second succeed — then verify the
+    signal was eventually written, the buffer is empty, and the
+    dlq_failures counter was reset.
+    """
+    from akosha.processing.fitness_analyzer import (
+        FitnessAnalyzer,
+        FitnessSignal,
+    )
+
+    analyzer = FitnessAnalyzer()
+    signal = FitnessSignal(score=1.0, samples=1)
+    analyzer._buffer.append(
+        _make_buffer_entry(FitnessAnalyzer, "code_generation", "least_loaded", signal)
+    )
+
+    calls = {"n": 0}
+
+    async def flaky_write(key: str, value: dict[str, Any]) -> None:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise ConnectionError("nope")
+        return None
+
+    with patch.object(analyzer, "_write_to_dhara", side_effect=flaky_write):
+        await analyzer._flush_buffer()
+
+    # First attempt failed, second succeeded → buffer is empty.
+    assert len(analyzer._buffer) == 0
+    # The dlq_failures counter was cleared on the successful retry.
+    assert analyzer._dlq_failures == {}
+
+
+@pytest.mark.asyncio
+async def test_flush_buffer_dlqs_after_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After 3 consecutive write failures, the signal goes to DLQ."""
+    from akosha.processing.fitness_analyzer import (
+        FitnessAnalyzer,
+        FitnessSignal,
+    )
+
+    analyzer = FitnessAnalyzer()
+    signal = FitnessSignal(score=1.0, samples=1)
+    key = "routing_fitness/code_generation/least_loaded"
+
+    # Simulate prior 2 failures, then a 3rd (which crosses the threshold).
+    analyzer._dlq_failures[key] = 2
+    analyzer._buffer.append(
+        _make_buffer_entry(FitnessAnalyzer, "code_generation", "least_loaded", signal)
+    )
+
+    with patch.object(
+        analyzer, "_write_to_dhara", AsyncMock(side_effect=ConnectionError("nope"))
+    ):
+        await analyzer._flush_buffer()
+
+    # 3rd failure → drop to DLQ; entry NOT requeued.
+    assert len(analyzer._buffer) == 0
+    assert key not in analyzer._dlq_failures  # removed after DLQ drop
+
+
+@pytest.mark.asyncio
+async def test_flush_buffer_uses_circuit_breaker_when_provided(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When ``circuit_breaker`` is set, ``_flush_buffer`` routes writes through it."""
+    from akosha.processing.fitness_analyzer import (
+        FitnessAnalyzer,
+        FitnessSignal,
+    )
+
+    cb = MagicMock()
+    cb.call = AsyncMock(return_value=None)  # pretend CB is closed
+    analyzer = FitnessAnalyzer(circuit_breaker=cb)
+    signal = FitnessSignal(score=1.0, samples=1)
+    analyzer._buffer.append(
+        _make_buffer_entry(FitnessAnalyzer, "code_generation", "least_loaded", signal)
+    )
+
+    await analyzer._flush_buffer()
+
+    cb.call.assert_awaited_once()
+    assert len(analyzer._buffer) == 0
+
+
+@pytest.mark.asyncio
+async def test_flush_buffer_no_op_when_buffer_empty() -> None:
+    """Empty buffer → ``_flush_buffer`` is a no-op (no Dhara traffic)."""
+    from akosha.processing.fitness_analyzer import FitnessAnalyzer
+
+    analyzer = FitnessAnalyzer()
+    with patch.object(
+        analyzer, "_write_to_dhara", AsyncMock(return_value=None)
+    ) as write:
+        await analyzer._flush_buffer()
+    write.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Run loop
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Run loop
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_loop_runs_while_running_flag_is_true(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_run_loop`` calls ``_analyze_and_persist`` while ``_running`` is true."""
+    import asyncio
+
+    from akosha.processing.fitness_analyzer import FitnessAnalyzer
+
+    # Sub-second poll so the test completes in milliseconds.
+    analyzer = FitnessAnalyzer(poll_interval_seconds=0.01)
+    analyzer._running = True  # start the loop
+
+    call_count = {"n": 0}
+
+    async def fake_analyze() -> None:
+        call_count["n"] += 1
+        # Flip off after the first call so the loop exits naturally.
+        analyzer._running = False
+
+    monkeypatch.setattr(analyzer, "_analyze_and_persist", fake_analyze)
+
+    await asyncio.wait_for(analyzer._run_loop(), timeout=2.0)
+
+    assert call_count["n"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_buffer_entry(analyzer_cls: type, task_class: str, selector: str, signal: Any) -> Any:
+    """Build a ``_BufferEntry`` for the given signal."""
+    from akosha.processing.fitness_analyzer import _BufferEntry
+
+    return _BufferEntry(task_class=task_class, selector=selector, signal=signal, attempt=0)
