@@ -7,7 +7,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import numpy as np
 
@@ -289,24 +289,21 @@ class AgingService:
         ]
 
     async def _quantize_embedding(self, float_embedding: list[float]) -> list[int]:
-        """Quantize float embedding to INT8.
+        """Quantize float embedding to INT8 (legacy ``list[int]`` return).
 
-        TODO: Implement proper quantization:
-            - Scale values to [-127, 126] range
-            - Handle outliers with clipping
-            - Consider preserving precision with scaling factor
+        Kept for backward compatibility with ``WarmRecord.embedding: list[int]``.
+        New callers should use the module-level :func:`quantize_embedding`
+        which returns a :class:`QuantizedVector` carrying the persisted
+        scale factor — :func:`dequantize` needs the scale to invert.
 
         Args:
             float_embedding: FLOAT[384] embedding
 
         Returns:
-            INT8[384] quantized embedding
+            INT8 quantized values clipped to ``[-127, 127]``.
         """
-        # Placeholder: simple rounding without proper scaling
-        # In production, this should use proper quantization:
-        # - Calculate scale factor: scale = 127 / max(abs(embedding))
-        # - Clip and convert: int(min(max(v * scale, -127), 126))
-        return [int(v * 127) for v in float_embedding]
+        q = quantize_embedding(float_embedding)
+        return list(q.values)
 
     async def _generate_summary(self, content: str) -> str:
         """Generate 3-sentence extractive summary.
@@ -328,6 +325,57 @@ class AgingService:
         if len(sentences) <= 3:
             return ". ".join(sentences)
         return ". ".join(sentences[:3])
+
+
+# ---------------------------------------------------------------------------
+# INT8 quantization (audit H3 fix)
+# ---------------------------------------------------------------------------
+# The legacy `_quantize_embedding` returned ``int(v * 127)`` which:
+#   - produced values outside the INT8 signed range (no clipping)
+#   - used a fixed scale of 127 instead of normalizing to max(abs),
+#     so two semantically similar vectors with different magnitudes
+#     produced wildly different INT8 fingerprints
+#   - threw away the scale factor, making round-trip dequantization
+#     impossible
+# The fix below normalizes by max-abs (so values fit INT8 cleanly),
+# clips to [-127, 127], and persists the scale so callers can invert.
+
+
+class QuantizedVector(NamedTuple):
+    """An INT8-quantized embedding plus the scale needed to invert it.
+
+    ``scale = 127 / max(abs(original))``. Dequantization is
+    ``[v / scale for v in values]``. ``scale == 1.0`` is the sentinel
+    for the all-zero edge case (where max-abs is 0 and the divisor
+    would be undefined).
+    """
+
+    values: list[int]
+    scale: float
+
+
+def quantize_embedding(embedding: list[float]) -> QuantizedVector:
+    """Quantize a float embedding to INT8 with clipping + scale persistence.
+
+    Edge cases:
+    - Empty embedding → ``QuantizedVector([], scale=1.0)``.
+    - All-zero embedding → ``QuantizedVector([0] * n, scale=1.0)``; the
+      sentinel scale is the only one that lets the caller round-trip
+      back to all zeros without a divide-by-zero.
+    """
+    if not embedding:
+        return QuantizedVector(values=[], scale=1.0)
+    max_abs = max(abs(v) for v in embedding)
+    if max_abs == 0.0:
+        return QuantizedVector(values=[0] * len(embedding), scale=1.0)
+    scale = 127.0 / max_abs
+    values = [max(-127, min(127, round(v * scale))) for v in embedding]
+    return QuantizedVector(values=values, scale=scale)
+
+
+def dequantize(q: QuantizedVector) -> list[float]:
+    """Reverse :func:`quantize_embedding` using the persisted scale."""
+    return [v / q.scale for v in q.values]
 
     def _compute_checksum(self, content: str) -> str:
         """Compute SHA-256 checksum for verification.
