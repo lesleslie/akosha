@@ -3,10 +3,10 @@ revision = 3
 requires-python = ">=3.14"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
-    "python_full_version < '3.15' and sys_platform == 'win32'",
     "python_full_version >= '3.15' and sys_platform == 'emscripten'",
-    "python_full_version < '3.15' and sys_platform == 'emscripten'",
     "python_full_version >= '3.15' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.15' and sys_platform == 'win32'",
+    "python_full_version < '3.15' and sys_platform == 'emscripten'",
     "python_full_version < '3.15' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
@@ -130,9 +130,10 @@ wheels = [
 
 [[package]]
 name = "akosha"
-version = "0.14.2"
+version = "0.14.3"
 source = { editable = "." }
 dependencies = [
+    { name = "aiohttp" },
     { name = "circuitbreaker" },
     { name = "dhara" },
     { name = "duckdb" },
@@ -185,6 +186,7 @@ vector-pg = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", specifier = ">=3.12.14" },
     { name = "circuitbreaker", specifier = ">=2.0.0" },
     { name = "dhara", specifier = ">=0.8.2" },
     { name = "duckdb", specifier = ">=0.10.0" },
