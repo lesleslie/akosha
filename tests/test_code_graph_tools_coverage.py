@@ -90,9 +90,15 @@ class TestComputeGraphSimilarity:
         assert 0.0 < result <= 1.0
 
     @pytest.mark.asyncio
-    async def test_exception_returns_zero(self):
-        result = await _compute_graph_similarity(None, None)
-        assert result == 0.0
+    async def test_exception_propagates_on_none_inputs(self):
+        """Audit H1: passing ``None`` is a programmer error — must propagate, not zero.
+
+        Replaces the old ``test_exception_returns_zero`` which locked in
+        the bug (bare ``except Exception: return 0.0``).
+        """
+        from akosha.mcp.tools.code_graph_tools import _compute_graph_similarity
+        with pytest.raises((AttributeError, TypeError)):
+            await _compute_graph_similarity(None, None)
 
     @pytest.mark.asyncio
     async def test_same_type_distribution(self):

@@ -215,9 +215,16 @@ class TestQuantizeEmbedding:
 
     @pytest.mark.asyncio
     async def test_basic_quantization(self) -> None:
+        """Audit H3: normalization by max-abs so values fit INT8 cleanly.
+
+        Input ``[0.1, -0.2, 0.5]``: max_abs=0.5, scale=254; each value
+        multiplied by 254 and rounded → ``[25, -51, 127]``. The
+        legacy ``int(v * 127)`` produced ``[12, -25, 63]``, which was
+        wrong on two counts: ignored input magnitude, no clipping.
+        """
         svc = AgingService(_make_hot_store(), _make_warm_store())
         result = await svc._quantize_embedding([0.1, -0.2, 0.5])
-        assert result == [12, -25, 63]  # int(v * 127) for each
+        assert result == [25, -51, 127]
 
     @pytest.mark.asyncio
     async def test_zero_embedding(self) -> None:

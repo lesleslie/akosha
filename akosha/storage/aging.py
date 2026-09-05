@@ -326,6 +326,95 @@ class AgingService:
             return ". ".join(sentences)
         return ". ".join(sentences[:3])
 
+    def _compute_checksum(self, content: str) -> str:
+        """Compute SHA-256 checksum for verification.
+
+        Args:
+            content: Content to hash
+
+        Returns:
+            Hexadecimal checksum
+        """
+        import hashlib
+
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+    def _verify_checksum_compatibility(self, hot_checksum: str, warm_checksum: str) -> bool:
+        """Verify that warm record is derived from hot record.
+
+        Note: Checksums won't match exactly (content vs summary),
+        but we can verify format and prefix compatibility.
+
+        Args:
+            hot_checksum: Original hot store checksum
+            warm_checksum: Warm store summary checksum
+
+        Returns:
+            True if checksums are compatible
+        """
+        # Placeholder: basic format validation
+        # In production, this might verify:
+        # - Both are valid SHA-256 hex strings
+        # - Same system_id prefix in hash
+        # - Compatible timestamp ranges
+        return len(hot_checksum) == len(warm_checksum) == 64
+
+    async def _delete_from_hot_store(self, conversation_id: str) -> None:
+        """Delete migrated record from hot store.
+
+        Args:
+            conversation_id: Conversation ID to delete
+        """
+        if not self.hot_store.conn:
+            raise RuntimeError("Hot store not initialized")
+
+        self.hot_store.conn.execute(
+            "DELETE FROM conversations WHERE conversation_id = ?",
+            [conversation_id],
+        )
+
+    async def _delete_batch_from_hot_store(self, conversation_ids: list[str]) -> None:
+        """Delete migrated records from hot store in batch.
+
+        Args:
+            conversation_ids: List of conversation IDs to delete
+        """
+        if not self.hot_store.conn:
+            raise RuntimeError("Hot store not initialized")
+
+        if not conversation_ids:
+            return
+
+        # Batch delete using executemany
+        self.hot_store.conn.executemany(
+            "DELETE FROM conversations WHERE conversation_id = ?",
+            [(cid,) for cid in conversation_ids],
+        )
+
+        logger.debug(f"Deleted {len(conversation_ids)} records from hot store")
+
+    async def get_migration_stats(self) -> dict[str, int]:
+        """Get current statistics about tier sizes.
+
+        Returns:
+            Dictionary with record counts for each tier
+        """
+        hot_count = 0
+        warm_count = 0
+
+        if self.hot_store.conn:
+            result = self.hot_store.conn.execute("SELECT COUNT(*) FROM conversations").fetchone()
+            hot_count = result[0] if result else 0
+
+        if self.warm_store.conn:
+            result = self.warm_store.conn.execute("SELECT COUNT(*) FROM conversations").fetchone()
+            warm_count = result[0] if result else 0
+
+        return {
+            "hot_records": hot_count,
+            "warm_records": warm_count,
+        }
+
 
 # ---------------------------------------------------------------------------
 # INT8 quantization (audit H3 fix)

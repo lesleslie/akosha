@@ -234,16 +234,27 @@ class TestCLIIntegration:
         # successfully after printing usage.
         assert result.exit_code == 0
 
-    def test_version_unknown_when_metadata_lookup_fails(
+    def test_version_surfaces_metadata_lookup_failure(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Version command should degrade gracefully when package metadata is unavailable."""
-        monkeypatch.setattr("importlib.metadata.version", MagicMock(side_effect=Exception("boom")))
+        """Version command must NOT silently swallow lookup failures.
+
+        Audit M2: ``except Exception: typer.echo(\"unknown\")`` was a
+        silent-failure mode. The fix narrows to ``PackageNotFoundError``
+        and surfaces a remediation hint; any other exception propagates
+        with a non-zero exit.
+        """
+        # Generic Exception (not PackageNotFoundError) must propagate.
+        monkeypatch.setattr(
+            "importlib.metadata.version",
+            MagicMock(side_effect=Exception("boom")),
+        )
 
         result = runner.invoke(app, ["version"])
 
-        assert result.exit_code == 0
-        assert "Akosha version: unknown" in result.stdout
+        assert result.exit_code != 0
+        # 'unknown' is the bug we're preventing.
+        assert "unknown" not in result.stdout
 
     def test_start_server_success_with_config(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
