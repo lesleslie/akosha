@@ -130,7 +130,7 @@ wheels = [
 
 [[package]]
 name = "akosha"
-version = "0.14.3"
+version = "0.14.7"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },

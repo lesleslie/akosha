@@ -1,6 +1,6 @@
 """Akosha - Universal Memory Aggregation System."""
 
-__version__ = "0.14.3"
+__version__ = "0.14.7"
 
 from akosha.config import config
 
