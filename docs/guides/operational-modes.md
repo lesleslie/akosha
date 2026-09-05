@@ -515,14 +515,18 @@ For horizontal scaling:
 1. **Use load balancer** for traffic distribution
 
 ```bash
-# Instance 1
+# Instance 1 (canonical Akosha port — 8682)
 akosha start --mode=standard --port 8682 --instance-id akosha-1
 
+# Additional instances: use ports that don't collide with other
+# Bodai services (8683 = Dhara MCP, 8684 = fastblocks, 8685 = Dhara
+# storage, 8686 = Crackerjack Test WS, 8690+ = various WebSocket
+# channels). Pick unallocated slots in the 8687–8689 free band.
 # Instance 2
-akosha start --mode=standard --port 8683 --instance-id akosha-2
+akosha start --mode=standard --port 8687 --instance-id akosha-2
 
 # Instance 3
-akosha start --mode=standard --port 8684 --instance-id akosha-3
+akosha start --mode=standard --port 8688 --instance-id akosha-3
 ```
 
 ### Monitoring and Observability
