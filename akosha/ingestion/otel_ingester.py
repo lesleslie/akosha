@@ -177,14 +177,26 @@ class OtelTraceIngester:
         body = response.json()
         result: list[tuple[str, dict[str, Any]]] = []
         for resource_spans in body.get("resourceSpans", []):
-            # Extract service.name from resource.attributes
+            # Extract service.name from resource.attributes. Per the OTLP
+            # spec the value is one of the AnyValue wrappers;
+            # ``stringValue`` is the canonical type for service.name but
+            # we tolerate other shapes by stringifying the unwrapped
+            # value. ``value: null`` and missing keys fall through to
+            # ``"unknown"`` rather than raising TypeError.
             system_id = "unknown"
-            for attr in resource_spans.get("resource", {}).get("attributes", []):
-                if attr.get("key") == "service.name":
-                    value_entry = attr.get("value", {})
-                    if "stringValue" in value_entry:
-                        system_id = value_entry["stringValue"]
-                    break
+            for attr in resource_spans.get("resource", {}).get("attributes") or []:
+                if attr.get("key") != "service.name":
+                    continue
+                value_entry = attr.get("value") or {}
+                if "stringValue" in value_entry:
+                    system_id = str(value_entry["stringValue"])
+                elif "intValue" in value_entry:
+                    system_id = str(value_entry["intValue"])
+                elif "boolValue" in value_entry:
+                    system_id = str(value_entry["boolValue"])
+                elif "doubleValue" in value_entry:
+                    system_id = str(value_entry["doubleValue"])
+                break
             for scope_spans in resource_spans.get("scopeSpans", []):
                 for span in scope_spans.get("spans", []):
                     result.append((system_id, span))
@@ -258,22 +270,46 @@ class OtelTraceIngester:
     def _attrs_to_dict(attrs: list[dict[str, Any]] | None) -> dict[str, Any]:
         """Flatten OTel attributes list ``[{key, value}]`` into a dict.
 
-        OTel value entries are wrapped: ``{"stringValue": "..."}`` or
-        ``{"intValue": "..."}``. We unwrap the stringValue/intValue
-        variant for the common cases.
+        OTel value entries are wrapped in AnyValue: ``{"stringValue": "..."}``,
+        ``{"intValue": "..."}``, ``{"doubleValue": ...}``, ``{"boolValue": ...}``,
+        ``{"arrayValue": {"values": [...]}}``, ``{"kvlistValue": {"values": [...]}}``,
+        ``{"bytesValue": "<base64>"}``. The unwrap supports all of the
+        primitive shapes and recursively descends into array/kvlist entries
+        so the resulting dict holds pure Python primitives (no raw
+        ``{"stringValue": ...}`` wrappers left).
         """
+        def _unwrap(value_entry: dict[str, Any] | None) -> Any:
+            if not value_entry:
+                return None
+            if "stringValue" in value_entry:
+                return value_entry["stringValue"]
+            if "intValue" in value_entry:
+                return int(value_entry["intValue"])
+            if "doubleValue" in value_entry:
+                return float(value_entry["doubleValue"])
+            if "boolValue" in value_entry:
+                return bool(value_entry["boolValue"])
+            if "bytesValue" in value_entry:
+                return value_entry["bytesValue"]
+            if "arrayValue" in value_entry:
+                array = value_entry["arrayValue"] or {}
+                return [_unwrap(v) for v in array.get("values", [])]
+            if "kvlistValue" in value_entry:
+                kvlist = value_entry["kvlistValue"] or {}
+                return {
+                    (kv or {}).get("key"): _unwrap((kv or {}).get("value"))
+                    for kv in kvlist.get("values", [])
+                }
+            # Unknown variant — keep the wrapper but stringified so the
+            # embedding text is still meaningful instead of a Python repr.
+            return str(value_entry)
+
         result: dict[str, Any] = {}
         for entry in attrs or []:
             key = entry.get("key")
-            value_entry = entry.get("value", {})
-            if "stringValue" in value_entry:
-                result[key] = value_entry["stringValue"]
-            elif "intValue" in value_entry:
-                result[key] = int(value_entry["intValue"])
-            elif "boolValue" in value_entry:
-                result[key] = bool(value_entry["boolValue"])
-            else:
-                result[key] = value_entry
+            if key is None:
+                continue
+            result[key] = _unwrap(entry.get("value"))
         return result
 
     @staticmethod
