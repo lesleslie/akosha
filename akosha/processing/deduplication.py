@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Literal
+from operator import itemgetter
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from datasketch import MinHash
 
 logger = logging.getLogger(__name__)
 
 
-def _minhash_to_bytes(minhash: object) -> bytes:
+def _minhash_to_bytes(minhash: MinHash) -> bytes:
     """Serialize a datasketch ``MinHash`` to bytes via ``hashvalues.tobytes()``.
 
     datasketch >=2.0 dropped the legacy ``.hashbytes`` property; the
@@ -19,7 +23,7 @@ def _minhash_to_bytes(minhash: object) -> bytes:
     return bytes(minhash.hashvalues.tobytes())  # type: ignore[attr-defined]
 
 
-def _bytes_to_minhash(raw: bytes, num_perm: int) -> object:
+def _bytes_to_minhash(raw: bytes, num_perm: int) -> MinHash:
     """Inverse of :func:`_minhash_to_bytes` — rebuild a ``MinHash``.
 
     Uses ``np.frombuffer`` to read the raw bytes back into a uint32
@@ -102,9 +106,7 @@ class DeduplicationService:
             try:
                 from datasketch import MinHash  # type: ignore[import-not-found]
             except ImportError:
-                logger.warning(
-                    "datasketch not installed; falling back to SHA-256 fingerprint"
-                )
+                logger.warning("datasketch not installed; falling back to SHA-256 fingerprint")
                 return hashlib.sha256(content.encode("utf-8")).digest()
             m = MinHash(num_perm=self._num_perm)
             for word in content.split():
@@ -134,18 +136,10 @@ class DeduplicationService:
                 from datasketch import MinHash  # noqa: F401  # type: ignore[import-not-found]
             except ImportError:
                 # SHA-256 fallback: only byte-identical matches count.
-                return [
-                    (i, 1.0)
-                    for i, cand in enumerate(candidates)
-                    if cand == fingerprint
-                ]
+                return [(i, 1.0) for i, cand in enumerate(candidates) if cand == fingerprint]
             return _minhash_jaccard(fingerprint, candidates, threshold, self._num_perm)
         # SHA-256 backend: exact byte equality is the only similarity.
-        return [
-            (i, 1.0)
-            for i, cand in enumerate(candidates)
-            if cand == fingerprint
-        ]
+        return [(i, 1.0) for i, cand in enumerate(candidates) if cand == fingerprint]
 
 
 def _minhash_jaccard(
@@ -167,5 +161,5 @@ def _minhash_jaccard(
         sim = query.jaccard(cand)
         if sim >= threshold:
             scored.append((i, float(sim)))
-    scored.sort(key=lambda pair: pair[1], reverse=True)
+    scored.sort(key=itemgetter(1), reverse=True)
     return scored

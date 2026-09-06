@@ -99,7 +99,7 @@ def _read_source_text() -> str:
             continue
         try:
             chunks.append(py_file.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError):
+        except OSError, UnicodeDecodeError:
             continue
     return "\n".join(chunks)
 
@@ -141,12 +141,12 @@ def test_user_agent_matches_package_version() -> None:
             continue
         try:
             text = py_file.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        except OSError, UnicodeDecodeError:
             continue
         for match in _USER_AGENT_RE.finditer(text):
             ua = match.group(0)
             # Skip dynamic strings (f-strings, .format, concatenation).
-            if "{" in ua or "f\"" in ua or "f'" in ua or ".format(" in ua:
+            if "{" in ua or 'f"' in ua or "f'" in ua or ".format(" in ua:
                 continue
             if _VERSION_LITERAL_RE.search(ua):
                 hardcoded.append((str(py_file), ua))

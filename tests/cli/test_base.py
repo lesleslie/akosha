@@ -103,9 +103,9 @@ def test_doctor_checks_includes_expected_check_names() -> None:
         "mode_registry",
         "config_load",
     }
-    assert expected_keys.issubset(
-        checks.keys()
-    ), f"Missing checks: {expected_keys - set(checks.keys())}"
+    assert expected_keys.issubset(checks.keys()), (
+        f"Missing checks: {expected_keys - set(checks.keys())}"
+    )
 
 
 def test_doctor_checks_entries_have_status_and_detail() -> None:
@@ -117,9 +117,7 @@ def test_doctor_checks_entries_have_status_and_detail() -> None:
         assert isinstance(info, dict), f"{name} must be a dict"
         assert "status" in info, f"{name} missing 'status' key"
         assert "detail" in info, f"{name} missing 'detail' key"
-        assert info["status"] in valid_statuses, (
-            f"{name} has unexpected status {info['status']!r}"
-        )
+        assert info["status"] in valid_statuses, f"{name} has unexpected status {info['status']!r}"
         assert isinstance(info["detail"], str)
 
 

@@ -14,8 +14,9 @@ the whole lifespan.
 
 from __future__ import annotations
 
+import contextlib
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -218,16 +219,16 @@ async def _try_create_hot_store():
     when the lifespan hasn't run (e.g. tests bypassing the full
     lifespan path) — preserves the pre-Wave-5 behaviour.
     """
-    try:
-        from akosha.mcp.server import get_shared_hot_store
+    shared: Any = None
+    with contextlib.suppress(Exception):
+        from akosha.mcp.server import get_shared_hot_store  # type: ignore[attr-defined]
 
         shared = get_shared_hot_store()
-        if shared is not None:
-            return shared
-    except Exception:
-        # ``get_shared_hot_store`` may not be importable in some test
-        # contexts; fall through to per-call construction.
-        pass
+    # ``get_shared_hot_store`` may not be importable in some test
+    # contexts (suppress catches the ImportError); fall through to
+    # per-call construction when ``shared`` is still None.
+    if shared is not None:
+        return shared
 
     try:
         from akosha.storage import create_hot_store

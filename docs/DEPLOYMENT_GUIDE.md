@@ -396,10 +396,10 @@ Akosha implements JWT-based authentication with RBAC:
 from fastapi import Depends
 from akosha.api.middleware import verify_token, require_permission
 
+
 @app.post("/ingest/upload")
 async def upload(
-    claims: dict = Depends(verify_token),
-    _ = Depends(require_permission("ingest:upload"))
+    claims: dict = Depends(verify_token), _=Depends(require_permission("ingest:upload"))
 ):
     # Your upload logic
     return {"status": "success"}

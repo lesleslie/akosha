@@ -22,13 +22,7 @@ import pytest
 from click.testing import CliRunner
 
 
-_MIGRATE_PATH = (
-    Path(__file__).resolve().parents[4]
-    / "akosha"
-    / "cli"
-    / "commands"
-    / "migrate.py"
-)
+_MIGRATE_PATH = Path(__file__).resolve().parents[4] / "akosha" / "cli" / "commands" / "migrate.py"
 _spec = importlib.util.spec_from_file_location("akosha_cli_commands_migrate", _MIGRATE_PATH)
 assert _spec is not None and _spec.loader is not None
 _migrate_module = importlib.util.module_from_spec(_spec)
@@ -99,9 +93,7 @@ def test_resolve_destination_falls_back_to_default_resolver(tmp_path: Path) -> N
     """When ``to_path`` is None, the default resolver's base_path wins."""
     fake_base = tmp_path / "default"
     fake_resolver = type("R", (), {"base_path": fake_base})()
-    with patch.object(
-        _migrate_module, "get_default_resolver", return_value=fake_resolver
-    ):
+    with patch.object(_migrate_module, "get_default_resolver", return_value=fake_resolver):
         assert _resolve_destination(None) == fake_base
 
 
@@ -240,9 +232,7 @@ def test_data_dry_run_does_not_copy_files(
     assert not dest.exists()
 
 
-def test_data_missing_source_path_exits_nonzero(
-    runner: CliRunner, tmp_path: Path
-) -> None:
+def test_data_missing_source_path_exits_nonzero(runner: CliRunner, tmp_path: Path) -> None:
     """A non-existent ``--from-path`` exits non-zero.
 
     Click validates ``--from-path`` with ``exists=True`` and emits
@@ -257,9 +247,7 @@ def test_data_missing_source_path_exits_nonzero(
     assert "does not exist" in result.output.lower() or "not found" in result.output.lower()
 
 
-def test_data_empty_source_returns_cleanly(
-    runner: CliRunner, tmp_path: Path
-) -> None:
+def test_data_empty_source_returns_cleanly(runner: CliRunner, tmp_path: Path) -> None:
     empty_src = tmp_path / "empty"
     empty_src.mkdir()
     result = runner.invoke(
@@ -313,13 +301,9 @@ def test_status_prints_storage_paths(runner: CliRunner, tmp_path: Path) -> None:
     data/ happens to exist in the real CWD (akelha's own project
     tree has a ``data/`` that would otherwise show "present").
     """
-    fake_resolver = type(
-        "R", (), {"env": "test", "base_path": tmp_path / "akosha-data"}
-    )()
+    fake_resolver = type("R", (), {"env": "test", "base_path": tmp_path / "akosha-data"})()
     with (
-        patch.object(
-            _migrate_module, "get_default_resolver", return_value=fake_resolver
-        ),
+        patch.object(_migrate_module, "get_default_resolver", return_value=fake_resolver),
         patch("pathlib.Path.cwd", return_value=tmp_path),
     ):
         result = runner.invoke(migrate, ["status"])
@@ -330,16 +314,10 @@ def test_status_prints_storage_paths(runner: CliRunner, tmp_path: Path) -> None:
     assert "Project-local data: none" in result.output
 
 
-def test_status_detects_project_local_data(
-    runner: CliRunner, populated_source: Path
-) -> None:
-    fake_resolver = type(
-        "R", (), {"env": "test", "base_path": Path("/tmp/akosha-data")}
-    )()
+def test_status_detects_project_local_data(runner: CliRunner, populated_source: Path) -> None:
+    fake_resolver = type("R", (), {"env": "test", "base_path": Path("/tmp/akosha-data")})()
     with (
-        patch.object(
-            _migrate_module, "get_default_resolver", return_value=fake_resolver
-        ),
+        patch.object(_migrate_module, "get_default_resolver", return_value=fake_resolver),
         patch("pathlib.Path.cwd", return_value=populated_source.parent),
     ):
         result = runner.invoke(migrate, ["status"])

@@ -323,7 +323,9 @@ Add mode parameter to `start` command:
 def start(
     host: Annotated[str, typer.Option("--host", "-h", help="Host to bind to")] = "127.0.0.1",
     port: Annotated[int, typer.Option("--port", "-p", help="Port to bind to")] = 8682,
-    mode: Annotated[str, typer.Option("--mode", "-m", help="Operational mode (lite|standard)")] = "lite",
+    mode: Annotated[
+        str, typer.Option("--mode", "-m", help="Operational mode (lite|standard)")
+    ] = "lite",
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Enable verbose output")] = False,
 ) -> None:
     """Start Akosha MCP server in the specified mode."""
@@ -674,6 +676,7 @@ async def test_standard_mode_redis_fallback():
 import pytest
 from akosha.main import AkoshaApplication
 
+
 @pytest.mark.asyncio
 async def test_lite_mode_startup():
     """Test lite mode startup without external services."""
@@ -681,6 +684,7 @@ async def test_lite_mode_startup():
     await app.start()
     # Verify no external service connections
     await app.stop()
+
 
 @pytest.mark.asyncio
 @pytest.mark.integration

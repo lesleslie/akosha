@@ -21,8 +21,7 @@ def _make_records(values: list[float], base: datetime | None = None) -> list[dic
     """Build Dhara time-series records with ts + value fields."""
     base = base or datetime(2026, 1, 1, tzinfo=UTC)
     return [
-        {"ts": (base + timedelta(days=i)).isoformat(), "value": v}
-        for i, v in enumerate(values)
+        {"ts": (base + timedelta(days=i)).isoformat(), "value": v} for i, v in enumerate(values)
     ]
 
 

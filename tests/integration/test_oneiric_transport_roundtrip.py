@@ -5,6 +5,7 @@ Mirrors the parallel test in
 Exercises the full ``publish_* -> EventBridgePublisher -> emit`` path
 against a real ``oneiric.domains.events.EventBridge``.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -45,9 +46,7 @@ class _CapturingDispatcher:
                 value = handler.callback(envelope)
                 if inspect.isawaitable(value):
                     await value
-                results.append(
-                    HandlerResult(handler=handler.name, success=True, duration=0.0)
-                )
+                results.append(HandlerResult(handler=handler.name, success=True, duration=0.0))
             except Exception as exc:  # noqa: BLE001
                 results.append(
                     HandlerResult(

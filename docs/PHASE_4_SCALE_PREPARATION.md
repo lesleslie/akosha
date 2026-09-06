@@ -77,7 +77,8 @@ milvus:
 ```python
 """Milvus warm tier integration."""
 
-from milvus import Milvus,connections
+from milvus import Milvus, connections
+
 
 class MilvusWarmStore:
     """Milvus-backed warm tier for large-scale vector search."""
@@ -263,6 +264,7 @@ SELECT add_continuous_aggregate_policy('metrics_1hour',
 
 from neo4j import AsyncGraphDriver
 
+
 class Neo4jGraphStore:
     """Neo4j-backed knowledge graph for complex queries.
 
@@ -288,8 +290,7 @@ class Neo4jGraphStore:
         """
         async with self.driver.session() as session:
             await session.run(
-                "MERGE (e:Entity {id: $id}) "
-                "SET e.entity_type = $type, e.properties = $props",
+                "MERGE (e:Entity {id: $id}) SET e.entity_type = $type, e.properties = $props",
                 id=entity.entity_id,
                 type=entity.entity_type,
                 props=entity.properties,
@@ -370,6 +371,7 @@ Region 1 (Primary)          Region 2 (Secondary)
 
 ```python
 """Multi-region disaster recovery."""
+
 
 class MultiRegionCoordinator:
     """Coordinate cross-region replication."""

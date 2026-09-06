@@ -309,10 +309,7 @@ class TestEmbeddingService:
         return EmbeddingService()
 
     @pytest.mark.asyncio
-    async def test_generate_embedding_fallback(
-        self,
-        service: EmbeddingService
-    ) -> None:
+    async def test_generate_embedding_fallback(self, service: EmbeddingService) -> None:
         """Test embedding generation with fallback mode."""
         # Arrange, Act, Assert pattern
         service._available = False
@@ -502,7 +499,7 @@ Phase 3-4: Milvus Integration (Planned)
 # Phase 1-2: DuckDB + Redis
 graph_store = HybridGraphStore(
     persistent=DuckDBAdapter(),  # Nodes and edges
-    cache=RedisAdapter()          # Fast adjacency lists
+    cache=RedisAdapter(),  # Fast adjacency lists
 )
 
 # Phase 3+: Neo4j for 100M+ edges
@@ -739,9 +736,11 @@ uv run pytest --cov=akosha --cov-report=html --cov-report=markdown
 ```python
 # scripts/benchmark.py
 """Run performance benchmarks."""
+
 import asyncio
 import time
 from akosha.processing.embeddings import get_embedding_service
+
 
 async def benchmark_embeddings():
     """Benchmark embedding generation."""
@@ -755,7 +754,8 @@ async def benchmark_embeddings():
     elapsed = time.time() - start
 
     print(f"Generated {len(embeddings)} embeddings in {elapsed:.2f}s")
-    print(f"Average: {elapsed/len(embeddings)*1000:.2f}ms per embedding")
+    print(f"Average: {elapsed / len(embeddings) * 1000:.2f}ms per embedding")
+
 
 if __name__ == "__main__":
     asyncio.run(benchmark_embeddings())

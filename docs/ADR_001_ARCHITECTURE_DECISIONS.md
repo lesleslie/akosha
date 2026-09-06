@@ -51,15 +51,12 @@ Session-Buddy uploads directly to cloud storage (S3/Azure/GCS) via Oneiric adapt
 ```python
 # Session-Buddy uploads to cloud (no Akosha dependency)
 await oneiric_storage.upload(
-    bucket="session-buddy-memories",
-    path=f"systems/{system_id}/memory.db",
-    data=memory_db
+    bucket="session-buddy-memories", path=f"systems/{system_id}/memory.db", data=memory_db
 )
 
 # Akosha pulls from cloud (independent service)
 uploads = await oneiric_storage.list_prefixes(
-    bucket="session-buddy-memories",
-    prefix=f"systems/{system_id}/"
+    bucket="session-buddy-memories", prefix=f"systems/{system_id}/"
 )
 ```
 
@@ -114,11 +111,9 @@ hot_store = DuckDBAdapter(database_path=":memory:")
 warm_store = DuckDBAdapter(database_path="/data/akosha/warm.duckdb")
 
 # Cold tier: Parquet via Oneiric
-cold_storage = OneiricStorageAdapter(backend="s3", config={
-    "bucket": "akosha-cold",
-    "prefix": "conversations/",
-    "format": "parquet"
-})
+cold_storage = OneiricStorageAdapter(
+    backend="s3", config={"bucket": "akosha-cold", "prefix": "conversations/", "format": "parquet"}
+)
 
 # Automatic aging service
 aging_service = AgingService()
@@ -176,13 +171,11 @@ vector_store = DuckDBVectorStore()
 # Phase 2: Add Milvus (100M-1B embeddings)
 vector_store = HybridVectorStore(
     hot=DuckDBVectorStore(),  # Recent 7 days
-    warm=MilvusClient()       # Historical data
+    warm=MilvusClient(),  # Historical data
 )
 
 # Phase 3: Consider cloud-native (1B+ embeddings)
-vector_store = CloudVectorService(
-    provider="aws-opensearch-serverless"
-)
+vector_store = CloudVectorService(provider="aws-opensearch-serverless")
 ```
 
 **Time-Series Database**:
@@ -199,7 +192,7 @@ time_series = TimescaleDBAdapter()
 # Phase 1-2: DuckDB + Redis (< 100M edges)
 graph = HybridGraphStore(
     persistent=DuckDBAdapter(),  # Nodes and edges
-    cache=RedisAdapter()          # Fast adjacency lists
+    cache=RedisAdapter(),  # Fast adjacency lists
 )
 
 # Phase 3+: Neo4j (100M+ edges)
@@ -260,10 +253,7 @@ class ShardRouter:
 
 ```python
 # Fan-out query across shards
-tasks = [
-    search_shard(shard_id, query_embedding)
-    for shard_id in target_shards
-]
+tasks = [search_shard(shard_id, query_embedding) for shard_id in target_shards]
 results = await asyncio.gather(*tasks)
 ```
 
@@ -342,8 +332,7 @@ async def trigger_akosha_ingest(
     """Trigger Akosha to ingest memory data."""
     akosha_client = get_akosha_mcp_client()
     result = await akosha_client.call_tool(
-        "akosha_start_ingestion",
-        {"source_system": source_system, "priority": priority}
+        "akosha_start_ingestion", {"source_system": source_system, "priority": priority}
     )
     # Register workflow state
     await workflow_state_manager.create(
@@ -452,11 +441,8 @@ async def promote_to_hot(data: bytes) -> None:
     hot_storage = await bridge.use("storage-s3-hot")
 
     # Upload to hot tier
-    await hot_storage.instance.upload(
-        bucket="akosha-hot",
-        path=data.id,
-        data=data
-    )
+    await hot_storage.instance.upload(bucket="akosha-hot", path=data.id, data=data)
+
 
 async def demote_to_cold(data: bytes) -> None:
     """Demote data from warm to cold tier."""
@@ -465,11 +451,7 @@ async def demote_to_cold(data: bytes) -> None:
 
     # Compress and upload to cold
     compressed = gzip.compress(data)
-    await cold_storage.instance.upload(
-        bucket="akosha-cold",
-        path=data.id,
-        data=compressed
-    )
+    await cold_storage.instance.upload(bucket="akosha-cold", path=data.id, data=compressed)
 ```
 
 **Alternatives Considered**:
@@ -510,20 +492,20 @@ ______________________________________________________________________
 
 ```python
 # Search
-POST   /api/v1/search                          # Universal search
-GET    /api/v1/search/{query_id}               # Get search results
+POST / api / v1 / search  # Universal search
+GET / api / v1 / search / {query_id}  # Get search results
 
 # Analytics
-GET    /api/v1/analytics/trends                # Trend analysis
-GET    /api/v1/analytics/metrics               # System metrics
+GET / api / v1 / analytics / trends  # Trend analysis
+GET / api / v1 / analytics / metrics  # System metrics
 
 # Knowledge Graph
-POST   /api/v1/graph/query                     # Graph queries
-GET    /api/v1/graph/entities/{entity_id}      # Entity details
+POST / api / v1 / graph / query  # Graph queries
+GET / api / v1 / graph / entities / {entity_id}  # Entity details
 
 # Health
-GET    /health                                 # Health check
-GET    /metrics                                # Prometheus metrics
+GET / health  # Health check
+GET / metrics  # Prometheus metrics
 ```
 
 **MCP Tools**:
@@ -536,9 +518,11 @@ async def akosha_start_ingestion(
 ) -> dict:
     """Start ingestion (called by Mahavishnu)."""
 
+
 @akosha.mcp.tool()
 async def akosha_health_check() -> dict:
     """Health check (called by Mahavishnu)."""
+
 
 @akosha.mcp.tool()
 async def akosha_get_metrics() -> dict:
@@ -553,11 +537,13 @@ from fastapi.security import HTTPBearer
 
 security = HTTPBearer()
 
+
 async def verify_token(credentials: HTTPAuthorizationCredentials):
     claims = await jwt_service.verify(credentials.credentials)
     if "akosha:read" not in claims.get("scope", []):
         raise HTTPException(status_code=403, detail="Forbidden")
     return claims
+
 
 # Usage
 @app.post("/api/v1/search")
@@ -617,6 +603,7 @@ s3_breaker = CircuitBreaker(
     expected_exception=ConnectionError,
 )
 
+
 @s3_breaker
 async def upload_to_s3(data: bytes) -> None:
     """Upload with circuit breaker protection."""
@@ -630,6 +617,7 @@ async def upload_to_s3(data: bytes) -> None:
 
 ```python
 tenacity = __import__("tenacity")
+
 
 @tenacity.retry(
     stop=tenacity.stop_after_attempt(5),
@@ -719,13 +707,8 @@ def get_partition_path(
     date: datetime,
 ) -> str:
     """Generate partition path with composite key."""
-    return (
-        f"{data_type}/"
-        f"{system_id}/"
-        f"{date.year:04d}/"
-        f"{date.month:02d}/"
-        f"{date.day:02d}/"
-    )
+    return f"{data_type}/{system_id}/{date.year:04d}/{date.month:02d}/{date.day:02d}/"
+
 
 # Example: embeddings/system-001/2025/01/25/batch_001.parquet
 ```
@@ -871,15 +854,10 @@ s3_client.put_bucket_lifecycle_configuration(
                 "Id": "TransitionToGlacier",
                 "Status": "Enabled",
                 "Prefix": "conversations/",
-                "Transitions": [
-                    {
-                        "Days": 30,
-                        "StorageClass": "GLACIER"
-                    }
-                ]
-            }
+                "Transitions": [{"Days": 30, "StorageClass": "GLACIER"}],
+            },
         ]
-    }
+    },
 )
 ```
 
@@ -887,15 +865,11 @@ s3_client.put_bucket_lifecycle_configuration(
 
 ```python
 # After successful ingestion, delete from incoming/
-await oneiric_storage.delete(
-    bucket="akosha-ingest",
-    path=f"incoming/{system_id}/{upload_id}/"
-)
+await oneiric_storage.delete(bucket="akosha-ingest", path=f"incoming/{system_id}/{upload_id}/")
 
 # Verify deletion before marking as complete
 exists = await oneiric_storage.exists(
-    bucket="akosha-ingest",
-    path=f"incoming/{system_id}/{upload_id}/"
+    bucket="akosha-ingest", path=f"incoming/{system_id}/{upload_id}/"
 )
 assert not exists, "Failed to delete upload after ingestion"
 ```

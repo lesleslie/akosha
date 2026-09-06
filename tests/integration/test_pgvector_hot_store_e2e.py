@@ -54,7 +54,7 @@ PGVECTOR_URL = os.environ.get("AKOSHA_TEST_PGVECTOR_URL", "").strip()
 # can override via env if they need to inspect state by hand.
 COLLECTION = f"akosha_test_{uuid.uuid4().hex[:8]}"
 DIM = 4  # tiny dim keeps test inserts cheap; PgvectorAdapter requires
-        # pgvector collection dim match the embedding vector length.
+# pgvector collection dim match the embedding vector length.
 
 
 pytestmark = [
@@ -218,12 +218,8 @@ async def test_pgvector_search_filters_by_system_id(pg_store: PgvectorHotStore) 
     """``system_id`` filter isolates rows across systems."""
     # Two rows in different systems, same embedding.
     embedding = [0.5] * DIM
-    await pg_store.insert(
-        _record(conversation_id="x-sys1", system_id="sys1", embedding=embedding)
-    )
-    await pg_store.insert(
-        _record(conversation_id="x-sys2", system_id="sys2", embedding=embedding)
-    )
+    await pg_store.insert(_record(conversation_id="x-sys1", system_id="sys1", embedding=embedding))
+    await pg_store.insert(_record(conversation_id="x-sys2", system_id="sys2", embedding=embedding))
 
     sys1_results = await pg_store.search_similar(embedding, system_id="sys1")
     sys2_results = await pg_store.search_similar(embedding, system_id="sys2")

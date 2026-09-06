@@ -56,8 +56,7 @@ def test_create_hot_store_with_pgvector_backend_no_pg_url(
     assert isinstance(store, HotStore)
     assert store.db_path == ":memory:"
     assert any(
-        "akosha.hot_store.pg_url_missing" in record.getMessage()
-        for record in caplog.records
+        "akosha.hot_store.pg_url_missing" in record.getMessage() for record in caplog.records
     ), "Expected a WARNING tagged 'akosha.hot_store.pg_url_missing'"
 
 

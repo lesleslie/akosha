@@ -15,14 +15,14 @@ def _reset_auth_config():
         from akosha.mcp.auth import _reset_config
 
         _reset_config()
-    except (ImportError, AttributeError):
+    except ImportError, AttributeError:
         pass
     yield
     try:
         from akosha.mcp.auth import _reset_config
 
         _reset_config()
-    except (ImportError, AttributeError):
+    except ImportError, AttributeError:
         pass
 
 

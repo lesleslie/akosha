@@ -52,9 +52,7 @@ class TestEmbeddingService:
         assert svc1 is svc2
 
     @pytest.mark.asyncio
-    async def test_generate_embedding_returns_mock_vector(
-        self, service: EmbeddingService
-    ) -> None:
+    async def test_generate_embedding_returns_mock_vector(self, service: EmbeddingService) -> None:
         """Test mock embedding generation."""
         service._initialized = True
 

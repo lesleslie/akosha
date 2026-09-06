@@ -36,11 +36,7 @@ Aggregate data across distributed systems.
 result = aggregate()
 
 # Aggregate with filters
-result = aggregate(
-    query="*",
-    filters={"source": "session-buddy", "type": "memory"},
-    limit=100
-)
+result = aggregate(query="*", filters={"source": "session-buddy", "type": "memory"}, limit=100)
 ```
 
 **Parameters:**
@@ -60,11 +56,7 @@ Search distributed memory using vector similarity.
 results = search("user sessions about authentication")
 
 # Search specific index
-results = search(
-    query="anomaly detection patterns",
-    index="memories",
-    limit=10
-)
+results = search(query="anomaly detection patterns", index="memories", limit=10)
 ```
 
 **Parameters:**
@@ -87,7 +79,7 @@ anomalies = detect()
 anomalies = detect(
     metric="memory_usage",
     threshold=0.8,
-    window=300  # 5 minutes
+    window=300,  # 5 minutes
 )
 ```
 
@@ -108,11 +100,7 @@ Query knowledge graph for relationships and patterns.
 result = graph("find connected components")
 
 # Query with filters
-result = graph(
-    query="session flow patterns",
-    node_type="session",
-    depth=2
-)
+result = graph(query="session flow patterns", node_type="session", depth=2)
 ```
 
 **Parameters:**
@@ -135,7 +123,7 @@ trends_data = trends()
 trends_data = trends(
     metric="query_latency",
     window=3600,  # 1 hour
-    granularity=60  # 1 minute buckets
+    granularity=60,  # 1 minute buckets
 )
 ```
 
@@ -230,6 +218,7 @@ files = !ls
 ```python
 # Display tables
 from rich.table import Table
+
 table = Table(title="Results")
 # ...
 table
@@ -286,7 +275,7 @@ for memory in memories["results"]:
 anomalies = detect(
     metric="memory_usage",
     threshold=0.85,
-    window=600  # 10 minutes
+    window=600,  # 10 minutes
 )
 
 # Process anomalies
@@ -298,11 +287,7 @@ for anomaly in anomalies["anomalies"]:
 
 ```python
 # Query knowledge graph
-graph_result = graph(
-    query="session to session-buddy connections",
-    node_type="session",
-    depth=2
-)
+graph_result = graph(query="session to session-buddy connections", node_type="session", depth=2)
 
 # Analyze connections
 print(f"Found {len(graph_result['nodes'])} nodes")
@@ -316,11 +301,12 @@ print(f"Found {len(graph_result['edges'])} edges")
 trends_data = trends(
     metric="query_latency",
     window=3600,  # 1 hour
-    granularity=60  # 1 minute
+    granularity=60,  # 1 minute
 )
 
 # Plot trends (if matplotlib available)
 import matplotlib.pyplot as plt
+
 plt.plot(trends_data["trends"])
 plt.show()
 ```
@@ -352,7 +338,7 @@ If intelligence commands are not available:
 dir()
 
 # Verify commands are present
-'aggregate' in dir()  # Should be True
+"aggregate" in dir()  # Should be True
 ```
 
 **Solution:** Restart the shell or reinitialize the namespace.
@@ -385,11 +371,11 @@ async def _my_command(self, param1, param2):
 2. Add to namespace in `_add_akasha_namespace()`:
 
 ```python
-self.namespace.update({
-    "my_command": lambda *args, **kwargs: asyncio.run(
-        self._my_command(*args, **kwargs)
-    ),
-})
+self.namespace.update(
+    {
+        "my_command": lambda *args, **kwargs: asyncio.run(self._my_command(*args, **kwargs)),
+    }
+)
 ```
 
 3. Update banner to document the command

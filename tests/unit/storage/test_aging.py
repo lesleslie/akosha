@@ -31,9 +31,7 @@ def test_quantize_roundtrip_within_eps() -> None:
     q = quantize_embedding(emb)
     restored = dequantize(q)
     for orig, rec in zip(emb, restored, strict=True):
-        assert abs(orig - rec) <= 1 / 127 + 1e-9, (
-            f"round-trip error {orig - rec} exceeds 1/127"
-        )
+        assert abs(orig - rec) <= 1 / 127 + 1e-9, f"round-trip error {orig - rec} exceeds 1/127"
 
 
 def test_quantize_clamps_to_int8_range() -> None:

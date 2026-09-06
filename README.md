@@ -259,7 +259,7 @@ for i in range(20):
         metric_name="conversation_count",
         value=100 + i * 5,  # Increasing trend
         system_id="system-1",
-        timestamp=now - timedelta(hours=20-i),
+        timestamp=now - timedelta(hours=20 - i),
     )
 
 # Analyze trend
@@ -452,7 +452,7 @@ ______________________________________________________________________
 
 - **Type Hints**: Required for all functions (modern Python 3.13+ syntax)
 - **Docstrings**: Google-style docstrings
-- **Testing**: 85%+ code coverage required
+- **Testing**: 89%+ code coverage required (matches `--cov-fail-under` ratchet in `pyproject.toml`)
 - **Linting**: Ruff with strict settings
 - **Complexity**: Maximum 15 (Ruff default)
 
@@ -559,7 +559,7 @@ We welcome contributions! Please follow these guidelines:
 - **Docstrings required** on all public APIs
 - **Tests required** for new features
 - **Maximum complexity**: 15 (Ruff)
-- **Coverage**: Maintain 85%+
+- **Coverage**: Maintain 89%+
 
 ______________________________________________________________________
 

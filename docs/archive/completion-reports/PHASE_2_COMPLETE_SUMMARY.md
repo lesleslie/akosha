@@ -127,8 +127,8 @@ else:
 register_akosha_tools(
     registry,
     embedding_service=embedding_service,  # DI
-    analytics_service=analytics_service,    # DI
-    graph_builder=graph_builder,            # DI
+    analytics_service=analytics_service,  # DI
+    graph_builder=graph_builder,  # DI
 )
 ```
 
@@ -146,37 +146,27 @@ async def generate_embedding(text: str) -> np.ndarray:
 
 ### Generate Embeddings
 ```python
-result = await generate_embedding(
-    text="how to implement JWT authentication in FastAPI"
-)
+result = await generate_embedding(text="how to implement JWT authentication in FastAPI")
 # Returns: {"embedding_dim": 384, "embedding": [...], "mode": "fallback"}
 ```
 
 ### Analyze Trends
 ```python
 result = await analyze_trends(
-    metric_name="conversation_count",
-    system_id="system-1",
-    time_window_days=7
+    metric_name="conversation_count", system_id="system-1", time_window_days=7
 )
 # Returns: {"trend_direction": "increasing", "trend_strength": 0.85, ...}
 ```
 
 ### Detect Anomalies
 ```python
-result = await detect_anomalies(
-    metric_name="error_rate",
-    threshold_std=3.0
-)
+result = await detect_anomalies(metric_name="error_rate", threshold_std=3.0)
 # Returns: {"anomaly_count": 2, "anomalies": [...], ...}
 ```
 
 ### Cross-System Correlation
 ```python
-result = await correlate_systems(
-    metric_name="quality_score",
-    time_window_days=7
-)
+result = await correlate_systems(metric_name="quality_score", time_window_days=7)
 # Returns: {"correlations": [...], "total_systems": 5, ...}
 ```
 

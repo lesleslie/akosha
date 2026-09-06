@@ -11,6 +11,7 @@ These tests cover:
 - Successful ``put`` returning True.
 - Graceful False on transport errors.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -67,9 +68,7 @@ class TestListPrefix:
         """httpx.ConnectError on the post -> ``[]`` and no exception leak."""
         client = DharaHttpClient(base_url="http://example.invalid")
         client._client = AsyncMock(spec=httpx.AsyncClient)
-        client._client.post = AsyncMock(
-            side_effect=httpx.ConnectError("connection refused")
-        )
+        client._client.post = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
         client._client.aclose = AsyncMock(return_value=None)
 
         result = await client.list_prefix("p/")
@@ -82,9 +81,7 @@ class TestPut:
     async def test_dhara_http_client_put_returns_true_on_success(self) -> None:
         """httpx 200 -> ``True``."""
         client = DharaHttpClient(base_url="http://example.invalid")
-        mock_response = _build_response(
-            {"content": [{"type": "text", "text": "ok"}]}
-        )
+        mock_response = _build_response({"content": [{"type": "text", "text": "ok"}]})
         client._client = AsyncMock(spec=httpx.AsyncClient)
         client._client.post = AsyncMock(return_value=mock_response)
         client._client.aclose = AsyncMock(return_value=None)
@@ -102,9 +99,7 @@ class TestPut:
         """httpx.ConnectError on the post -> ``False``."""
         client = DharaHttpClient(base_url="http://example.invalid")
         client._client = AsyncMock(spec=httpx.AsyncClient)
-        client._client.post = AsyncMock(
-            side_effect=httpx.ConnectError("connection refused")
-        )
+        client._client.post = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
         client._client.aclose = AsyncMock(return_value=None)
 
         result = await client.put("k", {"v": 1})
@@ -139,9 +134,7 @@ class TestLifecycle:
         sentinel.aclose = AsyncMock(return_value=None)
         client._client = sentinel
 
-        with patch(
-            "akosha.storage.dhara_http_client.httpx.AsyncClient"
-        ) as factory:
+        with patch("akosha.storage.dhara_http_client.httpx.AsyncClient") as factory:
             await client.list_prefix("p/")
             await client.list_prefix("p/")
             factory.assert_not_called()  # never re-constructed
@@ -178,9 +171,7 @@ class TestListPrefixResponseShapes:
         """``{"content": []}`` → ``[]`` (no items to parse)."""
         client = DharaHttpClient(base_url="http://x")
         client._client = AsyncMock(spec=httpx.AsyncClient)
-        client._client.post = AsyncMock(
-            return_value=_build_response({"content": []})
-        )
+        client._client.post = AsyncMock(return_value=_build_response({"content": []}))
         client._client.aclose = AsyncMock(return_value=None)
 
         assert await client.list_prefix("p/") == []
@@ -201,9 +192,7 @@ class TestListPrefixResponseShapes:
         client = DharaHttpClient(base_url="http://x")
         client._client = AsyncMock(spec=httpx.AsyncClient)
         client._client.post = AsyncMock(
-            return_value=_build_response(
-                {"content": [{"type": "text", "text": "{not json"}]}
-            )
+            return_value=_build_response({"content": [{"type": "text", "text": "{not json"}]})
         )
         client._client.aclose = AsyncMock(return_value=None)
 
@@ -215,9 +204,7 @@ class TestListPrefixResponseShapes:
         client = DharaHttpClient(base_url="http://x")
         client._client = AsyncMock(spec=httpx.AsyncClient)
         client._client.post = AsyncMock(
-            return_value=_build_response(
-                {"content": [{"type": "text", "text": '{"key": "k"}'} ]}
-            )
+            return_value=_build_response({"content": [{"type": "text", "text": '{"key": "k"}'}]})
         )
         client._client.aclose = AsyncMock(return_value=None)
 
@@ -268,9 +255,7 @@ class TestHttpStatusErrors:
         client = DharaHttpClient(base_url="http://x")
         resp = _build_response({"error": "internal"})
         resp.raise_for_status = MagicMock(
-            side_effect=httpx.HTTPStatusError(
-                "500", request=MagicMock(), response=resp
-            )
+            side_effect=httpx.HTTPStatusError("500", request=MagicMock(), response=resp)
         )
         client._client = AsyncMock(spec=httpx.AsyncClient)
         client._client.post = AsyncMock(return_value=resp)
@@ -284,9 +269,7 @@ class TestHttpStatusErrors:
         client = DharaHttpClient(base_url="http://x")
         resp = _build_response({"error": "internal"})
         resp.raise_for_status = MagicMock(
-            side_effect=httpx.HTTPStatusError(
-                "500", request=MagicMock(), response=resp
-            )
+            side_effect=httpx.HTTPStatusError("500", request=MagicMock(), response=resp)
         )
         client._client = AsyncMock(spec=httpx.AsyncClient)
         client._client.post = AsyncMock(return_value=resp)

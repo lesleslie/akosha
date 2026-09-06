@@ -46,9 +46,7 @@ class MockSessionBuddyMCP:
         self.request_count = 0
         self.last_query: dict[str, Any] | None = None
 
-    async def __call__(
-        self, scope: dict[str, Any], receive: Any, send: Any
-    ) -> None:
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope["type"] != "http":
             return
         request = Request(scope, receive)
@@ -75,9 +73,7 @@ class MockSessionBuddyMCP:
         name = body.get("name")
         args = body.get("arguments") or {}
         if name == "list_code_graphs":
-            response = JSONResponse(
-                {"status": "success", "code_graphs": self.code_graphs}
-            )
+            response = JSONResponse({"status": "success", "code_graphs": self.code_graphs})
         elif name == "get_code_graph":
             key = f"{args.get('repo_path')}@{args.get('commit_hash')}"
             graph = self.full_graphs.get(key)
@@ -113,9 +109,7 @@ class MockOtelCollector:
         self.request_count = 0
         self.last_query: dict[str, str] | None = None
 
-    async def __call__(
-        self, scope: dict[str, Any], receive: Any, send: Any
-    ) -> None:
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope["type"] != "http":
             return
         request = Request(scope, receive)
@@ -131,16 +125,12 @@ class MockOtelCollector:
         self.last_query = dict(request.query_params)
         since_raw = request.query_params.get("since")
         since = int(since_raw) if since_raw is not None else 0
-        filtered = [
-            s for s in self.spans if int(s.get("startTimeUnixNano", "0")) > since
-        ]
+        filtered = [s for s in self.spans if int(s.get("startTimeUnixNano", "0")) > since]
         body = {
             "resourceSpans": [
                 {
                     "resource": {
-                        "attributes": [
-                            {"key": "service.name", "value": {"stringValue": "akosha"}}
-                        ]
+                        "attributes": [{"key": "service.name", "value": {"stringValue": "akosha"}}]
                     },
                     "scopeSpans": [{"spans": filtered}],
                 }
@@ -168,9 +158,7 @@ class MockBodaiEcosystem:
         full_graphs: dict[str, dict[str, Any]] | None = None,
         otel_spans: list[dict[str, Any]] | None = None,
     ) -> None:
-        self._session_buddy = MockSessionBuddyMCP(
-            code_graphs=code_graphs, full_graphs=full_graphs
-        )
+        self._session_buddy = MockSessionBuddyMCP(code_graphs=code_graphs, full_graphs=full_graphs)
         self._otel = MockOtelCollector(spans=otel_spans)
         self._sb_server: uvicorn.Server | None = None
         self._otel_server: uvicorn.Server | None = None

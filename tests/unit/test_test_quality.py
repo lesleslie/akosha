@@ -54,16 +54,12 @@ def test_no_empty_tests() -> None:
             tree = ast.parse(test_file.read_text(encoding="utf-8"))
         except SyntaxError as exc:
             # A parse error is itself an audit signal — fail loud.
-            pytest_fail_message = (
-                f"Syntax error in {test_file.relative_to(ROOT)}: {exc}"
-            )
+            pytest_fail_message = f"Syntax error in {test_file.relative_to(ROOT)}: {exc}"
             raise AssertionError(pytest_fail_message)
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
                 if not _has_assertion(node):
-                    offenders.append(
-                        (str(test_file.relative_to(ROOT)), node.name)
-                    )
+                    offenders.append((str(test_file.relative_to(ROOT)), node.name))
 
     assert not offenders, (
         f"Empty no-assert tests found: {offenders[:5]}... "
@@ -102,11 +98,7 @@ def test_scanner_accepts_call_only_body() -> None:
     from scripts.audit_empty_tests import _has_assertion_or_raises
 
     func = ast.parse(
-        "def test_x():\n"
-        "    foo = build()\n"
-        "    bar = something\n"
-        "    foo.run()\n"
-        "    cleanup()\n"
+        "def test_x():\n    foo = build()\n    bar = something\n    foo.run()\n    cleanup()\n"
     ).body[0]
     assert isinstance(func, ast.FunctionDef)
     assert _has_assertion_or_raises(func) is True
@@ -117,11 +109,7 @@ def test_scanner_rejects_pure_assignment_body_without_calls() -> None:
     assert is empty — pytest cannot fail such a test."""
     from scripts.audit_empty_tests import _has_assertion_or_raises
 
-    func = ast.parse(
-        "def test_x():\n"
-        "    foo = 'literal'\n"
-        "    bar = 42\n"
-    ).body[0]
+    func = ast.parse("def test_x():\n    foo = 'literal'\n    bar = 42\n").body[0]
     assert isinstance(func, ast.FunctionDef)
     assert _has_assertion_or_raises(func) is False
 

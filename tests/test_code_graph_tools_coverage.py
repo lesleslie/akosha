@@ -97,6 +97,7 @@ class TestComputeGraphSimilarity:
         the bug (bare ``except Exception: return 0.0``).
         """
         from akosha.mcp.tools.code_graph_tools import _compute_graph_similarity
+
         with pytest.raises((AttributeError, TypeError)):
             await _compute_graph_similarity(None, None)
 

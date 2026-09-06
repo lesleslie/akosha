@@ -31,6 +31,7 @@ def _make_mode() -> MagicMock:
 
 def _install_signal_spy(monkeypatch: pytest.MonkeyPatch) -> None:
     """Mirror the spy used by ``tests/unit/test_hot_store_wiring.py``."""
+
     def fake_signal(sig: int, handler: object) -> None:  # noqa: ARG001
         pass
 

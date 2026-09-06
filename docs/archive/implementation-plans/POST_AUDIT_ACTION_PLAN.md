@@ -90,17 +90,22 @@ import asyncio
 import time
 from locust import HttpUser, task, between
 
+
 class AkoshaLoadTest(HttpUser):
     wait_time = between(1, 3)
 
     @task
     def upload_memory(self):
         # Simulate Session-Buddy upload
-        response = self.client.post("/ingest/upload", json={
-            "system_id": "test-system",
-            "conversation": "test content",
-        })
+        response = self.client.post(
+            "/ingest/upload",
+            json={
+                "system_id": "test-system",
+                "conversation": "test content",
+            },
+        )
         assert response.status_code == 200
+
 
 # Run load test
 # Target: 100 uploads/minute sustained for 10 minutes
@@ -423,50 +428,37 @@ from prometheus_client import Counter, Histogram, Gauge
 
 # Ingestion metrics
 ingestion_requests_total = Counter(
-    'akosha_ingestion_requests_total',
-    'Total ingestion requests',
-    ['system_id', 'status']
+    "akosha_ingestion_requests_total", "Total ingestion requests", ["system_id", "status"]
 )
 
 ingestion_duration_seconds = Histogram(
-    'akosha_ingestion_duration_seconds',
-    'Ingestion request duration',
-    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0]
+    "akosha_ingestion_duration_seconds",
+    "Ingestion request duration",
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0],
 )
 
-ingestion_queue_size = Gauge(
-    'akosha_ingestion_queue_size',
-    'Current ingestion queue size'
-)
+ingestion_queue_size = Gauge("akosha_ingestion_queue_size", "Current ingestion queue size")
 
 # Query metrics
 query_requests_total = Counter(
-    'akosha_query_requests_total',
-    'Total query requests',
-    ['query_type', 'status']
+    "akosha_query_requests_total", "Total query requests", ["query_type", "status"]
 )
 
 query_duration_seconds = Histogram(
-    'akosha_query_duration_seconds',
-    'Query request duration',
-    buckets=[0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0]
+    "akosha_query_duration_seconds",
+    "Query request duration",
+    buckets=[0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0],
 )
 
 # Tier metrics
-hot_store_size_bytes = Gauge(
-    'akosha_hot_store_size_bytes',
-    'Hot store size in bytes'
-)
+hot_store_size_bytes = Gauge("akosha_hot_store_size_bytes", "Hot store size in bytes")
 
-warm_store_size_bytes = Gauge(
-    'akosha_warm_store_size_bytes',
-    'Warm store size in bytes'
-)
+warm_store_size_bytes = Gauge("akosha_warm_store_size_bytes", "Warm store size in bytes")
 
 migration_records_total = Counter(
-    'akosha_migration_records_total',
-    'Total records migrated',
-    ['source_tier', 'target_tier', 'status']
+    "akosha_migration_records_total",
+    "Total records migrated",
+    ["source_tier", "target_tier", "status"],
 )
 ```
 
@@ -628,15 +620,18 @@ groups:
 
 from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType
 
+
 class MilvusVectorStore:
     def __init__(self, host="localhost", port="19530"):
         connections.connect("default", host=host, port=port)
 
     async def create_collection(self, collection_name: str):
-        schema = CollectionSchema([
-            FieldSchema("conversation_id", DataType.VARCHAR, max_length=64, is_primary=True),
-            FieldSchema("embedding", DataType.FLOAT_VECTOR, dim=384),
-        ])
+        schema = CollectionSchema(
+            [
+                FieldSchema("conversation_id", DataType.VARCHAR, max_length=64, is_primary=True),
+                FieldSchema("embedding", DataType.FLOAT_VECTOR, dim=384),
+            ]
+        )
 
         index_params = {
             "index_type": "HNSW",
@@ -644,14 +639,10 @@ class MilvusVectorStore:
             "params": {
                 "M": 32,
                 "efConstruction": 400,
-            }
+            },
         }
 
-        collection = Collection(
-            name=collection_name,
-            schema=schema,
-            index_params=index_params
-        )
+        collection = Collection(name=collection_name, schema=schema, index_params=index_params)
         collection.create_index()
 
     async def search(self, collection_name: str, vector: list[float], limit: int = 10):
@@ -661,7 +652,7 @@ class MilvusVectorStore:
             anns_field="embedding",
             param={"metric_type": "IP", "params": {"ef": 200}},
             limit=limit,
-            expr=None
+            expr=None,
         )
         return results
 ```
@@ -686,6 +677,7 @@ Fallback: Keep DuckDB warm tier for backup
 
 from functools import lru_cache
 import redis.asyncio as redis
+
 
 class LayeredCache:
     def __init__(self, redis_url: str = "redis://localhost:6379"):
@@ -743,6 +735,7 @@ class LayeredCache:
 
 from oneiric.adapters import StorageAdapter
 
+
 class ColdStore:
     def __init__(self):
         # Resolve storage adapter via Oneiric
@@ -752,15 +745,12 @@ class ColdStore:
         """Lazy initialization of Oneiric storage."""
         if not self.storage:
             from oneiric.bridge import use
+
             bridge = await use("storage-s3-cold")
             self.storage = await bridge.instance
         return self.storage
 
-    async def export_batch(
-        self,
-        records: list[ColdRecord],
-        partition_path: str
-    ) -> str:
+    async def export_batch(self, records: list[ColdRecord], partition_path: str) -> str:
         """Export batch to cloud storage via Oneiric."""
         storage = await self._get_storage()
 
@@ -774,11 +764,7 @@ class ColdStore:
 
         # Upload via Oneiric
         s3_key = f"{partition_path}/{uuid.uuid4()}.parquet"
-        await storage.upload(
-            bucket="akosha-cold-data",
-            path=s3_key,
-            data=open(tmp_path, 'rb')
-        )
+        await storage.upload(bucket="akosha-cold-data", path=s3_key, data=open(tmp_path, "rb"))
 
         return s3_key
 ```
@@ -836,19 +822,14 @@ GROUP BY day, system_id;
 ```python
 # akosha/storage/replica_manager.py
 
+
 class ReplicaManager:
     def __init__(self, primary_dsn: str, replica_dsns: list[str]):
         self.primary = duckdb.connect(primary_dsn)
-        self.replicas = [
-            duckdb.connect(dsn) for dsn in replica_dsns
-        ]
+        self.replicas = [duckdb.connect(dsn) for dsn in replica_dsns]
         self.current_replica = 0
 
-    async def query_with_replica(
-        self,
-        query: str,
-        use_replica: bool = True
-    ) -> list[dict]:
+    async def query_with_replica(self, query: str, use_replica: bool = True) -> list[dict]:
         """Execute query on replica (for analytics) or primary (for ingestion)."""
         if use_replica and self.replicas:
             # Round-robin replica selection

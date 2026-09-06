@@ -118,7 +118,9 @@ class TestStoreMemory:
 
         store_func = registry.tools["store_memory"].decorated
         with patch("akosha.models.HotRecord", MagicMock):
-            result = await store_func(memory_id="mem_1", text="content", embedding=[0.1] * 384, metadata=None)
+            result = await store_func(
+                memory_id="mem_1", text="content", embedding=[0.1] * 384, metadata=None
+            )
 
         assert result["status"] == "stored"
         assert result["source"] == "unknown"

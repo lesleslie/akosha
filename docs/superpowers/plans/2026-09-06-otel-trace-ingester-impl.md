@@ -26,7 +26,7 @@
 - Coverage floor: 89.0% (`--cov-fail-under=89.0` in pyproject).
 - Lifespan integration must include opt-out env var `AKOSHA_SKIP_OTEL_INGESTER=1` (mirrors `AKOSHA_SKIP_CODE_GRAPH_INGESTER=1`).
 
----
+______________________________________________________________________
 
 ## File Structure
 
@@ -40,16 +40,19 @@
 
 The plan does **not** add new modules for watermarks — the watermark is held in-memory on the ingester instance, matching `CodeGraphIngester._known_graph_ids`.
 
----
+______________________________________________________________________
 
 ## Task 1: OtelTraceIngester skeleton with start/stop
 
 **Files:**
+
 - Create: `akosha/ingestion/otel_ingester.py`
 - Test: `tests/unit/test_otel_trace_ingester.py`
 
 **Interfaces:**
+
 - Produces: `class OtelTraceIngester` with `__init__(hot_store, embedding_service, otlp_endpoint, poll_interval_seconds, max_spans_per_poll, initial_lookback_seconds)` and `async def start()` / `async def stop()`. `_polling_loop()` is a private method. `_running`, `_poll_task`, `_http_client`, `_watermarks: dict[str, int]` are instance attributes.
+
 - The `embedding_service` parameter must satisfy the duck type: `await embedding_service.generate_embedding(text)` returns `np.ndarray` (the existing `EmbeddingService` contract).
 
 - [ ] **Step 1: Write the failing test**
@@ -236,16 +239,19 @@ normalization + HotStore.insert pipeline.
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
 
----
+______________________________________________________________________
 
 ## Task 2: Span fetch + normalization + insert
 
 **Files:**
+
 - Modify: `akosha/ingestion/otel_ingester.py:90-110` (the `_polling_loop` placeholder)
 - Test: `tests/unit/test_otel_trace_ingester.py`
 
 **Interfaces:**
+
 - Consumes: `_http_client` (set by `start()`), `_watermarks` (in-memory dict), `embedding_service`, `hot_store`.
+
 - Produces: `_fetch_spans(since_unix_nano: int) -> list[dict[str, Any]]` (HTTP GET OTLP/HTTP and unwrap `resourceSpans`), `_normalize_span(span: dict) -> HotRecord` (map OTel → `HotRecord`), `_ingest_span(record: HotRecord, span: dict) -> None` (embed + insert + watermark advance).
 
 - [ ] **Step 1: Write the failing tests**
@@ -263,7 +269,9 @@ async def test_fetch_spans_returns_otlp_resource_spans() -> None:
         canned_response = {
             "resourceSpans": [
                 {
-                    "resource": {"attributes": [{"key": "service.name", "value": {"stringValue": "akosha"}}]},
+                    "resource": {
+                        "attributes": [{"key": "service.name", "value": {"stringValue": "akosha"}}]
+                    },
                     "scopeSpans": [
                         {
                             "spans": [
@@ -274,7 +282,10 @@ async def test_fetch_spans_returns_otlp_resource_spans() -> None:
                                     "startTimeUnixNano": "1700000000000000000",
                                     "endTimeUnixNano": "1700000000001000000",
                                     "attributes": [
-                                        {"key": "task.class", "value": {"stringValue": "CODE_GENERATION"}}
+                                        {
+                                            "key": "task.class",
+                                            "value": {"stringValue": "CODE_GENERATION"},
+                                        }
                                     ],
                                 }
                             ]
@@ -323,9 +334,7 @@ async def test_ingest_span_writes_to_hot_store_and_advances_watermark() -> None:
     """_ingest_span embeds, inserts, and advances the watermark."""
     ingester = _make_ingester(
         embedding_service=MagicMock(
-            generate_embedding=AsyncMock(
-                return_value=np.zeros(384, dtype=np.float32)
-            )
+            generate_embedding=AsyncMock(return_value=np.zeros(384, dtype=np.float32))
         ),
     )
     hot_store = ingester.hot_store
@@ -382,164 +391,160 @@ Expected: 4 new tests FAIL with `AttributeError: 'OtelTraceIngester' object has 
 Replace the placeholder `_polling_loop` in `akosha/ingestion/otel_ingester.py` with this body, and add the three private methods below it:
 
 ```python
-    async def _polling_loop(self) -> None:
-        """Main polling loop. One cycle per ``poll_interval_seconds``."""
-        try:
-            while self._running:
-                try:
-                    # Each system_id polls independently; the watermark
-                    # gates the since parameter.
-                    for system_id in list(self._watermarks.keys() or ["__default__"]):
-                        watermark = self._watermarks.get(system_id)
-                        if watermark is None:
-                            # Restart recovery window
-                            watermark = self._now_unix_nano() - (
-                                self.initial_lookback_seconds * 1_000_000_000
+async def _polling_loop(self) -> None:
+    """Main polling loop. One cycle per ``poll_interval_seconds``."""
+    try:
+        while self._running:
+            try:
+                # Each system_id polls independently; the watermark
+                # gates the since parameter.
+                for system_id in list(self._watermarks.keys() or ["__default__"]):
+                    watermark = self._watermarks.get(system_id)
+                    if watermark is None:
+                        # Restart recovery window
+                        watermark = self._now_unix_nano() - (
+                            self.initial_lookback_seconds * 1_000_000_000
+                        )
+                    spans = await self._fetch_spans(since_unix_nano=watermark)
+                    if spans:
+                        logger.info(f"Fetched {len(spans)} OTel spans for {system_id}")
+                    for span in spans[: self.max_spans_per_poll]:
+                        try:
+                            await self._ingest_span(span, system_id=system_id)
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as e:
+                            logger.exception(
+                                f"OTel span ingestion failed for "
+                                f"span_id={span.get('spanId', 'unknown')}: {e}"
                             )
-                        spans = await self._fetch_spans(since_unix_nano=watermark)
-                        if spans:
-                            logger.info(
-                                f"Fetched {len(spans)} OTel spans for {system_id}"
-                            )
-                        for span in spans[: self.max_spans_per_poll]:
-                            try:
-                                await self._ingest_span(span, system_id=system_id)
-                            except asyncio.CancelledError:
-                                raise
-                            except Exception as e:
-                                logger.exception(
-                                    f"OTel span ingestion failed for "
-                                    f"span_id={span.get('spanId', 'unknown')}: {e}"
-                                )
-                    # Wait before next poll
-                    await asyncio.sleep(self.poll_interval_seconds)
-                except asyncio.CancelledError:
-                    logger.info("OTel polling loop cancelled")
-                    break
-                except Exception as e:
-                    logger.exception(f"Error in OTel polling loop: {e}")
-                    await asyncio.sleep(self.poll_interval_seconds)
-        except asyncio.CancelledError:
-            pass
+                # Wait before next poll
+                await asyncio.sleep(self.poll_interval_seconds)
+            except asyncio.CancelledError:
+                logger.info("OTel polling loop cancelled")
+                break
+            except Exception as e:
+                logger.exception(f"Error in OTel polling loop: {e}")
+                await asyncio.sleep(self.poll_interval_seconds)
+    except asyncio.CancelledError:
+        pass
 
-    async def _fetch_spans(self, since_unix_nano: int) -> list[dict[str, Any]]:
-        """Fetch spans newer than ``since_unix_nano`` from the OTLP/HTTP endpoint.
 
-        Returns a flat list of span dicts. OTLP/HTTP wraps spans in
-        ``resourceSpans[].scopeSpans[].spans[]``; this method unwraps
-        that nesting.
-        """
-        if self._http_client is None:
-            raise RuntimeError("HTTP client not initialized; call start() first")
-        response = await self._http_client.get(
-            self.otlp_endpoint,
-            params={"since": str(since_unix_nano)},
-        )
-        response.raise_for_status()
-        body = response.json()
-        result: list[dict[str, Any]] = []
-        for resource_spans in body.get("resourceSpans", []):
-            for scope_spans in resource_spans.get("scopeSpans", []):
-                for span in scope_spans.get("spans", []):
-                    result.append(span)
-        return result
+async def _fetch_spans(self, since_unix_nano: int) -> list[dict[str, Any]]:
+    """Fetch spans newer than ``since_unix_nano`` from the OTLP/HTTP endpoint.
 
-    def _normalize_span(
-        self,
-        span: dict[str, Any],
-        system_id: str,
-        embedding: list[float],
-    ) -> Any:  # returns HotRecord; Any to avoid runtime import in TYPE_CHECKING
-        """Map an OTel span to a HotRecord.
+    Returns a flat list of span dicts. OTLP/HTTP wraps spans in
+    ``resourceSpans[].scopeSpans[].spans[]``; this method unwraps
+    that nesting.
+    """
+    if self._http_client is None:
+        raise RuntimeError("HTTP client not initialized; call start() first")
+    response = await self._http_client.get(
+        self.otlp_endpoint,
+        params={"since": str(since_unix_nano)},
+    )
+    response.raise_for_status()
+    body = response.json()
+    result: list[dict[str, Any]] = []
+    for resource_spans in body.get("resourceSpans", []):
+        for scope_spans in resource_spans.get("scopeSpans", []):
+            for span in scope_spans.get("spans", []):
+                result.append(span)
+    return result
 
-        ``content`` is a JSON dump of the span fields (sans traceId,
-        spanId, which are duplicated in the conversation_id and metadata).
-        ``metadata.attributes.task_class`` is extracted from the
-        ``task.class`` semantic attribute so ``query_local_traces`` can
-        filter on it via the existing SQL WHERE clause.
-        """
-        from datetime import UTC, datetime
 
-        from akosha.storage.models import HotRecord
+def _normalize_span(
+    self,
+    span: dict[str, Any],
+    system_id: str,
+    embedding: list[float],
+) -> Any:  # returns HotRecord; Any to avoid runtime import in TYPE_CHECKING
+    """Map an OTel span to a HotRecord.
 
-        attrs = self._attrs_to_dict(span.get("attributes", []))
-        task_class = attrs.get("task.class")
+    ``content`` is a JSON dump of the span fields (sans traceId,
+    spanId, which are duplicated in the conversation_id and metadata).
+    ``metadata.attributes.task_class`` is extracted from the
+    ``task.class`` semantic attribute so ``query_local_traces`` can
+    filter on it via the existing SQL WHERE clause.
+    """
+    from datetime import UTC, datetime
 
-        # Serialize the span (drop spanId/traceId — those land in
-        # conversation_id and metadata.otel.trace_id).
-        span_for_content = {
-            k: v for k, v in span.items() if k not in ("traceId", "spanId")
-        }
-        import json
-        content = json.dumps(span_for_content, sort_keys=True, default=str)
+    from akosha.storage.models import HotRecord
 
-        start_unix_nano = int(span.get("startTimeUnixNano", "0"))
-        ts = datetime.fromtimestamp(start_unix_nano / 1_000_000_000, tz=UTC)
+    attrs = self._attrs_to_dict(span.get("attributes", []))
+    task_class = attrs.get("task.class")
 
-        return HotRecord(
-            system_id=system_id,
-            conversation_id=f"{system_id}:{span.get('spanId', '')}",
-            content=content,
-            embedding=embedding,
-            timestamp=ts,
-            metadata={
-                "attributes": {"task_class": task_class} if task_class else {},
-                "otel": {"trace_id": span.get("traceId", "")},
-            },
-        )
+    # Serialize the span (drop spanId/traceId — those land in
+    # conversation_id and metadata.otel.trace_id).
+    span_for_content = {k: v for k, v in span.items() if k not in ("traceId", "spanId")}
+    import json
 
-    async def _ingest_span(
-        self,
-        span: dict[str, Any],
-        system_id: str,
-    ) -> None:
-        """Embed the span content, insert as a HotRecord, advance the watermark."""
-        from akosha.storage.models import HotRecord
+    content = json.dumps(span_for_content, sort_keys=True, default=str)
 
-        content_for_embedding = (
-            f"{span.get('name', '')} "
-            f"{self._attrs_to_dict(span.get('attributes', []))}"
-        )
-        embedding_array = await self.embedding_service.generate_embedding(
-            content_for_embedding
-        )
-        record = self._normalize_span(
-            span, system_id=system_id, embedding=embedding_array.tolist()
-        )
-        await self.hot_store.insert(record)
-        # Watermark advances ONLY on successful insert.
-        start_unix_nano = int(span.get("startTimeUnixNano", "0"))
-        self._watermarks[system_id] = max(
-            self._watermarks.get(system_id, 0), start_unix_nano
-        )
+    start_unix_nano = int(span.get("startTimeUnixNano", "0"))
+    ts = datetime.fromtimestamp(start_unix_nano / 1_000_000_000, tz=UTC)
 
-    @staticmethod
-    def _attrs_to_dict(attrs: list[dict[str, Any]] | None) -> dict[str, Any]:
-        """Flatten OTel attributes list ``[{key, value}]`` into a dict.
+    return HotRecord(
+        system_id=system_id,
+        conversation_id=f"{system_id}:{span.get('spanId', '')}",
+        content=content,
+        embedding=embedding,
+        timestamp=ts,
+        metadata={
+            "attributes": {"task_class": task_class} if task_class else {},
+            "otel": {"trace_id": span.get("traceId", "")},
+        },
+    )
 
-        OTel value entries are wrapped: ``{"stringValue": "..."}`` or
-        ``{"intValue": "..."}``. We unwrap the stringValue/intValue
-        variant for the common cases.
-        """
-        result: dict[str, Any] = {}
-        for entry in attrs or []:
-            key = entry.get("key")
-            value_entry = entry.get("value", {})
-            if "stringValue" in value_entry:
-                result[key] = value_entry["stringValue"]
-            elif "intValue" in value_entry:
-                result[key] = int(value_entry["intValue"])
-            elif "boolValue" in value_entry:
-                result[key] = bool(value_entry["boolValue"])
-            else:
-                result[key] = value_entry
-        return result
 
-    @staticmethod
-    def _now_unix_nano() -> int:
-        """Current wall-clock time in unix nanoseconds (OTLP convention)."""
-        import time
-        return int(time.time_ns())
+async def _ingest_span(
+    self,
+    span: dict[str, Any],
+    system_id: str,
+) -> None:
+    """Embed the span content, insert as a HotRecord, advance the watermark."""
+    from akosha.storage.models import HotRecord
+
+    content_for_embedding = (
+        f"{span.get('name', '')} {self._attrs_to_dict(span.get('attributes', []))}"
+    )
+    embedding_array = await self.embedding_service.generate_embedding(content_for_embedding)
+    record = self._normalize_span(span, system_id=system_id, embedding=embedding_array.tolist())
+    await self.hot_store.insert(record)
+    # Watermark advances ONLY on successful insert.
+    start_unix_nano = int(span.get("startTimeUnixNano", "0"))
+    self._watermarks[system_id] = max(self._watermarks.get(system_id, 0), start_unix_nano)
+
+
+@staticmethod
+def _attrs_to_dict(attrs: list[dict[str, Any]] | None) -> dict[str, Any]:
+    """Flatten OTel attributes list ``[{key, value}]`` into a dict.
+
+    OTel value entries are wrapped: ``{"stringValue": "..."}`` or
+    ``{"intValue": "..."}``. We unwrap the stringValue/intValue
+    variant for the common cases.
+    """
+    result: dict[str, Any] = {}
+    for entry in attrs or []:
+        key = entry.get("key")
+        value_entry = entry.get("value", {})
+        if "stringValue" in value_entry:
+            result[key] = value_entry["stringValue"]
+        elif "intValue" in value_entry:
+            result[key] = int(value_entry["intValue"])
+        elif "boolValue" in value_entry:
+            result[key] = bool(value_entry["boolValue"])
+        else:
+            result[key] = value_entry
+    return result
+
+
+@staticmethod
+def _now_unix_nano() -> int:
+    """Current wall-clock time in unix nanoseconds (OTLP convention)."""
+    import time
+
+    return int(time.time_ns())
 ```
 
 You'll also need to add at the top of the file:
@@ -585,24 +590,28 @@ the next poll re-attempts.
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
 
----
+______________________________________________________________________
 
 ## Task 3: Lifespan integration + /health surfacing
 
 **Files:**
+
 - Modify: `akosha/mcp/server.py` (lifespan block, /health probe aggregates)
 - Test: `tests/unit/test_wave5_lifespan_wiring.py` (add 2 tests)
 
 **Interfaces:**
+
 - Consumes: `OtelTraceIngester` (from Task 1+2), `hot_store`, `embedding_service`, `get_shared_hot_store` (existing).
+
 - Produces: `_otel_trace_ingester` module-level singleton in `akosha.mcp.server`, lifespan constructs and starts it (unless `AKOSHA_SKIP_OTEL_INGESTER=1`), stops it on shutdown. /health probe reports `otel_ingester_running: bool` and `otel_endpoint: str` under the existing `local_traces_feed` aggregate.
 
 - [ ] **Step 1: Read the current lifespan block in akosha/mcp/server.py**
 
 Read `/Users/les/Projects/akosha/akosha/mcp/server.py` lines 460-560 (the lifespan body) to identify the exact insertion points. Locate:
+
 1. The `CodeGraphIngester` construction block (mirror it for OTel)
-2. The shutdown block where `_code_graph_ingester.stop()` is called
-3. The `/health` probe block where `code_graphs_feed` is built (extend `local_traces_feed` aggregate)
+1. The shutdown block where `_code_graph_ingester.stop()` is called
+1. The `/health` probe block where `code_graphs_feed` is built (extend `local_traces_feed` aggregate)
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -616,7 +625,7 @@ class TestOtelTraceIngesterLifespanWiring:
         self, _reset_wave5_module_state
     ) -> None:
         """Without AKOSHA_SKIP_OTEL_INGESTER, the OTel ingester is constructed and started."""
-        # Re-use the patched_lifespan-equivalent fixture pattern from existing
+        # Reuse the patched_lifespan-equivalent fixture pattern from existing
         # tests in this file; the test must assert the ingester is set on
         # akosha.mcp.server._otel_trace_ingester and that its start() was awaited.
         # Implementation note: this test will be filled in alongside the
@@ -634,31 +643,30 @@ class TestOtelTraceIngesterLifespanWiring:
 ```
 
 For the **real** assertions, look at the existing `test_lifespan_starts_code_graph_ingester` test in this file and mirror its pattern. The two new tests should:
+
 1. Patch `akosha.ingestion.otel_ingester.OtelTraceIngester` with an `AsyncMock` so `start()` is awaitable.
-2. Construct the app, enter the lifespan, assert `OtelTraceIngester` was called and `start()` was awaited.
-3. For the opt-out test, set `AKOSHA_SKIP_OTEL_INGESTER=1` and assert `OtelTraceIngester` was NOT called.
+1. Construct the app, enter the lifespan, assert `OtelTraceIngester` was called and `start()` was awaited.
+1. For the opt-out test, set `AKOSHA_SKIP_OTEL_INGESTER=1` and assert `OtelTraceIngester` was NOT called.
 
 - [ ] **Step 3: Modify akosha/mcp/server.py lifespan**
 
 In `akosha/mcp/server.py`, after the existing `CodeGraphIngester` block in the lifespan (search for `_code_graph_ingester = CodeGraphIngester(...)`), add:
 
 ```python
-        # OTel trace ingester (Wave 6). Mirrors the CodeGraphIngester
-        # construction block above. Skipped in tests via the standard
-        # AKOSHA_SKIP_OTEL_INGESTER=1 env var.
-        from akosha.ingestion.otel_ingester import OtelTraceIngester
+# OTel trace ingester (Wave 6). Mirrors the CodeGraphIngester
+# construction block above. Skipped in tests via the standard
+# AKOSHA_SKIP_OTEL_INGESTER=1 env var.
+from akosha.ingestion.otel_ingester import OtelTraceIngester
 
-        _otel_trace_ingester: OtelTraceIngester | None = None
-        if not os.getenv("AKOSHA_SKIP_OTEL_INGESTER"):
-            _otel_trace_ingester = OtelTraceIngester(
-                hot_store=hot_store,
-                embedding_service=embedding_service,
-                otlp_endpoint=os.getenv(
-                    "AKOSHA_OTLP_ENDPOINT", "http://localhost:4318/v1/traces"
-                ),
-                poll_interval_seconds=int(os.getenv("AKOSHA_OTEL_POLL_SECONDS", "60")),
-            )
-            await _otel_trace_ingester.start()
+_otel_trace_ingester: OtelTraceIngester | None = None
+if not os.getenv("AKOSHA_SKIP_OTEL_INGESTER"):
+    _otel_trace_ingester = OtelTraceIngester(
+        hot_store=hot_store,
+        embedding_service=embedding_service,
+        otlp_endpoint=os.getenv("AKOSHA_OTLP_ENDPOINT", "http://localhost:4318/v1/traces"),
+        poll_interval_seconds=int(os.getenv("AKOSHA_OTEL_POLL_SECONDS", "60")),
+    )
+    await _otel_trace_ingester.start()
 ```
 
 Declare the module-level singleton near the existing module-level singletons (`_shared_hot_store`, `_shared_kg_builder`, `_code_graph_ingester`, `_kg_refresh_task`):
@@ -721,15 +729,17 @@ try to reach a real OTLP collector during unit tests.
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
 
----
+______________________________________________________________________
 
 ## Task 4: End-to-end integration test with mock OTLP collector
 
 **Files:**
+
 - Create: `tests/integration/test_otel_ingester_e2e.py`
 - Create: `tests/integration/mock_otlp_collector.py` (helper module)
 
 **Interfaces:**
+
 - Produces: `MockOtelCollector` ASGI app that returns canned spans; `test_otel_ingester_e2e` that starts the mock, points the ingester at it, polls once, and asserts the span landed in `hot_store`.
 
 - [ ] **Step 1: Create the mock OTLP collector**
@@ -763,16 +773,12 @@ class MockOtelCollector:
         self.request_count += 1
         self.last_query = dict(request.query_params)
         since = int(request.query_params.get("since", "0"))
-        filtered = [
-            s for s in self.spans if int(s.get("startTimeUnixNano", "0")) > since
-        ]
+        filtered = [s for s in self.spans if int(s.get("startTimeUnixNano", "0")) > since]
         body = {
             "resourceSpans": [
                 {
                     "resource": {
-                        "attributes": [
-                            {"key": "service.name", "value": {"stringValue": "akosha"}}
-                        ]
+                        "attributes": [{"key": "service.name", "value": {"stringValue": "akosha"}}]
                     },
                     "scopeSpans": [{"spans": filtered}],
                 }
@@ -834,7 +840,10 @@ async def mock_collector_server() -> Any:
     while not server.started:
         await asyncio.sleep(0.05)
     try:
-        yield f"http://127.0.0.1:{server.servers[0].sockets[0].getsockname()[1]}/v1/traces", collector
+        yield (
+            f"http://127.0.0.1:{server.servers[0].sockets[0].getsockname()[1]}/v1/traces",
+            collector,
+        )
     finally:
         server.should_exit = True
         await task
@@ -845,6 +854,7 @@ def real_hot_store() -> HotStore:
     """A real in-memory HotStore (DuckDB :memory:)."""
     from akosha.storage.hot_store import HotStore
     import asyncio
+
     store = HotStore(database_path=":memory:")
     return store
 
@@ -853,9 +863,7 @@ def real_hot_store() -> HotStore:
 def stub_embedding_service() -> Any:
     """An EmbeddingService stand-in that returns a zero-vector."""
     service = AsyncMock()
-    service.generate_embedding = AsyncMock(
-        return_value=np.zeros(384, dtype=np.float32)
-    )
+    service.generate_embedding = AsyncMock(return_value=np.zeros(384, dtype=np.float32))
     return service
 
 
@@ -887,10 +895,7 @@ async def test_otel_ingester_e2e_polls_and_ingests(
 
         # The span should have landed in the hot store
         traces = await real_hot_store.query_traces(system_id="akosha")
-        assert any(
-            t["metadata"]["attributes"]["task_class"] == "CODE_GENERATION"
-            for t in traces
-        )
+        assert any(t["metadata"]["attributes"]["task_class"] == "CODE_GENERATION" for t in traces)
 
         # The watermark should have advanced
         assert ingester._watermarks["akosha"] > 0
@@ -925,11 +930,12 @@ Marked @pytest.mark.slow; default pytest runs skip it.
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
 
----
+______________________________________________________________________
 
 ## Self-Review
 
 1. **Spec coverage:**
+
    - "OTLP/HTTP collector source contract" → Task 2 (`_fetch_spans`)
    - "Span-per-HotRecord mapping" → Task 2 (`_normalize_span`)
    - "Per-system-id timestamp watermark" → Task 2 (`_watermarks`, `_ingest_span`)
@@ -940,6 +946,6 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
    - "Unit tests" → Task 1 (lifecycle) + Task 2 (normalize/insert)
    - "Integration test with mock OTLP collector" → Task 4
 
-2. **Placeholder scan:** All test code and implementation snippets are concrete. No "TBD" or "implement later" markers.
+1. **Placeholder scan:** All test code and implementation snippets are concrete. No "TBD" or "implement later" markers.
 
-3. **Type consistency:** `OtelTraceIngester.__init__` signature matches in Tasks 1, 2, 3, 4. `_watermarks` is declared in Task 1, used in Tasks 2 and 3. `_normalize_span` signature matches between Task 2 (production) and Task 2 (test). `_ingest_span` signature matches.
+1. **Type consistency:** `OtelTraceIngester.__init__` signature matches in Tasks 1, 2, 3, 4. `_watermarks` is declared in Task 1, used in Tasks 2 and 3. `_normalize_span` signature matches between Task 2 (production) and Task 2 (test). `_ingest_span` signature matches.

@@ -69,7 +69,7 @@ embedding = await service.generate_embedding(text)
 
 # Returns: numpy array of shape (384,)
 print(f"Embedding shape: {embedding.shape}")  # (384,)
-print(f"Embedding dtype: {embedding.dtype}")   # float32
+print(f"Embedding dtype: {embedding.dtype}")  # float32
 ```
 
 ### Batch Embedding
@@ -170,10 +170,10 @@ trend = await analytics.analyze_trend(
 )
 
 if trend:
-    print(f"Direction: {trend.trend_direction}")     # "increasing"
-    print(f"Strength: {trend.trend_strength:.2f}")    # 0.85+
-    print(f"Change: {trend.percent_change:.1f}%")      # +45%
-    print(f"Confidence: {trend.confidence:.2f}")        # 0.70
+    print(f"Direction: {trend.trend_direction}")  # "increasing"
+    print(f"Strength: {trend.trend_strength:.2f}")  # 0.85+
+    print(f"Change: {trend.percent_change:.1f}%")  # +45%
+    print(f"Confidence: {trend.confidence:.2f}")  # 0.70
 ```
 
 ### Detecting Anomalies
@@ -214,7 +214,7 @@ for i in range(20):
         "quality_score",
         base_value,
         "session-buddy-001",
-        timestamp=now - timedelta(hours=20-i),
+        timestamp=now - timedelta(hours=20 - i),
     )
 
     # System 2 (correlated)
@@ -222,7 +222,7 @@ for i in range(20):
         "quality_score",
         base_value + 3,
         "session-buddy-002",
-        timestamp=now - timedelta(hours=20-i),
+        timestamp=now - timedelta(hours=20 - i),
     )
 
 # Analyze correlations
@@ -294,7 +294,7 @@ path = builder.find_shortest_path(
 )
 
 if path:
-    print(f"Path found ({len(path)-1} hops):")
+    print(f"Path found ({len(path) - 1} hops):")
     for i, entity_id in enumerate(path):
         print(f"  {i}. {entity_id}")
 ```
@@ -383,6 +383,7 @@ ______________________________________________________________________
 import asyncio
 from datetime import datetime, UTC
 
+
 async def monitor_system_metrics(analytics, system_id, duration_hours=24):
     """Continuously monitor and alert on anomalies."""
     print(f"🔍 Monitoring {system_id} for {duration_hours} hours...")
@@ -413,17 +414,19 @@ async def find_similar_conversations(embedding_service, conversations, threshold
     duplicates = []
 
     for conv in conversations:
-        emb = await embedding_service.generate_embedding(conv['content'])
+        emb = await embedding_service.generate_embedding(conv["content"])
 
         # Check against existing embeddings
         for seen_emb, seen_conv in seen_embeddings:
             similarity = await embedding_service.compute_similarity(emb, seen_emb)
             if similarity >= threshold:
-                duplicates.append({
-                    'original': seen_conv,
-                    'duplicate': conv,
-                    'similarity': similarity,
-                })
+                duplicates.append(
+                    {
+                        "original": seen_conv,
+                        "duplicate": conv,
+                        "similarity": similarity,
+                    }
+                )
                 break
 
         seen_embeddings.append((emb, conv))

@@ -100,14 +100,11 @@ def test_service_version_matches_pyproject() -> None:
         ROOT / "akosha" / "mcp" / "tools" / "__init__.py", "SERVICE_VERSION"
     )
     assert service == pyproject, (
-        f"akosha/mcp/tools/__init__.py: SERVICE_VERSION={service!r} "
-        f"!= pyproject={pyproject!r}"
+        f"akosha/mcp/tools/__init__.py: SERVICE_VERSION={service!r} != pyproject={pyproject!r}"
     )
 
 
 def test_readme_version_matches_pyproject() -> None:
     pyproject = _read_pyproject_version()
     readme = _read_readme_version()
-    assert readme == pyproject, (
-        f"README.md: Version header={readme!r} != pyproject={pyproject!r}"
-    )
+    assert readme == pyproject, f"README.md: Version header={readme!r} != pyproject={pyproject!r}"

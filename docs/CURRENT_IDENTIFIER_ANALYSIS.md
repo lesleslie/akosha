@@ -30,14 +30,11 @@ GraphEntity(
     entity_id="system:crackerjack",
     entity_type="system",
     properties={"name": "crackerjack"},
-    source_system="crackerjack"
+    source_system="crackerjack",
 )
 
 GraphEntity(
-    entity_id="user:les",
-    entity_type="user",
-    properties={"user_id": "les"},
-    source_system="unknown"
+    entity_id="user:les", entity_type="user", properties={"user_id": "les"}, source_system="unknown"
 )
 ```
 
@@ -52,12 +49,7 @@ GraphEntity(
 
 **Example edge IDs:**
 ```python
-GraphEdge(
-    source_id="user:les",
-    target_id="system:mahavishnu",
-    edge_type="worked_on",
-    weight=1.0
-)
+GraphEdge(source_id="user:les", target_id="system:mahavishnu", edge_type="worked_on", weight=1.0)
 ```
 
 ## Storage Architecture

@@ -119,16 +119,13 @@ class CircuitBreaker:
 
         if self._failures >= self.failure_threshold:
             self._state = "open"
-            logger.warning(
-                f"Circuit breaker: open (threshold {self.failure_threshold} reached)"
-            )
+            logger.warning(f"Circuit breaker: open (threshold {self.failure_threshold} reached)")
 
     def _should_attempt_reset(self) -> bool:
         """Check if enough time has passed to attempt reset."""
         return (
             self._last_failure_time is not None
-            and (datetime.now() - self._last_failure_time).total_seconds()
-            >= self.recovery_timeout
+            and (datetime.now() - self._last_failure_time).total_seconds() >= self.recovery_timeout
         )
 
 
@@ -489,10 +486,13 @@ class AkoshaUser(HttpUser):
     @task
     def search_all_systems(self):
         """Search across all systems."""
-        self.client.post("/api/v1/search", json={
-            "query": "authentication implementation",
-            "limit": 10,
-        })
+        self.client.post(
+            "/api/v1/search",
+            json={
+                "query": "authentication implementation",
+                "limit": 10,
+            },
+        )
 
     @task(3)
     def get_metrics(self):

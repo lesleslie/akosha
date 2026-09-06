@@ -5,6 +5,7 @@ Mahavishnu Bodai subscriber consumes (topic, payload, headers.source,
 headers.event_id, headers.timestamp). Uses an in-memory recording
 transport (no Redis or AWS required) to simulate the round trip.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

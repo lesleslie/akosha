@@ -50,7 +50,9 @@ def _aiohttp_import_sites() -> list[Path]:
     return [
         p
         for p in AKOSHA_DIR.rglob("*.py")
-        if re.search(r"^\s*(?:import\s+aiohttp|from\s+aiohttp\s+import)", p.read_text(), re.MULTILINE)
+        if re.search(
+            r"^\s*(?:import\s+aiohttp|from\s+aiohttp\s+import)", p.read_text(), re.MULTILINE
+        )
     ]
 
 
@@ -67,7 +69,7 @@ def test_aiohttp_declared_in_dependencies() -> None:
 def test_aiohttp_version_pin_at_or_above_3_12_14() -> None:
     """Audit specifies >=3.12.14 — older versions have known CVEs."""
     text = PYPROJECT.read_text(encoding="utf-8")
-    match = re.search(r'aiohttp\s*([><=~!]+)\s*([\d.]+)', text)
+    match = re.search(r"aiohttp\s*([><=~!]+)\s*([\d.]+)", text)
     assert match is not None, "aiohttp is declared but has no version constraint"
     op, version = match.group(1), match.group(2)
     assert op == ">=", "aiohttp pin should be a floor (>=), not a ceiling"

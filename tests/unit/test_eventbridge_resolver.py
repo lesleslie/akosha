@@ -9,6 +9,7 @@ module-level global.
 Tests verify the wiring is opt-in and never wires when the operator
 has not enabled it.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch

@@ -162,7 +162,7 @@ class TestAddSpanAttributes:
     def test_adds_attributes_inside_span(self):
         with trace_operation("attr_test") as span:
             add_span_attributes({"custom_attr": "custom_value"})
-        assert span is not None, 'trace_operation yielded None instead of a span'
+        assert span is not None, "trace_operation yielded None instead of a span"
         # Attributes are set on the current span
 
     def test_no_error_without_active_span(self):
@@ -189,7 +189,7 @@ class TestAddSpanEvent:
     def test_adds_event_inside_span(self):
         with trace_operation("event_test") as span:
             add_span_event("checkpoint", {"stage": "processing"})
-        assert span is not None, 'trace_operation yielded None instead of a span'
+        assert span is not None, "trace_operation yielded None instead of a span"
 
     def test_no_error_without_active_span(self):
         add_span_event("orphan_event")

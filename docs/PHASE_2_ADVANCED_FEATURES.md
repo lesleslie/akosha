@@ -176,7 +176,7 @@ async def search_similar_fallback(
 
         results = self.conn.execute(
             query,
-            [query_embedding, limit * 10]  # Get extra for filtering
+            [query_embedding, limit * 10],  # Get extra for filtering
         ).fetchall()
 
         # Filter by threshold
@@ -434,6 +434,7 @@ class GraphAnalyzer:
         if method == "louvain":
             try:
                 import networkx.algorithms.community as nx_community
+
                 communities = nx_community.louvain_communities(G)
             except ImportError:
                 # Fallback to label propagation
@@ -521,6 +522,7 @@ async def detect_communities(
         "num_communities": len(communities),
         "communities": communities,
     }
+
 
 @registry.register(
     registry.ToolMetadata(
@@ -733,7 +735,7 @@ Phase 2 is complete when:
 - [ ] Time-series trends are detected across systems
 - [ ] Knowledge graph communities are identified
 - [ ] Event-driven ingestion processes uploads in < 5 minutes
-- [ ] All features have >85% test coverage
+- [ ] All features have >89% test coverage (matches `--cov-fail-under` ratchet in `pyproject.toml`)
 - [ ] MCP tools are functional and documented
 
 ______________________________________________________________________

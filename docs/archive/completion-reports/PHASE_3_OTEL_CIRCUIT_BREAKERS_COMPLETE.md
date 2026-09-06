@@ -128,10 +128,13 @@ async def lifespan(server):
 
 **Usage Example**:
 ```python
-breaker = CircuitBreaker("external_api", config=CircuitBreakerConfig(
-    failure_threshold=3,
-    timeout=60.0,
-))
+breaker = CircuitBreaker(
+    "external_api",
+    config=CircuitBreakerConfig(
+        failure_threshold=3,
+        timeout=60.0,
+    ),
+)
 
 # Protected call with automatic retry
 result = await breaker.call(external_api_function)
@@ -145,6 +148,7 @@ result = await breaker.call(external_api_function)
 @with_circuit_breaker("external_api")
 async def call_external_api():
     return await httpx.get("https://api.example.com")
+
 
 # Automatically protected
 await call_external_api()  # Circuit breaker + retry logic
@@ -421,13 +425,18 @@ embedding = await service.generate_embedding("Example text")
 ```python
 from akosha.resilience import with_circuit_breaker
 
-@with_circuit_breaker("external_api", config=CircuitBreakerConfig(
-    failure_threshold=3,
-    timeout=10.0,
-))
+
+@with_circuit_breaker(
+    "external_api",
+    config=CircuitBreakerConfig(
+        failure_threshold=3,
+        timeout=10.0,
+    ),
+)
 async def call_external_api():
     async with httpx.AsyncClient() as client:
         return await client.get("https://api.example.com")
+
 
 # Automatic retry and circuit breaking
 result = await call_external_api()

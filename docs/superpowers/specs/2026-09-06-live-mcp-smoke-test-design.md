@@ -14,6 +14,7 @@ ingester's polling loop runs, not that it actually pulls data from a
 remote Session-Buddy and ingests it into `hot_store`.
 
 Today there is no end-to-end test that proves:
+
 - The Akosha lifespan starts a real HTTP polling loop
 - The poll loop successfully retrieves data from a Session-Buddy-shaped endpoint
 - The retrieved data lands in `hot_store` in the expected shape
@@ -70,10 +71,11 @@ class MockOtelCollector:
         since = query.get("since")
         if since is None:
             return {"resourceSpans": [_wrap_span(s) for s in self.spans]}
-        return {"resourceSpans": [
-            _wrap_span(s) for s in self.spans
-            if int(s["start_time_unix_nano"]) > int(since)
-        ]}
+        return {
+            "resourceSpans": [
+                _wrap_span(s) for s in self.spans if int(s["start_time_unix_nano"]) > int(since)
+            ]
+        }
 
 
 class MockBodaiEcosystem:
@@ -143,7 +145,9 @@ async def test_live_mcp_smoke_pulls_code_graphs_and_otel_spans(
             graphs = await hot_store.list_code_graphs()
             assert any(g["repo_path"] == "akosha" for g in graphs)
             traces = await hot_store.query_traces(system_id="akosha")
-            assert any(t["metadata"]["attributes"]["task_class"] == "CODE_GENERATION" for t in traces)
+            assert any(
+                t["metadata"]["attributes"]["task_class"] == "CODE_GENERATION" for t in traces
+            )
 
             # 7. Assert /health reflects both ingesters running
             response = await app.routes["/health"]["handler"](None)
@@ -184,10 +188,12 @@ async def test_live_mcp_smoke_pulls_code_graphs_and_otel_spans(
 ## Error handling
 
 The fixture is **fail-fast on startup**:
+
 - If port binding fails, raise `RuntimeError` immediately
 - If the ASGI app fails to start within 5 seconds, raise
 
 The fixture is **lenient on shutdown**:
+
 - `stop()` swallows cancellation errors (logs + continues)
 - Resource leaks (open sockets) are acceptable because pytest reaps the
   interpreter after the test

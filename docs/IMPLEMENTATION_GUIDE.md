@@ -191,9 +191,7 @@ class HotRecord(BaseModel):
     metadata: dict[str, Any]
 
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class WarmRecord(BaseModel):
@@ -297,19 +295,22 @@ class HotStore:
             record: Hot record to insert
         """
         async with self._lock:
-            self.conn.execute("""
+            self.conn.execute(
+                """
                 INSERT INTO conversations
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, [
-                record.system_id,
-                record.conversation_id,
-                record.content,
-                record.embedding,
-                record.timestamp,
-                record.metadata,
-                self._compute_content_hash(record.content),
-                datetime.now(UTC),
-            ])
+            """,
+                [
+                    record.system_id,
+                    record.conversation_id,
+                    record.content,
+                    record.embedding,
+                    record.timestamp,
+                    record.metadata,
+                    self._compute_content_hash(record.content),
+                    datetime.now(UTC),
+                ],
+            )
 
     async def search_similar(
         self,
@@ -349,10 +350,7 @@ class HotStore:
                 LIMIT ?
             """
 
-            results = self.conn.execute(
-                query,
-                [query_embedding, limit]
-            ).fetchall()
+            results = self.conn.execute(query, [query_embedding, limit]).fetchall()
 
             # Filter by threshold
             return [
@@ -372,6 +370,7 @@ class HotStore:
     def _compute_content_hash(content: str) -> str:
         """Compute SHA-256 hash of content."""
         import hashlib
+
         return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
     async def close(self) -> None:
@@ -457,18 +456,21 @@ class WarmStore:
             record: Warm record to insert
         """
         async with self._lock:
-            self.conn.execute("""
+            self.conn.execute(
+                """
                 INSERT INTO conversations
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, [
-                record.system_id,
-                record.conversation_id,
-                record.embedding,
-                record.summary,
-                record.timestamp,
-                record.metadata,
-                datetime.now(UTC),
-            ])
+            """,
+                [
+                    record.system_id,
+                    record.conversation_id,
+                    record.embedding,
+                    record.summary,
+                    record.timestamp,
+                    record.metadata,
+                    datetime.now(UTC),
+                ],
+            )
 
     async def close(self) -> None:
         """Close database connection."""
@@ -575,12 +577,14 @@ class IngestionWorker:
                 manifest_path = f"{upload_prefix}/manifest.json"
                 if await self.storage.exists(manifest_path):
                     manifest_data = await self.storage.download(manifest_path)
-                    uploads.append(SystemMemoryUpload(
-                        system_id=system_id,
-                        upload_id=upload_id,
-                        manifest=manifest_data,
-                        storage_prefix=upload_prefix,
-                    ))
+                    uploads.append(
+                        SystemMemoryUpload(
+                            system_id=system_id,
+                            upload_id=upload_id,
+                            manifest=manifest_data,
+                            storage_prefix=upload_prefix,
+                        )
+                    )
 
         return uploads
 
@@ -767,7 +771,7 @@ async def test_search_similar(hot_store):
 - [ ] Unit tests for hot store
 - [ ] Unit tests for warm store
 - [ ] Unit tests for ingestion worker
-- [ ] >85% code coverage
+- [ ] >89% code coverage (matches `--cov-fail-under` ratchet in `pyproject.toml`)
 
 ______________________________________________________________________
 

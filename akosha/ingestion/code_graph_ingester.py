@@ -14,8 +14,10 @@ from typing import TYPE_CHECKING, Any
 
 import httpx2 as httpx
 
+from akosha.storage.hot_store import HotStore
+
 if TYPE_CHECKING:
-    from akosha.storage.hot_store import HotStore
+    from akosha.storage.pgvector_hot_store import PgvectorHotStore
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +31,7 @@ class CodeGraphIngester:
 
     def __init__(
         self,
-        hot_store: HotStore,
+        hot_store: HotStore | PgvectorHotStore,
         session_buddy_endpoint: str = "http://localhost:8678/mcp",
         poll_interval_seconds: int = 60,
         max_concurrent_ingests: int = 10,
@@ -231,8 +233,21 @@ class CodeGraphIngester:
                 "metadata": result.get("metadata", {}),
             }
 
-            # Store in hot store
-            await self.hot_store.store_code_graph(
+            # Store in hot store. ``store_code_graph`` is only on the
+            # DuckDB-backed ``HotStore``; the pgvector backend has no
+            # equivalent surface, so we skip the write in that case.
+            # The ``hasattr`` short-circuit keeps MagicMock-based
+            # tests working — they patch ``store_code_graph`` directly
+            # without going through the isinstance chain.
+            if (
+                not isinstance(self.hot_store, HotStore)
+                and not hasattr(self.hot_store, "store_code_graph")
+            ):
+                logger.debug(
+                    "CodeGraphIngester: hot_store lacks store_code_graph; skipping write"
+                )
+                return True
+            await self.hot_store.store_code_graph(  # ty: ignore[call-non-callable]
                 repo_path=graph_data["repo_path"],
                 commit_hash=graph_data["commit_hash"],
                 nodes_count=graph_data["nodes_count"],

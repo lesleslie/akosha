@@ -4,6 +4,7 @@ The adapter bridges ``publisher.publish(envelope)`` (the API the
 publisher module expects) and ``EventBridge.emit(topic, payload, headers)``
 (the API Oneiric's EventBridge exposes).
 """
+
 from __future__ import annotations
 
 import asyncio

@@ -5,6 +5,76 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-09-06
+
+### Added
+
+- akosha: OTel span fetch, normalize, and ingest pipeline
+- akosha: OtelTraceIngester skeleton with start/stop lifecycle
+- akosha: Wire CodeGraphIngester + kg population in MCP lifespan (Wave 5)
+- akosha: Wire OtelTraceIngester into MCP lifespan (Wave 6)
+- otel: Add per-feed counters + fix /health wiring (C2/C3/C4/M13/M14)
+- otel: E2e test with mock OTLP collector + service.name extraction
+- Populate metadata.otel.span_id + improve embedding format
+
+### Changed
+
+- akosha: Drop dead register_otel_query_tools from legacy path (M16)
+- akosha: Extract _env_truthy() helper to deduplicate opt-out env reads
+
+### Fixed
+
+- akosha: BootstrapOrchestrator.report_health does active ping (M3)
+- akosha: Honor /health probe contract + delete Wave 3 dead code
+- akosha: Make discover_tools hint profile-aware
+- akosha: Restore 5 orphan methods to AgingService + flip 3 tests locked in audit bugs
+- akosha: Wire documented env vars + sync README tool count (M10/M11/M12)
+- audit: Scanner now recognizes 'with pytest.raises' as an assertion pattern
+- otel: Harden service.name extraction + unwrap AnyValue variants (M3/M4)
+- otel: Surface shutdown exceptions; drop redundant CancelledError wrapper
+
+### Documentation
+
+- akosha: Live MCP smoke test design spec
+- akosha: Live MCP smoke test implementation plan
+- akosha: Mark Wave 5 followups closed; OTel + smoke test deferred
+- akosha: OTel trace ingester design spec
+- akosha: OTel trace ingester implementation plan
+- akosha: Populate Wave-5 investigation report in spec appendix A
+- akosha: Reconcile Scope Notes drift — OTel half has shipped
+- akosha: Wave 3 hardening feature-tracking entry
+- akosha: Wave 4 hardening feature-tracking entry + bump to 0.14.7
+- akosha: Wave 5 feature-tracking + spec marked complete
+- otel: Align docstrings with global-watermark reality (C1/M1/M2)
+
+### Testing
+
+- akosha: Cover cold_store cleanup + adapter error paths (+5 tests)
+- akosha: Cover dhara_http_client lifecycle + parse tolerance (+12 tests)
+- akosha: Cover embedding_dim exception branches (+5 tests)
+- akosha: Cover fitness_analyzer trace fetch + Dhara write + DLQ paths (+10 tests)
+- akosha: Dedupe mock + cancel _poll_task + close CodeGraphIngester (M5/M6/M7)
+- akosha: Drift test recognizes Wave 5 W0 group registration path
+- akosha: Exact-path match in mock fixtures; update unit tests to match
+- akosha: Guard against empty no-assert tests (Task 4.3)
+- akosha: Live MCP smoke test against MockBodaiEcosystem
+- akosha: MockBodaiEcosystem ephemeral-port fixture
+- akosha: MockSessionBuddyMCP + MockOtelCollector ASGI apps
+- akosha: Pin CLI + HTTP /health status parity (M4)
+- akosha: Replace 59 vacuous test assertions with side-effect checks
+- akosha: Replace 7 vacuous assert True with file-specific assertions
+- akosha: Replace 8 remaining vacuous assert True with file-specific assertions
+- akosha: Rewrite 38 empty prometheus_metrics tests with assertions (Task 4.2)
+- akosha: Rewrite 38 empty tests with assertions across 14 files (Task 4.2)
+- akosha: Tighten empty-test scanner + add regression coverage (M8/M9)
+- akosha: Tool-level e2e for query_local_traces (C5)
+
+### Internal
+
+- akosha: AST scanner for empty no-assert tests (Task 4.1)
+- akosha: Raise --cov-fail-under to 89.0 (Wave 3 ratchet)
+- akosha: Sync 4 version stamps + 6 test constants to 0.14.7
+
 ## [0.14.0] - 2026-08-30
 
 ### Added

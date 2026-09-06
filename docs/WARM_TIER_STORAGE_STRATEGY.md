@@ -46,6 +46,7 @@ storage:
 import os
 from pathlib import Path
 
+
 def get_warm_path(config_path: str) -> Path:
     """Resolve warm storage path with environment variable override.
 
@@ -539,6 +540,7 @@ from pathlib import Path
 import yaml
 from typing import Any
 
+
 class StorageConfig:
     """Storage configuration with environment variable override."""
 
@@ -580,7 +582,7 @@ class StorageConfig:
         """Get warm storage backend type."""
         return os.getenv(
             "AKOSHA_WARM_BACKEND",
-            self._config.get("storage", {}).get("warm", {}).get("backend", "duckdb-ssd")
+            self._config.get("storage", {}).get("warm", {}).get("backend", "duckdb-ssd"),
         )
 ```
 
@@ -794,6 +796,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 async def migrate_warm_storage(
     old_path: Path,
     new_path: Path,
@@ -890,33 +893,27 @@ logger = logging.getLogger(__name__)
 
 # Define metrics
 warm_storage_size_bytes = Gauge(
-    'akosha_warm_storage_size_bytes',
-    'Size of warm storage in bytes',
-    ['environment', 'mountpoint']
+    "akosha_warm_storage_size_bytes", "Size of warm storage in bytes", ["environment", "mountpoint"]
 )
 
 warm_storage_usage_percent = Gauge(
-    'akosha_warm_storage_usage_percent',
-    'Percentage of disk space used',
-    ['environment', 'mountpoint']
+    "akosha_warm_storage_usage_percent",
+    "Percentage of disk space used",
+    ["environment", "mountpoint"],
 )
 
 warm_storage_available_bytes = Gauge(
-    'akosha_warm_storage_available_bytes',
-    'Available disk space in bytes',
-    ['environment', 'mountpoint']
+    "akosha_warm_storage_available_bytes",
+    "Available disk space in bytes",
+    ["environment", "mountpoint"],
 )
 
 warm_storage_conversation_count = Gauge(
-    'akosha_warm_conversation_count',
-    'Number of conversations in warm store',
-    ['environment']
+    "akosha_warm_conversation_count", "Number of conversations in warm store", ["environment"]
 )
 
 warm_storage_info = Info(
-    'akosha_warm_storage_info',
-    'Information about warm storage configuration',
-    ['environment']
+    "akosha_warm_storage_info", "Information about warm storage configuration", ["environment"]
 )
 
 
@@ -938,9 +935,15 @@ def collect_disk_metrics(warm_path: Path, environment: str = "production") -> No
 
         # Update metrics
         mountpoint = str(warm_path)
-        warm_storage_size_bytes.labels(environment=environment, mountpoint=mountpoint).set(used_space)
-        warm_storage_usage_percent.labels(environment=environment, mountpoint=mountpoint).set(usage_percent)
-        warm_storage_available_bytes.labels(environment=environment, mountpoint=mountpoint).set(available_space)
+        warm_storage_size_bytes.labels(environment=environment, mountpoint=mountpoint).set(
+            used_space
+        )
+        warm_storage_usage_percent.labels(environment=environment, mountpoint=mountpoint).set(
+            usage_percent
+        )
+        warm_storage_available_bytes.labels(environment=environment, mountpoint=mountpoint).set(
+            available_space
+        )
 
         # Log warnings
         if usage_percent > 90:
@@ -983,11 +986,7 @@ def collect_database_metrics(warm_path: Path, environment: str = "production") -
         logger.error(f"Failed to collect database metrics: {e}")
 
 
-def update_storage_info(
-    warm_path: Path,
-    backend: str,
-    environment: str = "production"
-) -> None:
+def update_storage_info(warm_path: Path, backend: str, environment: str = "production") -> None:
     """Update storage info metric.
 
     Args:
@@ -995,11 +994,13 @@ def update_storage_info(
         backend: Backend type (duckdb-ssd, duckdb-hdd)
         environment: Environment name
     """
-    warm_storage_info.labels(environment=environment).info({
-        'path': str(warm_path),
-        'backend': backend,
-        'filesystem': os.path.basename(warm_path),
-    })
+    warm_storage_info.labels(environment=environment).info(
+        {
+            "path": str(warm_path),
+            "backend": backend,
+            "filesystem": os.path.basename(warm_path),
+        }
+    )
 ```
 
 ### Grafana Dashboard Queries
@@ -1163,8 +1164,7 @@ async def check_warm_storage_health() -> StorageHealth:
 
     if not warm_path.exists():
         raise HTTPException(
-            status_code=503,
-            detail=f"Warm storage path does not exist: {warm_path}"
+            status_code=503, detail=f"Warm storage path does not exist: {warm_path}"
         )
 
     try:
@@ -1195,10 +1195,7 @@ async def check_warm_storage_health() -> StorageHealth:
         )
 
     except Exception as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Failed to check warm storage: {e}"
-        )
+        raise HTTPException(status_code=503, detail=f"Failed to check warm storage: {e}")
 
 
 @router.get("/metrics/storage")

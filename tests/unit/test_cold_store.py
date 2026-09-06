@@ -310,9 +310,7 @@ class TestColdStoreBackends:
             await store.close()
 
     @pytest.mark.asyncio
-    async def test_initialize_constructs_s3_adapter(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_initialize_constructs_s3_adapter(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """S3 backend constructs ``S3StorageAdapter`` via ``S3StorageSettings``."""
         from akosha.storage import cold_store as csmod
 
@@ -337,9 +335,7 @@ class TestColdStoreBackends:
             await store.close()
 
     @pytest.mark.asyncio
-    async def test_initialize_constructs_gcs_adapter(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_initialize_constructs_gcs_adapter(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """GCS backend constructs ``GCSStorageAdapter`` via ``GCSStorageSettings``."""
         from akosha.storage import cold_store as csmod
 

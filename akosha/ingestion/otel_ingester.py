@@ -26,15 +26,16 @@ import asyncio
 import json
 import logging
 import time
-from contextlib import suppress
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import httpx2 as httpx
 
 if TYPE_CHECKING:
+    from akosha.models import HotRecord
     from akosha.processing.embeddings import EmbeddingService
     from akosha.storage.hot_store import HotStore
+    from akosha.storage.pgvector_hot_store import PgvectorHotStore
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ class OtelTraceIngester:
 
     def __init__(
         self,
-        hot_store: HotStore,
+        hot_store: HotStore | PgvectorHotStore,
         embedding_service: EmbeddingService,
         otlp_endpoint: str = "http://localhost:4318/v1/traces",
         poll_interval_seconds: int = 60,
@@ -147,9 +148,7 @@ class OtelTraceIngester:
                 # Note: this is the *global* watermark, not per-system.
                 if self._watermarks:
                     since_unix_nano = max(self._watermarks.values())
-                spans_by_system = await self._fetch_spans(
-                    since_unix_nano=since_unix_nano
-                )
+                spans_by_system = await self._fetch_spans(since_unix_nano=since_unix_nano)
                 for system_id, span in spans_by_system:
                     try:
                         await self._ingest_span(span, system_id=system_id)
@@ -172,9 +171,7 @@ class OtelTraceIngester:
                 logger.exception(f"Error in OTel polling loop: {e}")
                 await asyncio.sleep(self.poll_interval_seconds)
 
-    async def _fetch_spans(
-        self, since_unix_nano: int
-    ) -> list[tuple[str, dict[str, Any]]]:
+    async def _fetch_spans(self, since_unix_nano: int) -> list[tuple[str, dict[str, Any]]]:
         """Fetch spans newer than ``since_unix_nano`` from the OTLP/HTTP endpoint.
 
         Returns a list of ``(system_id, span)`` tuples. The system_id is
@@ -223,7 +220,7 @@ class OtelTraceIngester:
         span: dict[str, Any],
         system_id: str,
         embedding: list[float],
-    ) -> "HotRecord":
+    ) -> HotRecord:
         """Map an OTel span to a HotRecord.
 
         ``content`` is a JSON dump of the span fields (sans traceId,
@@ -232,16 +229,13 @@ class OtelTraceIngester:
         ``task.class`` semantic attribute so ``query_local_traces`` can
         filter on it via the existing SQL WHERE clause.
         """
-        from akosha.storage.models import HotRecord
+        from akosha.models import HotRecord
 
-        attrs = self._attrs_to_dict(span.get("attributes", []))
-        task_class = attrs.get("task.class")
+        task_class = self._attrs_to_dict(span.get("attributes", [])).get("task.class")
 
         # Serialize the span (drop spanId/traceId — those land in
         # conversation_id and metadata.otel.trace_id).
-        span_for_content = {
-            k: v for k, v in span.items() if k not in ("traceId", "spanId")
-        }
+        span_for_content = {k: v for k, v in span.items() if k not in ("traceId", "spanId")}
         content = json.dumps(span_for_content, sort_keys=True, default=str)
 
         start_unix_nano = int(span.get("startTimeUnixNano", "0"))
@@ -278,21 +272,13 @@ class OtelTraceIngester:
         """
         attrs = self._attrs_to_dict(span.get("attributes", []))
         attr_pairs = " ".join(f"{k}={v}" for k, v in sorted(attrs.items()))
-        content_for_embedding = (
-            f"{span.get('name', '')} {attr_pairs}".strip()
-        )
-        embedding_array = await self.embedding_service.generate_embedding(
-            content_for_embedding
-        )
-        record = self._normalize_span(
-            span, system_id=system_id, embedding=embedding_array.tolist()
-        )
+        content_for_embedding = f"{span.get('name', '')} {attr_pairs}".strip()
+        embedding_array = await self.embedding_service.generate_embedding(content_for_embedding)
+        record = self._normalize_span(span, system_id=system_id, embedding=embedding_array.tolist())
         await self.hot_store.insert(record)
         # Watermark advances ONLY on successful insert.
         start_unix_nano = int(span.get("startTimeUnixNano", "0"))
-        self._watermarks[system_id] = max(
-            self._watermarks.get(system_id, 0), start_unix_nano
-        )
+        self._watermarks[system_id] = max(self._watermarks.get(system_id, 0), start_unix_nano)
 
     @staticmethod
     def _attrs_to_dict(attrs: list[dict[str, Any]] | None) -> dict[str, Any]:
@@ -306,6 +292,7 @@ class OtelTraceIngester:
         so the resulting dict holds pure Python primitives (no raw
         ``{"stringValue": ...}`` wrappers left).
         """
+
         def _unwrap(value_entry: dict[str, Any] | None) -> Any:
             if not value_entry:
                 return None
@@ -343,4 +330,4 @@ class OtelTraceIngester:
     @staticmethod
     def _now_unix_nano() -> int:
         """Current wall-clock time in unix nanoseconds (OTLP convention)."""
-        return int(time.time_ns())
+        return time.time_ns()

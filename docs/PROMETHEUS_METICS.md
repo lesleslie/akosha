@@ -87,16 +87,11 @@ from akosha.observability import prometheus_metrics
 
 # Record ingestion
 prometheus_metrics.record_ingestion_record(
-    system_id="session-buddy-123",
-    status="success",
-    bytes_processed=1024
+    system_id="session-buddy-123", status="success", bytes_processed=1024
 )
 
 # Update throughput periodically
-prometheus_metrics.update_ingestion_throughput(
-    records_per_second=100.5,
-    system_id="all"
-)
+prometheus_metrics.update_ingestion_throughput(records_per_second=100.5, system_id="all")
 ```
 
 ### Search Metrics
@@ -104,9 +99,7 @@ prometheus_metrics.update_ingestion_throughput(
 ```python
 # Record search latency and results
 with prometheus_metrics.observe_search_latency(
-    query_type="semantic",
-    shard_count=3,
-    tier="hot"
+    query_type="semantic", shard_count=3, tier="hot"
 ) as record_results:
     results = await search_store(query)
     record_results(len(results))
@@ -122,11 +115,7 @@ else:
     prometheus_metrics.record_cache_miss(cache_tier="L1", query_type="semantic")
 
 # Update cache hit rate periodically
-prometheus_metrics.update_cache_hit_rate(
-    hit_rate=0.85,
-    cache_tier="L1",
-    query_type="semantic"
-)
+prometheus_metrics.update_cache_hit_rate(hit_rate=0.85, cache_tier="L1", query_type="semantic")
 ```
 
 ### Storage Metrics
@@ -139,7 +128,7 @@ prometheus_metrics.update_store_sizes(
     cold_size=500_000_000,
     hot_bytes=1024 * 1024 * 1024,  # 1 GB
     warm_bytes=1024 * 1024 * 1024 * 50,  # 50 GB
-    cold_bytes=1024 * 1024 * 1024 * 500  # 500 GB
+    cold_bytes=1024 * 1024 * 1024 * 500,  # 500 GB
 )
 
 # Observe storage operations
@@ -159,9 +148,7 @@ try:
     risky_operation()
 except Exception as e:
     prometheus_metrics.increment_errors(
-        component="hot_store",
-        error_type="database_error",
-        severity="critical"
+        component="hot_store", error_type="database_error", severity="critical"
     )
     raise
 ```
@@ -178,6 +165,7 @@ prometheus_metrics.start_metrics_server(port=8000)
 from fastapi import FastAPI
 
 app = FastAPI()
+
 
 @app.get("/metrics")
 async def metrics():

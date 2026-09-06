@@ -32,9 +32,7 @@ from tests.fixtures.mock_bodai_mcp import MockBodaiEcosystem, make_canned_span
 def stub_embedding_service() -> Any:
     """An EmbeddingService stand-in that returns a zero-vector."""
     service = AsyncMock()
-    service.generate_embedding = AsyncMock(
-        return_value=np.zeros(384, dtype=np.float32)
-    )
+    service.generate_embedding = AsyncMock(return_value=np.zeros(384, dtype=np.float32))
     return service
 
 
@@ -90,9 +88,7 @@ async def test_otel_ingester_e2e_polls_and_ingests(
             traces = await hot_store.query_traces(system_id="akosha")
             assert traces, "expected >=1 trace for akosha; hot store empty"
             metadata_raw = traces[0]["metadata"]
-            metadata = (
-                json.loads(metadata_raw) if isinstance(metadata_raw, str) else metadata_raw
-            )
+            metadata = json.loads(metadata_raw) if isinstance(metadata_raw, str) else metadata_raw
             task_class = (metadata.get("attributes") or {}).get("task_class")
             assert task_class == "CODE_GENERATION", (
                 f"expected CODE_GENERATION; got metadata={metadata}"

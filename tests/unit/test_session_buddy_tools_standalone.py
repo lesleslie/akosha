@@ -237,7 +237,10 @@ class TestBatchStoreMemoriesLogic:
             register_session_buddy_tools(mock_registry2, mock_hot_store2)
             batch_func2 = captured2[1]
 
-            valid_batch = [{"memory_id": f"mem{i}", "text": f"Text{i}", "embedding": [0.1] * 384} for i in range(1000)]
+            valid_batch = [
+                {"memory_id": f"mem{i}", "text": f"Text{i}", "embedding": [0.1] * 384}
+                for i in range(1000)
+            ]
             result = await batch_func2(valid_batch)
 
             assert result["status"] == "completed"

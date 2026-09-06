@@ -107,6 +107,7 @@ def test_health_returns_503_when_no_probe_registered(
 
 def test_health_returns_503_when_probe_raises(http_client: TestClient) -> None:
     """Probe that raises → 503 with the exception message captured."""
+
     async def raising_probe() -> dict[str, dict[str, Any]]:
         raise RuntimeError("dfeed exploded")
 
@@ -144,6 +145,7 @@ def test_metrics_endpoint_unchanged(http_client: TestClient) -> None:
 
 def test_set_health_probe_overrides_previous() -> None:
     """set_health_probe replaces the previous probe (no double-registration)."""
+
     async def first_probe() -> dict[str, dict[str, Any]]:
         return {"a": {"ok": False}}
 
@@ -161,6 +163,7 @@ def test_set_health_probe_overrides_previous() -> None:
 
 def test_empty_checks_dict_is_healthy(http_client: TestClient) -> None:
     """A probe that returns ``{}`` is treated as all-ok (vacuous truth)."""
+
     async def empty_probe() -> dict[str, dict[str, Any]]:
         return {}
 
@@ -182,6 +185,7 @@ def test_health_503_for_varied_unhealthy_shapes(
     http_client: TestClient, feed_status: dict[str, Any]
 ) -> None:
     """Any feed whose ``ok`` field is falsy → 503."""
+
     async def probe() -> dict[str, dict[str, Any]]:
         return {"thing": feed_status}
 

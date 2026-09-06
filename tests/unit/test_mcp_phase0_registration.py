@@ -409,11 +409,14 @@ class TestRegisterComponentToDhara:
         async def fake_sleep(t: float) -> None:
             sleep_intervals.append(t)
 
-        with patch(
-            "akosha.mcp.server._register_to_dhara_once",
-            new_callable=AsyncMock,
-            side_effect=always_fail,
-        ), patch("akosha.mcp.server.asyncio.sleep", fake_sleep):
+        with (
+            patch(
+                "akosha.mcp.server._register_to_dhara_once",
+                new_callable=AsyncMock,
+                side_effect=always_fail,
+            ),
+            patch("akosha.mcp.server.asyncio.sleep", fake_sleep),
+        ):
             import akosha.mcp.server as server_module
 
             server_module._heartbeat_task = None

@@ -86,9 +86,7 @@ async def test_query_local_traces_extracts_traces_key_from_dict() -> None:
     client = BodaiComponentMCPClient(base_url="http://example.com/mcp")
     inner = [{"id": "a"}]
 
-    with patch.object(
-        client, "call_tool", AsyncMock(return_value={"traces": inner})
-    ):
+    with patch.object(client, "call_tool", AsyncMock(return_value={"traces": inner})):
         result = await client.query_local_traces(task_class="reasoning")
 
     assert result == inner
@@ -100,9 +98,7 @@ async def test_query_local_traces_extracts_items_key_from_dict() -> None:
     client = BodaiComponentMCPClient(base_url="http://example.com/mcp")
     inner = [{"id": "b"}]
 
-    with patch.object(
-        client, "call_tool", AsyncMock(return_value={"items": inner})
-    ):
+    with patch.object(client, "call_tool", AsyncMock(return_value={"items": inner})):
         result = await client.query_local_traces(task_class="reasoning")
 
     assert result == inner
@@ -114,9 +110,7 @@ async def test_query_local_traces_extracts_result_key_from_dict() -> None:
     client = BodaiComponentMCPClient(base_url="http://example.com/mcp")
     inner = [{"id": "c"}]
 
-    with patch.object(
-        client, "call_tool", AsyncMock(return_value={"result": inner})
-    ):
+    with patch.object(client, "call_tool", AsyncMock(return_value={"result": inner})):
         result = await client.query_local_traces(task_class="reasoning")
 
     assert result == inner
@@ -253,9 +247,7 @@ async def test_dhara_list_services_filters_by_service_type_capability_status() -
 
     with patch("httpx2.AsyncClient", return_value=fake_client):
         client = DharaServiceRegistryClient(base_url="http://dhara:8683")
-        await client.list_services(
-            service_type="mcp", capability="routing", status="active"
-        )
+        await client.list_services(service_type="mcp", capability="routing", status="active")
 
     call_payload = fake_client.post.await_args.kwargs["json"]
     assert call_payload["arguments"]["service_type"] == "mcp"
@@ -341,7 +333,9 @@ async def test_dhara_list_prefix_returns_unwrapped_list() -> None:
 
     assert result == inner
     # The prefix is forwarded to Dhara as the request argument.
-    assert fake_client.post.await_args.kwargs["json"]["arguments"]["prefix"] == "component_endpoint/"
+    assert (
+        fake_client.post.await_args.kwargs["json"]["arguments"]["prefix"] == "component_endpoint/"
+    )
 
 
 @pytest.mark.asyncio

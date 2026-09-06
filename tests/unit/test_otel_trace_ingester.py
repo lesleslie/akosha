@@ -69,7 +69,9 @@ async def test_fetch_spans_returns_otlp_resource_spans() -> None:
         canned_response = {
             "resourceSpans": [
                 {
-                    "resource": {"attributes": [{"key": "service.name", "value": {"stringValue": "akosha"}}]},
+                    "resource": {
+                        "attributes": [{"key": "service.name", "value": {"stringValue": "akosha"}}]
+                    },
                     "scopeSpans": [
                         {
                             "spans": [
@@ -80,7 +82,10 @@ async def test_fetch_spans_returns_otlp_resource_spans() -> None:
                                     "startTimeUnixNano": "1700000000000000000",
                                     "endTimeUnixNano": "1700000000001000000",
                                     "attributes": [
-                                        {"key": "task.class", "value": {"stringValue": "CODE_GENERATION"}}
+                                        {
+                                            "key": "task.class",
+                                            "value": {"stringValue": "CODE_GENERATION"},
+                                        }
                                     ],
                                 }
                             ]
@@ -135,9 +140,7 @@ async def test_ingest_span_writes_to_hot_store_and_advances_watermark() -> None:
     """_ingest_span embeds, inserts, and advances the watermark."""
     ingester = _make_ingester(
         embedding_service=MagicMock(
-            generate_embedding=AsyncMock(
-                return_value=np.zeros(384, dtype=np.float32)
-            )
+            generate_embedding=AsyncMock(return_value=np.zeros(384, dtype=np.float32))
         ),
     )
     hot_store = ingester.hot_store

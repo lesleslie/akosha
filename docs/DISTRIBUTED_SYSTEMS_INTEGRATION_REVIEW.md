@@ -96,16 +96,13 @@ The 4-service architecture has **excellent** separation of concerns:
 ```python
 # Session-Buddy: Upload and forget
 await oneiric_storage.upload(
-    bucket="session-buddy-memories",
-    path=f"systems/{system_id}/memory.db",
-    data=memory_db
+    bucket="session-buddy-memories", path=f"systems/{system_id}/memory.db", data=memory_db
 )
 # No Akosha dependency - excellent decoupling
 
 # Akosha: Pull independently
 uploads = await oneiric_storage.list_prefixes(
-    bucket="session-buddy-memories",
-    prefix=f"systems/{system_id}/"
+    bucket="session-buddy-memories", prefix=f"systems/{system_id}/"
 )
 ```
 
@@ -190,6 +187,7 @@ Akosha has **comprehensive circuit breakers** for external calls:
 # /Users/les/Projects/akosha/akosha/resilience/circuit_breaker.py
 class CircuitBreaker:
     """Circuit breaker for protecting external service calls."""
+
     def __init__(self, service_name: str, config: CircuitBreakerConfig):
         self.failure_threshold = 5  # Failures before opening
         self.timeout = 60.0  # Seconds before half-open
@@ -228,9 +226,7 @@ Akosha is **fully dependent** on Mahavishnu for:
 
 ```python
 # Akosha startup - registers with Mahavishnu
-await register_with_mahavishnu(
-    workflows=["akosha-daily-ingest", "akosha-tier-transition"]
-)
+await register_with_mahavishnu(workflows=["akosha-daily-ingest", "akosha-tier-transition"])
 
 # If Mahavishnu is down:
 # ❌ Akosha cannot register workflows
@@ -376,6 +372,7 @@ ingestion:
        "Number of uploads pending ingestion",
    )
 
+
    async def _discover_uploads(self) -> list[dict]:
        """Discover and count pending uploads."""
        uploads = await self._list_pending_uploads()
@@ -399,8 +396,7 @@ Using MCP (Model Context Protocol) for orchestration is **unconventional**:
 async def trigger_akosha_ingest(source_system: str):
     akosha_client = get_akosha_mcp_client()
     result = await akosha_client.call_tool(
-        "akosha_start_ingestion",
-        {"source_system": source_system}
+        "akosha_start_ingestion", {"source_system": source_system}
     )
 ```
 
@@ -448,6 +444,7 @@ async def trigger_akosha_ingest(source_system: str):
    async def akosha_search(query: str):
        """Search via MCP (for Claude Code)."""
        return await search_conversations(query)
+
 
    # Add gRPC for service orchestration
    class AkoshaService(akosha_pb2_grpc.AkoshaServiceServicer):
@@ -532,8 +529,9 @@ await storage.upload(bucket="akosha-cold", path=data.id, data=data)
        config=CircuitBreakerConfig(
            failure_threshold=5,
            timeout=60.0,
-       )
+       ),
    )
+
 
    @oneiric_breaker.call
    async def upload_to_cold(data: bytes):
@@ -649,13 +647,14 @@ Session-Buddy → S3 upload → S3 Event → SQS queue → Akosha workers
    # Phase 2: Event-driven ingestion
    import boto3
 
-   sqs_client = boto3.client('sqs')
+   sqs_client = boto3.client("sqs")
+
 
    async def listen_for_events():
        """Listen for S3 upload events via SQS."""
        while True:
            messages = await sqs_client.receive_message(
-               QueueUrl=os.getenv['AKOSHA_INGESTION_QUEUE'],
+               QueueUrl=os.getenv["AKOSHA_INGESTION_QUEUE"],
                MaxNumberOfMessages=10,
                WaitTimeSeconds=20,  # Long polling
            )
@@ -667,7 +666,7 @@ Session-Buddy → S3 upload → S3 Event → SQS queue → Akosha workers
 
    ```python
    # Use SQS when available, fall back to polling
-   if os.getenv('AKOSHA_INGESTION_QUEUE'):
+   if os.getenv("AKOSHA_INGESTION_QUEUE"):
        await listen_for_events()  # Event-driven
    else:
        await poll_s3()  # Fallback polling
@@ -735,11 +734,11 @@ class IngestionWorker:
                        if self._shutting_down:
                            break  # Stop accepting new work
 
-                       self._in_flight_uploads.add(upload['id'])
+                       self._in_flight_uploads.add(upload["id"])
                        try:
                            await self._process_upload(upload)
                        finally:
-                           self._in_flight_uploads.remove(upload['id'])
+                           self._in_flight_uploads.remove(upload["id"])
 
                    if self._shutting_down:
                        # Wait for in-flight uploads to complete
@@ -763,7 +762,9 @@ class IngestionWorker:
                await asyncio.sleep(1)
 
            if self._in_flight_uploads:
-               logger.warning(f"Shutdown timeout - {len(self._in_flight_uploads)} uploads may be incomplete")
+               logger.warning(
+                   f"Shutdown timeout - {len(self._in_flight_uploads)} uploads may be incomplete"
+               )
 
        async def close(self):
            """Clean up resources."""
@@ -1197,7 +1198,7 @@ ______________________________________________________________________
 # Hybrid approach
 class IngestionWorker:
     def __init__(self):
-        self.use_sqs = bool(os.getenv('AKOSHA_INGESTION_QUEUE'))
+        self.use_sqs = bool(os.getenv("AKOSHA_INGESTION_QUEUE"))
 
     async def run(self):
         if self.use_sqs:

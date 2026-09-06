@@ -28,7 +28,11 @@ def test_main_start_threads_settings_into_create_hot_store(
     captured: dict[str, object] = {}
 
     def fake_create_hot_store(
-        *, backend: str = "duckdb-memory", pg_url: str = "", embedding_dim=None, database_path: str = ":memory:"
+        *,
+        backend: str = "duckdb-memory",
+        pg_url: str = "",
+        embedding_dim=None,
+        database_path: str = ":memory:",
     ) -> MagicMock:
         captured["backend"] = backend
         captured["pg_url"] = pg_url
@@ -37,9 +41,11 @@ def test_main_start_threads_settings_into_create_hot_store(
         # Return a MagicMock shaped like HotStore so ``await store.initialize()`` is awaitable.
         mock_store = MagicMock()
         mock_store.initialize = MagicMock(return_value=mock_store.__await__() if False else None)
+
         # Use an async no-op so ``await self.hot_store.initialize()`` resolves.
         async def _noop_init() -> None:
             return None
+
         mock_store.initialize = _noop_init
         return mock_store
 
@@ -83,6 +89,7 @@ def test_main_start_threads_settings_into_create_hot_store(
             await app.hot_store.initialize()
 
         import asyncio
+
         asyncio.run(_exercise_hot_store_init())
 
     assert captured == {

@@ -82,9 +82,7 @@ register_adapter_metadata(
 from oneiric.domains import AdapterBridge
 
 storage_bridge = AdapterBridge(
-    resolver=resolver,
-    lifecycle=lifecycle,
-    settings=Settings.load_yaml("settings/storage.yml")
+    resolver=resolver, lifecycle=lifecycle, settings=Settings.load_yaml("settings/storage.yml")
 )
 
 # Use storage adapter (automatic resolution + lifecycle)
@@ -92,7 +90,7 @@ handle = await storage_bridge.use("storage")
 await handle.instance.store(
     bucket="akosha-vectors",
     path="conversations/2025-01-25/embedding_12345.parquet",
-    data=embedding_bytes
+    data=embedding_bytes,
 )
 ```
 
@@ -134,6 +132,7 @@ ______________________________________________________________________
 # PATTERN: Automatic tier promotion/demotion with Oneiric lifecycle hooks
 from oneiric.core.lifecycle import LifecycleManager
 
+
 class AkoshaDataLifecycle:
     """Manages data movement across storage tiers."""
 
@@ -146,10 +145,7 @@ class AkoshaDataLifecycle:
         }
 
     async def evaluate_tier_transition(
-        self,
-        data_id: str,
-        current_tier: str,
-        access_metrics: dict[str, Any]
+        self, data_id: str, current_tier: str, access_metrics: dict[str, Any]
     ) -> str | None:
         """Evaluate if data should move to a different tier.
 
@@ -174,10 +170,7 @@ class AkoshaDataLifecycle:
         return None
 
     async def execute_tier_transition(
-        self,
-        data_id: str,
-        source_tier: str,
-        target_tier: str
+        self, data_id: str, source_tier: str, target_tier: str
     ) -> bool:
         """Execute storage tier transition with Oneiric lifecycle."""
         try:
@@ -187,23 +180,15 @@ class AkoshaDataLifecycle:
 
             # 2. Download from source
             source_path = f"data/{data_id}"
-            data = await source_handle.instance.download(
-                bucket="akosha-unified",
-                path=source_path
-            )
+            data = await source_handle.instance.download(bucket="akosha-unified", path=source_path)
 
             # 3. Upload to target
             await target_handle.instance.upload(
-                bucket="akosha-unified",
-                path=source_path,
-                data=data
+                bucket="akosha-unified", path=source_path, data=data
             )
 
             # 4. Delete from source (after verification)
-            await source_handle.instance.delete(
-                bucket="akosha-unified",
-                path=source_path
-            )
+            await source_handle.instance.delete(bucket="akosha-unified", path=source_path)
 
             # 5. Update metadata
             await self._update_tier_metadata(data_id, target_tier)
@@ -325,6 +310,7 @@ storage:
 from pathlib import Path
 from oneiric.core.config import Settings
 
+
 class AkoshaStorageSettings:
     """Centralized storage configuration for Akosha."""
 
@@ -371,9 +357,7 @@ class AkoshaStorageSettings:
 
         # Create bridge
         bridge = AdapterBridge(
-            resolver=resolver,
-            lifecycle=lifecycle,
-            settings=AkoshaStorageSettings.from_settings()
+            resolver=resolver, lifecycle=lifecycle, settings=AkoshaStorageSettings.from_settings()
         )
 
         return bridge.use(f"storage-{tier}")
@@ -410,7 +394,6 @@ class AkoshaStorageSettings:
                     ),
                     description="Redis cache for hot data acceleration",
                 ),
-
                 # Warm tier adapters
                 AdapterMetadata(
                     category="storage",
@@ -422,7 +405,6 @@ class AkoshaStorageSettings:
                     ),
                     description="S3 Infrequent Access for warm tier",
                 ),
-
                 # Cold tier adapters
                 AdapterMetadata(
                     category="storage",
@@ -449,6 +431,7 @@ ______________________________________________________________________
 import pyarrow as pa
 import pyarrow.parquet as pq
 from typing import Any
+
 
 class VectorEmbeddingStorage:
     """High-performance storage for FLOAT[384] vector embeddings.
@@ -481,13 +464,15 @@ class VectorEmbeddingStorage:
             Storage path for the uploaded file
         """
         # Convert to PyArrow Table (columnar format)
-        schema = pa.schema([
-            ('id', pa.string()),
-            ('content', pa.string()),
-            ('embedding', pa.list_(pa.float32(), self.embedding_dim)),
-            ('metadata', pa.string()),
-            ('created_at', pa.timestamp('ns')),
-        ])
+        schema = pa.schema(
+            [
+                ("id", pa.string()),
+                ("content", pa.string()),
+                ("embedding", pa.list_(pa.float32(), self.embedding_dim)),
+                ("metadata", pa.string()),
+                ("created_at", pa.timestamp("ns")),
+            ]
+        )
 
         # Build arrays
         ids = [e["id"] for e in embeddings]
@@ -512,7 +497,7 @@ class VectorEmbeddingStorage:
         pq.write_table(
             table,
             buffer,
-            compression='snappy',  # Fast compression for hot tier
+            compression="snappy",  # Fast compression for hot tier
             row_group_size=10000,  # Optimal for vector scans
         )
 
@@ -602,12 +587,14 @@ class TimeSeriesMetricsStorage:
     ) -> None:
         """Store a single metric point."""
         # Append to in-memory buffer (batch writes)
-        await self._buffer.append({
-            "metric": metric_name,
-            "value": value,
-            "timestamp": timestamp,
-            "tags": tags or {},
-        })
+        await self._buffer.append(
+            {
+                "metric": metric_name,
+                "value": value,
+                "timestamp": timestamp,
+                "tags": tags or {},
+            }
+        )
 
         # Flush buffer when full (optimizes write throughput)
         if len(self._buffer) >= 1000:
@@ -668,7 +655,7 @@ class KnowledgeGraphStorage:
 
     def __init__(self):
         self.duckdb = None  # DuckDB adapter
-        self.redis = None   # Redis adapter (for hot adjacency lists)
+        self.redis = None  # Redis adapter (for hot adjacency lists)
 
     async def store_edge(
         self,
@@ -679,17 +666,17 @@ class KnowledgeGraphStorage:
     ) -> None:
         """Store a graph edge."""
         # 1. Store in DuckDB (persistent storage)
-        await self.duckdb.execute("""
+        await self.duckdb.execute(
+            """
             INSERT INTO kg_edges (source_id, target_id, edge_type, properties)
             VALUES (?, ?, ?, ?)
-        """, [source_id, target_id, edge_type, json.dumps(properties)])
+        """,
+            [source_id, target_id, edge_type, json.dumps(properties)],
+        )
 
         # 2. Update adjacency list in Redis (fast access cache)
         redis_key = f"adj:{source_id}"
-        await self.redis.zadd(
-            redis_key,
-            {target_id: properties.get("weight", 1.0)}
-        )
+        await self.redis.zadd(redis_key, {target_id: properties.get("weight", 1.0)})
 
         # 3. Set TTL on adjacency list (auto-refresh on access)
         await self.redis.expire(redis_key, 86400)  # 1 day
@@ -712,10 +699,7 @@ class KnowledgeGraphStorage:
 
         if neighbors:
             # Cache hit - return immediately
-            return [
-                {"node_id": n[0], "weight": n[1]}
-                for n in neighbors
-            ]
+            return [{"node_id": n[0], "weight": n[1]} for n in neighbors]
 
         # Cache miss - query DuckDB (warm tier)
         query = """
@@ -766,17 +750,19 @@ class ConversationTextStorage:
     ) -> None:
         """Store conversation with full-text indexing."""
         # 1. Store compressed text in Parquet
-        compressed_content = gzip.compress(content.encode('utf-8'))
+        compressed_content = gzip.compress(content.encode("utf-8"))
 
         await self.storage.upload(
             bucket="akosha-conversations",
             path=f"conversations/{conversation_id}.parquet",
-            data=self._make_parquet({
-                "id": conversation_id,
-                "content_compressed": compressed_content,
-                "metadata": json.dumps(metadata),
-                "created_at": datetime.now(UTC),
-            }),
+            data=self._make_parquet(
+                {
+                    "id": conversation_id,
+                    "content_compressed": compressed_content,
+                    "metadata": json.dumps(metadata),
+                    "created_at": datetime.now(UTC),
+                }
+            ),
         )
 
         # 2. Update FTS index (hot tier only)
@@ -808,6 +794,7 @@ ______________________________________________________________________
 from oneiric.adapters.metadata import register_adapter_metadata, AdapterMetadata
 from oneiric.core.resolution import Resolver
 
+
 def register_akosha_storage_adapters(resolver: Resolver) -> None:
     """Register all Akosha storage adapters with Oneiric resolver.
 
@@ -822,7 +809,6 @@ def register_akosha_storage_adapters(resolver: Resolver) -> None:
             # ==========================================
             # HOT TIER ADAPTERS (stack_level=100)
             # ==========================================
-
             AdapterMetadata(
                 category="storage",
                 provider="s3-hot",
@@ -834,7 +820,6 @@ def register_akosha_storage_adapters(resolver: Resolver) -> None:
                 ),
                 description="S3 Standard storage for hot tier (frequent access)",
             ),
-
             AdapterMetadata(
                 category="cache",
                 provider="redis-hot",
@@ -847,7 +832,6 @@ def register_akosha_storage_adapters(resolver: Resolver) -> None:
                 ),
                 description="Redis cache for hot data acceleration",
             ),
-
             AdapterMetadata(
                 category="database",
                 provider="duckdb-hot",
@@ -858,11 +842,9 @@ def register_akosha_storage_adapters(resolver: Resolver) -> None:
                 ),
                 description="In-memory DuckDB for vector similarity search",
             ),
-
             # ==========================================
             # WARM TIER ADAPTERS (stack_level=50)
             # ==========================================
-
             AdapterMetadata(
                 category="storage",
                 provider="s3-warm",
@@ -874,7 +856,6 @@ def register_akosha_storage_adapters(resolver: Resolver) -> None:
                 ),
                 description="S3 Infrequent Access for warm tier (analytics)",
             ),
-
             AdapterMetadata(
                 category="database",
                 provider="duckdb-warm",
@@ -885,11 +866,9 @@ def register_akosha_storage_adapters(resolver: Resolver) -> None:
                 ),
                 description="Disk-based DuckDB for warm tier analytics",
             ),
-
             # ==========================================
             # COLD TIER ADAPTERS (stack_level=10)
             # ==========================================
-
             AdapterMetadata(
                 category="storage",
                 provider="s3-cold",
@@ -901,7 +880,6 @@ def register_akosha_storage_adapters(resolver: Resolver) -> None:
                 ),
                 description="S3 Glacier for cold tier (archival)",
             ),
-
             AdapterMetadata(
                 category="storage",
                 provider="azure-cold",
@@ -923,6 +901,7 @@ def register_akosha_storage_adapters(resolver: Resolver) -> None:
 from oneiric.core.lifecycle import LifecycleManager
 from oneiric.adapters.bridge import AdapterBridge
 
+
 class AkoshaStorageLifecycle:
     """Manages storage adapter lifecycle with hot-swapping.
 
@@ -938,7 +917,7 @@ class AkoshaStorageLifecycle:
         self.bridge = AdapterBridge(
             resolver=resolver,
             lifecycle=lifecycle,
-            settings=Settings.load_yaml("settings/akosha-storage.yml")
+            settings=Settings.load_yaml("settings/akosha-storage.yml"),
         )
 
     async def get_storage_adapter(
@@ -1067,14 +1046,10 @@ class MultiCloudCoordinator:
 
         # 2. Async replication to secondary/tertiary (fire-and-forget)
         if replication_factor >= 2:
-            asyncio.create_task(
-                self._replicate_to_secondary(bucket, path, data)
-            )
+            asyncio.create_task(self._replicate_to_secondary(bucket, path, data))
 
         if replication_factor >= 3:
-            asyncio.create_task(
-                self._replicate_to_tertiary(bucket, path, data)
-            )
+            asyncio.create_task(self._replicate_to_tertiary(bucket, path, data))
 
         return True
 
@@ -1126,7 +1101,7 @@ class HybridCloudStorage:
 
     def __init__(self):
         self.onprem_adapter = None  # Local file storage
-        self.cloud_adapter = None   # S3 storage
+        self.cloud_adapter = None  # S3 storage
         self.classifier = DataClassifier()
 
     async def store_with_classification(
@@ -1173,16 +1148,19 @@ ______________________________________________________________________
 from enum import Enum
 from dataclasses import dataclass
 
+
 class CircuitState(Enum):
-    CLOSED = "closed"      # Normal operation
-    OPEN = "open"          # Failing, reject requests
+    CLOSED = "closed"  # Normal operation
+    OPEN = "open"  # Failing, reject requests
     HALF_OPEN = "half_open"  # Testing if backend recovered
+
 
 @dataclass
 class CircuitBreakerConfig:
     failure_threshold: int = 5  # Open circuit after N failures
     success_threshold: int = 2  # Close circuit after N successes
-    timeout_seconds: int = 60   # Wait before trying again
+    timeout_seconds: int = 60  # Wait before trying again
+
 
 class StorageCircuitBreaker:
     """Circuit breaker for storage backend failures."""
@@ -1213,8 +1191,7 @@ class StorageCircuitBreaker:
                 self.state = CircuitState.HALF_OPEN
             else:
                 raise RuntimeError(
-                    f"Circuit breaker OPEN for {self.backend_name} "
-                    f"(too many failures)"
+                    f"Circuit breaker OPEN for {self.backend_name} (too many failures)"
                 )
 
         # Execute operation
@@ -1238,8 +1215,7 @@ class StorageCircuitBreaker:
 
             if self.failure_count >= self.config.failure_threshold:
                 logger.error(
-                    f"Circuit breaker OPEN for {self.backend_name} "
-                    f"({self.failure_count} failures)"
+                    f"Circuit breaker OPEN for {self.backend_name} ({self.failure_count} failures)"
                 )
                 self.state = CircuitState.OPEN
 
@@ -1378,6 +1354,7 @@ storage:
 # akosha/storage/validation.py
 from pydantic import BaseModel, Field, validator
 
+
 class StorageTierConfig(BaseModel):
     """Validated storage tier configuration."""
 
@@ -1394,6 +1371,7 @@ class StorageTierConfig(BaseModel):
         if provider in ("s3", "azure", "gcs") and not v:
             raise ValueError(f"bucket_name required for {provider} provider")
         return v
+
 
 class AkoshaStorageConfig(BaseModel):
     """Complete Akosha storage configuration."""
@@ -1503,10 +1481,7 @@ class ParallelStorageOperations:
         upload_id = await self._create_multipart_upload(bucket, path)
 
         # Split into chunks
-        chunks = [
-            (i, data[i:i + chunk_size])
-            for i in range(0, file_size, chunk_size)
-        ]
+        chunks = [(i, data[i : i + chunk_size]) for i in range(0, file_size, chunk_size)]
 
         # Upload chunks in parallel
         tasks = [
@@ -1550,6 +1525,7 @@ ______________________________________________________________________
 # PATTERN: Comprehensive storage metrics with OpenTelemetry
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
+
 
 class StorageMetricsCollector:
     """Collects and reports storage metrics."""

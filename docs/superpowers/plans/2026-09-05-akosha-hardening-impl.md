@@ -101,12 +101,19 @@ Expected: `0.20.0` or higher (per `pyproject.toml:dependencies`).
 - Produces:
   ```python
   class ColdStore:
-      def __init__(self, *, storage_backend: Literal["memory", "s3", "r2"] = "memory",
-                   bucket: str | None = None, endpoint_url: str | None = None,
-                   local_dir: Path | None = None) -> None: ...
+      def __init__(
+          self,
+          *,
+          storage_backend: Literal["memory", "s3", "r2"] = "memory",
+          bucket: str | None = None,
+          endpoint_url: str | None = None,
+          local_dir: Path | None = None,
+      ) -> None: ...
       async def initialize(self) -> None: ...
       async def close(self) -> None: ...
-      async def export_batch(self, records: list[dict[str, Any]], object_key: str) -> dict[str, Any]: ...
+      async def export_batch(
+          self, records: list[dict[str, Any]], object_key: str
+      ) -> dict[str, Any]: ...
   ```
 
 - [ ] **Step 1: Write failing tests in `tests/unit/test_cold_store.py`**
@@ -201,29 +208,30 @@ class ColdStore:
 Replace lines 207-212 in `akosha/storage/cold_store.py`:
 
 ```python
-    async def initialize(self) -> None:
-        """Construct the underlying storage adapter. Idempotent."""
-        if self._adapter is not None:
-            return
-        if self._storage_backend == "memory":
-            self._local_dir.mkdir(parents=True, exist_ok=True)
-            self._adapter = _LocalDirAdapter(self._local_dir)
-        elif self._storage_backend in {"s3", "r2"}:
-            if not self._bucket:
-                raise ValueError(f"bucket required for {self._storage_backend} backend")
-            self._adapter = S3StorageAdapter(
-                bucket=self._bucket,
-                endpoint_url=self._endpoint_url,
-            )
-            await self._adapter.initialize()
-        else:
-            raise ValueError(f"Unknown storage_backend: {self._storage_backend}")
+async def initialize(self) -> None:
+    """Construct the underlying storage adapter. Idempotent."""
+    if self._adapter is not None:
+        return
+    if self._storage_backend == "memory":
+        self._local_dir.mkdir(parents=True, exist_ok=True)
+        self._adapter = _LocalDirAdapter(self._local_dir)
+    elif self._storage_backend in {"s3", "r2"}:
+        if not self._bucket:
+            raise ValueError(f"bucket required for {self._storage_backend} backend")
+        self._adapter = S3StorageAdapter(
+            bucket=self._bucket,
+            endpoint_url=self._endpoint_url,
+        )
+        await self._adapter.initialize()
+    else:
+        raise ValueError(f"Unknown storage_backend: {self._storage_backend}")
 
-    async def close(self) -> None:
-        """Close the underlying adapter. Idempotent."""
-        if self._adapter is not None:
-            await self._adapter.close()
-            self._adapter = None
+
+async def close(self) -> None:
+    """Close the underlying adapter. Idempotent."""
+    if self._adapter is not None:
+        await self._adapter.close()
+        self._adapter = None
 ```
 
 - [ ] **Step 5: Implement `_LocalDirAdapter` helper class (memory backend)**
@@ -321,7 +329,10 @@ in test_cold_store.py cover local write + adapter construction + close."
   ```python
   # akosha/mcp/server.py
   async def health_check(request: Any) -> JSONResponse: ...  # 200 if healthy, 503 if degraded
-  async def healthz_check(request: Any) -> JSONResponse: ...  # 200 only if AkoshaApplication.start() completed
+  async def healthz_check(
+      request: Any,
+  ) -> JSONResponse: ...  # 200 only if AkoshaApplication.start() completed
+
 
   # akosha/cli.py
   async def health_probe(app: AkoshaApplication) -> dict[str, Any]: ...
@@ -345,11 +356,13 @@ from akosha.mcp.server import build_app
 @pytest.fixture
 def mock_app() -> MagicMock:
     app = MagicMock()
-    app._check_dependency_health = AsyncMock(return_value={
-        "hot_store": {"ok": True},
-        "dhara": {"ok": False, "error": "connection refused"},
-        "websocket": {"ok": True},
-    })
+    app._check_dependency_health = AsyncMock(
+        return_value={
+            "hot_store": {"ok": True},
+            "dhara": {"ok": False, "error": "connection refused"},
+            "websocket": {"ok": True},
+        }
+    )
     return app
 
 
@@ -365,11 +378,13 @@ def test_health_returns_503_when_dhara_unreachable(mock_app: MagicMock) -> None:
 
 
 def test_health_returns_200_when_all_deps_ok(mock_app: MagicMock) -> None:
-    mock_app._check_dependency_health = AsyncMock(return_value={
-        "hot_store": {"ok": True},
-        "dhara": {"ok": True},
-        "websocket": {"ok": True},
-    })
+    mock_app._check_dependency_health = AsyncMock(
+        return_value={
+            "hot_store": {"ok": True},
+            "dhara": {"ok": True},
+            "websocket": {"ok": True},
+        }
+    )
     server = build_app(mock_app)
     client = TestClient(server)
     response = client.get("/health")
@@ -387,31 +402,33 @@ Expected: 2 failures with "build_app signature mismatch" or "/health always retu
 Find the `AkoshaApplication` class and add after `close()`:
 
 ```python
-    async def _check_dependency_health(self) -> dict[str, dict[str, Any]]:
-        """Probe HotStore, Dhara, WebSocket subscriber. Returns per-dep status dict."""
-        checks: dict[str, dict[str, Any]] = {}
-        checks["hot_store"] = await self._check_hot_store()
-        if self._dhara_client is not None:
-            checks["dhara"] = await self._check_dhara()
-        if self._ws_subscriber is not None:
-            checks["websocket"] = {"ok": self._ws_subscriber.is_running()}
-        return checks
+async def _check_dependency_health(self) -> dict[str, dict[str, Any]]:
+    """Probe HotStore, Dhara, WebSocket subscriber. Returns per-dep status dict."""
+    checks: dict[str, dict[str, Any]] = {}
+    checks["hot_store"] = await self._check_hot_store()
+    if self._dhara_client is not None:
+        checks["dhara"] = await self._check_dhara()
+    if self._ws_subscriber is not None:
+        checks["websocket"] = {"ok": self._ws_subscriber.is_running()}
+    return checks
 
-    async def _check_hot_store(self) -> dict[str, Any]:
-        if self._hot_store is None:
-            return {"ok": False, "error": "not initialized"}
-        try:
-            await self._hot_store.ping()
-            return {"ok": True}
-        except Exception as exc:
-            return {"ok": False, "error": str(exc)}
 
-    async def _check_dhara(self) -> dict[str, Any]:
-        try:
-            await self._dhara_client.ping()
-            return {"ok": True}
-        except Exception as exc:
-            return {"ok": False, "error": str(exc)}
+async def _check_hot_store(self) -> dict[str, Any]:
+    if self._hot_store is None:
+        return {"ok": False, "error": "not initialized"}
+    try:
+        await self._hot_store.ping()
+        return {"ok": True}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+async def _check_dhara(self) -> dict[str, Any]:
+    try:
+        await self._dhara_client.ping()
+        return {"ok": True}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
 ```
 
 (Adapt attribute names to match the actual `AkoshaApplication` fields; read `akosha/main.py` first.)
@@ -609,7 +626,7 @@ PYPROJECT = Path("pyproject.toml")
 def test_aiohttp_declared_in_dependencies() -> None:
     """audit M1: aiohttp is imported but was previously undeclared."""
     content = PYPROJECT.read_text()
-    match = re.search(r'aiohttp[><=~]+\s*[\d.]+', content)
+    match = re.search(r"aiohttp[><=~]+\s*[\d.]+", content)
     assert match is not None, "aiohttp must be declared in pyproject.toml [project.dependencies]"
 
 
@@ -741,8 +758,10 @@ from akosha.mcp.tools.code_graph_tools import _compute_graph_similarity
 @pytest.mark.asyncio
 async def test_similarity_propagates_runtime_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     """audit H1: similarity must propagate errors instead of swallowing to 0.0."""
+
     def explode(*a, **kw):
         raise RuntimeError("boom")
+
     monkeypatch.setattr("akosha.mcp.tools.code_graph_tools._compute_graph_features", explode)
     graph1 = {"types": ["Foo"]}
     graph2 = {"types": ["Bar"]}
@@ -816,10 +835,17 @@ Removes the silent-suppression of refactor-cluster signals."
 - Produces:
   ```python
   class DeduplicationService:
-      def __init__(self, *, backend: Literal["minhash", "sha256"] = "minhash",
-                   num_perm: int = 128, threshold: float = 0.5) -> None: ...
+      def __init__(
+          self,
+          *,
+          backend: Literal["minhash", "sha256"] = "minhash",
+          num_perm: int = 128,
+          threshold: float = 0.5,
+      ) -> None: ...
       def compute_fingerprint(self, content: str) -> bytes: ...
-      def find_similar(self, fingerprint: bytes, candidates: list[bytes]) -> list[tuple[int, float]]: ...
+      def find_similar(
+          self, fingerprint: bytes, candidates: list[bytes]
+      ) -> list[tuple[int, float]]: ...
   ```
 
 - [ ] **Step 1: Write failing tests in `tests/unit/processing/test_deduplication.py`**
@@ -911,9 +937,7 @@ class DeduplicationService:
             return m.hashbytes
         return hashlib.sha256(content.encode("utf-8")).digest()
 
-    def find_similar(
-        self, fingerprint: bytes, candidates: list[bytes]
-    ) -> list[tuple[int, float]]:
+    def find_similar(self, fingerprint: bytes, candidates: list[bytes]) -> list[tuple[int, float]]:
         matches: list[tuple[int, float]] = []
         if self._backend == "minhash":
             m = MinHash(num_perm=self._num_perm, hashbytes=fingerprint)
@@ -959,8 +983,9 @@ MinHash (default) with SHA-256 fallback. add datasketch>=0.6.0 dep."
 - Produces:
   ```python
   class QuantizedVector(NamedTuple):
-    values: list[int]   # in [-127, 127]
-    scale: float        # 127 / max(abs(original))
+      values: list[int]  # in [-127, 127]
+      scale: float  # 127 / max(abs(original))
+
 
   def quantize_embedding(embedding: list[float]) -> QuantizedVector: ...
   def dequantize(q: QuantizedVector) -> list[float]: ...
@@ -1104,13 +1129,17 @@ def analyzer() -> FitnessAnalyzer:
 
 @pytest.mark.asyncio
 async def test_compute_failure_rate_with_no_traces(analyzer: FitnessAnalyzer) -> None:
-    rate = await analyzer.compute_failure_rate(task_class="code_generation", selector="least_loaded")
+    rate = await analyzer.compute_failure_rate(
+        task_class="code_generation", selector="least_loaded"
+    )
     assert rate == 0.0
 
 
 @pytest.mark.asyncio
 async def test_compute_p99_latency_with_no_traces(analyzer: FitnessAnalyzer) -> None:
-    latency = await analyzer.compute_p99_latency(task_class="code_generation", selector="least_loaded")
+    latency = await analyzer.compute_p99_latency(
+        task_class="code_generation", selector="least_loaded"
+    )
     assert latency == 0.0
 
 
@@ -1252,8 +1281,10 @@ from akosha.cli import cli
 
 def test_version_surfaces_traceback_on_broken_install(monkeypatch) -> None:
     """audit M2: version command must surface errors, not print 'unknown'."""
+
     def explode(_pkg):
         raise RuntimeError("metadata broken")
+
     monkeypatch.setattr("importlib.metadata.version", explode)
     runner = CliRunner()
     result = runner.invoke(cli, ["version"])
@@ -1335,7 +1366,9 @@ async def test_report_health_pings_mahavishnu(monkeypatch: pytest.MonkeyPatch) -
     """audit M3: report_health must do a real ping, not just report last heartbeat."""
     fake_client = MagicMock()
     fake_client.ping = AsyncMock(return_value={"status": "ok"})
-    monkeypatch.setattr("akosha.ingestion.orchestrator.create_mahavishnu_client", lambda: fake_client)
+    monkeypatch.setattr(
+        "akosha.ingestion.orchestrator.create_mahavishnu_client", lambda: fake_client
+    )
     orch = BootstrapOrchestrator()
     health = await orch.report_health()
     assert "last_actual_ping" in health
@@ -1344,10 +1377,14 @@ async def test_report_health_pings_mahavishnu(monkeypatch: pytest.MonkeyPatch) -
 
 
 @pytest.mark.asyncio
-async def test_report_health_reports_degraded_on_ping_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_report_health_reports_degraded_on_ping_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     fake_client = MagicMock()
     fake_client.ping = AsyncMock(side_effect=ConnectionError("unreachable"))
-    monkeypatch.setattr("akosha.ingestion.orchestrator.create_mahavishnu_client", lambda: fake_client)
+    monkeypatch.setattr(
+        "akosha.ingestion.orchestrator.create_mahavishnu_client", lambda: fake_client
+    )
     orch = BootstrapOrchestrator()
     health = await orch.report_health()
     assert health["status"] == "degraded"
@@ -1424,11 +1461,13 @@ from akosha.mcp.server import build_app
 async def test_cli_and_http_health_return_same_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     """audit M4: HTTP /health and CLI 'akosha health' must agree on shape."""
     fake_app = MagicMock()
-    fake_app._check_dependency_health = AsyncMock(return_value={
-        "hot_store": {"ok": True},
-        "dhara": {"ok": True},
-        "websocket": {"ok": False, "error": "subscriber not started"},
-    })
+    fake_app._check_dependency_health = AsyncMock(
+        return_value={
+            "hot_store": {"ok": True},
+            "dhara": {"ok": True},
+            "websocket": {"ok": False, "error": "subscriber not started"},
+        }
+    )
     cli_result = await _health_probe(fake_app)
     assert cli_result["checks"].keys() == {"hot_store", "dhara", "websocket"}
     assert "status" in cli_result
@@ -1572,6 +1611,7 @@ git -c user.email='les@wedgwoodwebworks.com' -c user.name='les' commit -m "chore
 
 ```python
 """Identify test functions with no assertions or pytest.raises calls."""
+
 from __future__ import annotations
 
 import ast
@@ -1644,7 +1684,9 @@ Pattern (one example, apply to each):
 ```python
 def test_verify_token_rejects_expired_jwt() -> None:
     """Security: expired JWT must be rejected with 401."""
-    expired = jwt.encode({"sub": "alice", "exp": int(time.time()) - 60}, "secret", algorithm="HS256")
+    expired = jwt.encode(
+        {"sub": "alice", "exp": int(time.time()) - 60}, "secret", algorithm="HS256"
+    )
     response = client.post("/api/protected", headers={"Authorization": f"Bearer {expired}"})
     assert response.status_code == 401
     assert "expired" in response.json()["error"].lower()

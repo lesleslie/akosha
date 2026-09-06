@@ -17,14 +17,15 @@ from __future__ import annotations
 import asyncio
 import os
 from contextlib import asynccontextmanager, suppress
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Final, cast
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from fastmcp import FastMCP
 
 from akosha.config import DEFAULT_MCP_PORT
+from akosha.storage.hot_store import HotStore
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Awaitable, Callable
 
 # Check optional dependencies
 try:
@@ -149,7 +150,7 @@ def _env_truthy(name: str) -> bool:
 
     Returns True when the variable is set to one of ``"1"``, ``"true"``,
     ``"yes"`` (case-insensitive). Absence, empty string, or any other value
-    yields False. Centralising the literal avoids the 4× duplication of
+    yields False. Centralising the literal avoids the 4x duplication of
     ``os.getenv(NAME, "").lower() not in ("1", "true", "yes")`` across the
     opt-out gates below.
 
@@ -524,18 +525,14 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 # ``AKOSHA_CODE_GRAPH_POLL_SECONDS`` lets test suites and
                 # operators shorten the 60s default. Documented in
                 # docs/superpowers/specs/2026-09-06-live-mcp-smoke-test-design.md
-                code_graph_poll_seconds = int(
-                    os.getenv("AKOSHA_CODE_GRAPH_POLL_SECONDS", "60")
-                )
+                code_graph_poll_seconds = int(os.getenv("AKOSHA_CODE_GRAPH_POLL_SECONDS", "60"))
                 _code_graph_ingester = CodeGraphIngester(
                     hot_store=hot_store,
                     session_buddy_endpoint=session_buddy_endpoint,
                     poll_interval_seconds=code_graph_poll_seconds,
                 )
                 await _code_graph_ingester.start()
-                logger.info(
-                    "CodeGraphIngester started (Wave 5) -> %s", session_buddy_endpoint
-                )
+                logger.info("CodeGraphIngester started (Wave 5) -> %s", session_buddy_endpoint)
             except Exception as exc:
                 logger.warning(
                     "CodeGraphIngester start failed (%s); search_code_patterns "
@@ -558,15 +555,11 @@ def create_app(mode: Any | None = None) -> FastMCP:
             try:
                 from akosha.ingestion.otel_ingester import OtelTraceIngester
 
-                otel_endpoint = os.getenv(
-                    "AKOSHA_OTLP_ENDPOINT", "http://localhost:4318/v1/traces"
-                )
+                otel_endpoint = os.getenv("AKOSHA_OTLP_ENDPOINT", "http://localhost:4318/v1/traces")
                 poll_seconds = int(os.getenv("AKOSHA_OTEL_POLL_SECONDS", "60"))
                 # Spec-listed knobs (see
                 # docs/superpowers/specs/2026-09-06-otel-trace-ingester-design.md).
-                max_spans_per_poll = int(
-                    os.getenv("AKOSHA_OTEL_MAX_SPANS_PER_POLL", "500")
-                )
+                max_spans_per_poll = int(os.getenv("AKOSHA_OTEL_MAX_SPANS_PER_POLL", "500"))
                 initial_lookback_seconds = int(
                     os.getenv("AKOSHA_OTEL_INITIAL_LOOKBACK_SECONDS", "3600")
                 )
@@ -616,8 +609,17 @@ def create_app(mode: Any | None = None) -> FastMCP:
                     # via the BodaiToolInvocationSubscriber. It returns
                     # ``[]`` when the subscriber is disabled or no events
                     # have arrived — both are valid empty-feed states; the
-                    # loop simply runs again next interval.
-                    rows = await hot_store.query_traces(limit=100)
+                    # loop simply runs again next interval. ``query_traces``
+                    # is only on ``HotStore`` (DuckDB); the pgvector backend
+                    # has no equivalent, so we treat that case as an empty
+                    # feed and continue. The ``hasattr`` short-circuit keeps
+                    # the lifespan tests' MagicMock-based hot_store working
+                    # (they patch ``query_traces`` directly without going
+                    # through the isinstance chain).
+                    if isinstance(hot_store, HotStore) or hasattr(hot_store, "query_traces"):
+                        rows = await hot_store.query_traces(limit=100)  # ty: ignore[call-non-callable]
+                    else:
+                        rows = []
                     for row in rows:
                         try:
                             entities = await kg_builder.extract_entities(row)
@@ -625,9 +627,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
                             await kg_builder.add_to_graph(entities, edges)
                         except Exception as exc:
                             _kg_refresh_errors += 1
-                            logger.debug(
-                                "kg_builder per-row extract failed (%s)", exc
-                            )
+                            logger.debug("kg_builder per-row extract failed (%s)", exc)
                     if rows:
                         logger.info(
                             "kg_refresh: cycle=%d rows=%d entities=%d edges=%d",
@@ -645,15 +645,11 @@ def create_app(mode: Any | None = None) -> FastMCP:
                     break
                 except Exception as exc:
                     _kg_refresh_errors += 1
-                    logger.warning(
-                        "kg_refresh loop iteration failed (%s); will retry", exc
-                    )
+                    logger.warning("kg_refresh loop iteration failed (%s); will retry", exc)
 
         if not _env_truthy("AKOSHA_SKIP_KG_REFRESH"):
             global _kg_refresh_task
-            _kg_refresh_task = asyncio.create_task(
-                _kg_refresh_loop(), name="akosha.kg_refresh"
-            )
+            _kg_refresh_task = asyncio.create_task(_kg_refresh_loop(), name="akosha.kg_refresh")
             logger.info(
                 "kg_refresh task started (Wave 5, interval=%ss)",
                 os.getenv("AKOSHA_KG_REFRESH_SECONDS", "60"),
@@ -709,19 +705,15 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # empty AND the ingester/refresh has run at least one cycle —
             # that surfaces wire-up drift that would otherwise be invisible.
             code_graphs_count = 0
-            try:
-                if hot_store is not None and hasattr(hot_store, "list_code_graphs"):
+            with suppress(Exception):
+                if isinstance(hot_store, HotStore):
                     code_graphs_count = len(await hot_store.list_code_graphs(limit=1000))
-            except Exception:
-                pass
             kg_entities_count = len(kg_builder.entities) if kg_builder is not None else 0
             kg_edges_count = len(kg_builder.edges) if kg_builder is not None else 0
             local_traces_count = 0
-            try:
-                if hot_store is not None and hasattr(hot_store, "query_traces"):
+            with suppress(Exception):
+                if isinstance(hot_store, HotStore):
                     local_traces_count = len(await hot_store.query_traces(limit=1000))
-            except Exception:
-                pass
             ingester_running = bool(
                 _code_graph_ingester is not None
                 and getattr(_code_graph_ingester, "_running", False)
@@ -736,11 +728,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # run at least one cycle. The empty-feed case while still
             # warming up (``cycles == 0``) is intentionally True so the
             # probe doesn't fail during normal startup.
-            code_graphs_ok = (
-                code_graphs_count > 0
-                or ingester_cycles == 0
-                or not ingester_running
-            )
+            code_graphs_ok = code_graphs_count > 0 or ingester_cycles == 0 or not ingester_running
             kg_ok = (
                 kg_entities_count > 0
                 or _kg_refresh_cycles == 0
@@ -778,19 +766,11 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 else None
             )
             otel_task_alive = otel_poll_task is not None and not otel_poll_task.done()
-            kg_task_alive = (
-                _kg_refresh_task is not None and not _kg_refresh_task.done()
-            )
-            any_producer_ever_cycled = (
-                _kg_refresh_cycles > 0 or local_traces_otel_cycles > 0
-            )
-            any_producer_alive = (
-                kg_task_alive or otel_task_alive or local_traces_otel_running
-            )
+            kg_task_alive = _kg_refresh_task is not None and not _kg_refresh_task.done()
+            any_producer_ever_cycled = _kg_refresh_cycles > 0 or local_traces_otel_cycles > 0
+            any_producer_alive = kg_task_alive or otel_task_alive or local_traces_otel_running
             local_traces_ok = (
-                local_traces_count > 0
-                or not any_producer_ever_cycled
-                or not any_producer_alive
+                local_traces_count > 0 or not any_producer_ever_cycled or not any_producer_alive
             )
             checks["code_graphs_feed"] = {
                 "ok": code_graphs_ok,
@@ -818,9 +798,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
             if last_poll_at is not None and local_traces_otel_last_poll_at is not None:
                 local_traces_last_poll_at = max(last_poll_at, local_traces_otel_last_poll_at)
             else:
-                local_traces_last_poll_at = (
-                    last_poll_at or local_traces_otel_last_poll_at
-                )
+                local_traces_last_poll_at = last_poll_at or local_traces_otel_last_poll_at
             checks["local_traces_feed"] = {
                 "ok": local_traces_ok,
                 "feed_entities_count": local_traces_count,
@@ -829,9 +807,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 "feed_last_updated_timestamp": local_traces_last_poll_at,
                 "otel_ingester_running": local_traces_otel_running,
                 "otel_endpoint": (
-                    _otel_trace_ingester.otlp_endpoint
-                    if _otel_trace_ingester is not None
-                    else None
+                    _otel_trace_ingester.otlp_endpoint if _otel_trace_ingester is not None else None
                 ),
                 "otel_cycles_total": local_traces_otel_cycles,
                 "otel_errors_total": local_traces_otel_errors,

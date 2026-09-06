@@ -272,6 +272,7 @@ from oneiric.adapters.metadata import register_adapter_metadata, AdapterMetadata
 from oneiric.core.resolution import Resolver
 from akosha.storage.s3_adapter import S3StorageAdapter
 
+
 def register_akosha_adapters(resolver: Resolver) -> None:
     """Register Akosha storage adapters with Oneiric resolver."""
     import os
@@ -294,7 +295,6 @@ def register_akosha_adapters(resolver: Resolver) -> None:
                 ),
                 description="S3 Standard storage for hot tier",
             ),
-
             # Warm tier
             AdapterMetadata(
                 category="storage",
@@ -308,7 +308,6 @@ def register_akosha_adapters(resolver: Resolver) -> None:
                 ),
                 description="S3 Infrequent Access for warm tier",
             ),
-
             # Cold tier
             AdapterMetadata(
                 category="storage",
@@ -338,6 +337,7 @@ from oneiric.adapters.bridge import AdapterBridge
 from oneiric.core.lifecycle import LifecycleManager
 from akosha.storage import register_akosha_adapters
 
+
 @pytest.mark.asyncio
 async def test_s3_hot_adapter():
     """Test S3 hot tier adapter."""
@@ -352,7 +352,7 @@ async def test_s3_hot_adapter():
     bridge = AdapterBridge(
         resolver=resolver,
         lifecycle=lifecycle,
-        settings=Settings.load_yaml("settings/akosha-storage.yml")
+        settings=Settings.load_yaml("settings/akosha-storage.yml"),
     )
 
     # Use hot tier adapter
@@ -513,17 +513,20 @@ class VectorEmbeddingStorage:
             await self.initialize()
 
         # Insert into DuckDB
-        self.duckdb_conn.execute("""
+        self.duckdb_conn.execute(
+            """
             INSERT INTO embeddings (id, content, embedding, metadata, source_system, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, [
-            embedding_id,
-            content,
-            embedding,
-            json.dumps(metadata or {}),
-            source_system,
-            datetime.now(UTC),
-        ])
+        """,
+            [
+                embedding_id,
+                content,
+                embedding,
+                json.dumps(metadata or {}),
+                source_system,
+                datetime.now(UTC),
+            ],
+        )
 
         logger.debug(f"Stored embedding {embedding_id} from {source_system}")
 
@@ -557,14 +560,16 @@ class VectorEmbeddingStorage:
             Storage path for uploaded Parquet file
         """
         # Convert to PyArrow Table (columnar format)
-        schema = pa.schema([
-            ('id', pa.string()),
-            ('content', pa.string()),
-            ('embedding', pa.list_(pa.float32(), self.embedding_dim)),
-            ('metadata', pa.string()),
-            ('source_system', pa.string()),
-            ('created_at', pa.timestamp('ns')),
-        ])
+        schema = pa.schema(
+            [
+                ("id", pa.string()),
+                ("content", pa.string()),
+                ("embedding", pa.list_(pa.float32(), self.embedding_dim)),
+                ("metadata", pa.string()),
+                ("source_system", pa.string()),
+                ("created_at", pa.timestamp("ns")),
+            ]
+        )
 
         # Build arrays
         ids = [e["id"] for e in embeddings]
@@ -591,7 +596,7 @@ class VectorEmbeddingStorage:
         pq.write_table(
             table,
             buffer,
-            compression='snappy',  # Fast compression for warm tier
+            compression="snappy",  # Fast compression for warm tier
             row_group_size=10000,  # Optimal for vector scans
         )
 
@@ -612,7 +617,7 @@ class VectorEmbeddingStorage:
                 "count": len(embeddings),
                 "path": path,
                 "size_bytes": buffer.size(),
-            }
+            },
         )
 
         return path
@@ -670,14 +675,16 @@ class VectorEmbeddingStorage:
         for row in results:
             similarity = row[5] or 0.0
             if similarity >= threshold:
-                formatted_results.append({
-                    "id": row[0],
-                    "content": row[1],
-                    "metadata": json.loads(row[2]) if row[2] else {},
-                    "source_system": row[3],
-                    "created_at": row[4],
-                    "similarity": float(similarity),
-                })
+                formatted_results.append(
+                    {
+                        "id": row[0],
+                        "content": row[1],
+                        "metadata": json.loads(row[2]) if row[2] else {},
+                        "source_system": row[3],
+                        "created_at": row[4],
+                        "similarity": float(similarity),
+                    }
+                )
 
         return formatted_results[:limit]
 
@@ -693,13 +700,15 @@ class VectorEmbeddingStorage:
         try:
             # Store as single-record Parquet file
             await self.store_embeddings_batch(
-                embeddings=[{
-                    "id": embedding_id,
-                    "content": content,
-                    "embedding": embedding,
-                    "metadata": metadata,
-                    "created_at": datetime.now(UTC),
-                }],
+                embeddings=[
+                    {
+                        "id": embedding_id,
+                        "content": content,
+                        "embedding": embedding,
+                        "metadata": metadata,
+                        "created_at": datetime.now(UTC),
+                    }
+                ],
                 source_system=source_system,
                 date=datetime.now(UTC).strftime("%Y-%m-%d"),
             )

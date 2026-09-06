@@ -22,6 +22,7 @@ class TestServerIntegration:
         app = create_app()
 
         from akosha import __version__
+
         assert isinstance(app, FastMCP)
         assert app.name == "akosha-mcp"
         assert app.version == __version__, (
@@ -252,6 +253,7 @@ class TestConfigurationIntegration:
         app = create_app()
 
         from akosha import __version__
+
         # Verify server configuration
         assert app.name == "akosha-mcp"
         assert app.version == __version__, (

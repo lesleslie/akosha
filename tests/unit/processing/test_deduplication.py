@@ -43,21 +43,15 @@ def test_minhash_similar_input_yields_near_identical_fingerprints() -> None:
     still being clearly above the 0.5 default threshold.
     """
     service = DeduplicationService()
-    fp1 = service.compute_fingerprint(
-        "the quick brown fox jumps over the lazy dog " * 5
-    )
-    fp2 = service.compute_fingerprint(
-        "the quick brown fox jumps over the lazy dog " * 5 + "extra"
-    )
+    fp1 = service.compute_fingerprint("the quick brown fox jumps over the lazy dog " * 5)
+    fp2 = service.compute_fingerprint("the quick brown fox jumps over the lazy dog " * 5 + "extra")
     sim = service.find_similar(fp1, [fp2])[0][1]
     assert sim > 0.7, f"near-identical inputs scored {sim} (expected > 0.7)"
 
 
 def test_minhash_dissimilar_input_scores_below_threshold() -> None:
     service = DeduplicationService(threshold=0.9)
-    fp1 = service.compute_fingerprint(
-        "the quick brown fox jumps over the lazy dog"
-    )
+    fp1 = service.compute_fingerprint("the quick brown fox jumps over the lazy dog")
     fp2 = service.compute_fingerprint(
         "completely different text about nothing related at all really"
     )

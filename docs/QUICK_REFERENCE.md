@@ -163,6 +163,7 @@ storage:
 # akosha/storage/__init__.py
 from oneiric.adapters.metadata import register_adapter_metadata, AdapterMetadata
 
+
 def register_akosha_adapters(resolver: Resolver):
     register_adapter_metadata(
         resolver,

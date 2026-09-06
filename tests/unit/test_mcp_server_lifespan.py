@@ -113,9 +113,7 @@ def patched_lifespan(monkeypatch: pytest.MonkeyPatch):
     # point at its import source so the lifespan doesn't try to call
     # ``mcp.tool()`` on the DummyFastMCP test fixture.
     apply_tool_profile = AsyncMock()
-    monkeypatch.setattr(
-        "mcp_common.tools.dispatch._apply_tool_profile", apply_tool_profile
-    )
+    monkeypatch.setattr("mcp_common.tools.dispatch._apply_tool_profile", apply_tool_profile)
 
     return {
         "embedding_service": embedding_service,

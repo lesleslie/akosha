@@ -44,15 +44,11 @@ SUB_MODULE = "akosha.ingestion.bodai_event_subscriber"
 def _make_fake_embedding_service(dim: int = 384) -> MagicMock:
     """Return a stub ``EmbeddingService`` whose ``generate_embedding`` is async."""
     service = MagicMock()
-    service.generate_embedding = AsyncMock(
-        return_value=np.zeros(dim, dtype=np.float32)
-    )
+    service.generate_embedding = AsyncMock(return_value=np.zeros(dim, dtype=np.float32))
     return service
 
 
-def _patch_embedding_service(
-    monkeypatch: pytest.MonkeyPatch, dim: int = 384
-) -> MagicMock:
+def _patch_embedding_service(monkeypatch: pytest.MonkeyPatch, dim: int = 384) -> MagicMock:
     """Swap the subscriber's ``get_embedding_service`` for a stub."""
     fake_svc = _make_fake_embedding_service(dim)
     monkeypatch.setattr(f"{SUB_MODULE}.get_embedding_service", MagicMock(return_value=fake_svc))
@@ -97,9 +93,7 @@ async def _xadd_wire(
         "headers_json": json.dumps(headers),
     }
     message_id = await client.xadd(STREAM_NAME, fields)
-    return (
-        message_id.decode() if isinstance(message_id, bytes) else str(message_id)
-    )
+    return message_id.decode() if isinstance(message_id, bytes) else str(message_id)
 
 
 async def _ensure_group(client: Any, group: str) -> None:
@@ -116,9 +110,7 @@ async def _ensure_group(client: Any, group: str) -> None:
         pass
 
 
-async def _inject_client(
-    sub: BodaiToolInvocationSubscriber, client: Any, group: str
-) -> None:
+async def _inject_client(sub: BodaiToolInvocationSubscriber, client: Any, group: str) -> None:
     """Inject the fakeredis client and pre-create the consumer group."""
     await _ensure_group(client, group)
     sub._redis_client = client
@@ -178,7 +170,9 @@ class TestFiltersNonToolInvocationEnvelopes:
                 sub = BodaiToolInvocationSubscriber(
                     redis_url="redis://test",
                     consumer_group=group,
-                    hot_store=hot, xreadgroup_block_ms=10, consumer_name="c1",
+                    hot_store=hot,
+                    xreadgroup_block_ms=10,
+                    consumer_name="c1",
                 )
                 # Inject the fakeredis client directly to skip _create_redis_client.
                 await _inject_client(sub, client, "akosha-tool-invocation-indexers")
@@ -203,9 +197,7 @@ class TestFiltersNonToolInvocationEnvelopes:
                     await asyncio.wait_for(loop_task, timeout=1.0)
 
                 # No HotStore rows at all.
-                count = hot.conn.execute(
-                    "SELECT COUNT(*) FROM conversations"
-                ).fetchone()[0]
+                count = hot.conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
                 assert count == 0
 
                 # XACK fired: pending list is empty.
@@ -236,7 +228,9 @@ class TestIndexesToolInvocationEnvelope:
             try:
                 sub = BodaiToolInvocationSubscriber(
                     redis_url="redis://test",
-                    hot_store=hot, xreadgroup_block_ms=10, consumer_name="c1",
+                    hot_store=hot,
+                    xreadgroup_block_ms=10,
+                    consumer_name="c1",
                 )
                 await _inject_client(sub, client, "akosha-tool-invocation-indexers")
 
@@ -298,7 +292,9 @@ class TestSkipsUnknownSchemaVersion:
             try:
                 sub = BodaiToolInvocationSubscriber(
                     redis_url="redis://test",
-                    hot_store=hot, xreadgroup_block_ms=10, consumer_name="c1",
+                    hot_store=hot,
+                    xreadgroup_block_ms=10,
+                    consumer_name="c1",
                 )
                 await _inject_client(sub, client, "akosha-tool-invocation-indexers")
 
@@ -320,9 +316,7 @@ class TestSkipsUnknownSchemaVersion:
 
                 # No indexed row (the watermark row also absent because
                 # the message was filtered before reaching the watermark).
-                rows = hot.conn.execute(
-                    "SELECT conversation_id FROM conversations"
-                ).fetchall()
+                rows = hot.conn.execute("SELECT conversation_id FROM conversations").fetchall()
                 conv_ids = [r[0] for r in rows]
                 assert "evt-future" not in conv_ids
             finally:
@@ -351,7 +345,9 @@ class TestWatermarkPersists:
             try:
                 sub = BodaiToolInvocationSubscriber(
                     redis_url="redis://test",
-                    hot_store=hot, xreadgroup_block_ms=10, consumer_name="c1",
+                    hot_store=hot,
+                    xreadgroup_block_ms=10,
+                    consumer_name="c1",
                 )
                 await _inject_client(sub, client, "akosha-tool-invocation-indexers")
 
@@ -374,8 +370,7 @@ class TestWatermarkPersists:
                     for _ in range(50):
                         await asyncio.sleep(0.05)
                         row = hot.conn.execute(
-                            "SELECT metadata FROM conversations "
-                            "WHERE conversation_id = ?",
+                            "SELECT metadata FROM conversations WHERE conversation_id = ?",
                             [WATERMARK_CONVERSATION_ID],
                         ).fetchone()
                         if row and msg_ids[-1] in str(row[0]):
@@ -386,8 +381,7 @@ class TestWatermarkPersists:
 
                 # The watermark row carries the third message id.
                 row = hot.conn.execute(
-                    "SELECT metadata FROM conversations "
-                    "WHERE conversation_id = ?",
+                    "SELECT metadata FROM conversations WHERE conversation_id = ?",
                     [WATERMARK_CONVERSATION_ID],
                 ).fetchone()
                 assert row is not None
@@ -459,7 +453,9 @@ class TestResumesFromWatermark:
 
                 sub = BodaiToolInvocationSubscriber(
                     redis_url="redis://test",
-                    hot_store=hot, xreadgroup_block_ms=0, consumer_name="c1",
+                    hot_store=hot,
+                    xreadgroup_block_ms=0,
+                    consumer_name="c1",
                 )
                 await _inject_client(sub, client, "akosha-tool-invocation-indexers")
 
@@ -467,8 +463,7 @@ class TestResumesFromWatermark:
                 # would. ``msg_ids[1] + 1`` -> ``<ms>-<seq+1>``.
                 resume_id = await sub._resume_id_async()
                 expected_resume = (
-                    f"{msg_ids[1].rsplit('-', 1)[0]}-"
-                    f"{int(msg_ids[1].rsplit('-', 1)[1]) + 1}"
+                    f"{msg_ids[1].rsplit('-', 1)[0]}-{int(msg_ids[1].rsplit('-', 1)[1]) + 1}"
                 )
                 assert resume_id == expected_resume, (
                     f"resume_id={resume_id!r} != expected={expected_resume!r}"
@@ -491,9 +486,7 @@ class TestResumesFromWatermark:
                                     b"source": b"websocket_consumer",
                                     b"topic": TOOL_INVOCATION_TOPIC.encode(),
                                     b"payload_json": json.dumps(third_payload).encode(),
-                                    b"headers_json": json.dumps(
-                                        {"event_id": "evt-002"}
-                                    ).encode(),
+                                    b"headers_json": json.dumps({"event_id": "evt-002"}).encode(),
                                 },
                             )
                         ],
@@ -504,19 +497,15 @@ class TestResumesFromWatermark:
                 # Only ``evt-002`` was indexed. The watermark row was
                 # upserted to ``msg_ids[2]``.
                 rows = hot.conn.execute(
-                    "SELECT conversation_id FROM conversations "
-                    "WHERE conversation_id != ?",
+                    "SELECT conversation_id FROM conversations WHERE conversation_id != ?",
                     [WATERMARK_CONVERSATION_ID],
                 ).fetchall()
                 conv_ids = sorted(r[0] for r in rows)
-                assert conv_ids == ["evt-002"], (
-                    f"expected only evt-002; got {conv_ids}"
-                )
+                assert conv_ids == ["evt-002"], f"expected only evt-002; got {conv_ids}"
 
                 # Watermark row carries msg_ids[2] (the last processed).
                 row = hot.conn.execute(
-                    "SELECT metadata FROM conversations "
-                    "WHERE conversation_id = ?",
+                    "SELECT metadata FROM conversations WHERE conversation_id = ?",
                     [WATERMARK_CONVERSATION_ID],
                 ).fetchone()
                 assert row is not None
@@ -551,13 +540,13 @@ class TestFallbackWhenRedisUnavailable:
             def _fake_creator(url: str) -> Any | None:
                 return None
 
-            monkeypatch.setattr(
-                f"{SUB_MODULE}._create_redis_client", _fake_creator
-            )
+            monkeypatch.setattr(f"{SUB_MODULE}._create_redis_client", _fake_creator)
 
             sub = BodaiToolInvocationSubscriber(
                 redis_url="redis://nowhere",
-                hot_store=hot, xreadgroup_block_ms=10, consumer_name="c1",
+                hot_store=hot,
+                xreadgroup_block_ms=10,
+                consumer_name="c1",
             )
             await sub.start()
 
@@ -592,7 +581,9 @@ class TestXreadgroupBlockTimeout:
             try:
                 sub = BodaiToolInvocationSubscriber(
                     redis_url="redis://test",
-                    hot_store=hot, xreadgroup_block_ms=1234, consumer_name="c1",
+                    hot_store=hot,
+                    xreadgroup_block_ms=1234,
+                    consumer_name="c1",
                 )
                 await _inject_client(sub, client, "akosha-tool-invocation-indexers")
 
@@ -664,7 +655,9 @@ class TestStartConsumerGroupIdempotent:
                 sub = BodaiToolInvocationSubscriber(
                     redis_url="redis://test",
                     consumer_group=group,
-                    hot_store=hot, xreadgroup_block_ms=10, consumer_name="c1",
+                    hot_store=hot,
+                    xreadgroup_block_ms=10,
+                    consumer_name="c1",
                 )
                 await sub.start()
                 try:
@@ -686,9 +679,7 @@ class TestEnvelopeDecoder:
     """Direct decode-helper coverage so the wire-shape contract is explicit."""
 
     @pytest.mark.asyncio
-    async def test_decodes_direct_triplet(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_decodes_direct_triplet(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _patch_embedding_service(monkeypatch)
         sub = BodaiToolInvocationSubscriber(redis_url="redis://test")
         decoded = sub._decode_envelope(
@@ -707,9 +698,7 @@ class TestEnvelopeDecoder:
         assert decoded["headers"]["event_id"] == "evt-001"
 
     @pytest.mark.asyncio
-    async def test_decodes_canonical_envelope(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_decodes_canonical_envelope(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _patch_embedding_service(monkeypatch)
         sub = BodaiToolInvocationSubscriber(redis_url="redis://test")
         inner = {

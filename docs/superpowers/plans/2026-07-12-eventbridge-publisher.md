@@ -95,6 +95,7 @@ The adapter bridges ``publisher.publish(envelope)`` (the API the
 publisher module expects) and ``EventBridge.emit(topic, payload, headers)``
 (the API Oneiric's EventBridge exposes).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -154,6 +155,7 @@ Per the operational-safety review (Finding #2): this adapter is the
 production injection point. Without it, the publisher module would
 have no production-compatible publisher to wire into.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -233,6 +235,7 @@ Mirrors the test pattern from
 ``tests/unit/test_eventbridge_publisher.py`` in Crackerjack. Same envelope
 shape, same never-raises guarantee, same duck-typed publisher injection.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -303,9 +306,7 @@ def test_envelope_event_ids_are_unique_across_calls() -> None:
 
 def test_envelope_timestamp_is_iso_utc() -> None:
     """Timestamp header parses as ISO 8601 in UTC."""
-    envelope = _make_envelope(
-        TOPIC_AGGREGATION_COMPLETED, SOURCE, {"aggregation_id": "agg_t"}
-    )
+    envelope = _make_envelope(TOPIC_AGGREGATION_COMPLETED, SOURCE, {"aggregation_id": "agg_t"})
     timestamp = _headers_of(envelope).get("timestamp")
     assert isinstance(timestamp, str)
     parsed = datetime.fromisoformat(timestamp)
@@ -385,6 +386,7 @@ against a Pydantic envelope, not Oneiric's msgspec envelope. Duck-typing
 is intentional; AsyncMock and the Oneiric EventBridge publisher both
 satisfy ``publisher.publish(envelope)``.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -523,8 +525,7 @@ async def publish_pattern_detected(
         await _publish(envelope, effective_publisher)
     except Exception:
         logger.exception(
-            "akosha.publisher: failed to publish pattern.detected event "
-            "pattern_id=%s",
+            "akosha.publisher: failed to publish pattern.detected event pattern_id=%s",
             pattern_id,
         )
 
@@ -567,8 +568,7 @@ async def publish_anomaly_detected(
         await _publish(envelope, effective_publisher)
     except Exception:
         logger.exception(
-            "akosha.publisher: failed to publish anomaly.detected event "
-            "anomaly_id=%s",
+            "akosha.publisher: failed to publish anomaly.detected event anomaly_id=%s",
             anomaly_id,
         )
 
@@ -611,8 +611,7 @@ async def publish_insight_generated(
         await _publish(envelope, effective_publisher)
     except Exception:
         logger.exception(
-            "akosha.publisher: failed to publish insight.generated event "
-            "insight_id=%s",
+            "akosha.publisher: failed to publish insight.generated event insight_id=%s",
             insight_id,
         )
 
@@ -652,8 +651,7 @@ async def publish_aggregation_completed(
         await _publish(envelope, effective_publisher)
     except Exception:
         logger.exception(
-            "akosha.publisher: failed to publish aggregation.completed event "
-            "aggregation_id=%s",
+            "akosha.publisher: failed to publish aggregation.completed event aggregation_id=%s",
             aggregation_id,
         )
 
@@ -687,8 +685,12 @@ async def test_publish_pattern_detected_invokes_injected_publisher() -> None:
     publisher.publish.return_value = None
 
     await publish_pattern_detected(
-        "pat_xyz", "anomaly_burst", "burst detected", 0.95,
-        {"k": "v"}, publisher=publisher,
+        "pat_xyz",
+        "anomaly_burst",
+        "burst detected",
+        0.95,
+        {"k": "v"},
+        publisher=publisher,
     )
 
     publisher.publish.assert_awaited_once()
@@ -710,8 +712,12 @@ async def test_publish_anomaly_detected_builds_canonical_envelope() -> None:
     publisher.publish.return_value = None
 
     await publish_anomaly_detected(
-        "anom_1", "spike", "high", "latency spike",
-        {"p99_ms": 500.0}, publisher=publisher,
+        "anom_1",
+        "spike",
+        "high",
+        "latency spike",
+        {"p99_ms": 500.0},
+        publisher=publisher,
     )
 
     publisher.publish.assert_awaited_once()
@@ -732,9 +738,12 @@ async def test_publish_insight_generated_builds_canonical_envelope() -> None:
     publisher.publish.return_value = None
 
     await publish_insight_generated(
-        "ins_1", "trend", "Upward trend in p99",
+        "ins_1",
+        "trend",
+        "Upward trend in p99",
         "Latency trended up over the past hour",
-        {"slope": 0.15}, publisher=publisher,
+        {"slope": 0.15},
+        publisher=publisher,
     )
 
     publisher.publish.assert_awaited_once()
@@ -753,8 +762,11 @@ async def test_publish_aggregation_completed_builds_canonical_envelope() -> None
     publisher.publish.return_value = None
 
     await publish_aggregation_completed(
-        "agg_1", "telemetry", record_count=1024,
-        summary={"avg": 12.5}, publisher=publisher,
+        "agg_1",
+        "telemetry",
+        record_count=1024,
+        summary={"avg": 12.5},
+        publisher=publisher,
     )
 
     publisher.publish.assert_awaited_once()
@@ -834,20 +846,17 @@ async def test_publisher_swallows_exception_types(
     publisher = AsyncMock()
     publisher.publish.side_effect = exc
 
-    with caplog.at_level(
-        logging.WARNING, logger="akosha.observability.eventbridge_publisher"
-    ):
+    with caplog.at_level(logging.WARNING, logger="akosha.observability.eventbridge_publisher"):
         # Must NOT raise out of publish_pattern_detected
         await publish_pattern_detected("p", "t", "d", 0.5, {}, publisher=publisher)
 
     error_logs = [
-        rec for rec in caplog.records
+        rec
+        for rec in caplog.records
         if rec.levelno >= logging.WARNING
         and rec.name == "akosha.observability.eventbridge_publisher"
     ]
-    assert len(error_logs) == 1, (
-        f"expected exactly 1 log per call, got {len(error_logs)}"
-    )
+    assert len(error_logs) == 1, f"expected exactly 1 log per call, got {len(error_logs)}"
     assert "pattern.detected" in error_logs[0].getMessage()
 
 
@@ -877,9 +886,7 @@ async def test_publisher_supports_sync_publish_returning_none() -> None:
     sync_publisher = Mock()  # noqa: S3776  -- deliberately Mock, not AsyncMock
     sync_publisher.publish.return_value = None
 
-    await publish_pattern_detected(
-        "p_sync", "burst", "d", 0.5, {}, publisher=sync_publisher
-    )
+    await publish_pattern_detected("p_sync", "burst", "d", 0.5, {}, publisher=sync_publisher)
     sync_publisher.publish.assert_called_once()
 
 
@@ -919,9 +926,7 @@ async def test_publisher_swallows_coroutine_raising_after_await() -> None:
     ],
 )
 @pytest.mark.asyncio
-async def test_publisher_handles_zero_and_empty_values(
-    call: object, expected_topic: str
-) -> None:
+async def test_publisher_handles_zero_and_empty_values(call: object, expected_topic: str) -> None:
     """Boundary values (``0``, ``""``, ``0.0``) flow through without dropping fields."""
     publisher = AsyncMock()
     publisher.publish.return_value = None
@@ -1372,6 +1377,7 @@ returns a workflow_id immediately and runs the publish in the background.
 The tool is gated to ``ToolProfile.FULL`` (per the precedent of
 ``register_fitness_tools`` -- analytics-adjacent tools are full-only).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -1427,9 +1433,7 @@ async def _dispatch_topic(topic: str, payload: dict[str, Any]) -> None:
             summary=payload.get("summary", {}),
         )
     else:
-        logger.warning(
-            "akosha.eventbridge_tools: unknown topic=%s; ignoring", topic
-        )
+        logger.warning("akosha.eventbridge_tools: unknown topic=%s; ignoring", topic)
 
 
 def register_eventbridge_tools(
@@ -1453,6 +1457,7 @@ def register_eventbridge_tools(
         category: Optional ToolCategory for registry grouping. If None,
             the tool is registered without a category tag.
     """
+
     @mcp_app.tool()
     async def publish_to_eventbridge(
         topic: str,
@@ -1558,6 +1563,7 @@ Mahavishnu Bodai subscriber consumes (topic, payload, headers.source,
 headers.event_id, headers.timestamp). Uses an in-memory recording
 transport (no Redis or AWS required) to simulate the round trip.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -1599,8 +1605,12 @@ pytestmark = pytest.mark.integration
 async def test_publish_pattern_detected_round_trips_through_transport() -> None:
     transport = RecordingTransport()
     await publish_pattern_detected(
-        "pat_e2e_1", "anomaly_burst", "burst", 0.95,
-        {"k": "v"}, publisher=transport,
+        "pat_e2e_1",
+        "anomaly_burst",
+        "burst",
+        0.95,
+        {"k": "v"},
+        publisher=transport,
     )
     assert len(transport.published) == 1
     record = transport.published[0]
@@ -1617,8 +1627,12 @@ async def test_publish_pattern_detected_round_trips_through_transport() -> None:
 async def test_publish_anomaly_detected_round_trips_through_transport() -> None:
     transport = RecordingTransport()
     await publish_anomaly_detected(
-        "anom_e2e_1", "spike", "high", "latency spike",
-        {"p99_ms": 500.0}, publisher=transport,
+        "anom_e2e_1",
+        "spike",
+        "high",
+        "latency spike",
+        {"p99_ms": 500.0},
+        publisher=transport,
     )
     assert len(transport.published) == 1
     record = transport.published[0]
@@ -1632,8 +1646,12 @@ async def test_publish_anomaly_detected_round_trips_through_transport() -> None:
 async def test_publish_insight_generated_round_trips_through_transport() -> None:
     transport = RecordingTransport()
     await publish_insight_generated(
-        "ins_e2e_1", "trend", "Upward trend",
-        "latency trending up", {"slope": 0.15}, publisher=transport,
+        "ins_e2e_1",
+        "trend",
+        "Upward trend",
+        "latency trending up",
+        {"slope": 0.15},
+        publisher=transport,
     )
     assert len(transport.published) == 1
     record = transport.published[0]
@@ -1647,8 +1665,11 @@ async def test_publish_insight_generated_round_trips_through_transport() -> None
 async def test_publish_aggregation_completed_round_trips_through_transport() -> None:
     transport = RecordingTransport()
     await publish_aggregation_completed(
-        "agg_e2e_1", "telemetry", record_count=1024,
-        summary={"avg": 12.5}, publisher=transport,
+        "agg_e2e_1",
+        "telemetry",
+        record_count=1024,
+        summary={"avg": 12.5},
+        publisher=transport,
     )
     assert len(transport.published) == 1
     record = transport.published[0]

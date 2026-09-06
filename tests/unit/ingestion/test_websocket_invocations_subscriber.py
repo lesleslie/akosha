@@ -38,9 +38,7 @@ def _make_fake_embedding_service() -> MagicMock:
     also be 384-dim by default in oneiric, so this shape mirrors that.
     """
     service = MagicMock()
-    service.generate_embedding = AsyncMock(
-        return_value=np.zeros(384, dtype=np.float32)
-    )
+    service.generate_embedding = AsyncMock(return_value=np.zeros(384, dtype=np.float32))
     return service
 
 
@@ -171,6 +169,7 @@ class TestSchemaVersion:
         from akosha.ingestion.websocket_invocations_subscriber import (
             WebSocketInvocationsSubscriber,
         )
+
         sub = WebSocketInvocationsSubscriber(
             hot_store=hot_store,
             dhara_handle=dhara,
@@ -315,6 +314,7 @@ class TestIdempotency:
         from akosha.ingestion.websocket_invocations_subscriber import (
             WebSocketInvocationsSubscriber,
         )
+
         sub = WebSocketInvocationsSubscriber(
             hot_store=hot_store,
             dhara_handle=handle,
@@ -361,12 +361,8 @@ class TestSubscriberRespectsBackendDim:
         with the matching dim.
         """
         fake_svc = MagicMock()
-        fake_svc.generate_embedding = AsyncMock(
-            return_value=np.zeros(768, dtype=np.float32)
-        )
-        monkeypatch.setattr(
-            f"{SUB_MODULE}.get_embedding_service", MagicMock(return_value=fake_svc)
-        )
+        fake_svc.generate_embedding = AsyncMock(return_value=np.zeros(768, dtype=np.float32))
+        monkeypatch.setattr(f"{SUB_MODULE}.get_embedding_service", MagicMock(return_value=fake_svc))
 
         # Real HotStore (not mock) so the dim check actually fires.
         from akosha.storage.hot_store import HotStore
@@ -406,9 +402,7 @@ class TestSubscriberRespectsBackendDim:
             # ``_embedding_dim`` baked into the schema is what allows it.
             assert hot_store._embedding_dim == 768
             # The row was indexed into the real store.
-            count = hot_store.conn.execute(
-                "SELECT COUNT(*) FROM conversations"
-            ).fetchone()[0]
+            count = hot_store.conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
             assert count == 1
         finally:
             await hot_store.close()
@@ -461,11 +455,7 @@ class TestDharaHttpClientIntegration:
 
         mock_response = MagicMock(spec=httpx.Response)
         mock_response.json = MagicMock(
-            return_value={
-                "content": [
-                    {"type": "text", "text": _json.dumps(dhara_payload)}
-                ]
-            }
+            return_value={"content": [{"type": "text", "text": _json.dumps(dhara_payload)}]}
         )
         mock_response.raise_for_status = MagicMock(return_value=None)
 
@@ -492,21 +482,15 @@ class TestDharaHttpClientIntegration:
         stub_httpx.post.assert_awaited_once()
         post_kwargs = stub_httpx.post.await_args.kwargs
         assert post_kwargs["json"]["name"] == "list_prefix"
-        assert post_kwargs["json"]["arguments"]["prefix"] == (
-            "websocket_tool_invocation/v1/"
-        )
-        assert stub_httpx.post.await_args.args[0] == (
-            "http://dhara.test.invalid/tools/call"
-        )
+        assert post_kwargs["json"]["arguments"]["prefix"] == ("websocket_tool_invocation/v1/")
+        assert stub_httpx.post.await_args.args[0] == ("http://dhara.test.invalid/tools/call")
 
         # And the parsed row should have made it into the HotStore.
         hot_store.insert.assert_awaited_once()
         record: HotRecord = hot_store.insert.await_args.args[0]
         assert isinstance(record, HotRecord)
         assert record.system_id == "mahavishnu"
-        assert record.conversation_id == (
-            "websocket_tool_invocation/v1/1700000000000"
-        )
+        assert record.conversation_id == ("websocket_tool_invocation/v1/1700000000000")
 
 
 def _fake_embedding_service() -> MagicMock:
@@ -622,8 +606,7 @@ class TestOrchestratorPushPollRouting:
             await real_sleep(0.05)
             # Multiple ticks must have happened.
             assert dhara.list_prefix.await_count >= 2, (
-                f"expected at least 2 list_prefix calls, "
-                f"got {dhara.list_prefix.await_count}"
+                f"expected at least 2 list_prefix calls, got {dhara.list_prefix.await_count}"
             )
         finally:
             await sub.stop()

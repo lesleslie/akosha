@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import json
 import logging
@@ -14,7 +13,6 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-
 from oneiric.adapters.storage.azure import AzureBlobStorageAdapter, AzureBlobStorageSettings
 from oneiric.adapters.storage.gcs import GCSStorageAdapter, GCSStorageSettings
 from oneiric.adapters.storage.local import LocalStorageAdapter, LocalStorageSettings
@@ -268,9 +266,7 @@ class ColdStore:
             elif backend == "s3":
                 # S3StorageAdapter.upload returns None.
                 await self._storage_adapter.upload(object_key, data)
-            elif backend == "gcs":
-                await self._storage_adapter.upload(object_key, data)
-            elif backend == "azure":
+            elif backend in ("gcs", "azure"):
                 await self._storage_adapter.upload(object_key, data)
             else:
                 raise RuntimeError(f"Unknown storage backend: {backend}")
@@ -288,7 +284,7 @@ class ColdStore:
                 temp_path.unlink()
                 logger.debug("Cleaned up temporary file: %s", temp_path)
 
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to upload %s to %s", temp_path, object_key)
             # Clean up temp file on error too.
             if temp_path.exists():

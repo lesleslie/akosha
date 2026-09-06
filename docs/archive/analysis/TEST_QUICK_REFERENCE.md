@@ -127,6 +127,7 @@ async def service(self) -> MyService:
     yield svc
     await svc.cleanup()
 
+
 @pytest.mark.asyncio
 async def test_something(self, service: MyService) -> None:
     """Test with service fixture."""
@@ -138,6 +139,7 @@ async def test_something(self, service: MyService) -> None:
 ```python
 from unittest.mock import patch, MagicMock
 
+
 @patch("akosha.module.external_function")
 async def test_with_mock(self, mock_func: MagicMock) -> None:
     """Test with mocked dependency."""
@@ -148,11 +150,14 @@ async def test_with_mock(self, mock_func: MagicMock) -> None:
 
 ### Parameterized Tests
 ```python
-@pytest.mark.parametrize("input,expected", [
-    ("test1", "result1"),
-    ("test2", "result2"),
-    ("test3", "result3"),
-])
+@pytest.mark.parametrize(
+    "input,expected",
+    [
+        ("test1", "result1"),
+        ("test2", "result2"),
+        ("test3", "result3"),
+    ],
+)
 async def test_multiple_cases(self, input: str, expected: str) -> None:
     """Test multiple cases."""
     result = process(input)

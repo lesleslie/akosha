@@ -111,14 +111,13 @@ result = await store_memory(
     memory_id="test-mem-123",
     text="Test content",
     embedding=[0.1] * 384,
-    metadata={"source": "http://localhost:8678"}
+    metadata={"source": "http://localhost:8678"},
 )
 
 # Test batch storage
-result = await batch_store_memories([
-    {"memory_id": "mem1", "text": "First"},
-    {"memory_id": "mem2", "text": "Second"}
-])
+result = await batch_store_memories(
+    [{"memory_id": "mem1", "text": "First"}, {"memory_id": "mem2", "text": "Second"}]
+)
 ```
 
 ### 6. Hot Store (DuckDB) (`akosha.storage.hot_store`)

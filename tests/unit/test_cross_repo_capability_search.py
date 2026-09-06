@@ -179,10 +179,7 @@ class TestCrossRepoCapabilitySearchInvocation:
         assert result["total_results"] > 0
         names = [r["name"] for r in result["results"]]
         # Either a mahavishnu adapter or crackerjack tool should be in scope.
-        assert any(
-            name in {"PrefectAdapter", "LlamaIndexAdapter", "AgnoAdapter"}
-            for name in names
-        )
+        assert any(name in {"PrefectAdapter", "LlamaIndexAdapter", "AgnoAdapter"} for name in names)
 
     @pytest.mark.asyncio
     async def test_repo_filter_narrows_repos_scanned(self) -> None:
@@ -216,8 +213,7 @@ class TestCrossRepoCapabilitySearchInvocation:
         repos_in_results = {r["repo"] for r in result["results"]}
         assert result["total_results"] > 0
         assert len(repos_in_results) >= 3, (
-            f"Expected error-kind results spanning 3+ components; "
-            f"got {repos_in_results}"
+            f"Expected error-kind results spanning 3+ components; got {repos_in_results}"
         )
 
     @pytest.mark.asyncio

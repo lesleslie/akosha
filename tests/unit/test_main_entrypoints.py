@@ -61,9 +61,7 @@ def _run(
         # Non-blocking poll of both pipes. When marker detection is on
         # we SIGKILL the subprocess the moment we see the marker line.
         if marker is not None:
-            rlist, _, _ = select.select(
-                [proc.stdout, proc.stderr], [], [], 0.2
-            )
+            rlist, _, _ = select.select([proc.stdout, proc.stderr], [], [], 0.2)
             for stream in rlist:
                 line = stream.readline()
                 if not line:
@@ -148,9 +146,7 @@ def test_python_m_akosha_mcp_status_exits_0_or_2() -> None:
     result = _run("akosha", "status", timeout=10.0)
     # 0 = subcommand exists and runs, 2 = argparse rejected (unknown).
     # Anything else (e.g. ModuleNotFoundError -> exit 1) is a real bug.
-    assert result.returncode in (0, 2), (
-        f"unexpected exit {result.returncode}: {result.stderr}"
-    )
+    assert result.returncode in (0, 2), f"unexpected exit {result.returncode}: {result.stderr}"
 
 
 def test_python_m_akosha_prints_version_string() -> None:
@@ -159,8 +155,6 @@ def test_python_m_akosha_prints_version_string() -> None:
     # ``--version`` may exit 0 (oneiric) or 2 (no --version flag
     # registered). Either way the import path must succeed.
     if result.returncode != 0:
-        assert result.returncode == 2, (
-            f"--version failed unexpectedly: {result.stderr}"
-        )
+        assert result.returncode == 2, f"--version failed unexpectedly: {result.stderr}"
         return  # CLI didn't register --version — acceptable for now
     assert "0." in result.stdout or "0." in result.stderr

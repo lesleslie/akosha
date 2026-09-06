@@ -67,9 +67,7 @@ def test_server_calls_apply_tool_profile() -> None:
         if attr in {"_apply_tool_profile", "apply_tool_profile"}:
             found = True
             break
-    assert found, (
-        "akosha/mcp/server.py must call _apply_tool_profile() or apply_tool_profile()"
-    )
+    assert found, "akosha/mcp/server.py must call _apply_tool_profile() or apply_tool_profile()"
 
 
 @pytest.mark.parametrize(

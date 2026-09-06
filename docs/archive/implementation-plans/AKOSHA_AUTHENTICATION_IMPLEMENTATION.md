@@ -66,14 +66,10 @@ export AKOSHA_AUTH_ENABLED="true"  # default: true
 
 ```python
 # With authentication
-headers = {
-    "Authorization": f"Bearer {token}"
-}
+headers = {"Authorization": f"Bearer {token}"}
 
 result = await mcp.call_tool(
-    "search_all_systems",
-    arguments={"query": "JWT authentication", "limit": 10},
-    headers=headers
+    "search_all_systems", arguments={"query": "JWT authentication", "limit": 10}, headers=headers
 )
 ```
 
@@ -83,6 +79,7 @@ result = await mcp.call_tool(
 
 ```python
 from akosha.security import require_auth
+
 
 @require_auth
 async def search_all_systems(
@@ -105,16 +102,14 @@ middleware = AuthenticationMiddleware()
 # Or customize protected tools/categories
 middleware = AuthenticationMiddleware(
     protected_categories={"search", "analytics", "graph"},
-    protected_tools={"custom_tool", "another_tool"}
+    protected_tools={"custom_tool", "another_tool"},
 )
 
 # Check if tool is protected
 if middleware.is_tool_protected("search_all_systems"):
     # Require authentication
     await middleware.authenticate_request(
-        tool_name="search_all_systems",
-        tool_category="search",
-        context=request_context
+        tool_name="search_all_systems", tool_category="search", context=request_context
     )
 ```
 
@@ -160,6 +155,7 @@ def test_validate_token_with_valid_token():
     test_token = "test_token_123"
     os.environ["AKOSHA_API_TOKEN"] = test_token
     assert validate_token(test_token) is True
+
 
 @pytest.mark.asyncio
 async def test_require_auth_denies_with_missing_token():
@@ -220,20 +216,14 @@ except InvalidTokenError as e:
 {
     "error": "authentication_error",
     "message": "Missing or invalid authentication token. Provide Authorization header with Bearer token.",
-    "details": {
-        "tool": "search_all_systems",
-        "reason": "missing_bearer_token"
-    }
+    "details": {"tool": "search_all_systems", "reason": "missing_bearer_token"},
 }
 
 # Invalid token
 {
     "error": "authentication_error",
     "message": "Invalid authentication token. Access denied.",
-    "details": {
-        "tool": "search_all_systems",
-        "reason": "token_validation_failed"
-    }
+    "details": {"tool": "search_all_systems", "reason": "token_validation_failed"},
 }
 ```
 

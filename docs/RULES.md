@@ -50,6 +50,7 @@ class VectorIndexer:
     def _internal_method(self):
         pass
 
+
 # ❌ Bad
 class vectorIndexer:
     max_dimensions = 1536
@@ -69,11 +70,13 @@ from typing import TypeAlias
 
 UserId: TypeAlias = str
 
+
 def get_user(user_id: UserId) -> dict[str, str] | None:
     """Get user by ID with comprehensive type hints."""
     if not user_id:
         return None
     return {"id": user_id}
+
 
 # ❌ Bad - No type hints
 def get_user(user_id):
@@ -81,8 +84,10 @@ def get_user(user_id):
         return None
     return {"id": user_id}
 
+
 # ❌ Bad - Old syntax (unless necessary for compatibility)
 from typing import Dict, Optional
+
 
 def get_user(user_id: str) -> Optional[Dict[str, str]]:
     pass
@@ -99,9 +104,11 @@ from typing import TypeAlias
 Embedding: TypeAlias = list[float]  # or np.ndarray
 Metadata: TypeAlias = dict[str, str | int | float]
 
+
 def index_content(content: str, embedding: Embedding, meta: Metadata) -> bool:
     """Index content with embedding and metadata."""
     pass
+
 
 # ❌ Bad - Hard to read
 def index_content(content: str, embedding: list[float], meta: dict[str, str | int | float]) -> bool:
@@ -122,6 +129,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
+
 class StorageManager:
     def __init__(self):
         self._executor = ThreadPoolExecutor(max_workers=4)
@@ -130,16 +138,14 @@ class StorageManager:
         """Async signature for API consistency."""
         loop = asyncio.get_event_loop()
         # Run blocking I/O in executor thread
-        await loop.run_in_executor(
-            self._executor,
-            partial(self._write_to_disk, items)
-        )
+        await loop.run_in_executor(self._executor, partial(self._write_to_disk, items))
 
     def _write_to_disk(self, items: list[Item]) -> None:
         """Sync operation - runs in executor thread."""
         with open("data.bin", "wb") as f:
             for item in items:
                 f.write(item.serialize())
+
 
 # ❌ Bad - Blocking async
 async def store_batch(self, items: list[Item]) -> None:
@@ -159,6 +165,7 @@ import structlog
 
 logger = structlog.get_logger()
 
+
 async def process_upload(upload_id: str) -> bool:
     """Process upload with proper error handling."""
     try:
@@ -170,6 +177,7 @@ async def process_upload(upload_id: str) -> bool:
     except Exception as e:
         logger.exception("Unexpected error processing upload", upload_id=upload_id)
         raise  # Re-raise unexpected exceptions
+
 
 # ❌ Bad - Silent suppression
 async def process_upload(upload_id: str) -> bool:
@@ -186,10 +194,7 @@ async def process_upload(upload_id: str) -> bool:
 ```python
 # ✅ Good - Structured with context
 raise StorageError(
-    "Failed to write to hot store",
-    shard_id=shard_id,
-    record_count=len(records),
-    error=str(e)
+    "Failed to write to hot store", shard_id=shard_id, record_count=len(records), error=str(e)
 )
 
 # ❌ Bad - No context
@@ -229,6 +234,7 @@ def store_conversation(
     """
     pass
 
+
 # ❌ Bad - Minimal or no docstring
 def store_conversation(content, system_id, embedding=None):
     """Store conversation."""
@@ -242,6 +248,7 @@ def store_conversation(content, system_id, embedding=None):
 ```python
 # ✅ Good - Clear test structure
 import pytest
+
 
 class TestHotStore:
     """Test suite for HotStore functionality."""
@@ -267,6 +274,7 @@ class TestHotStore:
         """Test bulk insert performance with 10K records."""
         pass
 
+
 # ❌ Bad - No structure, unclear intent
 def test_store():
     store = HotStore()
@@ -283,21 +291,26 @@ Use appropriate markers for categorization:
 def test_specific_function():  # Fast, isolated
     pass
 
+
 @pytest.mark.integration
 def test_with_database():  # Requires database
     pass
+
 
 @pytest.mark.slow
 def test_large_dataset():  # Takes >1 second
     pass
 
+
 @pytest.mark.performance
 def test_query_latency():  # Benchmark
     pass
 
+
 @pytest.mark.network
 def test_api_call():  # Requires network
     pass
+
 
 @pytest.mark.security
 def test_sql_injection_protection():  # Security test
@@ -368,13 +381,16 @@ UserId: TypeAlias = str
 MAX_RETRIES = 3
 TIMEOUT_SECONDS = 30
 
+
 # 6. Classes
 class MyClass:
     pass
 
+
 # 7. Functions
 def my_function():
     pass
+
 
 # 8. Main guard
 if __name__ == "__main__":
@@ -390,6 +406,7 @@ if __name__ == "__main__":
 def process_items(items: list[Item]) -> list[Item]:
     """Process items, filtering out invalid ones."""
     return [item for item in items if item.is_valid()]
+
 
 # Optimize only if profiling shows it's a bottleneck
 # ❌ Bad - Premature optimization, harder to read
@@ -410,6 +427,7 @@ def lookup_user(user_ids: set[str], target: str) -> bool:
     """O(1) lookup with set."""
     return target in user_ids
 
+
 # ❌ Bad - Wrong data structure
 def lookup_user(user_ids: list[str], target: str) -> bool:
     """O(n) lookup with list."""
@@ -424,21 +442,23 @@ def lookup_user(user_ids: list[str], target: str) -> bool:
 # ✅ Good - Validate inputs
 from pydantic import BaseModel, validator
 
+
 class StoreRequest(BaseModel):
     content: str
     system_id: str
 
-    @validator('content')
+    @validator("content")
     def content_not_empty(cls, v):
         if not v or not v.strip():
-            raise ValueError('content cannot be empty')
+            raise ValueError("content cannot be empty")
         return v
 
-    @validator('system_id')
+    @validator("system_id")
     def system_id_format(cls, v):
-        if not v.startswith('sys-'):
-            raise ValueError('system_id must start with sys-')
+        if not v.startswith("sys-"):
+            raise ValueError("system_id must start with sys-")
         return v
+
 
 # ❌ Bad - No validation
 def store_content(content: str, system_id: str):
@@ -451,16 +471,12 @@ def store_content(content: str, system_id: str):
 ```python
 # ✅ Good - Parameterized queries
 def get_user(user_id: str) -> dict:
-    cursor.execute(
-        "SELECT * FROM users WHERE id = ?",
-        (user_id,)
-    )
+    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+
 
 # ❌ Bad - SQL injection vulnerable
 def get_user(user_id: str) -> dict:
-    cursor.execute(
-        f"SELECT * FROM users WHERE id = '{user_id}'"
-    )
+    cursor.execute(f"SELECT * FROM users WHERE id = '{user_id}'")
 ```
 
 ## Logging
@@ -473,22 +489,25 @@ import structlog
 
 logger = structlog.get_logger()
 
+
 def process_upload(upload_id: str):
     logger.info("Processing upload", upload_id=upload_id)
     try:
         # ... processing ...
-        logger.info("Upload processed successfully",
-                   upload_id=upload_id,
-                   record_count=100)
+        logger.info("Upload processed successfully", upload_id=upload_id, record_count=100)
     except Exception as e:
-        logger.error("Upload processing failed",
-                    upload_id=upload_id,
-                    error=str(e),
-                    error_type=type(e).__name__)
+        logger.error(
+            "Upload processing failed",
+            upload_id=upload_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
+
 
 # ❌ Bad - Unstructured logging
 import logging
+
 
 def process_upload(upload_id: str):
     logging.info(f"Processing upload {upload_id}")
@@ -505,6 +524,7 @@ def process_upload(upload_id: str):
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
+
 class Settings(BaseSettings):
     hot_store_path: Path = Field(default=Path("/data/akosha/hot"))
     warm_store_path: Path = Field(default=Path("/data/akosha/warm"))
@@ -513,6 +533,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_prefix = "AKOSHA_"
+
 
 settings = Settings()
 
@@ -538,5 +559,5 @@ MAX_BATCH_SIZE = int(os.getenv("AKOSHA_MAX_BATCH", "1000"))
 
 - All code must pass: `crackerjack lint`
 - All code must pass: `crackerjack typecheck`
-- All code must pass: `crickerjack test` (85%+ coverage)
+- All code must pass: `crackerjack test` (89%+ coverage, matches `--cov-fail-under` ratchet in `pyproject.toml`)
 - All code must pass: `crackerjack security`

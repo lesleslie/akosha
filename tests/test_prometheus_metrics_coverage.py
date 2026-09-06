@@ -92,7 +92,7 @@ class TestIngestionMetrics:
         before = generate_metrics()
         record_ingestion_record("sys-1", "success")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
         # Just ensure no exception
@@ -102,7 +102,7 @@ class TestIngestionMetrics:
         before = generate_metrics()
         record_ingestion_record("sys-1", "error")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -111,7 +111,7 @@ class TestIngestionMetrics:
         before = generate_metrics()
         record_ingestion_record("sys-1", "skipped")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -120,7 +120,7 @@ class TestIngestionMetrics:
         before = generate_metrics()
         record_ingestion_record("sys-1", "success", bytes_processed=1024)
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -129,7 +129,7 @@ class TestIngestionMetrics:
         before = generate_metrics()
         record_ingestion_record("sys-1", "success", bytes_processed=0)
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
         # ingestion_bytes_total should not be incremented
@@ -139,7 +139,7 @@ class TestIngestionMetrics:
         before = generate_metrics()
         update_ingestion_throughput(42.5, "sys-1")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -148,7 +148,7 @@ class TestIngestionMetrics:
         before = generate_metrics()
         update_ingestion_throughput(10.0)
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -162,7 +162,7 @@ class TestSearchMetrics:
             pass
             record(5)
             after = generate_metrics()
-            assert after != before, 'metric registry was not mutated by the recording call'
+            assert after != before, "metric registry was not mutated by the recording call"
             assert isinstance(after, bytes)
             assert len(after) > 0
 
@@ -172,7 +172,7 @@ class TestSearchMetrics:
         with observe_search_latency("keyword", 1, "warm") as record:
             record(0)
             after = generate_metrics()
-            assert after != before, 'metric registry was not mutated by the recording call'
+            assert after != before, "metric registry was not mutated by the recording call"
             assert isinstance(after, bytes)
             assert len(after) > 0
 
@@ -183,7 +183,7 @@ class TestSearchMetrics:
             with observe_search_latency(qt, 2) as record:
                 record(10)
                 after = generate_metrics()
-                assert after != before, 'metric registry was not mutated by the recording call'
+                assert after != before, "metric registry was not mutated by the recording call"
                 assert isinstance(after, bytes)
                 assert len(after) > 0
 
@@ -194,7 +194,7 @@ class TestSearchMetrics:
             with observe_search_latency("semantic", 1, tier) as record:
                 record(1)
                 after = generate_metrics()
-                assert after != before, 'metric registry was not mutated by the recording call'
+                assert after != before, "metric registry was not mutated by the recording call"
                 assert isinstance(after, bytes)
                 assert len(after) > 0
 
@@ -205,7 +205,7 @@ class TestCacheMetrics:
         before = generate_metrics()
         record_cache_hit("L1", "semantic")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -214,7 +214,7 @@ class TestCacheMetrics:
         before = generate_metrics()
         record_cache_hit("L2", "hybrid")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -223,7 +223,7 @@ class TestCacheMetrics:
         before = generate_metrics()
         record_cache_miss("L1", "semantic")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -232,7 +232,7 @@ class TestCacheMetrics:
         before = generate_metrics()
         record_cache_miss("L2", "graph")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -241,7 +241,7 @@ class TestCacheMetrics:
         before = generate_metrics()
         update_cache_hit_rate(0.85, "L1", "semantic")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -250,7 +250,7 @@ class TestCacheMetrics:
         before = generate_metrics()
         update_cache_hit_rate(1.5, "L1")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -259,7 +259,7 @@ class TestCacheMetrics:
         before = generate_metrics()
         update_cache_hit_rate(-0.5, "L2")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -268,7 +268,7 @@ class TestCacheMetrics:
         before = generate_metrics()
         update_cache_hit_rate(0.0, "L1")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -277,7 +277,7 @@ class TestCacheMetrics:
         before = generate_metrics()
         update_cache_hit_rate(1.0, "L1")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -286,7 +286,7 @@ class TestCacheMetrics:
         before = generate_metrics()
         update_cache_size(1024 * 1024, "L1")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -295,7 +295,7 @@ class TestCacheMetrics:
         before = generate_metrics()
         update_cache_entry_count(500, "L2")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -306,7 +306,7 @@ class TestStorageMetrics:
         before = generate_metrics()
         update_store_sizes(hot_size=1000, warm_size=5000, cold_size=10000)
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -315,7 +315,7 @@ class TestStorageMetrics:
         before = generate_metrics()
         update_store_sizes(100, 200, 300, hot_bytes=1024, warm_bytes=2048, cold_bytes=4096)
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -324,7 +324,7 @@ class TestStorageMetrics:
         before = generate_metrics()
         update_store_sizes(100, 200, 300, hot_bytes=1024)
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -334,7 +334,7 @@ class TestStorageMetrics:
         with observe_store_operation("hot", "write") as record:
             record("success")
             after = generate_metrics()
-            assert after != before, 'metric registry was not mutated by the recording call'
+            assert after != before, "metric registry was not mutated by the recording call"
             assert isinstance(after, bytes)
             assert len(after) > 0
 
@@ -344,7 +344,7 @@ class TestStorageMetrics:
         with observe_store_operation("warm", "read") as record:
             record("error")
             after = generate_metrics()
-            assert after != before, 'metric registry was not mutated by the recording call'
+            assert after != before, "metric registry was not mutated by the recording call"
             assert isinstance(after, bytes)
             assert len(after) > 0
 
@@ -355,7 +355,7 @@ class TestStorageMetrics:
             with observe_store_operation(tier, "read") as record:
                 record("success")
                 after = generate_metrics()
-                assert after != before, 'metric registry was not mutated by the recording call'
+                assert after != before, "metric registry was not mutated by the recording call"
                 assert isinstance(after, bytes)
                 assert len(after) > 0
 
@@ -366,7 +366,7 @@ class TestStorageMetrics:
             with observe_store_operation("hot", op) as record:
                 record("success")
                 after = generate_metrics()
-                assert after != before, 'metric registry was not mutated by the recording call'
+                assert after != before, "metric registry was not mutated by the recording call"
                 assert isinstance(after, bytes)
                 assert len(after) > 0
 
@@ -377,7 +377,7 @@ class TestErrorMetrics:
         before = generate_metrics()
         increment_errors("hot_store", "database_error")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -386,7 +386,7 @@ class TestErrorMetrics:
         before = generate_metrics()
         increment_errors("mcp_server", "timeout_error", severity="critical")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -395,7 +395,7 @@ class TestErrorMetrics:
         before = generate_metrics()
         increment_errors("cache_layer", "rate_limit_error", severity="warning")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -420,7 +420,7 @@ class TestErrorMetrics:
             before = generate_metrics()
             increment_errors(comp, "unknown_error")
             after = generate_metrics()
-            assert after != before, 'metric registry was not mutated by the recording call'
+            assert after != before, "metric registry was not mutated by the recording call"
             assert isinstance(after, bytes)
             assert len(after) > 0
 
@@ -432,7 +432,7 @@ class TestOperationMetrics:
         with observe_operation("embedding_generation") as record:
             record("success")
             after = generate_metrics()
-            assert after != before, 'metric registry was not mutated by the recording call'
+            assert after != before, "metric registry was not mutated by the recording call"
             assert isinstance(after, bytes)
             assert len(after) > 0
 
@@ -442,7 +442,7 @@ class TestOperationMetrics:
         with observe_operation("embedding_generation") as record:
             record("error")
             after = generate_metrics()
-            assert after != before, 'metric registry was not mutated by the recording call'
+            assert after != before, "metric registry was not mutated by the recording call"
             assert isinstance(after, bytes)
             assert len(after) > 0
 
@@ -453,7 +453,7 @@ class TestDeduplicationMetrics:
         before = generate_metrics()
         record_deduplication_check("exact", "duplicate")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 
@@ -462,7 +462,7 @@ class TestDeduplicationMetrics:
         before = generate_metrics()
         record_deduplication_check("fuzzy", "unique")
         after = generate_metrics()
-        assert after != before, 'metric registry was not mutated by the recording call'
+        assert after != before, "metric registry was not mutated by the recording call"
         assert isinstance(after, bytes)
         assert len(after) > 0
 

@@ -107,10 +107,7 @@ for upload in uploads:
 ```python
 async def run(self) -> None:
     semaphore = asyncio.Semaphore(self.max_concurrent_ingests)
-    tasks = [
-        self._process_with_semaphore(upload, semaphore)
-        for upload in uploads
-    ]
+    tasks = [self._process_with_semaphore(upload, semaphore) for upload in uploads]
     await asyncio.gather(*tasks)
 ```
 
@@ -270,9 +267,7 @@ ______________________________________________________________________
 
 ```python
 class DistributedQueryEngine:
-    async def search_all_shards(
-        self, query_embedding: list[float], limit: int = 10
-    ) -> list[dict]:
+    async def search_all_shards(self, query_embedding: list[float], limit: int = 10) -> list[dict]:
         # Fan-out to all shards concurrently
         tasks = [
             self.search_shard(shard_id, query_embedding, limit)
@@ -524,8 +519,7 @@ class HybridVectorStore:
     async def insert(self, embedding, metadata):
         # Always write to both during migration
         await asyncio.gather(
-            self.duckdb.insert(embedding, metadata),
-            self.milvus.insert(embedding, metadata)
+            self.duckdb.insert(embedding, metadata), self.milvus.insert(embedding, metadata)
         )
 
     async def search(self, query_embedding, limit):

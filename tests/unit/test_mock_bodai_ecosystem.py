@@ -152,8 +152,11 @@ async def test_ecosystem_start_yields_urls_and_stops_cleanly() -> None:
     code_graphs = [{"id": "akosha@deadbeef", "repo_path": "/a", "commit_hash": "deadbeef"}]
     spans = [
         {
-            "traceId": "x", "spanId": "y", "name": "z",
-            "startTimeUnixNano": "1", "endTimeUnixNano": "2",
+            "traceId": "x",
+            "spanId": "y",
+            "name": "z",
+            "startTimeUnixNano": "1",
+            "endTimeUnixNano": "2",
             "attributes": [],
         }
     ]

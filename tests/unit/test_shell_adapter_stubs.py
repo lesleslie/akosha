@@ -93,10 +93,7 @@ async def test_stub_command_preserves_input_args(
     """Caller-provided args are echoed back so operators can confirm what they sent."""
     result = await invoker(shell)
     # Every stub retains at least the original query/metric key.
-    assert any(
-        key in result
-        for key in ("query", "metric")
-    )
+    assert any(key in result for key in ("query", "metric"))
 
 
 def test_stub_envelope_shape_is_consistent(shell: AkoshaShell) -> None:

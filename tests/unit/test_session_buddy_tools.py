@@ -69,7 +69,9 @@ class TestStoreMemory:
                 "correlation_id": "corr-123",
             }
 
-            result = await store_memory(memory_id=memory_id, text=text, embedding=[0.1] * 384, metadata=metadata)
+            result = await store_memory(
+                memory_id=memory_id, text=text, embedding=[0.1] * 384, metadata=metadata
+            )
 
             # Should succeed
             assert result["status"] == "stored"

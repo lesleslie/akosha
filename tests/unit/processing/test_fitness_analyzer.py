@@ -87,9 +87,7 @@ def test_add_component_dedupes_duplicate_registration() -> None:
     a.add_component("mahavishnu", "http://localhost:8680/mcp")
     a.add_component("mahavishnu", "http://localhost:8680/mcp")
     matches = [
-        ep
-        for ep in a._component_endpoints
-        if ep == ("mahavishnu", "http://localhost:8680/mcp")
+        ep for ep in a._component_endpoints if ep == ("mahavishnu", "http://localhost:8680/mcp")
     ]
     assert len(matches) == 1
 
@@ -359,9 +357,7 @@ async def test_fetch_traces_from_component_returns_query_result() -> None:
     with patch.object(
         analyzer, "_fetch_traces_from_component", AsyncMock(return_value=expected)
     ) as fetch:
-        result = await analyzer._fetch_traces_from_component(
-            "a", "http://a", "code_generation", 30
-        )
+        result = await analyzer._fetch_traces_from_component("a", "http://a", "code_generation", 30)
     assert result == expected
     fetch.assert_awaited_once_with("a", "http://a", "code_generation", 30)
 
@@ -384,9 +380,7 @@ async def test_fetch_traces_from_component_swallows_bodai_client_errors(
     # directly (not as a context manager), so the mock factory must be
     # a callable returning the fake instance.
     fake_client = MagicMock()
-    fake_client.query_local_traces = AsyncMock(
-        side_effect=ConnectionError("down")
-    )
+    fake_client.query_local_traces = AsyncMock(side_effect=ConnectionError("down"))
     fake_client.aclose = AsyncMock(return_value=None)
 
     monkeypatch.setattr(
@@ -394,9 +388,7 @@ async def test_fetch_traces_from_component_swallows_bodai_client_errors(
         lambda **kw: fake_client,
     )
 
-    result = await analyzer._fetch_traces_from_component(
-        "a", "http://a", "code_generation"
-    )
+    result = await analyzer._fetch_traces_from_component("a", "http://a", "code_generation")
     assert result == []
     # The finally block must have called aclose.
     fake_client.aclose.assert_awaited()
@@ -466,9 +458,7 @@ async def test_write_to_dhara_propagates_httpx_status_errors(
         async def post(self, url: str, *, json: dict[str, Any]) -> MagicMock:
             resp = MagicMock()
             resp.raise_for_status = MagicMock(
-                side_effect=httpx.HTTPStatusError(
-                    "500", request=MagicMock(), response=resp
-                )
+                side_effect=httpx.HTTPStatusError("500", request=MagicMock(), response=resp)
             )
             return resp
 
@@ -569,9 +559,7 @@ async def test_flush_buffer_dlqs_after_threshold(
         _make_buffer_entry(FitnessAnalyzer, "code_generation", "least_loaded", signal)
     )
 
-    with patch.object(
-        analyzer, "_write_to_dhara", AsyncMock(side_effect=ConnectionError("nope"))
-    ):
+    with patch.object(analyzer, "_write_to_dhara", AsyncMock(side_effect=ConnectionError("nope"))):
         await analyzer._flush_buffer()
 
     # 3rd failure → drop to DLQ; entry NOT requeued.
@@ -609,9 +597,7 @@ async def test_flush_buffer_no_op_when_buffer_empty() -> None:
     from akosha.processing.fitness_analyzer import FitnessAnalyzer
 
     analyzer = FitnessAnalyzer()
-    with patch.object(
-        analyzer, "_write_to_dhara", AsyncMock(return_value=None)
-    ) as write:
+    with patch.object(analyzer, "_write_to_dhara", AsyncMock(return_value=None)) as write:
         await analyzer._flush_buffer()
     write.assert_not_called()
 

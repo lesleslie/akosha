@@ -164,9 +164,7 @@ async def test_search_all_systems_falls_back_to_informational_when_hot_store_emp
 
     assert result["total_results"] == 1
     assert result["mode"] == "fallback"
-    assert result["results"][0]["content"].startswith(
-        "No websocket invocations indexed yet"
-    )
+    assert result["results"][0]["content"].startswith("No websocket invocations indexed yet")
     # Defensive: ensure the legacy mock string is fully gone.
     combined = str(result["results"])
     assert "Mock result for:" not in combined
@@ -190,9 +188,7 @@ async def test_search_all_systems_falls_back_when_hot_store_is_none() -> None:
 
     assert result["mode"] == "fallback"
     assert result["total_results"] == 1
-    assert result["results"][0]["content"].startswith(
-        "No websocket invocations indexed yet"
-    )
+    assert result["results"][0]["content"].startswith("No websocket invocations indexed yet")
 
 
 @pytest.mark.asyncio

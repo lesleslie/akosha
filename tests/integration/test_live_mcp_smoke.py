@@ -39,9 +39,7 @@ from tests.fixtures.mock_bodai_mcp import MockBodaiEcosystem
 def stub_embedding_service() -> Any:
     """An EmbeddingService stand-in that returns a zero-vector."""
     service = AsyncMock()
-    service.generate_embedding = AsyncMock(
-        return_value=np.zeros(384, dtype=np.float32)
-    )
+    service.generate_embedding = AsyncMock(return_value=np.zeros(384, dtype=np.float32))
     return service
 
 
@@ -89,9 +87,7 @@ async def test_code_graph_ingester_e2e_against_mock_session_buddy(
         }
     }
 
-    async with MockBodaiEcosystem(
-        code_graphs=code_graphs, full_graphs=full_graphs
-    ) as eco:
+    async with MockBodaiEcosystem(code_graphs=code_graphs, full_graphs=full_graphs) as eco:
         ingester = CodeGraphIngester(
             hot_store=hot_store,
             session_buddy_endpoint=eco.session_buddy_url,
@@ -119,8 +115,7 @@ async def test_code_graph_ingester_e2e_against_mock_session_buddy(
         # The canned graph landed in hot_store
         ingested = await hot_store.list_code_graphs(limit=10)
         assert any(
-            g.get("repo_path") == "/path/to/akosha"
-            and g.get("commit_hash") == "deadbeef"
+            g.get("repo_path") == "/path/to/akosha" and g.get("commit_hash") == "deadbeef"
             for g in ingested
         ), f"ingested graphs missing akosha@deadbeef; got: {ingested!r}"
 
@@ -289,10 +284,9 @@ async def test_ecosystem_runs_both_ingesters_concurrently(
 
             # Both data streams landed in the same hot_store
             ingested_graphs = await hot_store.list_code_graphs(limit=10)
-            assert any(
-                g.get("repo_path") == "/path/to/akosha"
-                for g in ingested_graphs
-            ), f"missing akosha code graph; got: {ingested_graphs!r}"
+            assert any(g.get("repo_path") == "/path/to/akosha" for g in ingested_graphs), (
+                f"missing akosha code graph; got: {ingested_graphs!r}"
+            )
 
             traces = await hot_store.query_traces(system_id="akosha")
             assert any(

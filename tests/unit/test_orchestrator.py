@@ -119,6 +119,38 @@ class TestBootstrapOrchestrator:
         assert "timestamp" in health
 
     @pytest.mark.asyncio
+    async def test_report_health_without_callable_ping(self) -> None:
+        """``ping`` is missing or non-callable → no ping is attempted."""
+        # Build a client with no ``ping`` attribute at all.
+        client = AsyncMock(spec=["trigger_workflow"])
+        orchestrator = BootstrapOrchestrator(mahavishnu_client=client)
+        result = await orchestrator.report_health()
+        # No ping happened — last_actual_ping is None.
+        assert result["last_actual_ping"] is None
+        assert "ping_result" not in result or result.get("ping_result") is None
+
+    @pytest.mark.asyncio
+    async def test_report_health_ping_failure_marks_degraded(self) -> None:
+        """When ``ping()`` raises, ``status`` flips to ``degraded``."""
+        client = AsyncMock()
+        client.ping = AsyncMock(side_effect=ConnectionError("ping failed"))
+        orchestrator = BootstrapOrchestrator(mahavishnu_client=client)
+        result = await orchestrator.report_health()
+        assert result["status"] == "degraded"
+        assert "ping failed" in result["ping_error"]
+        assert result["last_actual_ping"] is None
+
+    @pytest.mark.asyncio
+    async def test_report_health_ping_success_records_result(self) -> None:
+        """A successful ping populates ``last_actual_ping`` and ``ping_result``."""
+        client = AsyncMock()
+        client.ping = AsyncMock(return_value={"ok": True})
+        orchestrator = BootstrapOrchestrator(mahavishnu_client=client)
+        result = await orchestrator.report_health()
+        assert result["ping_result"] == {"ok": True}
+        assert result["last_actual_ping"] is not None
+
+    @pytest.mark.asyncio
     async def test_report_health_fallback_mode(self, orchestrator: BootstrapOrchestrator) -> None:
         """Test health reporting in fallback mode."""
         # Activate fallback mode
@@ -170,3 +202,34 @@ class TestBootstrapOrchestrator:
         # Should not crash without Mahavishnu
         assert orchestrator is not None
         assert not orchestrator.fallback_mode
+
+    @pytest.mark.asyncio
+    async def test_trigger_uses_call_tool_when_trigger_workflow_absent(self) -> None:
+        """When the client lacks ``trigger_workflow`` but exposes ``call_tool``, use that.
+
+        Some Mahavishnu clients expose a generic ``call_tool`` RPC instead
+        of the typed ``trigger_workflow`` shortcut. The orchestrator
+        should fall back to ``call_tool(tool_name="workflow-trigger", ...)``.
+        """
+        client = AsyncMock(spec=["call_tool"])  # no trigger_workflow attribute
+        client.call_tool = AsyncMock()
+        orchestrator = BootstrapOrchestrator(mahavishnu_client=client)
+        result = await orchestrator.trigger_ingestion()
+        assert result is True
+        client.call_tool.assert_awaited_once_with(
+            tool_name="workflow-trigger",
+            arguments={"workflow": "akosha-daily-ingest"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_trigger_logs_warning_when_client_has_neither_method(self) -> None:
+        """A client without ``trigger_workflow`` or ``call_tool`` falls through silently."""
+        # spec=[] makes the mock have no attributes — hasattr() returns False for both.
+        client = AsyncMock(spec=[])
+        orchestrator = BootstrapOrchestrator(mahavishnu_client=client)
+        # Trigger still returns True (heartbeat is updated, "success" logged),
+        # but neither method is invoked.
+        result = await orchestrator.trigger_ingestion()
+        assert result is True
+        # No call was recorded.
+        assert not client.method_calls

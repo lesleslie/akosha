@@ -4,6 +4,7 @@ Verifies the registration-time wiring and per-call re-read semantics of
 the ``enabled`` toggle. The MCP tool is opt-in: callers (operators via
 the MCP server) can flip the toggle without restarting the server.
 """
+
 from __future__ import annotations
 
 from typing import Any

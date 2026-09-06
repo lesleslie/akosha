@@ -149,10 +149,10 @@ class TestHotStoreSettings:
         assert hot_store["enabled"] is True
 
         subscriber = data.get("websocket_invocations_subscriber")
-        assert isinstance(
-            subscriber, dict
-        ), "websocket_invocations_subscriber block missing from settings/akosha.yaml"
+        assert isinstance(subscriber, dict), (
+            "websocket_invocations_subscriber block missing from settings/akosha.yaml"
+        )
         assert "enabled" in subscriber, "websocket_invocations_subscriber.enabled missing"
-        assert (
-            "poll_interval_seconds" in subscriber
-        ), "websocket_invocations_subscriber.poll_interval_seconds missing"
+        assert "poll_interval_seconds" in subscriber, (
+            "websocket_invocations_subscriber.poll_interval_seconds missing"
+        )

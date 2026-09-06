@@ -137,9 +137,7 @@ def test_register_returns_the_decorated_function(
     async def my_tool() -> None:
         return None
 
-    metadata = ToolMetadata(
-        name="my_tool", description="...", category=ToolCategory.SEARCH
-    )
+    metadata = ToolMetadata(name="my_tool", description="...", category=ToolCategory.SEARCH)
     decorated = registry.register(metadata)(my_tool)
     assert callable(decorated)
 
@@ -152,22 +150,16 @@ def test_tools_property_returns_a_copy(
     async def my_tool() -> None:
         return None
 
-    metadata = ToolMetadata(
-        name="my_tool", description="...", category=ToolCategory.SEARCH
-    )
+    metadata = ToolMetadata(name="my_tool", description="...", category=ToolCategory.SEARCH)
     registry.register(metadata)(my_tool)
     snapshot = registry.tools
     snapshot.pop("my_tool")  # mutate the snapshot
     assert "my_tool" in registry.tools  # original is intact
 
 
-def test_register_overwrites_existing_name(
-    registry: FastMCPToolRegistry, app: FakeApp
-) -> None:
+def test_register_overwrites_existing_name(registry: FastMCPToolRegistry, app: FakeApp) -> None:
     """Re-registering under the same name replaces the prior registration."""
-    metadata = ToolMetadata(
-        name="my_tool", description="v1", category=ToolCategory.SYSTEM
-    )
+    metadata = ToolMetadata(name="my_tool", description="v1", category=ToolCategory.SYSTEM)
 
     async def v1() -> None:
         return None
@@ -178,9 +170,7 @@ def test_register_overwrites_existing_name(
     registry.register(metadata)(v1)
     assert registry.tools["my_tool"].coroutine is v1
 
-    metadata_v2 = ToolMetadata(
-        name="my_tool", description="v2", category=ToolCategory.SYSTEM
-    )
+    metadata_v2 = ToolMetadata(name="my_tool", description="v2", category=ToolCategory.SYSTEM)
     registry.register(metadata_v2)(v2)
     assert registry.tools["my_tool"].coroutine is v2
     assert registry.tools["my_tool"].metadata.description == "v2"
@@ -215,9 +205,7 @@ def test_tool_metadata_default_is_async_is_true() -> None:
 
 def test_tool_registration_dataclass_carries_all_three_fields() -> None:
     """The slots-dataclass exposes metadata + coroutine + decorated."""
-    metadata = ToolMetadata(
-        name="t", description="d", category=ToolCategory.GRAPH
-    )
+    metadata = ToolMetadata(name="t", description="d", category=ToolCategory.GRAPH)
     coroutine = lambda: None  # placeholder; not used in this test
     decorated = MagicMock()
     reg = ToolRegistration(metadata=metadata, coroutine=coroutine, decorated=decorated)

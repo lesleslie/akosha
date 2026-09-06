@@ -255,7 +255,7 @@ async def store_conversation(content: str) -> str:
 - **Unit tests**: Test individual functions in isolation
 - **Integration tests**: Test component interactions
 - **Performance tests**: Benchmark critical paths
-- **Test coverage**: Maintain >85% coverage
+- **Test coverage**: Maintain >89% coverage (current ratchet baseline)
 
 ## Key Design Patterns
 
@@ -264,15 +264,12 @@ async def store_conversation(content: str) -> str:
 ```python
 # 1. Session-Buddy uploads to cloud (no Akosha dependency)
 await oneiric_storage.upload(
-    bucket="session-buddy-memories",
-    path=f"systems/{system_id}/memory.db",
-    data=memory_db
+    bucket="session-buddy-memories", path=f"systems/{system_id}/memory.db", data=memory_db
 )
 
 # 2. Akosha worker pulls from cloud (independent)
 uploads = await oneiric_storage.list_prefixes(
-    bucket="session-buddy-memories",
-    prefix=f"systems/{system_id}/"
+    bucket="session-buddy-memories", prefix=f"systems/{system_id}/"
 )
 await process_uploads(uploads)
 ```
@@ -379,11 +376,7 @@ from oneiric.adapters import StorageAdapter
 
 # Resolve storage backend via Oneiric
 storage = await bridge.use("storage-s3-cold")
-await storage.instance.upload(
-    bucket="akosha-cold",
-    path="conversations/...",
-    data=parquet_bytes
-)
+await storage.instance.upload(bucket="akosha-cold", path="conversations/...", data=parquet_bytes)
 ```
 
 ## Performance Benchmarks
@@ -461,7 +454,7 @@ crackerjack analyze --ai-fix
 ### Quality Tools Configured
 
 - **Ruff**: Fast Python linter and formatter (line-length: 100)
-- **Pytest**: Testing framework with 85%+ coverage requirement
+- **Pytest**: Testing framework with 89%+ coverage requirement (matches `--cov-fail-under` ratchet in `pyproject.toml`)
 - **Mypy & Pyright**: Dual type checkers for maximum type safety
 - **Bandit**: Security vulnerability scanner
 - **Codespell**: Catch common typos
@@ -479,10 +472,12 @@ def test_slow_operation():
     """Mark slow tests that can be skipped during development."""
     pass
 
+
 @pytest.mark.integration
 def test_with_external_services():
     """Integration tests requiring external services."""
     pass
+
 
 @pytest.mark.unit
 def test_specific_function():
@@ -548,6 +543,7 @@ Canonical rule: `.claude/decisions/mcp-backend-wiring-discipline.md`
 (lives in the mahavishnu repo and is cross-referenced for the ecosystem).
 
 When adding any new MCP tool to this repo:
+
 - [ ] Tool registration includes `tests/integration/test_<tool>_e2e.py`.
 - [ ] Data feed exposes the four mandatory metrics.
 - [ ] `/health` aggregator includes this feed's state.

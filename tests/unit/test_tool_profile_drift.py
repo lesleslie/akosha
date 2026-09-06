@@ -128,8 +128,7 @@ def _eval_literal(node: ast.AST, scope: dict[str, Any]) -> Any:
         return {_eval_literal(elt, scope) for elt in node.elts}
     if isinstance(node, ast.Dict):
         return {
-            _eval_literal(k, scope): _eval_literal(v, scope)
-            for k, v in zip(node.keys, node.values)
+            _eval_literal(k, scope): _eval_literal(v, scope) for k, v in zip(node.keys, node.values)
         }
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
         return -_eval_literal(node.operand, scope)
@@ -187,7 +186,7 @@ def _has_profile_gated_block(init_source: str, name: str) -> bool:
     # ``_tools`` suffix to derive ``<X>``.
     safe_root = name
     if safe_root.startswith("register_"):
-        safe_root = safe_root[len("register_"):]
+        safe_root = safe_root[len("register_") :]
     if safe_root.endswith("_tools"):
         safe_root = safe_root[: -len("_tools")]
     w0_needle = f"def register_{safe_root}_group"
@@ -195,11 +194,7 @@ def _has_profile_gated_block(init_source: str, name: str) -> bool:
         from pathlib import Path
 
         group_registers_path = (
-            Path(__file__).resolve().parents[2]
-            / "akosha"
-            / "mcp"
-            / "tools"
-            / "group_registers.py"
+            Path(__file__).resolve().parents[2] / "akosha" / "mcp" / "tools" / "group_registers.py"
         )
         group_registers_source = group_registers_path.read_text(encoding="utf-8")
     except OSError:
@@ -274,7 +269,7 @@ def test_no_orphan_registrations() -> None:
             assert _has_profile_gated_block(init_source, name), (
                 f"Orphan registration: '{name}' is declared in "
                 f"{profile_label}_REGISTRATIONS but is missing from "
-                f"both _ALL_REGISTERS and the `if \"{name}\" in allowed:` "
+                f'both _ALL_REGISTERS and the `if "{name}" in allowed:` '
                 f"dispatch in register_all_tools. Either add the "
                 f"gating block or remove the orphan from profiles.py."
             )
@@ -345,9 +340,7 @@ def test_registered_tool_names_match_export() -> None:
     meta-tool will report it as loaded_count=0, which is a misleading
     UI contract.
     """
-    consts = _extract_module_constants(
-        PROFILES_PATH, ["FULL_REGISTRATIONS", "REGISTRATION_TOOLS"]
-    )
+    consts = _extract_module_constants(PROFILES_PATH, ["FULL_REGISTRATIONS", "REGISTRATION_TOOLS"])
     full_list = consts["FULL_REGISTRATIONS"]
     tools_dict = consts["REGISTRATION_TOOLS"]
 
@@ -394,7 +387,13 @@ def test_register_all_tools_signature_present() -> None:
         if isinstance(stmt, ast.FunctionDef) and stmt.name == REGISTER_ALL_TOOLS_FN_NAME:
             args = stmt.args
             param_names = {a.arg for a in args.args}
-            for expected in ("app", "embedding_service", "analytics_service", "graph_builder", "hot_store"):
+            for expected in (
+                "app",
+                "embedding_service",
+                "analytics_service",
+                "graph_builder",
+                "hot_store",
+            ):
                 assert expected in param_names, (
                     f"register_all_tools is missing expected parameter '{expected}'. "
                     f"Current parameters: {sorted(param_names)}"

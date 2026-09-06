@@ -67,6 +67,7 @@ def test_version_does_not_swallow_unexpected_exceptions(
     captures the traceback in ``result.exception`` rather than
     ``stderr``, so we assert on the exception attribute.)
     """
+
     def explode(_pkg: str) -> str:
         raise RuntimeError("metadata backend crashed")
 
@@ -80,7 +81,6 @@ def test_version_does_not_swallow_unexpected_exceptions(
     # The exception (or its message) must reach the operator via
     # either stderr output or the captured exception attribute.
     combined = (result.stdout or "") + (result.stderr or "")
-    assert (
-        "metadata backend crashed" in combined
-        or (result.exception is not None and "metadata backend crashed" in str(result.exception))
+    assert "metadata backend crashed" in combined or (
+        result.exception is not None and "metadata backend crashed" in str(result.exception)
     )

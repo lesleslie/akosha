@@ -483,6 +483,7 @@ You can create custom configurations by extending the mode system:
 # akosha/modes/custom.py
 from akosha.modes.base import BaseMode, ModeConfig
 
+
 class CustomMode(BaseMode):
     def get_mode_config(self) -> ModeConfig:
         return ModeConfig(

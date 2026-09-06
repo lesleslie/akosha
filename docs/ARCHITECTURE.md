@@ -178,14 +178,16 @@ ON conversations (date_trunc('day', timestamp));
 **Schema** (PyArrow/Parquet):
 
 ```python
-schema = pa.schema([
-    ("system_id", pa.string()),
-    ("conversation_id", pa.string()),
-    ("fingerprint", pa.binary()),     # MinHash
-    ("ultra_summary", pa.string()),    # 1-sentence summary
-    ("timestamp", pa.timestamp("ns")),
-    ("daily_metrics", pa.string()),   # JSON metadata
-])
+schema = pa.schema(
+    [
+        ("system_id", pa.string()),
+        ("conversation_id", pa.string()),
+        ("fingerprint", pa.binary()),  # MinHash
+        ("ultra_summary", pa.string()),  # 1-sentence summary
+        ("timestamp", pa.timestamp("ns")),
+        ("daily_metrics", pa.string()),  # JSON metadata
+    ]
+)
 ```
 
 **Access Pattern**: Rare archival queries
@@ -603,6 +605,7 @@ Components delivered:
 async def process_upload(upload):
     # Automatically tracks duration, requests, errors
     pass
+
 
 @track_query("semantic_search")
 async def search_similar(query_embedding):

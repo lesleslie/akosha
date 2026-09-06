@@ -255,6 +255,7 @@ from fastapi import FastAPI, Request
 
 app = FastAPI()
 
+
 @app.post("/alerts")
 async def handle_alert(request: Request):
     alert = await request.json()

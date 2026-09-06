@@ -148,9 +148,7 @@ async def test_run_fitness_analysis_catches_internal_exceptions() -> None:
     Prevents the MCP tool from raising uncaught to the FastMCP runtime.
     """
     analyzer = MagicMock()
-    analyzer.run_fitness_analysis = AsyncMock(
-        side_effect=RuntimeError("dfeed exploded")
-    )
+    analyzer.run_fitness_analysis = AsyncMock(side_effect=RuntimeError("dfeed exploded"))
     init_fitness_analyzer(analyzer)
 
     app = FakeApp()
@@ -191,7 +189,5 @@ async def test_get_fitness_analyzer_status_returns_state_when_initialized() -> N
     result = await app.tools["get_fitness_analyzer_status"]()
 
     assert result["running"] is True
-    assert result["component_endpoints"] == [
-        ("akosha", "http://akosha:8682/mcp")
-    ]
+    assert result["component_endpoints"] == [("akosha", "http://akosha:8682/mcp")]
     assert result["poll_interval_seconds"] == 60

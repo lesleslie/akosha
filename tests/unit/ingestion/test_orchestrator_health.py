@@ -42,9 +42,7 @@ async def test_report_health_pings_mahavishnu_client_when_present() -> None:
 @pytest.mark.asyncio
 async def test_report_health_marks_degraded_on_ping_failure() -> None:
     """A ping exception surfaces as ``status="degraded"`` + ``ping_error``."""
-    client = _make_client(
-        ping=AsyncMock(side_effect=ConnectionError("unreachable"))
-    )
+    client = _make_client(ping=AsyncMock(side_effect=ConnectionError("unreachable")))
     orch = BootstrapOrchestrator(mahavishnu_client=client)
     health = await orch.report_health()
     assert health["status"] == "degraded"
@@ -56,9 +54,7 @@ async def test_report_health_marks_degraded_on_ping_failure() -> None:
 @pytest.mark.asyncio
 async def test_report_health_propagates_unexpected_ping_exception() -> None:
     """A non-Exception subclass (e.g. BaseException) must NOT be swallowed."""
-    client = _make_client(
-        ping=AsyncMock(side_effect=KeyboardInterrupt)
-    )
+    client = _make_client(ping=AsyncMock(side_effect=KeyboardInterrupt))
     orch = BootstrapOrchestrator(mahavishnu_client=client)
     with pytest.raises(KeyboardInterrupt):
         await orch.report_health()

@@ -124,28 +124,21 @@ async def test_query_local_traces_returns_seeded_record(
 
     # Assert non-empty results (discipline-mandated shape).
     assert result, "query_local_traces returned no rows; expected >=1"
-    assert any(
-        r["conversation_id"].endswith("query_local_traces_e2e_canned")
-        for r in result
-    ), (
-        f"expected the canned span in the result; got: "
-        f"{[r['conversation_id'] for r in result]}"
+    assert any(r["conversation_id"].endswith("query_local_traces_e2e_canned") for r in result), (
+        f"expected the canned span in the result; got: {[r['conversation_id'] for r in result]}"
     )
 
     # Metadata round-trips — the tool returns the metadata the
     # ingester wrote, including the otel.trace_id and
     # attributes.task_class.
     sample = next(
-        r for r in result
-        if r["conversation_id"].endswith("query_local_traces_e2e_canned")
+        r for r in result if r["conversation_id"].endswith("query_local_traces_e2e_canned")
     )
     # query_traces returns metadata as a JSON string (DuckDB does
     # not auto-parse JSON columns into Python dicts); parse before
     # accessing keys.
     raw_metadata = sample["metadata"]
-    metadata = (
-        json.loads(raw_metadata) if isinstance(raw_metadata, str) else raw_metadata
-    )
+    metadata = json.loads(raw_metadata) if isinstance(raw_metadata, str) else raw_metadata
     assert metadata["attributes"]["task_class"] == "CODE_GENERATION"
     assert metadata["otel"]["span_id"] == "query_local_traces_e2e_canned"
     assert metadata["otel"]["trace_id"] == canned_span["traceId"]

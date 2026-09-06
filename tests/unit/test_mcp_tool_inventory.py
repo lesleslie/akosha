@@ -73,8 +73,7 @@ def test_readme_lists_every_registered_full_profile_tool() -> None:
     documented = _read_readme_tools()
     missing = registered - documented
     assert not missing, (
-        f"README.md MCP Tools section is missing FULL-profile tools: "
-        f"{sorted(missing)}"
+        f"README.md MCP Tools section is missing FULL-profile tools: {sorted(missing)}"
     )
 
 
@@ -87,10 +86,7 @@ def test_readme_inventory_has_no_phantom_tools() -> None:
     # don't flag unrelated identifiers the regex happens to catch.
     documented_tools = {name for name in documented if "_" in name}
     phantom = documented_tools - registered
-    assert not phantom, (
-        f"README.md MCP Tools section lists unregistered tools: "
-        f"{sorted(phantom)}"
-    )
+    assert not phantom, f"README.md MCP Tools section lists unregistered tools: {sorted(phantom)}"
 
 
 @pytest.mark.unit
@@ -99,9 +95,7 @@ def test_full_profile_count_matches_documented_count() -> None:
     registered = {t for tools in REGISTRATION_TOOLS.values() for t in tools}
     documented = _read_readme_tools()
     documented_tools = {name for name in documented if "_" in name}
-    assert len(registered) == 26, (
-        f"Expected 26 FULL-profile tools, found {len(registered)}"
-    )
+    assert len(registered) == 26, f"Expected 26 FULL-profile tools, found {len(registered)}"
     assert len(documented_tools) == 26, (
         f"README documents {len(documented_tools)} tools but expected 26"
     )

@@ -118,6 +118,7 @@ kubectl create secret generic akosha-secrets \
 ```python
 from pydantic import BaseModel, Field, field_validator
 
+
 class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=10_000)
     limit: int = Field(10, ge=1, le=1000)
@@ -126,7 +127,7 @@ class SearchRequest(BaseModel):
 
     @field_validator("system_id")
     def validate_system_id(cls, v):
-        if v and not re.match(r'^[a-zA-Z0-9_-]+$', v):
+        if v and not re.match(r"^[a-zA-Z0-9_-]+$", v):
             raise ValueError("Invalid system_id format")
         return v
 ```
@@ -150,11 +151,7 @@ class SearchRequest(BaseModel):
 ```python
 import tempfile
 
-fd, temp_path = tempfile.mkstemp(
-    suffix=".parquet",
-    prefix="akosha_export_",
-    text=False
-)
+fd, temp_path = tempfile.mkstemp(suffix=".parquet", prefix="akosha_export_", text=False)
 temp_file = Path(temp_path)
 os.chmod(temp_file, 0o600)  # Owner read/write only
 ```
@@ -177,6 +174,7 @@ os.chmod(temp_file, 0o600)  # Owner read/write only
 **Fix**:
 ```python
 from pydantic import BaseModel
+
 
 class SystemMemoryUploadManifest(BaseModel):
     uploaded_at: datetime
@@ -230,7 +228,7 @@ similarities = np.dot(candidate_matrix, query_embedding)
 
 # Find top-k using argpartition (O(n))
 k = min(limit, len(similarities))
-top_k_indices = np.argpartition(-similarities, k-1)[:k]
+top_k_indices = np.argpartition(-similarities, k - 1)[:k]
 ```
 
 **Performance Gain**: 10-100x speedup for large candidate sets
@@ -253,17 +251,13 @@ top_k_indices = np.argpartition(-similarities, k-1)[:k]
 BATCH_SIZE = 1000
 
 for batch_start in range(0, total_records, BATCH_SIZE):
-    batch = records_to_migrate[batch_start:batch_start+BATCH_SIZE]
+    batch = records_to_migrate[batch_start : batch_start + BATCH_SIZE]
 
     # Batch quantize embeddings (vectorized)
-    compressed_embeddings = await self._quantize_embeddings_batch(
-        [r["embedding"] for r in batch]
-    )
+    compressed_embeddings = await self._quantize_embeddings_batch([r["embedding"] for r in batch])
 
     # Batch generate summaries (parallel)
-    summaries = await asyncio.gather(*[
-        self._generate_summary(r["content"]) for r in batch
-    ])
+    summaries = await asyncio.gather(*[self._generate_summary(r["content"]) for r in batch])
 
     # Batch insert and delete
     await self.warm_store.insert_batch(warm_records)
@@ -376,6 +370,7 @@ async def cold_store():
     await store.initialize()
     return store
 
+
 # Add graceful shutdown to lifespan
 @asynccontextmanager
 async def lifespan(server: Any):
@@ -468,7 +463,7 @@ class SecurityLogger:
 ```python
 import re
 
-if not re.match(r'^[a-zA-Z0-9_-]+$', system_id):
+if not re.match(r"^[a-zA-Z0-9_-]+$", system_id):
     raise ValueError("Invalid system_id format")
 
 if ".." in system_id or system_id.startswith("/"):
