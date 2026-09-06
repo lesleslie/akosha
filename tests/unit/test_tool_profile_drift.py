@@ -165,9 +165,46 @@ def _extract_list_with_staritems(
 
 
 def _has_profile_gated_block(init_source: str, name: str) -> bool:
-    """Return True if register_all_tools has an `if "<name>" in allowed:` block."""
-    needle = f'if "{name}" in allowed'
-    return needle in init_source
+    """Return True if a registration name has *any* dispatch path.
+
+    The legacy ``register_all_tools`` path lives in
+    ``akosha/mcp/tools/__init__.py`` (matched by literal
+    ``if "<name>" in allowed:``). The Wave 5 W0 path lives in
+    ``akosha/mcp/tools/group_registers.py`` (matched by an
+    ``async def register_<name>_group`` function where ``<name>``
+    drops the trailing ``_tools`` from the registration key).
+
+    Either is acceptable as long as the registration function exists
+    somewhere — both paths are wired into the lifespan through
+    ``_apply_tool_profile``.
+    """
+    legacy_needle = f'if "{name}" in allowed'
+    if legacy_needle in init_source:
+        return True
+    # Wave 5 W0 path: group_registers.py exposes
+    # ``register_<X>_group`` for each ``register_<X>_tools``
+    # registration key. Strip the ``register_`` prefix and the
+    # ``_tools`` suffix to derive ``<X>``.
+    safe_root = name
+    if safe_root.startswith("register_"):
+        safe_root = safe_root[len("register_"):]
+    if safe_root.endswith("_tools"):
+        safe_root = safe_root[: -len("_tools")]
+    w0_needle = f"def register_{safe_root}_group"
+    try:
+        from pathlib import Path
+
+        group_registers_path = (
+            Path(__file__).resolve().parents[2]
+            / "akosha"
+            / "mcp"
+            / "tools"
+            / "group_registers.py"
+        )
+        group_registers_source = group_registers_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return w0_needle in group_registers_source
 
 
 def _has_unconditional_health_call(init_source: str) -> bool:
