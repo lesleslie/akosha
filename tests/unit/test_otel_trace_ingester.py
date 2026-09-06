@@ -96,7 +96,10 @@ async def test_fetch_spans_returns_otlp_resource_spans() -> None:
 
         spans = await ingester._fetch_spans(since_unix_nano=0)
         assert len(spans) == 1
-        assert spans[0]["name"] == "test.span"
+        # _fetch_spans returns (system_id, span) tuples
+        system_id, span = spans[0]
+        assert system_id == "akosha"  # extracted from resource.service.name
+        assert span["name"] == "test.span"
     finally:
         await ingester.stop()
 

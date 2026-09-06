@@ -88,30 +88,30 @@ class OtelTraceIngester:
         try:
             while self._running:
                 try:
-                    # Each system_id polls independently; the watermark
-                    # gates the since parameter.
-                    for system_id in list(self._watermarks.keys() or ["__default__"]):
-                        watermark = self._watermarks.get(system_id)
-                        if watermark is None:
-                            # Restart recovery window
-                            watermark = self._now_unix_nano() - (
-                                self.initial_lookback_seconds * 1_000_000_000
+                    # Each cycle polls once with a watermark = max over
+                    # all known system_ids; new system_ids discovered
+                    # mid-cycle get the recovery window. Each span's
+                    # system_id is extracted from its OTLP resource.
+                    since_unix_nano = self._now_unix_nano() - (
+                        self.initial_lookback_seconds * 1_000_000_000
+                    )
+                    # If we already have watermarks, use the most
+                    # recent one so we don't re-pull old spans.
+                    if self._watermarks:
+                        since_unix_nano = max(self._watermarks.values())
+                    spans_by_system = await self._fetch_spans(
+                        since_unix_nano=since_unix_nano
+                    )
+                    for system_id, span in spans_by_system:
+                        try:
+                            await self._ingest_span(span, system_id=system_id)
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as e:
+                            logger.exception(
+                                f"OTel span ingestion failed for "
+                                f"span_id={span.get('spanId', 'unknown')}: {e}"
                             )
-                        spans = await self._fetch_spans(since_unix_nano=watermark)
-                        if spans:
-                            logger.info(
-                                f"Fetched {len(spans)} OTel spans for {system_id}"
-                            )
-                        for span in spans[: self.max_spans_per_poll]:
-                            try:
-                                await self._ingest_span(span, system_id=system_id)
-                            except asyncio.CancelledError:
-                                raise
-                            except Exception as e:
-                                logger.exception(
-                                    f"OTel span ingestion failed for "
-                                    f"span_id={span.get('spanId', 'unknown')}: {e}"
-                                )
                     # Wait before next poll
                     await asyncio.sleep(self.poll_interval_seconds)
                 except asyncio.CancelledError:
@@ -123,12 +123,16 @@ class OtelTraceIngester:
         except asyncio.CancelledError:
             pass
 
-    async def _fetch_spans(self, since_unix_nano: int) -> list[dict[str, Any]]:
+    async def _fetch_spans(
+        self, since_unix_nano: int
+    ) -> list[tuple[str, dict[str, Any]]]:
         """Fetch spans newer than ``since_unix_nano`` from the OTLP/HTTP endpoint.
 
-        Returns a flat list of span dicts. OTLP/HTTP wraps spans in
-        ``resourceSpans[].scopeSpans[].spans[]``; this method unwraps
-        that nesting.
+        Returns a list of ``(system_id, span)`` tuples. The system_id is
+        extracted from the OTLP resource's ``service.name`` attribute;
+        spans with no service.name default to ``"unknown"``. OTLP/HTTP
+        wraps spans in ``resourceSpans[].scopeSpans[].spans[]``; this
+        method unwraps that nesting.
         """
         if self._http_client is None:
             raise RuntimeError("HTTP client not initialized; call start() first")
@@ -138,11 +142,19 @@ class OtelTraceIngester:
         )
         response.raise_for_status()
         body = response.json()
-        result: list[dict[str, Any]] = []
+        result: list[tuple[str, dict[str, Any]]] = []
         for resource_spans in body.get("resourceSpans", []):
+            # Extract service.name from resource.attributes
+            system_id = "unknown"
+            for attr in resource_spans.get("resource", {}).get("attributes", []):
+                if attr.get("key") == "service.name":
+                    value_entry = attr.get("value", {})
+                    if "stringValue" in value_entry:
+                        system_id = value_entry["stringValue"]
+                    break
             for scope_spans in resource_spans.get("scopeSpans", []):
                 for span in scope_spans.get("spans", []):
-                    result.append(span)
+                    result.append((system_id, span))
         return result
 
     def _normalize_span(
