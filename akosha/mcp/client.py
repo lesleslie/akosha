@@ -20,6 +20,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+import httpx2 as httpx
+
 if TYPE_CHECKING:
     from mcp.client.session import ClientSession
 
@@ -70,7 +72,14 @@ class BodaiComponentMCPClient:
 
     @property
     def session_id(self) -> Any:
-        """Return the current MCP session ID, or None if not established."""
+        """Return the current MCP session ID, or None if not established.
+
+        Note: FastMCP v4 dropped the ``get_session_id`` callback that the
+        previous transport yielded as the third tuple element of
+        ``streamable_http_client``. ``self._get_session_id`` is retained
+        so this property still resolves through its prior path; with the
+        callback gone, it is always ``None`` after a successful session.
+        """
         if self._get_session_id is not None:
             return self._get_session_id()
         return None
@@ -83,10 +92,8 @@ class BodaiComponentMCPClient:
         from mcp.client.session import ClientSession
         from mcp.client.streamable_http import streamable_http_client
 
-        http_client: Any = None
+        http_client: httpx.AsyncClient | None = None
         if self._token:
-            import httpx
-
             http_client = httpx.AsyncClient(
                 timeout=self.timeout,
                 headers={"Authorization": f"Bearer {self._token}"},
@@ -98,7 +105,7 @@ class BodaiComponentMCPClient:
             terminate_on_close=True,
         )
 
-        rs, ws, self._get_session_id = await self._transport_context.__aenter__()
+        rs, ws = await self._transport_context.__aenter__()
         self._session = ClientSession(rs, ws)
         await self._session.__aenter__()
         await self._session.initialize()
