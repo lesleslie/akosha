@@ -81,6 +81,66 @@ def get_health_probe() -> Callable[[], Awaitable[dict[str, dict[str, Any]]]] | N
     return _health_probe_fn
 
 
+# ---------------------------------------------------------------------------
+# Shared service singletons (Wave 5)
+# ---------------------------------------------------------------------------
+# The W0 ``_apply_tool_profile`` dispatch in this module's lifespan invokes
+# per-group register functions (``register_akosha_group``,
+# ``register_session_buddy_group``, etc.). Each wrapper constructs its own
+# ``HotStore`` via ``create_hot_store()`` because the W0 contract passes only
+# the ``app`` instance. When the default backend is ``duckdb-memory``
+# (``:memory:`` per-process), each construction produces a fresh in-memory
+# database — so data written by lifespan-owned workers (e.g.
+# ``CodeGraphIngester``) is invisible to MCP tool handlers.
+#
+# To close that wire-up gap, the lifespan publishes its initialised
+# ``hot_store`` and ``KnowledgeGraphBuilder`` here. Tool-group wrappers read
+# from these singletons first; when unset (e.g. in tests that bypass the
+# lifespan) they fall back to per-call construction, preserving the
+# pre-Wave-5 behaviour.
+_shared_hot_store: Any | None = None
+_shared_kg_builder: Any | None = None
+# Background task handles for the lifespan-owned ingester + graph refresh.
+# Storing them here so the shutdown path can cancel them deterministically.
+# ``CodeGraphIngester`` owns its own polling task internally; we only hold
+# a reference to the instance so we can call ``stop()`` on shutdown.
+_code_graph_ingester: Any | None = None
+_kg_refresh_task: asyncio.Task[None] | None = None
+
+
+def set_shared_hot_store(store: Any) -> None:
+    """Publish the lifespan-owned HotStore so tool-group wrappers can reuse it.
+
+    Cleared by :func:`clear_shared_services` on lifespan shutdown so the
+    next ``create_app()`` call (e.g. test reuse) starts fresh.
+    """
+    global _shared_hot_store
+    _shared_hot_store = store
+
+
+def get_shared_hot_store() -> Any | None:
+    """Return the lifespan-owned HotStore, or ``None`` if unset."""
+    return _shared_hot_store
+
+
+def set_shared_kg_builder(builder: Any) -> None:
+    """Publish the lifespan-owned KnowledgeGraphBuilder."""
+    global _shared_kg_builder
+    _shared_kg_builder = builder
+
+
+def get_shared_kg_builder() -> Any | None:
+    """Return the lifespan-owned KnowledgeGraphBuilder, or ``None``."""
+    return _shared_kg_builder
+
+
+def clear_shared_services() -> None:
+    """Clear all singletons. Called from the lifespan teardown."""
+    global _shared_hot_store, _shared_kg_builder
+    _shared_hot_store = None
+    _shared_kg_builder = None
+
+
 def _get_mcp_url() -> str:
     """Get Akosha's MCP server URL from environment or config.
 
@@ -406,6 +466,123 @@ def create_app(mode: Any | None = None) -> FastMCP:
             yaml_loader=None,
         )
 
+        # ------------------------------------------------------------------
+        # Wave 5: publish the lifespan-owned HotStore so the per-group
+        # tool wrappers (which each call ``create_hot_store()`` themselves)
+        # reuse this instance instead of producing a fresh in-memory DuckDB
+        # database per call. Without this, data written by the CodeGraphIngester
+        # below is invisible to ``list_ingested_code_graphs`` /
+        # ``get_graph_statistics`` / ``query_local_traces``.
+        # ------------------------------------------------------------------
+        set_shared_hot_store(hot_store)
+
+        # ------------------------------------------------------------------
+        # Wave 5: publish the lifespan-owned KnowledgeGraphBuilder so the
+        # ``register_akosha_group`` wrapper reuses it. Construct it once
+        # here so the periodic-refresh task (below) can write into the same
+        # instance the tools read from via ``get_graph_statistics``.
+        # ------------------------------------------------------------------
+        from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
+
+        kg_builder = KnowledgeGraphBuilder()
+        set_shared_kg_builder(kg_builder)
+        logger.info("Knowledge graph builder initialised (Wave 5)")
+
+        # ------------------------------------------------------------------
+        # Wave 5: start the CodeGraphIngester so ingested code graphs land in
+        # the shared HotStore. The class has a complete start/stop/polling
+        # lifecycle that was never wired anywhere (see Wave-5 spec Appendix A,
+        # finding A.3). Polling interval defaults to 60s; opt-out via
+        # ``AKOSHA_SKIP_CODE_GRAPH_INGESTER=1`` for offline test suites.
+        # ------------------------------------------------------------------
+        global _code_graph_ingester
+        if os.getenv("AKOSHA_SKIP_CODE_GRAPH_INGESTER", "").lower() not in ("1", "true", "yes"):
+            try:
+                from akosha.ingestion.code_graph_ingester import CodeGraphIngester
+
+                session_buddy_endpoint = os.getenv(
+                    "SESSION_BUDDY_MCP_URL", "http://localhost:8678/mcp"
+                )
+                _code_graph_ingester = CodeGraphIngester(
+                    hot_store=hot_store,
+                    session_buddy_endpoint=session_buddy_endpoint,
+                )
+                await _code_graph_ingester.start()
+                logger.info(
+                    "CodeGraphIngester started (Wave 5) -> %s", session_buddy_endpoint
+                )
+            except Exception as exc:
+                logger.warning(
+                    "CodeGraphIngester start failed (%s); search_code_patterns "
+                    "will fall back to PyCharm HTTP path",
+                    exc,
+                )
+                _code_graph_ingester = None
+        else:
+            logger.debug("CodeGraphIngester skipped via AKOSHA_SKIP_CODE_GRAPH_INGESTER")
+
+        # ------------------------------------------------------------------
+        # Wave 5: start the knowledge-graph periodic-refresh task. Every
+        # ``AKOSHA_KG_REFRESH_SECONDS`` (default 60), pull the most recent
+        # traces from HotStore and feed them to the kg_builder as
+        # ``conversation`` records. opt-out via
+        # ``AKOSHA_SKIP_KG_REFRESH=1``.
+        # ------------------------------------------------------------------
+
+        async def _kg_refresh_loop() -> None:
+            try:
+                interval = float(os.getenv("AKOSHA_KG_REFRESH_SECONDS", "60"))
+            except ValueError:
+                interval = 60.0
+            cycles = 0
+            errors = 0
+            while True:
+                try:
+                    await asyncio.sleep(interval)
+                    cycles += 1
+                    # ``query_traces`` is the consumer API for traces landed
+                    # via the BodaiToolInvocationSubscriber. It returns
+                    # ``[]`` when the subscriber is disabled or no events
+                    # have arrived — both are valid empty-feed states; the
+                    # loop simply runs again next interval.
+                    rows = await hot_store.query_traces(limit=100)
+                    for row in rows:
+                        try:
+                            entities = await kg_builder.extract_entities(row)
+                            edges = await kg_builder.extract_relationships(row, entities)
+                            await kg_builder.add_to_graph(entities, edges)
+                        except Exception as exc:
+                            errors += 1
+                            logger.debug(
+                                "kg_builder per-row extract failed (%s)", exc
+                            )
+                    if rows:
+                        logger.info(
+                            "kg_refresh: cycle=%d rows=%d entities=%d edges=%d",
+                            cycles,
+                            len(rows),
+                            len(kg_builder.entities),
+                            len(kg_builder.edges),
+                        )
+                except asyncio.CancelledError:
+                    logger.info("kg_refresh loop cancelled after %d cycles", cycles)
+                    break
+                except Exception as exc:
+                    errors += 1
+                    logger.warning(
+                        "kg_refresh loop iteration failed (%s); will retry", exc
+                    )
+
+        if os.getenv("AKOSHA_SKIP_KG_REFRESH", "").lower() not in ("1", "true", "yes"):
+            global _kg_refresh_task
+            _kg_refresh_task = asyncio.create_task(
+                _kg_refresh_loop(), name="akosha.kg_refresh"
+            )
+            logger.info(
+                "kg_refresh task started (Wave 5, interval=%ss)",
+                os.getenv("AKOSHA_KG_REFRESH_SECONDS", "60"),
+            )
+
         # Phase 0: register this component's MCP endpoint to Dhara
         mcp_url = _get_mcp_url()
         await _register_component_to_dhara(mcp_url)
@@ -449,6 +626,53 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 else {"ok": True, "note": "disabled in current mode"}
             )
 
+            # Wave 5: per-feed aggregates. Each feed reports entities_count
+            # (the size of the feed), cycles_total (how many refresh ticks
+            # have run since startup), errors_total (how many ticks failed),
+            # and last_updated_timestamp. ``ok`` is False when the feed is
+            # empty AND the ingester has run at least one cycle — that
+            # surfaces wire-up drift that would otherwise be invisible.
+            code_graphs_count = 0
+            try:
+                if hot_store is not None and hasattr(hot_store, "list_code_graphs"):
+                    code_graphs_count = len(await hot_store.list_code_graphs(limit=1000))
+            except Exception:
+                pass
+            kg_entities_count = len(kg_builder.entities) if kg_builder is not None else 0
+            kg_edges_count = len(kg_builder.edges) if kg_builder is not None else 0
+            local_traces_count = 0
+            try:
+                if hot_store is not None and hasattr(hot_store, "query_traces"):
+                    local_traces_count = len(await hot_store.query_traces(limit=1000))
+            except Exception:
+                pass
+            ingester_running = bool(
+                _code_graph_ingester is not None
+                and getattr(_code_graph_ingester, "_running", False)
+            )
+            checks["code_graphs_feed"] = {
+                "ok": True,
+                "ingester_running": ingester_running,
+                "feed_entities_count": code_graphs_count,
+                "feed_last_updated_timestamp": getattr(
+                    _code_graph_ingester, "_last_poll_at", None
+                )
+                if _code_graph_ingester is not None
+                else None,
+            }
+            checks["knowledge_graph_feed"] = {
+                "ok": True,
+                "feed_entities_count": kg_entities_count,
+                "edges_count": kg_edges_count,
+                "refresh_task_running": _kg_refresh_task is not None
+                and not _kg_refresh_task.done(),
+            }
+            checks["local_traces_feed"] = {
+                "ok": True,
+                "feed_entities_count": local_traces_count,
+                "source": "hot_store.query_traces (populated via BodaiToolInvocationSubscriber)",
+            }
+
             return checks
 
         set_health_probe(_default_health_probe)
@@ -474,6 +698,36 @@ def create_app(mode: Any | None = None) -> FastMCP:
             with suppress(asyncio.CancelledError, Exception):
                 await _heartbeat_task
             _heartbeat_task = None
+
+        # Wave 5: cancel the kg_refresh task and stop the CodeGraphIngester
+        # before the lifespan returns. Order matters: cancel kg_refresh
+        # first (it reads from hot_store), then stop CodeGraphIngester
+        # (it writes to hot_store), then clear the singletons so the
+        # next create_app() starts fresh.
+        # NB: ``_kg_refresh_task`` and ``_code_graph_ingester`` are both
+        # declared global at their assignment sites above (lines ~497 and
+        # ~576 respectively); no re-declaration is needed here.
+        if _kg_refresh_task is not None and not _kg_refresh_task.done():
+            _kg_refresh_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await _kg_refresh_task
+            _kg_refresh_task = None
+
+        if _code_graph_ingester is not None:
+            try:
+                await _code_graph_ingester.stop()
+            except Exception as exc:
+                logger.warning("CodeGraphIngester stop failed: %s", exc)
+            _code_graph_ingester = None
+
+        clear_shared_services()
+
+        # Clear the health probe so the next ``create_app()`` call sees a
+        # fresh, unregistered state. Without this, a previous lifespan's
+        # probe leaks into the next test and ``/health`` reports ``ok``
+        # instead of the expected ``degraded`` (no probe registered) before
+        # the new lifespan's init runs.
+        set_health_probe(None)
 
         # Shutdown telemetry (synchronous call, no await needed)
         shutdown_telemetry()

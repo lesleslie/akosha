@@ -52,6 +52,12 @@ async def register_akosha_group(app: FastMCP) -> None:
     legacy hard-coded mock. When creation fails (lite mode / DuckDB
     missing), ``hot_store`` is ``None`` and the tool falls back to an
     informational result.
+
+    Wave 5: when the lifespan has published its HotStore and
+    KnowledgeGraphBuilder via ``set_shared_*``, reuse those instances so
+    the data the CodeGraphIngester writes and the kg_refresh task
+    populates is visible to the tool handlers (they would otherwise read
+    from a different in-memory DuckDB).
     """
     from akosha.mcp.tools.akosha_tools import register_akosha_tools
     from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
@@ -64,13 +70,16 @@ async def register_akosha_group(app: FastMCP) -> None:
     # passes through the lifespan context dict.
     embedding_service = get_embedding_service()
     analytics_service = TimeSeriesAnalytics()
-    graph_builder = KnowledgeGraphBuilder()
+    # Wave 5: prefer the lifespan-owned KnowledgeGraphBuilder so the
+    # periodic-refresh task populates the same instance the tools read.
+    graph_builder = _get_shared_kg_builder() or KnowledgeGraphBuilder()
 
     # Best-effort HotStore creation via the shared async helper. Mirrors
     # the pattern used by ``register_session_buddy_group`` /
     # ``register_pycharm_group`` — when creation fails (lite mode /
     # DuckDB missing), ``hot_store`` ends up ``None`` and the tool falls
-    # back to the informational branch.
+    # back to the informational branch. Wave 5: prefer the lifespan-
+    # owned instance so the CodeGraphIngester's writes are visible here.
     hot_store = await _try_create_hot_store()
 
     registry = FastMCPToolRegistry(app)
@@ -201,7 +210,25 @@ async def _try_create_hot_store():
     ``.initialize()``, so every dependent tool (``search_code_patterns``,
     ``find_function_usage``, etc.) crashed at runtime with
     ``RuntimeError("Hot store not initialized")``.
+
+    Wave 5: when the lifespan has published a shared HotStore via
+    ``akosha.mcp.server.set_shared_hot_store``, return that instance
+    directly so the tool handlers read from the same database the
+    CodeGraphIngester writes to. Falls back to per-call construction
+    when the lifespan hasn't run (e.g. tests bypassing the full
+    lifespan path) — preserves the pre-Wave-5 behaviour.
     """
+    try:
+        from akosha.mcp.server import get_shared_hot_store
+
+        shared = get_shared_hot_store()
+        if shared is not None:
+            return shared
+    except Exception:
+        # ``get_shared_hot_store`` may not be importable in some test
+        # contexts; fall through to per-call construction.
+        pass
+
     try:
         from akosha.storage import create_hot_store
 
@@ -210,6 +237,22 @@ async def _try_create_hot_store():
         return store
     except Exception as exc:
         logger.debug("create_hot_store() failed: %s", exc)
+        return None
+
+
+def _get_shared_kg_builder():
+    """Return the lifespan-owned KnowledgeGraphBuilder, or ``None``.
+
+    Mirrors :func:`_try_create_hot_store`'s shared-instance preference.
+    Used by ``register_akosha_group`` so the graph the periodic-refresh
+    task populates is the same instance the ``get_graph_statistics``
+    tool reads.
+    """
+    try:
+        from akosha.mcp.server import get_shared_kg_builder
+
+        return get_shared_kg_builder()
+    except Exception:
         return None
 
 

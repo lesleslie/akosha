@@ -91,6 +91,16 @@ def patched_lifespan(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("akosha.storage.hot_store.HotStore", lambda database_path: hot_store)
     monkeypatch.setattr("akosha.storage.create_hot_store", lambda: hot_store)
 
+    # Wave 5: skip the CodeGraphIngester and kg_refresh task in tests that
+    # aren't designed to exercise them. The ingester would otherwise start
+    # a real httpx client that attempts to reach ``SESSION_BUDDY_MCP_URL``,
+    # which is not mocked in this fixture and would either hang or
+    # produce noisy connection-refused warnings in stdout. The dedicated
+    # Wave 5 wiring tests in ``test_wave5_lifespan_wiring.py`` exercise
+    # the ingester with a fake implementation.
+    monkeypatch.setenv("AKOSHA_SKIP_CODE_GRAPH_INGESTER", "1")
+    monkeypatch.setenv("AKOSHA_SKIP_KG_REFRESH", "1")
+
     register_all_tools = MagicMock()
     monkeypatch.setattr("akosha.mcp.tools.register_all_tools", register_all_tools)
 
