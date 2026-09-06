@@ -7,7 +7,11 @@ from typing import Any
 import httpx
 import pytest
 
-from tests.fixtures.mock_bodai_mcp import MockOtelCollector, MockSessionBuddyMCP
+from tests.fixtures.mock_bodai_mcp import (
+    MockBodaiEcosystem,
+    MockOtelCollector,
+    MockSessionBuddyMCP,
+)
 
 
 @pytest.fixture
@@ -138,3 +142,42 @@ async def test_otel_filters_spans_by_since(
     # The canned span has startTimeUnixNano == 1700000000000000000, which is NOT
     # greater than since, so it must be filtered out.
     assert spans == []
+
+
+@pytest.mark.asyncio
+async def test_ecosystem_start_yields_urls_and_stops_cleanly() -> None:
+    """The fixture starts both mocks, yields reachable URLs, stops cleanly."""
+    import httpx as _httpx
+
+    code_graphs = [{"id": "akosha@deadbeef", "repo_path": "/a", "commit_hash": "deadbeef"}]
+    spans = [
+        {
+            "traceId": "x", "spanId": "y", "name": "z",
+            "startTimeUnixNano": "1", "endTimeUnixNano": "2",
+            "attributes": [],
+        }
+    ]
+    async with MockBodaiEcosystem(code_graphs=code_graphs, otel_spans=spans) as eco:
+        # session_buddy_url is the base; the mock serves /tools/call under it.
+        assert eco.session_buddy_url.startswith("http://127.0.0.1:")
+        assert eco.otel_endpoint.startswith("http://127.0.0.1:")
+        # session_buddy_url + /tools/call must be reachable
+        async with _httpx.AsyncClient() as c:
+            r = await c.post(
+                eco.session_buddy_url + "/tools/call",
+                json={"name": "list_code_graphs", "arguments": {}},
+            )
+        assert r.status_code == 200
+        assert r.json()["code_graphs"][0]["id"] == "akosha@deadbeef"
+
+
+@pytest.mark.asyncio
+async def test_ecosystem_stop_is_idempotent() -> None:
+    """Calling stop twice (or after exit) does not raise."""
+    eco = MockBodaiEcosystem()
+    # Exit the context cleanly
+    async with eco:
+        pass
+    # A second exit is a no-op
+    await eco.stop()
+    await eco.stop()
