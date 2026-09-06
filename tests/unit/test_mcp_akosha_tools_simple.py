@@ -308,14 +308,12 @@ class TestErrorHandling:
 
     def test_registry_error_handling(self, mock_services):
         """Test handling of registry errors."""
-        # Should handle invalid registry gracefully
-        try:
+        # Passing None as the registry must raise AttributeError because
+        # ``register_embedding_tools`` immediately touches ``registry.register``;
+        # we don't want it to silently swallow the bad input. Assert the
+        # exception type explicitly (the bare ``assert True`` was vacuous).
+        with pytest.raises(AttributeError):
             register_embedding_tools(None, mock_services["embedding"])
-            # Should not raise exception
-            assert True
-        except AttributeError:
-            # AttributeError is expected when registry is None
-            assert True
 
     def test_concurrent_registration(self, mock_services):
         """Test concurrent tool registration."""

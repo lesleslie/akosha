@@ -323,10 +323,14 @@ class TestCLIIntegration:
         # Invoke shell command
         result = runner.invoke(app, ["shell"])
 
-        # Verify initialization
+        # Verify initialization — both ``assert_called_*`` calls are
+        # meaningful: the application was constructed exactly once and
+        # the shell was instantiated with that application. The trailing
+        # ``assert True`` was vacuous; replace it with a real exit-code
+        # check so a future regression that breaks the shell CLI surfaces.
         MockApp.assert_called_once()
         MockShell.assert_called_once_with(mock_app)
-        assert True
+        assert result.exit_code == 0, f"shell CLI exited {result.exit_code}: {result.output}"
 
         # Note: shell.start() is synchronous but we can't test it easily
         # without mocking IPython internals

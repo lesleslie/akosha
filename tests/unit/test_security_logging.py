@@ -135,12 +135,20 @@ class TestLogEvent:
         logger, records = sec_logger
         with patch("akosha.observability.security_logging.record_counter") as mock_rc:
             logger._log_event("auth_failure", "MEDIUM", "fail")
+        # Verify the metric was emitted exactly once with the expected
+        # Prometheus-style label set. ``assert_called_once_with`` already
+        # covers the positional-args contract; the trailing ``assert True``
+        # was vacuous and added no signal.
         mock_rc.assert_called_once_with(
             "security.auth_failure",
             1,
             {"severity": "MEDIUM"},
         )
-        assert True
+        # The third positional argument is the label dict; pin it explicitly
+        # so that future label additions surface as a test diff.
+        call_args = mock_rc.call_args.args
+        assert len(call_args) == 3, f"unexpected call shape: {call_args!r}"
+        assert call_args[2] == {"severity": "MEDIUM"}
 
 
 # ============================================================================
