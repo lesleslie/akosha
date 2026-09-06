@@ -1,10 +1,23 @@
-"""OTel trace ingestion worker from an OTLP/HTTP collector.
+"""OTel trace ingestion worker from a snapshot-poll OTLP collector.
 
-Mirrors CodeGraphIngester's start/stop/polling-loop contract. Polls an
-OTLP/HTTP collector for spans newer than the per-system-id watermark
+Mirrors CodeGraphIngester's start/stop/polling-loop contract. Polls a
+custom snapshot OTLP collector for spans newer than the watermark
 and writes them as HotRecords into HotStore. The hot_store is the
 shared singleton published by the Akosha MCP lifespan; the
 embedding_service is the lifespan-owned EmbeddingService.
+
+NOTE: This ingester targets a **custom snapshot-poll collector** —
+it issues a GET request with a ``since`` query parameter against
+``/v1/traces``. Standard OTLP/HTTP (per OpenTelemetry spec) uses a
+POST against the same path with a protobuf/JSON-protobuf body and
+exposes no per-collector history endpoint. Pair ``OtelTraceIngester``
+with a Bodai-side collector like the one in
+``tests/fixtures/mock_bodai_mcp.py:MockOtelCollector`` for now; if
+you point this at a vanilla Jaeger/Tempo/Otel Collector, you will
+get HTTP-405 or empty bodies.
+
+Watermarking is documented in :meth:`_polling_loop` (global watermark
+across known systems, recovery window on cold start).
 """
 
 from __future__ import annotations
@@ -89,20 +102,31 @@ class OtelTraceIngester:
         logger.info("Stopped OTel trace ingestion")
 
     async def _polling_loop(self) -> None:
-        """Main polling loop. One cycle per ``poll_interval_seconds``."""
+        """Main polling loop. One cycle per ``poll_interval_seconds``.
+
+        Watermarking semantics:
+        - Cold start (no watermarks yet): each cycle polls
+          ``now - initial_lookback_seconds`` so newly-discovered
+          services get a recovery window.
+        - Warm cycle: poll ``max(watermarks.values())``. This is a
+          **global** watermark across all known systems because the
+          snapshot-poll API takes a single ``since`` parameter. Slow
+          systems may have already-ingested spans < global watermark
+          permanently skipped; the per-system watermark dict is
+          kept for forensics and to support a future per-system
+          fetch. If you need strict per-system dedup, expose a
+          batched endpoint that takes per-system ``since`` tuples.
+        """
         try:
             while self._running:
                 try:
                     self._cycles_total += 1
-                    # Each cycle polls once with a watermark = max over
-                    # all known system_ids; new system_ids discovered
-                    # mid-cycle get the recovery window. Each span's
-                    # system_id is extracted from its OTLP resource.
                     since_unix_nano = self._now_unix_nano() - (
                         self.initial_lookback_seconds * 1_000_000_000
                     )
                     # If we already have watermarks, use the most
                     # recent one so we don't re-pull old spans.
+                    # Note: this is the *global* watermark, not per-system.
                     if self._watermarks:
                         since_unix_nano = max(self._watermarks.values())
                     spans_by_system = await self._fetch_spans(
@@ -171,7 +195,7 @@ class OtelTraceIngester:
         span: dict[str, Any],
         system_id: str,
         embedding: list[float],
-    ) -> Any:  # returns HotRecord; Any to avoid runtime import in TYPE_CHECKING
+    ) -> "HotRecord":
         """Map an OTel span to a HotRecord.
 
         ``content`` is a JSON dump of the span fields (sans traceId,
