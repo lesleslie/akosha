@@ -12,6 +12,15 @@
 
 ## Scope Notes
 
+> **Status (2026-09-06):** The OTel half was originally deferred. It
+> has since shipped — `OtelTraceIngester` is wired into the Akosha
+> lifespan (commit `b3b298e` / Wave 6), `MockBodaiEcosystem` accepts
+> `otel_spans` as designed, and `test_otel_ingester_e2e_against_mock_collector`
+> is a passing assertion in `tests/integration/test_live_mcp_smoke.py`.
+> The "deferred" framing below is preserved for historical accuracy;
+> a future cleanup commit could replace it with "Both halves ship
+> together — see [OTel spec](../specs/2026-09-06-otel-trace-ingester-design.md)."
+
 This plan implements **only the Session-Buddy / CodeGraphIngester half** of the spec. The OTel ingester half is deferred: it depends on `OtelTraceIngester` (Wave 6, separate spec). When the OTel ingester lands, a followup commit extends the fixture with `seed_otel_spans` and un-skips the OTel assertions. The fixture is designed to accept both mocks so the extension is mechanical.
 
 ## Global Constraints
@@ -26,7 +35,7 @@ This plan implements **only the Session-Buddy / CodeGraphIngester half** of the 
 - Coverage floor: 89.0%.
 - The smoke test is `@pytest.mark.slow` and runs at 5s poll cadence (override `AKOSHA_CODE_GRAPH_POLL_SECONDS=5` and `AKOSHA_KG_REFRESH_SECONDS=0.05` for the kg_refresh task so it ticks during the test).
 
----
+______________________________________________________________________
 
 ## File Structure
 
@@ -38,17 +47,21 @@ This plan implements **only the Session-Buddy / CodeGraphIngester half** of the 
 | `tests/integration/test_live_mcp_smoke.py` (new) | End-to-end smoke test against the fixture |
 | `tests/integration/__init__.py` (exists) | Already present; no changes |
 
----
+______________________________________________________________________
 
 ## Task 1: MockSessionBuddyMCP + MockOtelCollector ASGI apps
 
 **Files:**
+
 - Create: `tests/fixtures/mock_bodai_mcp.py`
 - Test: `tests/unit/test_mock_bodai_ecosystem.py`
 
 **Interfaces:**
+
 - `MockSessionBuddyMCP` — Starlette ASGI app that returns canned `code_graphs` from `POST /tools/call` with `{"name": "list_code_graphs", "arguments": {"limit": 100}}`. Returns `{"status": "success", "code_graphs": [{"id": ..., "repo_path": ..., "commit_hash": ...}, ...]}`. Also handles `get_code_graph` lookups for the second-phase ingest.
+
 - `MockOtelCollector` — Starlette ASGI app that returns canned spans from `GET /v1/traces?since=<unix_nano>`. Returns `{"resourceSpans": [{"resource": {...}, "scopeSpans": [{"spans": [<filtered spans>]}]}]}`. Filters spans whose `startTimeUnixNano > since`.
+
 - Both expose `.request_count` and `.last_query` for assertions.
 
 - [ ] **Step 1: Write the failing unit tests**
@@ -144,9 +157,7 @@ async def test_session_buddy_rejects_unknown_tool(
     """An unknown tool name returns an error response, not a 500."""
     transport = httpx.ASGITransport(app=mock_session_buddy)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post(
-            "/tools/call", json={"name": "unknown_tool", "arguments": {}}
-        )
+        response = await client.post("/tools/call", json={"name": "unknown_tool", "arguments": {}})
     assert response.status_code == 200  # JSON-RPC convention: error in body
     body = response.json()
     assert body["status"] == "error"
@@ -259,9 +270,7 @@ class MockSessionBuddyMCP:
         self.request_count = 0
         self.last_query: dict[str, Any] | None = None
 
-    async def __call__(
-        self, scope: dict[str, Any], receive: Any, send: Any
-    ) -> None:
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope["type"] != "http":
             return
         request = Request(scope, receive)
@@ -282,9 +291,7 @@ class MockSessionBuddyMCP:
         name = body.get("name")
         args = body.get("arguments") or {}
         if name == "list_code_graphs":
-            response = JSONResponse(
-                {"status": "success", "code_graphs": self.code_graphs}
-            )
+            response = JSONResponse({"status": "success", "code_graphs": self.code_graphs})
         elif name == "get_code_graph":
             key = f"{args.get('repo_path')}@{args.get('commit_hash')}"
             graph = self.full_graphs.get(key)
@@ -320,9 +327,7 @@ class MockOtelCollector:
         self.request_count = 0
         self.last_query: dict[str, str] | None = None
 
-    async def __call__(
-        self, scope: dict[str, Any], receive: Any, send: Any
-    ) -> None:
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope["type"] != "http":
             return
         request = Request(scope, receive)
@@ -334,16 +339,12 @@ class MockOtelCollector:
         self.last_query = dict(request.query_params)
         since_raw = request.query_params.get("since")
         since = int(since_raw) if since_raw is not None else 0
-        filtered = [
-            s for s in self.spans if int(s.get("startTimeUnixNano", "0")) > since
-        ]
+        filtered = [s for s in self.spans if int(s.get("startTimeUnixNano", "0")) > since]
         body = {
             "resourceSpans": [
                 {
                     "resource": {
-                        "attributes": [
-                            {"key": "service.name", "value": {"stringValue": "akosha"}}
-                        ]
+                        "attributes": [{"key": "service.name", "value": {"stringValue": "akosha"}}]
                     },
                     "scopeSpans": [{"spans": filtered}],
                 }
@@ -386,15 +387,17 @@ cover happy path + error path + filter logic.
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
 
----
+______________________________________________________________________
 
 ## Task 2: MockBodaiEcosystem lifecycle fixture
 
 **Files:**
+
 - Modify: `tests/fixtures/mock_bodai_mcp.py` (add `MockBodaiEcosystem`)
 - Test: `tests/unit/test_mock_bodai_ecosystem.py` (add lifecycle tests)
 
 **Interfaces:**
+
 - `MockBodaiEcosystem(code_graphs, full_graphs, otel_spans)` — context manager that starts both ASGI apps on ephemeral ports via uvicorn, yields, then stops both.
 - `.session_buddy_url: str` — `http://127.0.0.1:<port>/mcp` (CodeGraphIngester appends `/tools/call`; this fixture serves the path).
 - `.otel_endpoint: str` — `http://127.0.0.1:<port>/v1/traces`.
@@ -414,8 +417,11 @@ async def test_ecosystem_start_yields_urls_and_stops_cleanly() -> None:
     code_graphs = [{"id": "akosha@deadbeef", "repo_path": "/a", "commit_hash": "deadbeef"}]
     spans = [
         {
-            "traceId": "x", "spanId": "y", "name": "z",
-            "startTimeUnixNano": "1", "endTimeUnixNano": "2",
+            "traceId": "x",
+            "spanId": "y",
+            "name": "z",
+            "startTimeUnixNano": "1",
+            "endTimeUnixNano": "2",
             "attributes": [],
         }
     ]
@@ -478,9 +484,7 @@ class MockBodaiEcosystem:
         full_graphs: dict[str, dict[str, Any]] | None = None,
         otel_spans: list[dict[str, Any]] | None = None,
     ) -> None:
-        self._session_buddy = MockSessionBuddyMCP(
-            code_graphs=code_graphs, full_graphs=full_graphs
-        )
+        self._session_buddy = MockSessionBuddyMCP(code_graphs=code_graphs, full_graphs=full_graphs)
         self._otel = MockOtelCollector(spans=otel_spans)
         self._sb_server: uvicorn.Server | None = None
         self._otel_server: uvicorn.Server | None = None
@@ -612,15 +616,18 @@ test_mock_bodai_ecosystem.py.
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
 
----
+______________________________________________________________________
 
 ## Task 3: End-to-end smoke test
 
 **Files:**
+
 - Create: `tests/integration/test_live_mcp_smoke.py`
 
 **Interfaces:**
+
 - Consumes: `MockBodaiEcosystem` (from Task 2), Akosha `create_app()`, `get_shared_hot_store()` singleton accessor.
+
 - Produces: a single `@pytest.mark.slow` test that asserts the CodeGraphIngester pipeline (Session-Buddy mock → ingester → hot_store) works end-to-end.
 
 - [ ] **Step 1: Write the smoke test**
@@ -659,8 +666,9 @@ async def test_lifespan_pulls_code_graphs_from_mock_session_buddy(
     - Ingest path (POST /tools/call with get_code_graph + insert
       into hot_store.list_code_graphs)
 
-    OTel half is deferred to a followup plan (depends on Wave 6
-    OtelTraceIngester landing).
+    OTel half ships separately in test_otel_ingester_e2e_against_mock_collector
+    (see Task 3 in the OTel plan); the live MCP smoke test focuses on
+    the Session-Buddy half.
     """
     code_graphs = [
         {
@@ -684,9 +692,7 @@ async def test_lifespan_pulls_code_graphs_from_mock_session_buddy(
         }
     }
 
-    async with MockBodaiEcosystem(
-        code_graphs=code_graphs, full_graphs=full_graphs
-    ) as eco:
+    async with MockBodaiEcosystem(code_graphs=code_graphs, full_graphs=full_graphs) as eco:
         # Override the Session-Buddy endpoint to point at the mock
         monkeypatch.setenv("SESSION_BUDDY_MCP_URL", eco.session_buddy_url)
         # Speed up the poll cycle (default is 60s)
@@ -716,17 +722,14 @@ async def test_lifespan_pulls_code_graphs_from_mock_session_buddy(
             )
             ingested = await hot_store.list_code_graphs(limit=10)
             assert any(
-                g.get("repo_path") == "/path/to/akosha"
-                and g.get("commit_hash") == "deadbeef"
+                g.get("repo_path") == "/path/to/akosha" and g.get("commit_hash") == "deadbeef"
                 for g in ingested
-            ), (
-                f"ingested graphs did not include the canned akosha@deadbeef; "
-                f"got: {ingested!r}"
-            )
+            ), f"ingested graphs did not include the canned akosha@deadbeef; got: {ingested!r}"
 
             # Assertion 3: /health reflects the ingester running
             response = await app.routes["/health"]["handler"](None)
             import json
+
             body = json.loads(response.body)
             assert body["checks"]["code_graphs_feed"]["ingester_running"] is True
 ```
@@ -743,8 +746,11 @@ Run: `cd /Users/les/Projects/akosha && /Users/les/Projects/akosha/.venv/bin/pyte
 Expected: 1 test PASS in ~15s.
 
 If the test fails, common causes:
+
 - `AKOSHA_SKIP_OTEL_INGESTER` not recognized → the env var is a no-op until the OTel ingester ships, so this is safe to ignore.
+
 - `hot_store.list_code_graphs` returns empty → the ingester's ingest path (POST get_code_graph) didn't reach the mock; check the mock's `full_graphs` key matches `{repo_path}@{commit_hash}`.
+
 - The lifespan startup takes >12s → bump the `asyncio.sleep` to 20s.
 
 - [ ] **Step 4: Verify default `pytest` doesn't run the smoke test**
@@ -785,19 +791,27 @@ fixture already accepts otel_spans so the extension is mechanical.
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
 
----
+______________________________________________________________________
 
 ## Self-Review
 
 1. **Spec coverage**:
+
    - Multi-component mock (Session-Buddy + OTel) → Task 1 (both ASGI apps), Task 2 (lifecycle)
    - In-repo pytest fixture → Task 2 (MockBodaiEcosystem with start/stop)
    - Smoke test runs at 5s poll cadence → Task 3 (override env var)
    - Marked @pytest.mark.slow → Task 3
    - Default pytest skips it → Task 3 Step 4
 
-2. **Scope refinement**: The OTel half of the smoke test is deferred until the OTel ingester lands. The fixture is designed to accept otel_spans so the extension is mechanical (add a `seed_otel_spans` parameter, un-skip the OTel assertions). Documented in Task 3.
+1. **Scope refinement** *(status 2026-09-06: closed)*: The OTel half of the
+   smoke test was originally deferred until the OTel ingester landed.
+   Both have shipped — `OtelTraceIngester` is wired in the lifespan
+   (commit `b3b298e`), `MockBodaiEcosystem` accepts `otel_spans`, and
+   `test_otel_ingester_e2e_against_mock_collector` is a passing test
+   in `tests/integration/test_live_mcp_smoke.py`. The "deferred"
+   framing in the Scope Notes block above is preserved for historical
+   accuracy; see the status note at the top of that block.
 
-3. **Placeholder scan**: All test code is concrete; no "TBD" markers.
+1. **Placeholder scan**: All test code is concrete; no "TBD" markers.
 
-4. **Type consistency**: `MockBodaiEcosystem.session_buddy_url` returns `str` consistently across Task 2 and Task 3.
+1. **Type consistency**: `MockBodaiEcosystem.session_buddy_url` returns `str` consistently across Task 2 and Task 3.
