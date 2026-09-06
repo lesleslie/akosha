@@ -98,10 +98,14 @@ def _reset_wave5_module_state(monkeypatch: pytest.MonkeyPatch):
     clear_shared_services()
     mcp_server._code_graph_ingester = None
     mcp_server._kg_refresh_task = None
+    mcp_server._kg_refresh_cycles = 0
+    mcp_server._kg_refresh_errors = 0
     yield
     clear_shared_services()
     mcp_server._code_graph_ingester = None
     mcp_server._kg_refresh_task = None
+    mcp_server._kg_refresh_cycles = 0
+    mcp_server._kg_refresh_errors = 0
 
 
 @pytest.fixture
@@ -367,10 +371,24 @@ async def test_health_probe_surfaces_per_feed_aggregates(
     fastmcp_factory: DummyFastMCP, lifespan_deps: dict[str, Any]
 ) -> None:
     """The default health probe reports feed_entities_count, edges_count,
-    and ingest-task running state for the three Wave-5 feeds."""
+    cycles_total, errors_total, and ingest-task running state for the
+    three Wave-5 feeds. ``ok`` is False when a feed is empty AND the
+    producer has run at least one cycle — that surfaces wire-up drift.
+    """
+    import asyncio as _asyncio
+
     app = create_app()
     lifespan = app._mcp_server.lifespan
     async with lifespan(app):
+        # Wait for at least one kg_refresh cycle to complete (the fixture
+        # sets AKOSHA_KG_REFRESH_SECONDS=0.05, so 0.2s is enough for ≥4
+        # cycles). Without this, the probe would see cycles == 0 and
+        # report the warm-up ``ok=True`` path instead of the drift path.
+        for _ in range(50):
+            if mcp_server._kg_refresh_cycles >= 1:
+                break
+            await _asyncio.sleep(0.01)
+
         probe = mcp_server.get_health_probe()
         assert probe is not None
         result = await probe()
@@ -378,23 +396,39 @@ async def test_health_probe_surfaces_per_feed_aggregates(
     # Pre-Wave-5 checks still present.
     assert result["hot_store"]["ok"] is True
     assert result["embeddings"]["ok"] is True
-    # Wave-5 per-feed aggregates added.
+
+    # Wave-5 per-feed aggregates added. The probe was called AFTER the
+    # first kg_refresh cycle ran (fixture sets AKOSHA_KG_REFRESH_SECONDS=0.05)
+    # AND the CodeGraphIngester started a poll, but with empty hot_store
+    # data the feeds are empty. Per the new contract, ``ok`` is False
+    # when a feed is empty AND the producer has run ≥1 cycle.
     assert "code_graphs_feed" in result
-    assert result["code_graphs_feed"]["ok"] is True
     assert result["code_graphs_feed"]["feed_entities_count"] == 0
     assert result["code_graphs_feed"]["ingester_running"] is True
+    # The probe surfaces the cycle + error counters on every feed; pre-fix
+    # these fields didn't exist (the implementation hardcoded "ok": True).
+    assert "cycles_total" in result["code_graphs_feed"]
+    assert "errors_total" in result["code_graphs_feed"]
+    assert "feed_last_updated_timestamp" in result["code_graphs_feed"]
 
     assert "knowledge_graph_feed" in result
-    assert result["knowledge_graph_feed"]["ok"] is True
     assert result["knowledge_graph_feed"]["feed_entities_count"] == 0
     assert result["knowledge_graph_feed"]["edges_count"] == 0
+    # knowledge_graph_feed has run ≥1 cycle (kg_refresh_interval=0.05s in
+    # the fixture); the feed is empty; per the new contract, ``ok`` is
+    # False. Pre-fix this assertion was ``is True`` (vacuous).
+    assert result["knowledge_graph_feed"]["ok"] is False
+    assert result["knowledge_graph_feed"]["cycles_total"] >= 1
     # The result was captured INSIDE the ``async with``, so the
     # kg_refresh task was still active when the probe ran.
     assert result["knowledge_graph_feed"]["refresh_task_running"] is True
 
     assert "local_traces_feed" in result
-    assert result["local_traces_feed"]["ok"] is True
     assert result["local_traces_feed"]["feed_entities_count"] == 0
+    # local_traces_feed is fed by the same kg_refresh pipeline, so it
+    # surfaces the same empty-after-cycles drift.
+    assert result["local_traces_feed"]["ok"] is False
+    assert result["local_traces_feed"]["cycles_total"] >= 1
 
 
 @pytest.mark.asyncio
@@ -413,6 +447,35 @@ async def test_health_route_returns_200_when_all_feeds_ok(
     assert "code_graphs_feed" in body["checks"]
     assert "knowledge_graph_feed" in body["checks"]
     assert "local_traces_feed" in body["checks"]
+
+
+@pytest.mark.asyncio
+async def test_health_probe_warmup_paths_report_ok(
+    fastmcp_factory: DummyFastMCP, lifespan_deps: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """During warm-up (no cycles yet), the probe reports ``ok=True`` even
+    when the feeds are empty. This is the complement of
+    ``test_health_probe_surfaces_per_feed_aggregates``: the new contract
+    is that ``ok`` is False ONLY when the producer has run ≥1 cycle AND
+    the feed is still empty."""
+    # Disable the kg_refresh + CodeGraphIngester so cycles == 0 when the
+    # probe runs. The probe must report ok=True on empty feeds while the
+    # producers haven't ticked yet.
+    monkeypatch.setenv("AKOSHA_SKIP_CODE_GRAPH_INGESTER", "1")
+    monkeypatch.setenv("AKOSHA_SKIP_KG_REFRESH", "1")
+    app = create_app()
+    lifespan = app._mcp_server.lifespan
+    async with lifespan(app):
+        # Probe IMMEDIATELY before any cycle can run.
+        probe = mcp_server.get_health_probe()
+        assert probe is not None
+        result = await probe()
+
+        assert result["code_graphs_feed"]["ok"] is True
+        assert result["code_graphs_feed"]["ingester_running"] is False
+        assert result["knowledge_graph_feed"]["ok"] is True
+        assert result["knowledge_graph_feed"]["refresh_task_running"] is False
+        assert result["local_traces_feed"]["ok"] is True
 
 
 # ---------------------------------------------------------------------------

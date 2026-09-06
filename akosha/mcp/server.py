@@ -106,6 +106,8 @@ _shared_kg_builder: Any | None = None
 # a reference to the instance so we can call ``stop()`` on shutdown.
 _code_graph_ingester: Any | None = None
 _kg_refresh_task: asyncio.Task[None] | None = None
+_kg_refresh_cycles: int = 0
+_kg_refresh_errors: int = 0
 
 
 def set_shared_hot_store(store: Any) -> None:
@@ -530,16 +532,15 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # ------------------------------------------------------------------
 
         async def _kg_refresh_loop() -> None:
+            global _kg_refresh_cycles, _kg_refresh_errors
             try:
                 interval = float(os.getenv("AKOSHA_KG_REFRESH_SECONDS", "60"))
             except ValueError:
                 interval = 60.0
-            cycles = 0
-            errors = 0
             while True:
                 try:
                     await asyncio.sleep(interval)
-                    cycles += 1
+                    _kg_refresh_cycles += 1
                     # ``query_traces`` is the consumer API for traces landed
                     # via the BodaiToolInvocationSubscriber. It returns
                     # ``[]`` when the subscriber is disabled or no events
@@ -552,23 +553,27 @@ def create_app(mode: Any | None = None) -> FastMCP:
                             edges = await kg_builder.extract_relationships(row, entities)
                             await kg_builder.add_to_graph(entities, edges)
                         except Exception as exc:
-                            errors += 1
+                            _kg_refresh_errors += 1
                             logger.debug(
                                 "kg_builder per-row extract failed (%s)", exc
                             )
                     if rows:
                         logger.info(
                             "kg_refresh: cycle=%d rows=%d entities=%d edges=%d",
-                            cycles,
+                            _kg_refresh_cycles,
                             len(rows),
                             len(kg_builder.entities),
                             len(kg_builder.edges),
                         )
                 except asyncio.CancelledError:
-                    logger.info("kg_refresh loop cancelled after %d cycles", cycles)
+                    logger.info(
+                        "kg_refresh loop cancelled after %d cycles (%d errors)",
+                        _kg_refresh_cycles,
+                        _kg_refresh_errors,
+                    )
                     break
                 except Exception as exc:
-                    errors += 1
+                    _kg_refresh_errors += 1
                     logger.warning(
                         "kg_refresh loop iteration failed (%s); will retry", exc
                     )
@@ -630,8 +635,8 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # (the size of the feed), cycles_total (how many refresh ticks
             # have run since startup), errors_total (how many ticks failed),
             # and last_updated_timestamp. ``ok`` is False when the feed is
-            # empty AND the ingester has run at least one cycle — that
-            # surfaces wire-up drift that would otherwise be invisible.
+            # empty AND the ingester/refresh has run at least one cycle —
+            # that surfaces wire-up drift that would otherwise be invisible.
             code_graphs_count = 0
             try:
                 if hot_store is not None and hasattr(hot_store, "list_code_graphs"):
@@ -650,26 +655,55 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 _code_graph_ingester is not None
                 and getattr(_code_graph_ingester, "_running", False)
             )
+            ingester_cycles = getattr(_code_graph_ingester, "_cycles_total", 0) or 0
+            last_poll_at = (
+                getattr(_code_graph_ingester, "_last_poll_at", None)
+                if _code_graph_ingester is not None
+                else None
+            )
+            # ``ok`` is False iff the feed is empty AND the producer has
+            # run at least one cycle. The empty-feed case while still
+            # warming up (``cycles == 0``) is intentionally True so the
+            # probe doesn't fail during normal startup.
+            code_graphs_ok = (
+                code_graphs_count > 0
+                or ingester_cycles == 0
+                or not ingester_running
+            )
+            kg_ok = (
+                kg_entities_count > 0
+                or _kg_refresh_cycles == 0
+                or _kg_refresh_task is None
+                or _kg_refresh_task.done()
+            )
+            local_traces_ok = (
+                local_traces_count > 0
+                or _kg_refresh_cycles == 0
+                or _kg_refresh_task is None
+                or _kg_refresh_task.done()
+            )
             checks["code_graphs_feed"] = {
-                "ok": True,
+                "ok": code_graphs_ok,
                 "ingester_running": ingester_running,
                 "feed_entities_count": code_graphs_count,
-                "feed_last_updated_timestamp": getattr(
-                    _code_graph_ingester, "_last_poll_at", None
-                )
-                if _code_graph_ingester is not None
-                else None,
+                "cycles_total": ingester_cycles,
+                "errors_total": getattr(_code_graph_ingester, "_errors_total", 0) or 0,
+                "feed_last_updated_timestamp": last_poll_at,
             }
             checks["knowledge_graph_feed"] = {
-                "ok": True,
+                "ok": kg_ok,
                 "feed_entities_count": kg_entities_count,
                 "edges_count": kg_edges_count,
+                "cycles_total": _kg_refresh_cycles,
+                "errors_total": _kg_refresh_errors,
                 "refresh_task_running": _kg_refresh_task is not None
                 and not _kg_refresh_task.done(),
             }
             checks["local_traces_feed"] = {
-                "ok": True,
+                "ok": local_traces_ok,
                 "feed_entities_count": local_traces_count,
+                "cycles_total": _kg_refresh_cycles,
+                "errors_total": _kg_refresh_errors,
                 "source": "hot_store.query_traces (populated via BodaiToolInvocationSubscriber)",
             }
 
@@ -719,6 +753,13 @@ def create_app(mode: Any | None = None) -> FastMCP:
             except Exception as exc:
                 logger.warning("CodeGraphIngester stop failed: %s", exc)
             _code_graph_ingester = None
+
+        # Reset the per-feed cycle/error counters so the next create_app()
+        # call starts from zero. Without this, the probe would carry stale
+        # cycle counts across lifespans in tests.
+        global _kg_refresh_cycles, _kg_refresh_errors
+        _kg_refresh_cycles = 0
+        _kg_refresh_errors = 0
 
         clear_shared_services()
 
