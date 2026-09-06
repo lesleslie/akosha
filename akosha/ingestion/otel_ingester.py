@@ -53,6 +53,11 @@ class OtelTraceIngester:
         self._http_client: httpx.AsyncClient | None = None
         # Per-system-id watermark; system_id -> max start_time_unix_nano seen
         self._watermarks: dict[str, int] = {}
+        # Per-feed observability counters (see mcp-backend-wiring-discipline.md):
+        # every feed must expose cycles_total, errors_total, last_poll_at
+        self._cycles_total: int = 0
+        self._errors_total: int = 0
+        self._last_poll_at: float | None = None
 
     async def start(self) -> None:
         """Start the OTel trace ingestion worker."""
@@ -88,6 +93,7 @@ class OtelTraceIngester:
         try:
             while self._running:
                 try:
+                    self._cycles_total += 1
                     # Each cycle polls once with a watermark = max over
                     # all known system_ids; new system_ids discovered
                     # mid-cycle get the recovery window. Each span's
@@ -108,16 +114,19 @@ class OtelTraceIngester:
                         except asyncio.CancelledError:
                             raise
                         except Exception as e:
+                            self._errors_total += 1
                             logger.exception(
                                 f"OTel span ingestion failed for "
                                 f"span_id={span.get('spanId', 'unknown')}: {e}"
                             )
+                    self._last_poll_at = time.time()
                     # Wait before next poll
                     await asyncio.sleep(self.poll_interval_seconds)
                 except asyncio.CancelledError:
                     logger.info("OTel polling loop cancelled")
                     break
                 except Exception as e:
+                    self._errors_total += 1
                     logger.exception(f"Error in OTel polling loop: {e}")
                     await asyncio.sleep(self.poll_interval_seconds)
         except asyncio.CancelledError:

@@ -715,11 +715,50 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 or _kg_refresh_task is None
                 or _kg_refresh_task.done()
             )
+            local_traces_otel_running = bool(
+                _otel_trace_ingester is not None
+                and getattr(_otel_trace_ingester, "_running", False)
+            )
+            local_traces_otel_cycles = (
+                getattr(_otel_trace_ingester, "_cycles_total", 0) or 0
+                if _otel_trace_ingester is not None
+                else 0
+            )
+            local_traces_otel_errors = (
+                getattr(_otel_trace_ingester, "_errors_total", 0) or 0
+                if _otel_trace_ingester is not None
+                else 0
+            )
+            local_traces_otel_last_poll_at = (
+                getattr(_otel_trace_ingester, "_last_poll_at", None)
+                if _otel_trace_ingester is not None
+                else None
+            )
+            # ``local_traces_ok`` is True iff data exists OR no producer
+            # has ever cycled (warming up). A crashed kg_refresh task
+            # (``done()`` without ever populating traces) was previously
+            # masked as ``done() -> ok`` — the audit failure case the
+            # discipline was written to catch. Drop the ``done()``
+            # exemption: a finished producer with no data is degraded.
+            otel_poll_task = (
+                getattr(_otel_trace_ingester, "_poll_task", None)
+                if _otel_trace_ingester is not None
+                else None
+            )
+            otel_task_alive = otel_poll_task is not None and not otel_poll_task.done()
+            kg_task_alive = (
+                _kg_refresh_task is not None and not _kg_refresh_task.done()
+            )
+            any_producer_ever_cycled = (
+                _kg_refresh_cycles > 0 or local_traces_otel_cycles > 0
+            )
+            any_producer_alive = (
+                kg_task_alive or otel_task_alive or local_traces_otel_running
+            )
             local_traces_ok = (
                 local_traces_count > 0
-                or _kg_refresh_cycles == 0
-                or _kg_refresh_task is None
-                or _kg_refresh_task.done()
+                or not any_producer_ever_cycled
+                or not any_producer_alive
             )
             checks["code_graphs_feed"] = {
                 "ok": code_graphs_ok,
@@ -738,21 +777,33 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 "refresh_task_running": _kg_refresh_task is not None
                 and not _kg_refresh_task.done(),
             }
+            # Combine producer counters so the feed's ``cycles_total`` /
+            # ``errors_total`` reflect every consumer of hot_store.query_traces
+            # (kg_refresh + OTel ingester). ``feed_last_updated_timestamp``
+            # is the most recent poll across all producers — mandatory
+            # per mcp-backend-wiring-discipline.md.
+            local_traces_last_poll_at = None
+            if last_poll_at is not None and local_traces_otel_last_poll_at is not None:
+                local_traces_last_poll_at = max(last_poll_at, local_traces_otel_last_poll_at)
+            else:
+                local_traces_last_poll_at = (
+                    last_poll_at or local_traces_otel_last_poll_at
+                )
             checks["local_traces_feed"] = {
                 "ok": local_traces_ok,
                 "feed_entities_count": local_traces_count,
-                "cycles_total": _kg_refresh_cycles,
-                "errors_total": _kg_refresh_errors,
-                "otel_ingester_running": (
-                    _otel_trace_ingester is not None
-                    and getattr(_otel_trace_ingester, "_running", False)
-                ),
+                "cycles_total": _kg_refresh_cycles + local_traces_otel_cycles,
+                "errors_total": _kg_refresh_errors + local_traces_otel_errors,
+                "feed_last_updated_timestamp": local_traces_last_poll_at,
+                "otel_ingester_running": local_traces_otel_running,
                 "otel_endpoint": (
                     _otel_trace_ingester.otlp_endpoint
                     if _otel_trace_ingester is not None
                     else None
                 ),
-                "source": "hot_store.query_traces (populated via BodaiToolInvocationSubscriber + OtelTraceIngester)",
+                "otel_cycles_total": local_traces_otel_cycles,
+                "otel_errors_total": local_traces_otel_errors,
+                "source": "hot_store.query_traces (populated via kg_refresh + OtelTraceIngester)",
             }
 
             return checks
