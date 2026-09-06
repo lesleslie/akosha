@@ -239,7 +239,10 @@ class OtelTraceIngester:
             timestamp=ts,
             metadata={
                 "attributes": {"task_class": task_class} if task_class else {},
-                "otel": {"trace_id": span.get("traceId", "")},
+                "otel": {
+                    "trace_id": span.get("traceId", ""),
+                    "span_id": span.get("spanId", ""),
+                },
             },
         )
 
@@ -248,10 +251,19 @@ class OtelTraceIngester:
         span: dict[str, Any],
         system_id: str,
     ) -> None:
-        """Embed the span content, insert as a HotRecord, advance the watermark."""
+        """Embed the span content, insert as a HotRecord, advance the watermark.
+
+        The embedding input is the span ``name`` followed by its attributes
+        rendered as ``key=value`` pairs separated by spaces. This produces
+        cleaner tokens for natural-language embedding models than the
+        previous ``f"{name} {dict_repr}"`` format (which embedded Python
+        repr punctuation — single quotes, braces, colons — that the
+        embedding model would tokenize as foreign characters).
+        """
+        attrs = self._attrs_to_dict(span.get("attributes", []))
+        attr_pairs = " ".join(f"{k}={v}" for k, v in sorted(attrs.items()))
         content_for_embedding = (
-            f"{span.get('name', '')} "
-            f"{self._attrs_to_dict(span.get('attributes', []))}"
+            f"{span.get('name', '')} {attr_pairs}".strip()
         )
         embedding_array = await self.embedding_service.generate_embedding(
             content_for_embedding
