@@ -56,6 +56,11 @@ async def test_register_all_tools_minimal_profile(monkeypatch: pytest.MonkeyPatc
     assert default_result["query"] is None
     assert default_result["loaded_count"] == 6
     assert default_result["not_loaded_count"] == 20
+    # Hint must point operators toward loading more tools (minimal
+    # profile is the most restrictive; the full default is reachable
+    # by unsetting the env var).
+    assert "Minimal profile active" in default_result["hint"]
+    assert "AKOSHA_TOOL_PROFILE=standard" in default_result["hint"]
     assert result["profile"] == "minimal"
     assert result["query"] == "session"
     assert result["loaded_count"] == 0
@@ -103,6 +108,36 @@ async def test_register_all_tools_full_profile_and_discovery(
     ]
     assert result["not_loaded_count"] == 0
     assert result["not_loaded_tools"] == []
+    # Full is the default; the hint must not misleadingly suggest
+    # upgrading to full (the static string "Set AKOSHA_TOOL_PROFILE=full
+    # to enable all tools" was always-wrong regardless of profile).
+    assert "All tool groups loaded" in result["hint"]
+    assert "AKOSHA_TOOL_PROFILE=full" not in result["hint"]
+
+
+@pytest.mark.asyncio
+async def test_discover_tools_hint_for_standard_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Standard profile hint must point operators to ``full`` (the default)."""
+    app = DummyFastMCP()
+    monkeypatch.setattr(tools_module, "get_active_profile", lambda: ToolProfile.STANDARD)
+    monkeypatch.setattr(tools_module, "register_health_tools_akosha", MagicMock())
+    monkeypatch.setattr(tools_module, "register_akosha_tools", MagicMock())
+    monkeypatch.setattr(tools_module, "register_session_buddy_tools", MagicMock())
+    monkeypatch.setattr(tools_module, "register_pycharm_tools", MagicMock())
+
+    tools_module.register_all_tools(app, hot_store=object())
+
+    discover_tools = app.registered["discover_tools"]
+    result = await discover_tools()
+
+    assert result["profile"] == "standard"
+    # Standard hint must point toward full (the default) so an operator
+    # who explicitly chose standard can quickly see how to recover the
+    # missing groups without reading the docs.
+    assert "Standard profile active" in result["hint"]
+    assert "AKOSHA_TOOL_PROFILE=full" in result["hint"]
 
 
 def test_get_active_profile_defaults_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:

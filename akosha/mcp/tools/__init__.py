@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from akosha.mcp.client import DharaServiceRegistryClient
 
 from mcp_common.health import DependencyConfig, register_health_tools
+from mcp_common.tools import ToolProfile  # runtime: used in discover_tools hint
 
 from akosha.mcp.tools.akosha_tools import (  # noqa: F401
     register_akosha_tools,
@@ -299,6 +300,29 @@ def _register_discovery_tool(app: FastMCP, profile: ToolProfile) -> None:
         loaded = sorted(set(all_tools.keys()) & loaded_group_tools)
         not_loaded = sorted(set(all_tools.keys()) - loaded_group_tools)
 
+        # The hint is profile-aware: ``full`` is the default, so the
+        # static "Set AKOSHA_TOOL_PROFILE=full to enable all tools" was
+        # misleading at every profile level. Show a downgrade hint only
+        # when the operator has explicitly opted into a restricted
+        # profile, and an upgrade hint when they could see more.
+        if profile == ToolProfile.FULL:
+            hint = (
+                "All tool groups loaded. To restrict, set "
+                "AKOSHA_TOOL_PROFILE=standard (or minimal)."
+            )
+        elif profile == ToolProfile.STANDARD:
+            hint = (
+                "Standard profile active. To enable Session-Buddy, PyCharm, "
+                "OTel, Fitness, EventBridge, and cross-repo tools, set "
+                "AKOSHA_TOOL_PROFILE=full (or unset the env var to use the full default)."
+            )
+        else:  # MINIMAL
+            hint = (
+                "Minimal profile active (health probes only). Set "
+                "AKOSHA_TOOL_PROFILE=standard or =full (default) to load "
+                "core Akosha tools."
+            )
+
         return {
             "status": "success",
             "profile": profile.value,
@@ -307,7 +331,7 @@ def _register_discovery_tool(app: FastMCP, profile: ToolProfile) -> None:
             "loaded_count": len(loaded),
             "not_loaded_tools": not_loaded,
             "not_loaded_count": len(not_loaded),
-            "hint": "Set AKOSHA_TOOL_PROFILE=full to enable all tools.",
+            "hint": hint,
         }
 
 
