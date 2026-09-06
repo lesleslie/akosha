@@ -22,8 +22,11 @@ class TestHealthToolsConstants:
 
     def test_service_metadata(self):
         """Test service metadata constants."""
+        from akosha import __version__
         assert SERVICE_NAME == "akosha"
-        assert SERVICE_VERSION == "0.14.3"
+        assert SERVICE_VERSION == __version__, (
+            f"SERVICE_VERSION {SERVICE_VERSION!r} drifted from akosha.__version__ {__version__!r}"
+        )
         assert isinstance(SERVICE_START_TIME, float)
 
     def test_default_dependencies_structure(self):

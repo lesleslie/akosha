@@ -21,9 +21,12 @@ class TestServerIntegration:
 
         app = create_app()
 
+        from akosha import __version__
         assert isinstance(app, FastMCP)
         assert app.name == "akosha-mcp"
-        assert app.version == "0.14.3"
+        assert app.version == __version__, (
+            f"app.version {app.version!r} drifted from akosha.__version__ {__version__!r}"
+        )
 
     def test_app_with_custom_configuration(self):
         """Test app creation with custom configuration."""
@@ -248,9 +251,12 @@ class TestConfigurationIntegration:
         """Test server configuration integration."""
         app = create_app()
 
+        from akosha import __version__
         # Verify server configuration
         assert app.name == "akosha-mcp"
-        assert app.version == "0.14.3"
+        assert app.version == __version__, (
+            f"app.version {app.version!r} drifted from akosha.__version__ {__version__!r}"
+        )
 
 
 class TestLoadIntegration:

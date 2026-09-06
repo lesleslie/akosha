@@ -156,8 +156,12 @@ def test_register_health_tools_akosha_delegates_to_shared_contract(
 
     tools_module.register_health_tools_akosha(object())
 
+    from akosha import __version__
     assert health_register.call_count == 1
     kwargs = health_register.call_args.kwargs
     assert kwargs["service_name"] == "akosha"
-    assert kwargs["version"] == "0.14.3"
+    assert kwargs["version"] == __version__, (
+        f"register_health_tools_akosha version {kwargs['version']!r} "
+        f"drifted from akosha.__version__ {__version__!r}"
+    )
     assert kwargs["dependencies"] == tools_module.DEFAULT_DEPENDENCIES

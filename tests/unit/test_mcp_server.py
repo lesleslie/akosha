@@ -16,8 +16,11 @@ class TestServerConstants:
 
     def test_app_constants(self):
         """Test application constants."""
+        from akosha import __version__
         assert APP_NAME == "akosha-mcp"
-        assert APP_VERSION == "0.14.3"
+        assert APP_VERSION == __version__, (
+            f"APP_VERSION {APP_VERSION!r} drifted from akosha.__version__ {__version__!r}"
+        )
 
     def test_constants_are_strings(self):
         """Test that constants are proper strings."""
