@@ -338,9 +338,83 @@ Of the last 100 commits, ~50% are "feature was incomplete when merged" fixes —
 - If Wave 4's rewrite count exceeds 600 (i.e. more empty tests found than the audit estimated), split into two waves.
 - If any single bug fix in Wave 1/2/3 requires touching >5 files, escalate to a sub-plan.
 
-## Appendix A — Live MCP Investigation Report (placeholder, populated during Wave 5)
+## Appendix A — Live MCP Investigation Report (populated during Wave 5)
 
-To be filled in by Wave 5, Task 5.1. Documents: which data feeds are configured but not running, which are missing entirely, and what infra changes are required.
+**Date:** 2026-09-05. **Investigator:** Wave 5 Task 5.1.
+
+### A.1 — `AkoshaApplication` boot lifecycle (akosha/main.py)
+
+The standalone `AkoshaApplication` class is **not on the live MCP request path**. It wires:
+
+- `cache_client`, `cold_storage` (`_initialize_mode_components` line 275)
+- `EventBridge` publisher (`_wire_eventbridge_publisher` line 451)
+- `hot_store` + `embedding_service.initialize()` (lines 175-204)
+- `DharaHttpClient` + `WebSocketInvocationsSubscriber` + optional `BodaiToolInvocationSubscriber` (lines 211-252)
+- Signal handlers + `await shutdown_event.wait()` (lines 254-273)
+
+But it does **not** wire the MCP-tool data feeds (`get_graph_statistics`, `query_local_traces`, `search_code_patterns`). The MCP server uses its own lifespan (`akosha/mcp/server.py::lifespan` lines 271-480) with its own fresh `hot_store`. The standalone `AkoshaApplication` is a separate entry point (used by the lite CLI tests, not by the MCP server).
+
+**Gap A.1:** `ingestion_workers` list at `main.py:118` is always empty. `start()` never appends anything. The `stop()` cleanup loop (lines 504-509) is dead code.
+
+### A.2 — Knowledge graph builder is empty (akosha/processing/knowledge_graph.py)
+
+`KnowledgeGraphBuilder` exposes the right methods (`extract_entities` line 89, `extract_relationships` line 152, `add_to_graph` line 209, `get_statistics` line 519) and an in-memory store (`entities`, `edges` at lines 85-86). But:
+
+- The MCP lifespan (`akosha/mcp/server.py`) does **not** instantiate `KnowledgeGraphBuilder` itself. It is constructed inside `akosha/mcp/tools/group_registers.py:67` per tool-group registration call.
+- `group_registers.py:67` creates a fresh empty `KnowledgeGraphBuilder()` and passes it to `register_akosha_tools`. No code path ever calls `extract_entities` → `extract_relationships` → `add_to_graph` on it.
+- Therefore `get_graph_statistics` (consumes at `akosha_tools.py:1186`) returns `{total_entities: 0, total_edges: 0, entity_types: {}, edge_types: {}}` forever.
+
+**Gap A.2:** No population driver. There is no `populate_from_indexed_sources`, no `periodic_refresh`, no background coroutine. The graph is read-only at runtime.
+
+### A.3 — Code graph ingester is a complete orphan (akosha/ingestion/code_graph_ingester.py)
+
+`CodeGraphIngester` (lines 23-269) has a fully-working `start()` / `_polling_loop()` / `_discover_code_graphs()` / `_ingest_code_graph()` chain that POSTs to `session-buddy` MCP and writes to `hot_store.store_code_graph()`. **Nothing in the codebase instantiates or starts it.** Grep across `akosha/` finds zero call sites besides the class definition and the re-export in `akosha/ingestion/__init__.py:7`.
+
+Consequence:
+
+- `hot_store.list_code_graphs()` returns `[]` always → `list_ingested_code_graphs`, `find_similar_repositories`, `get_cross_repo_function_usage` (consumers in `akosha/mcp/tools/code_graph_tools.py`) all return empty.
+- `search_code_patterns` (registered in `akosha/mcp/tools/pycharm_tools.py:341`) routes to a PyCharm HTTP endpoint, **not** to ingested code graphs. No equivalent search tool over the ingested corpus exists.
+
+**Gap A.3:** `CodeGraphIngester` is fully-built but never started. This is the single largest wire-up gap.
+
+### A.4 — No OTel trace ingester exists (akosha/ingestion/otel_ingester.py)
+
+**The file does not exist.** The `akosha/ingestion/` directory contains only `bodai_event_subscriber.py`, `code_graph_ingester.py`, `orchestrator.py`, `websocket_invocations_subscriber.py`, `worker.py`, `__init__.py`. There is no OTel collector/ingester pipeline.
+
+Trace data only enters the system through:
+
+1. `BodaiToolInvocationSubscriber` (`main.py:223-249`) — Redis XREADGROUP, opt-in via `settings/akosha.yaml::bodai_tool_invocation_subscriber.enabled`. Requires Mahavishnu to publish.
+2. Callers writing directly via `hot_store.query_traces` consumers (read-only).
+
+The OTel export path (`setup_telemetry` at `server.py:322`) only emits Akosha's *own* spans — it does not pull other systems' traces. `query_local_traces` is bound entirely to whatever the Redis subscriber happens to receive.
+
+**Gap A.4:** No inbound OTel trace pipeline. Building one from scratch is out of scope for Wave 5 (needs an OTel collector HTTP source contract). Marked as followup.
+
+### A.5 — /health probe misses feed counts (akosha/mcp/server.py:416-452)
+
+The default health probe checks only:
+
+- `hot_store.ping()` (or its absence)
+- `embedding_service.is_available()`
+- `cold_storage` presence
+
+It does **not** check `knowledge_graph.entities_count`, `hot_store.list_code_graphs().length`, `hot_store.query_traces().length`, `cycles_total`, `errors_total`, or `last_updated_timestamp`. Per `mcp-backend-wiring-discipline.md`, /health must surface per-feed state and return 503 on degraded. Currently a system can register 30 tools, return 200 from /health, and have all three feeds report 0 — exactly the failure mode the audit caught.
+
+**Gap A.5:** /health is not a sufficient wire-up-drift detector.
+
+### A.6 — Tool profile gate hides the empty state further
+
+`akosha/mcp/tools/profiles.py:63-100` shows that `query_local_traces` and `search_code_patterns` are only registered under `FULL_REGISTRATIONS` (the `full` profile). With `AKOSHA_TOOL_PROFILE=standard` (default), these tools are not even registered. So an operator looking at the registered-tool list cannot see the missing feeds unless they explicitly set the profile to `full`.
+
+**Gap A.6:** Default profile hides the empty feeds from the tool surface entirely. This compounds A.1-A.5: an operator on default profile sees a green /health and 19 tools, no empty-feed signals.
+
+### A.7 — Three biggest wire-up gaps (priority order)
+
+1. **`CodeGraphIngester` is fully built but never started.** Single largest gap. Wire it inside the MCP server lifespan (not `main.py` — see A.1). Pass it the lifespan's `hot_store`, start it after hot_store init, store a cancel handle on the lifespan state, await-cancel on shutdown. Tasks 5.2 and 5.4 of the plan cover this.
+
+2. **Knowledge graph has no population driver.** Construct a single `KnowledgeGraphBuilder` in the lifespan, store it on the yielded state, pass it to `register_akosha_group` instead of constructing per-call. Add a periodic-refresh task that scans recent `hot_store.query_traces()` results, calls `extract_entities` / `extract_relationships` / `add_to_graph` for each. Tasks 5.2 of the plan covers this.
+
+3. **`/health` probe must surface per-feed state.** Extend the default probe to check `kg_builder.entities_count`, `hot_store.list_code_graphs().length`, `hot_store.query_traces().length` (or the closest equivalent — `hot_store.query_traces` doesn't return all rows; use a `get_stats()` method if available). Return 503 if any feed is below a low-water mark for too long. This is what closes the `mcp-surface-health-illusion` failure mode.
 
 ---
 
