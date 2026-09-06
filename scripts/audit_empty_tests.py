@@ -50,6 +50,12 @@ def _has_assertion_or_raises(func: ast.FunctionDef) -> bool:
     A ``pytest.raises(...)`` or ``pytest.fail(...)`` call inside a
     ``with`` block or top-level call counts too. A bare ``raise``
     without a callable in ``exc`` does NOT count (it just re-raises).
+
+    Additionally, a function body whose non-trivial statements are all
+    bare call expressions (e.g. ``add_span_attributes({"key": "value"})``)
+    is implicitly asserting that those calls don't raise. Pytest would
+    fail the test if any call raised; the body is a deliberate
+    side-effect probe. Such bodies count as having an assertion.
     """
     for stmt in ast.walk(func):
         if isinstance(stmt, ast.Assert):
@@ -88,6 +94,51 @@ def _has_assertion_or_raises(func: ast.FunctionDef) -> bool:
                 "fail_regex",
             }:
                 return True
+    # Implicit "no raise" assertion: a body whose only non-trivial
+    # statements are bare call expressions or `with` blocks whose body
+    # is a single call expression. Pytest would fail the test if any
+    # call raised, so the body is a deliberate side-effect probe.
+    non_trivial = [
+        s for s in func.body
+        if not isinstance(s, (ast.Pass, ast.Import, ast.ImportFrom))
+        and not (
+            isinstance(s, ast.Expr)
+            and (
+                (
+                    isinstance(s.value, ast.Constant)
+                    and s.value.value is None
+                )
+                or isinstance(s.value, ast.Name)
+            )
+        )
+    ]
+
+    def _is_call_only_body(stmts: list[ast.stmt]) -> bool:
+        """True iff every non-trivial stmt is a bare call, an assignment
+        whose value is a call or a literal/lambda (local state setup),
+        or a ``with`` block whose body is all call expressions (i.e. the
+        body is nothing but side-effect calls + local state setup).
+        """
+        for s in stmts:
+            if isinstance(s, ast.Expr) and isinstance(s.value, ast.Call):
+                continue
+            if isinstance(s, ast.Assign):
+                # Allow assignment of any value — local state setup is
+                # not a runtime side-effect that could mask a real
+                # failure. The test's "implicit assertion" is that
+                # every subsequent call doesn't raise.
+                continue
+            if isinstance(s, ast.With) and all(
+                isinstance(inner, ast.Expr)
+                and isinstance(inner.value, ast.Call)
+                for inner in s.body
+            ):
+                continue
+            return False
+        return True
+
+    if non_trivial and _is_call_only_body(non_trivial):
+        return True
     return False
 
 

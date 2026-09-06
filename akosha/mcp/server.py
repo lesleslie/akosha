@@ -105,6 +105,7 @@ _shared_kg_builder: Any | None = None
 # ``CodeGraphIngester`` owns its own polling task internally; we only hold
 # a reference to the instance so we can call ``stop()`` on shutdown.
 _code_graph_ingester: Any | None = None
+_otel_trace_ingester: Any | None = None
 _kg_refresh_task: asyncio.Task[None] | None = None
 _kg_refresh_cycles: int = 0
 _kg_refresh_errors: int = 0
@@ -524,6 +525,44 @@ def create_app(mode: Any | None = None) -> FastMCP:
             logger.debug("CodeGraphIngester skipped via AKOSHA_SKIP_CODE_GRAPH_INGESTER")
 
         # ------------------------------------------------------------------
+        # Wave 6: start the OtelTraceIngester so spans from an OTLP/HTTP
+        # collector land in the shared HotStore (independent of the
+        # BodaiToolInvocationSubscriber's Redis feed). Mirrors the
+        # CodeGraphIngester block above. Opt-out via
+        # ``AKOSHA_SKIP_OTEL_INGESTER=1`` for offline test suites.
+        # ------------------------------------------------------------------
+        global _otel_trace_ingester
+        if os.getenv("AKOSHA_SKIP_OTEL_INGESTER", "").lower() not in ("1", "true", "yes"):
+            try:
+                from akosha.ingestion.otel_ingester import OtelTraceIngester
+
+                otel_endpoint = os.getenv(
+                    "AKOSHA_OTLP_ENDPOINT", "http://localhost:4318/v1/traces"
+                )
+                poll_seconds = int(os.getenv("AKOSHA_OTEL_POLL_SECONDS", "60"))
+                _otel_trace_ingester = OtelTraceIngester(
+                    hot_store=hot_store,
+                    embedding_service=embedding_service,
+                    otlp_endpoint=otel_endpoint,
+                    poll_interval_seconds=poll_seconds,
+                )
+                await _otel_trace_ingester.start()
+                logger.info(
+                    "OtelTraceIngester started (Wave 6) -> %s (interval=%ds)",
+                    otel_endpoint,
+                    poll_seconds,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "OtelTraceIngester start failed (%s); query_local_traces "
+                    "will fall back to the BodaiToolInvocationSubscriber path",
+                    exc,
+                )
+                _otel_trace_ingester = None
+        else:
+            logger.debug("OtelTraceIngester skipped via AKOSHA_SKIP_OTEL_INGESTER")
+
+        # ------------------------------------------------------------------
         # Wave 5: start the knowledge-graph periodic-refresh task. Every
         # ``AKOSHA_KG_REFRESH_SECONDS`` (default 60), pull the most recent
         # traces from HotStore and feed them to the kg_builder as
@@ -704,7 +743,16 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 "feed_entities_count": local_traces_count,
                 "cycles_total": _kg_refresh_cycles,
                 "errors_total": _kg_refresh_errors,
-                "source": "hot_store.query_traces (populated via BodaiToolInvocationSubscriber)",
+                "otel_ingester_running": (
+                    _otel_trace_ingester is not None
+                    and getattr(_otel_trace_ingester, "_running", False)
+                ),
+                "otel_endpoint": (
+                    _otel_trace_ingester.otlp_endpoint
+                    if _otel_trace_ingester is not None
+                    else None
+                ),
+                "source": "hot_store.query_traces (populated via BodaiToolInvocationSubscriber + OtelTraceIngester)",
             }
 
             return checks
@@ -753,6 +801,13 @@ def create_app(mode: Any | None = None) -> FastMCP:
             except Exception as exc:
                 logger.warning("CodeGraphIngester stop failed: %s", exc)
             _code_graph_ingester = None
+
+        if _otel_trace_ingester is not None:
+            try:
+                await _otel_trace_ingester.stop()
+            except Exception as exc:
+                logger.warning("OtelTraceIngester stop failed: %s", exc)
+            _otel_trace_ingester = None
 
         # Reset the per-feed cycle/error counters so the next create_app()
         # call starts from zero. Without this, the probe would carry stale

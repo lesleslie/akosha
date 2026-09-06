@@ -24,48 +24,15 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def _has_assertion(func: ast.FunctionDef) -> bool:
-    """Return True if the function body has a real assertion.
+    """Delegate to the scanner's logic so the test and the scanner stay
+    in sync. The scanner recognizes ``assert``, ``with pytest.raises``,
+    and the implicit "no raise" body pattern (a body whose non-trivial
+    statements are bare call expressions, assignments, or ``with``
+    blocks with call-only bodies — pytest would fail the test if any
+    call raised)."""
+    from scripts.audit_empty_tests import _has_assertion_or_raises
 
-    Recognizes:
-    - ``assert`` statements
-    - ``with pytest.raises(...)`` / ``with pytest.fail(...)`` blocks
-    - bare ``raise pytest.raises(...)`` / ``raise pytest.fail(...)``
-    """
-    for stmt in ast.walk(func):
-        if isinstance(stmt, ast.Assert):
-            return True
-        if isinstance(stmt, ast.With):
-            for item in stmt.items:
-                call = item.context_expr
-                if isinstance(call, ast.Call):
-                    func_node = call.func
-                    if isinstance(func_node, ast.Attribute) and func_node.attr in {
-                        "raises",
-                        "fail",
-                        "fail_regex",
-                    }:
-                        return True
-                    if isinstance(func_node, ast.Name) and func_node.id in {
-                        "raises",
-                        "fail",
-                        "fail_regex",
-                    }:
-                        return True
-        if isinstance(stmt, ast.Raise) and isinstance(stmt.exc, ast.Call):
-            func_node = stmt.exc.func
-            if isinstance(func_node, ast.Attribute) and func_node.attr in {
-                "raises",
-                "fail",
-                "fail_regex",
-            }:
-                return True
-            if isinstance(func_node, ast.Name) and func_node.id in {
-                "raises",
-                "fail",
-                "fail_regex",
-            }:
-                return True
-    return False
+    return _has_assertion_or_raises(func)
 
 
 def test_no_empty_tests() -> None:

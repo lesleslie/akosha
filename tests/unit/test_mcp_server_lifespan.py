@@ -100,6 +100,9 @@ def patched_lifespan(monkeypatch: pytest.MonkeyPatch):
     # the ingester with a fake implementation.
     monkeypatch.setenv("AKOSHA_SKIP_CODE_GRAPH_INGESTER", "1")
     monkeypatch.setenv("AKOSHA_SKIP_KG_REFRESH", "1")
+    # Wave 6: same pattern for OtelTraceIngester — skip unless the test
+    # is designed to exercise it (test_wave5_lifespan_wiring.py).
+    monkeypatch.setenv("AKOSHA_SKIP_OTEL_INGESTER", "1")
 
     register_all_tools = MagicMock()
     monkeypatch.setattr("akosha.mcp.tools.register_all_tools", register_all_tools)

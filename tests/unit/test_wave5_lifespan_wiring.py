@@ -190,6 +190,41 @@ def lifespan_deps(monkeypatch: pytest.MonkeyPatch):
         FakeCodeGraphIngester,
     )
 
+    # Wave 6: stub OtelTraceIngester so the lifespan can construct it
+    # without trying to reach a real OTLP/HTTP collector endpoint.
+    otel_ingester_instances: list[Any] = []
+
+    class FakeOtelTraceIngester:
+        def __init__(
+            self,
+            hot_store: Any,
+            embedding_service: Any,
+            otlp_endpoint: str = "",
+            poll_interval_seconds: int = 60,
+            **_: Any,
+        ) -> None:
+            self.hot_store = hot_store
+            self.embedding_service = embedding_service
+            self.otlp_endpoint = otlp_endpoint
+            self.poll_interval_seconds = poll_interval_seconds
+            self._running = False
+            self.start_calls = 0
+            self.stop_calls = 0
+            otel_ingester_instances.append(self)
+
+        async def start(self) -> None:
+            self._running = True
+            self.start_calls += 1
+
+        async def stop(self) -> None:
+            self._running = False
+            self.stop_calls += 1
+
+    monkeypatch.setattr(
+        "akosha.ingestion.otel_ingester.OtelTraceIngester",
+        FakeOtelTraceIngester,
+    )
+
     # Shorten the kg_refresh interval so the test can verify cycles run.
     monkeypatch.setenv("AKOSHA_KG_REFRESH_SECONDS", "0.05")
     # Force the lifespan to also skip Dhara registration noise.
@@ -207,6 +242,7 @@ def lifespan_deps(monkeypatch: pytest.MonkeyPatch):
         "cache_client": cache_client,
         "cold_storage": cold_storage,
         "ingester_instances": ingester_instances,
+        "otel_ingester_instances": otel_ingester_instances,
     }
 
 
@@ -296,6 +332,48 @@ async def test_lifespan_can_skip_code_graph_ingester(
     lifespan = app._mcp_server.lifespan
     async with lifespan(app):
         assert lifespan_deps["ingester_instances"] == []
+    # No exception on shutdown.
+
+
+# ---------------------------------------------------------------------------
+# Wave 6: OtelTraceIngester tests (mirror the CodeGraphIngester block)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_lifespan_starts_otel_trace_ingester(
+    fastmcp_factory: DummyFastMCP, lifespan_deps: dict[str, Any]
+) -> None:
+    """The lifespan constructs and starts exactly one OtelTraceIngester,
+    bound to the shared hot_store, and stops it on shutdown."""
+    app = create_app()
+    lifespan = app._mcp_server.lifespan
+    async with lifespan(app):
+        instances = lifespan_deps["otel_ingester_instances"]
+        assert len(instances) == 1
+        ingester = instances[0]
+        assert ingester.hot_store is lifespan_deps["hot_store"]
+        assert ingester.embedding_service is lifespan_deps["embedding_service"]
+        assert ingester.start_calls == 1
+        assert ingester._running is True
+
+    # After shutdown: stopped once.
+    ingester = lifespan_deps["otel_ingester_instances"][0]
+    assert ingester.stop_calls == 1
+    assert ingester._running is False
+
+
+@pytest.mark.asyncio
+async def test_lifespan_can_skip_otel_trace_ingester(
+    fastmcp_factory: DummyFastMCP, lifespan_deps: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``AKOSHA_SKIP_OTEL_INGESTER=1`` short-circuits the ingester
+    construction (useful for offline test suites)."""
+    monkeypatch.setenv("AKOSHA_SKIP_OTEL_INGESTER", "1")
+    app = create_app()
+    lifespan = app._mcp_server.lifespan
+    async with lifespan(app):
+        assert lifespan_deps["otel_ingester_instances"] == []
     # No exception on shutdown.
 
 
