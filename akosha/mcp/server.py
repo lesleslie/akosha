@@ -46,7 +46,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 APP_NAME: Final = "akosha-mcp"
-APP_VERSION: Final = "0.14.7"
+APP_VERSION: Final = "0.15.0"
 
 DHARA_DEFAULT_URL = "http://localhost:8683"
 
