@@ -127,11 +127,12 @@ def register_all_tools(
         register_pycharm_tools(registry, hot_store)
         logger.info("Registered PyCharm integration tools")
 
-    if "register_otel_query_tools" in allowed and hot_store:
-        from akosha.mcp.tools.otel_tools import register_otel_query_tools
-
-        register_otel_query_tools(app, hot_store)
-        logger.info("Registered OTel query tools")
+    # OTel query tools are wired through the W0 profile path
+    # (akosha.mcp.tools.profiles.register_otel_query_group) via the
+    # lifespan's _apply_tool_profile call. The legacy register_all_tools
+    # path here is dead code — see
+    # https://memory/mcp-tool-registration-dual-track-drift-pattern.md
+    # for the dual-track audit that identified this drift.
 
     if "register_fitness_tools" in allowed:
         from akosha.processing.fitness_analyzer import FitnessAnalyzer
