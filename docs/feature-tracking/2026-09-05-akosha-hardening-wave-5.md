@@ -116,24 +116,38 @@ pre-Wave-5 behaviour for tests bypassing the full lifespan).
 
 ## Followups
 
+### Closed
+
+- [x] **Replace remaining ``assert True`` cases with meaningful assertions.**
+      W4.5 closed 7; the 2026-09-06 followup sweep (commit ``b9c0d84``)
+      closed the remaining 8 across 4 files: ``test_mcp_akosha_tools_simple.py``,
+      ``test_mcp_health_tools.py``, ``test_security_logging.py``,
+      ``test_shell.py``. Each replacement asserts a file-specific
+      post-condition (AttributeError contract, return-None contract,
+      elapsed-time budget, label-dict pins, exit-code assertion).
+
+- [x] **Default profile = full in dev.** Investigation showed
+      ``ToolProfile.from_env('AKOSHA_TOOL_PROFILE')`` already returns
+      ``ToolProfile.FULL`` when the env var is unset — the
+      ``standard``-as-default claim in the original Wave 5 spec was
+      wrong. The actual fix was the misleading static hint string in
+      ``discover_tools`` (commit ``17499d7``); replaced with three
+      profile-aware variants (full/standard/minimal).
+
+### Open
+
 - [ ] **OTel trace ingester.** Build ``akosha/ingestion/otel_ingester.py``
       that polls an OTel collector HTTP endpoint and writes spans to
       ``hot_store``. Needed for ``query_local_traces`` to return data
       independent of the BodaiToolInvocationSubscriber's Redis feed.
-
-- [ ] **Replace 7 ``assert True`` cases with meaningful assertions.**
-      (W4 followup still open; closed a similar pattern in W4.5.)
+      Out of scope for Wave 5; needs an architectural design pass with
+      an OTel HTTP source contract. Brainstorm session pending.
 
 - [ ] **Crackerjack version bump to 0.15.0.** Will resolve the 4
       pre-existing ``test_version_sync.py`` failures and the
       ``APP_VERSION`` / ``SERVICE_VERSION`` drift from Wave 4.
-
-- [ ] **Default profile = full in dev.** Currently the
-      ``standard`` profile (default) does not register
-      ``query_local_traces`` or ``search_code_patterns``. Operators
-      who don't set ``AKOSHA_TOOL_PROFILE=full`` can't see the empty
-      feeds even if they want to. Investigate switching the dev
-      default.
+      User-deferred to a crackerjack run per the 2026-09-05
+      "don't bump version. we will do that through cj" directive.
 
 - [ ] **Live MCP server smoke test in CI.** The marker-based
       ``_run()`` approach works for the smoke test but a true
@@ -141,4 +155,5 @@ pre-Wave-5 behaviour for tests bypassing the full lifespan).
       the CodeGraphIngester's first poll, and assert
       ``hot_store.list_code_graphs()`` returns ingested data from a
       mock Session-Buddy. Out of scope for Wave 5 (needs a mock
-      Session-Buddy MCP server).
+      Session-Buddy MCP server). Brainstorm session pending; the mock
+      MCP server is its own architectural surface.
