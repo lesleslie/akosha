@@ -144,6 +144,21 @@ def clear_shared_services() -> None:
     _shared_kg_builder = None
 
 
+def _env_truthy(name: str) -> bool:
+    """Read an opt-out / toggle env var and interpret it as a truthy flag.
+
+    Returns True when the variable is set to one of ``"1"``, ``"true"``,
+    ``"yes"`` (case-insensitive). Absence, empty string, or any other value
+    yields False. Centralising the literal avoids the 4× duplication of
+    ``os.getenv(NAME, "").lower() not in ("1", "true", "yes")`` across the
+    opt-out gates below.
+
+    Note: the inverse sense ("not in (..)") means an *absent* env var
+    produces False, which is the natural "feature on by default" semantic.
+    """
+    return os.getenv(name, "").lower() in ("1", "true", "yes")
+
+
 def _get_mcp_url() -> str:
     """Get Akosha's MCP server URL from environment or config.
 
@@ -216,7 +231,7 @@ async def _register_component_to_dhara(mcp_url: str) -> None:
     # is unreachable; without this, every lifespan entry in an offline test
     # suite hangs for 31s. Setting ``AKOSHA_SKIP_DHARA_REGISTRATION=1``
     # short-circuits both Phase 1 (retry) and Phase 2 (heartbeat).
-    if os.getenv("AKOSHA_SKIP_DHARA_REGISTRATION", "").lower() in ("1", "true", "yes"):
+    if _env_truthy("AKOSHA_SKIP_DHARA_REGISTRATION"):
         logger.debug("Phase 0: skipped via AKOSHA_SKIP_DHARA_REGISTRATION")
         return
 
@@ -499,7 +514,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # ``AKOSHA_SKIP_CODE_GRAPH_INGESTER=1`` for offline test suites.
         # ------------------------------------------------------------------
         global _code_graph_ingester
-        if os.getenv("AKOSHA_SKIP_CODE_GRAPH_INGESTER", "").lower() not in ("1", "true", "yes"):
+        if not _env_truthy("AKOSHA_SKIP_CODE_GRAPH_INGESTER"):
             try:
                 from akosha.ingestion.code_graph_ingester import CodeGraphIngester
 
@@ -539,7 +554,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # ``AKOSHA_SKIP_OTEL_INGESTER=1`` for offline test suites.
         # ------------------------------------------------------------------
         global _otel_trace_ingester
-        if os.getenv("AKOSHA_SKIP_OTEL_INGESTER", "").lower() not in ("1", "true", "yes"):
+        if not _env_truthy("AKOSHA_SKIP_OTEL_INGESTER"):
             try:
                 from akosha.ingestion.otel_ingester import OtelTraceIngester
 
@@ -634,7 +649,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
                         "kg_refresh loop iteration failed (%s); will retry", exc
                     )
 
-        if os.getenv("AKOSHA_SKIP_KG_REFRESH", "").lower() not in ("1", "true", "yes"):
+        if not _env_truthy("AKOSHA_SKIP_KG_REFRESH"):
             global _kg_refresh_task
             _kg_refresh_task = asyncio.create_task(
                 _kg_refresh_loop(), name="akosha.kg_refresh"
