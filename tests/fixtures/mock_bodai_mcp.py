@@ -257,4 +257,28 @@ class MockBodaiEcosystem:
         await self.stop()
 
 
-__all__ = ["MockBodaiEcosystem", "MockOtelCollector", "MockSessionBuddyMCP"]
+__all__ = ["MockBodaiEcosystem", "MockOtelCollector", "MockSessionBuddyMCP", "make_canned_span"]
+
+
+def make_canned_span(
+    span_id: str = "b7ad6b7169203331",
+    name: str = "test.span",
+    start_unix_nano: str = "1700000000000000000",
+    task_class: str = "CODE_GENERATION",
+) -> dict[str, Any]:
+    """Return a single OTel span shaped like OTLP/HTTP JSON.
+
+    ``start_unix_nano`` defaults to a 2023 timestamp; tests that need
+    the span to pass a snapshot-poll collector's ``since`` filter
+    must pass the current ``time.time_ns()`` explicitly.
+    """
+    return {
+        "traceId": "0af7651916cd43dd8448eb211c80319c",
+        "spanId": span_id,
+        "name": name,
+        "startTimeUnixNano": start_unix_nano,
+        "endTimeUnixNano": str(int(start_unix_nano) + 1_000_000),
+        "attributes": [
+            {"key": "task.class", "value": {"stringValue": task_class}},
+        ],
+    }

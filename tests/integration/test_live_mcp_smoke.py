@@ -301,3 +301,4 @@ async def test_ecosystem_runs_both_ingesters_concurrently(
             ), f"missing akosha concurrent span; got: {[t.get('content', '')[:80] for t in traces]}"
         finally:
             await otel_ingester.stop()
+            await sb_ingester.stop()
