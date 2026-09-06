@@ -394,6 +394,9 @@ class TestSecurityLoggingIntegration:
             1,
             {"severity": "INFO"},
         )
+        assert mock_rc.call_count == 1, (
+            "SecurityLogger.log_auth_success should record exactly one counter"
+        )
         log.removeHandler(handler)
 
 

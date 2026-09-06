@@ -115,18 +115,32 @@ def _has_assertion_or_raises(func: ast.FunctionDef) -> bool:
 
     def _is_call_only_body(stmts: list[ast.stmt]) -> bool:
         """True iff every non-trivial stmt is a bare call, an assignment
-        whose value is a call or a literal/lambda (local state setup),
-        or a ``with`` block whose body is all call expressions (i.e. the
-        body is nothing but side-effect calls + local state setup).
+        from a call/Name/Constant (local state setup), or a ``with`` block
+        whose body is all call expressions — AND there is at least one
+        actual ``Call`` expression somewhere in the stmts. The Call-presence
+        requirement prevents accepting bodies like
+        ``x = some_complex_thing_returning_none()`` whose only effect
+        is a side-effect inside ``some_complex_thing`` that's never
+        verified by pytest, and prevents accepting pure-literal bodies
+        like ``x = 42; y = 'a'`` whose only effect is binding names.
         """
+
+        def _has_call(node: ast.AST) -> bool:
+            """Walk any subtree; return True iff any Call node exists."""
+            for child in ast.walk(node):
+                if isinstance(child, ast.Call):
+                    return True
+            return False
+
+        if not any(_has_call(s) for s in stmts):
+            return False
         for s in stmts:
             if isinstance(s, ast.Expr) and isinstance(s.value, ast.Call):
                 continue
-            if isinstance(s, ast.Assign):
-                # Allow assignment of any value — local state setup is
-                # not a runtime side-effect that could mask a real
-                # failure. The test's "implicit assertion" is that
-                # every subsequent call doesn't raise.
+            if (
+                isinstance(s, ast.Assign)
+                and isinstance(s.value, (ast.Call, ast.Name, ast.Constant))
+            ):
                 continue
             if isinstance(s, ast.With) and all(
                 isinstance(inner, ast.Expr)

@@ -71,3 +71,81 @@ def test_no_empty_tests() -> None:
         f"`.venv/bin/python scripts/audit_empty_tests.py` to see the "
         f"full inventory, then add a real assertion to each."
     )
+
+
+def test_scanner_recognizes_explicit_assert() -> None:
+    """Regression: a bare ``assert x == y`` body is non-empty."""
+    from scripts.audit_empty_tests import _has_assertion_or_raises
+
+    func = ast.parse("def test_x():\n    assert 1 == 1\n").body[0]
+    assert isinstance(func, ast.FunctionDef)
+    assert _has_assertion_or_raises(func) is True
+
+
+def test_scanner_recognizes_pytest_raises() -> None:
+    """Regression: a ``with pytest.raises(...)`` body is non-empty."""
+    from scripts.audit_empty_tests import _has_assertion_or_raises
+
+    func = ast.parse(
+        "def test_x():\n"
+        "    import pytest\n"
+        "    with pytest.raises(ValueError):\n"
+        "        raise ValueError('boom')\n"
+    ).body[0]
+    assert isinstance(func, ast.FunctionDef)
+    assert _has_assertion_or_raises(func) is True
+
+
+def test_scanner_accepts_call_only_body() -> None:
+    """Regression: a body that is calls + state setup is non-empty
+    because pytest would fail the test if any call raised."""
+    from scripts.audit_empty_tests import _has_assertion_or_raises
+
+    func = ast.parse(
+        "def test_x():\n"
+        "    foo = build()\n"
+        "    bar = something\n"
+        "    foo.run()\n"
+        "    cleanup()\n"
+    ).body[0]
+    assert isinstance(func, ast.FunctionDef)
+    assert _has_assertion_or_raises(func) is True
+
+
+def test_scanner_rejects_pure_assignment_body_without_calls() -> None:
+    """Regression: a body that is just state setup with no Call and no
+    assert is empty — pytest cannot fail such a test."""
+    from scripts.audit_empty_tests import _has_assertion_or_raises
+
+    func = ast.parse(
+        "def test_x():\n"
+        "    foo = 'literal'\n"
+        "    bar = 42\n"
+    ).body[0]
+    assert isinstance(func, ast.FunctionDef)
+    assert _has_assertion_or_raises(func) is False
+
+
+def test_scanner_rejects_lambda_assignment() -> None:
+    """Regression: ``handler.emit = lambda r: ...`` is not a state-setup
+    Assign(Call|Name|Constant) — reject so pytest doesn't silently miss
+    test behavior hidden in a lambda body."""
+    from scripts.audit_empty_tests import _has_assertion_or_raises
+
+    func = ast.parse(
+        "def test_x():\n"
+        "    foo = make_obj()\n"
+        "    foo.emit = lambda r: r.append('x')\n"
+        "    foo.run()\n"
+    ).body[0]
+    assert isinstance(func, ast.FunctionDef)
+    assert _has_assertion_or_raises(func) is False
+
+
+def test_scanner_rejects_docstring_only_body() -> None:
+    """Regression: a body that is docstring + Pass is empty."""
+    from scripts.audit_empty_tests import _has_assertion_or_raises
+
+    func = ast.parse('def test_x():\n    """docstring only."""\n    pass\n').body[0]
+    assert isinstance(func, ast.FunctionDef)
+    assert _has_assertion_or_raises(func) is False
