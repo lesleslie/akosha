@@ -94,8 +94,22 @@ class OtelTraceIngester:
         self._running = False
         if self._poll_task:
             self._poll_task.cancel()
-            with suppress(asyncio.CancelledError):
+            # CancelledError is the expected outcome of cancel(); suppress
+            # it explicitly. Any OTHER exception escaping the polling loop
+            # during shutdown is a real bug — log it but don't re-raise
+            # so callers can still clean up their own resources (the
+            # close() below, the lifespan teardown, etc.) without losing
+            # the signal. The detail is recorded via logger.exception so
+            # the post-mortem trail isn't lost.
+            try:
                 await self._poll_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.exception(
+                    "OTel polling loop raised during shutdown; "
+                    "continuing teardown to avoid leaking the HTTP client"
+                )
         if self._http_client:
             await self._http_client.aclose()
             self._http_client = None
@@ -116,45 +130,47 @@ class OtelTraceIngester:
           kept for forensics and to support a future per-system
           fetch. If you need strict per-system dedup, expose a
           batched endpoint that takes per-system ``since`` tuples.
+
+        Cancellation: the inner per-span handler re-raises so the
+        cycle-level ``except asyncio.CancelledError`` catches it and
+        breaks the loop. No outer wrapper is needed — the inner
+        handler is sufficient.
         """
-        try:
-            while self._running:
-                try:
-                    self._cycles_total += 1
-                    since_unix_nano = self._now_unix_nano() - (
-                        self.initial_lookback_seconds * 1_000_000_000
-                    )
-                    # If we already have watermarks, use the most
-                    # recent one so we don't re-pull old spans.
-                    # Note: this is the *global* watermark, not per-system.
-                    if self._watermarks:
-                        since_unix_nano = max(self._watermarks.values())
-                    spans_by_system = await self._fetch_spans(
-                        since_unix_nano=since_unix_nano
-                    )
-                    for system_id, span in spans_by_system:
-                        try:
-                            await self._ingest_span(span, system_id=system_id)
-                        except asyncio.CancelledError:
-                            raise
-                        except Exception as e:
-                            self._errors_total += 1
-                            logger.exception(
-                                f"OTel span ingestion failed for "
-                                f"span_id={span.get('spanId', 'unknown')}: {e}"
-                            )
-                    self._last_poll_at = time.time()
-                    # Wait before next poll
-                    await asyncio.sleep(self.poll_interval_seconds)
-                except asyncio.CancelledError:
-                    logger.info("OTel polling loop cancelled")
-                    break
-                except Exception as e:
-                    self._errors_total += 1
-                    logger.exception(f"Error in OTel polling loop: {e}")
-                    await asyncio.sleep(self.poll_interval_seconds)
-        except asyncio.CancelledError:
-            pass
+        while self._running:
+            try:
+                self._cycles_total += 1
+                since_unix_nano = self._now_unix_nano() - (
+                    self.initial_lookback_seconds * 1_000_000_000
+                )
+                # If we already have watermarks, use the most
+                # recent one so we don't re-pull old spans.
+                # Note: this is the *global* watermark, not per-system.
+                if self._watermarks:
+                    since_unix_nano = max(self._watermarks.values())
+                spans_by_system = await self._fetch_spans(
+                    since_unix_nano=since_unix_nano
+                )
+                for system_id, span in spans_by_system:
+                    try:
+                        await self._ingest_span(span, system_id=system_id)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as e:
+                        self._errors_total += 1
+                        logger.exception(
+                            f"OTel span ingestion failed for "
+                            f"span_id={span.get('spanId', 'unknown')}: {e}"
+                        )
+                self._last_poll_at = time.time()
+                # Wait before next poll
+                await asyncio.sleep(self.poll_interval_seconds)
+            except asyncio.CancelledError:
+                logger.info("OTel polling loop cancelled")
+                break
+            except Exception as e:
+                self._errors_total += 1
+                logger.exception(f"Error in OTel polling loop: {e}")
+                await asyncio.sleep(self.poll_interval_seconds)
 
     async def _fetch_spans(
         self, since_unix_nano: int
