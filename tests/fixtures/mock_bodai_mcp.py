@@ -52,7 +52,13 @@ class MockSessionBuddyMCP:
         if scope["type"] != "http":
             return
         request = Request(scope, receive)
-        if not request.url.path.endswith("/tools/call"):
+        # CodeGraphIngester builds the full URL as
+        # ``f"{session_buddy_url}/tools/call"`` and session_buddy_url
+        # is ``http://127.0.0.1:<port>/mcp`` — so the absolute request
+        # path is ``/mcp/tools/call``. Use exact match (not endswith) so
+        # a future path like ``/admin-tools/call`` doesn't accidentally
+        # satisfy this guard.
+        if request.url.path != "/mcp/tools/call":
             response = JSONResponse({"error": "not found"}, status_code=404)
             await response(scope, receive, send)
             return
@@ -113,7 +119,11 @@ class MockOtelCollector:
         if scope["type"] != "http":
             return
         request = Request(scope, receive)
-        if not request.url.path.endswith("/v1/traces"):
+        # OtelTraceIngester polls ``self.otlp_endpoint`` which is set to
+        # ``http://127.0.0.1:<port>/v1/traces`` by MockBodaiEcosystem.
+        # Exact match so a future path like ``/admin-v1/traces`` can't
+        # accidentally satisfy this guard.
+        if request.url.path != "/v1/traces":
             response = JSONResponse({"error": "not found"}, status_code=404)
             await response(scope, receive, send)
             return

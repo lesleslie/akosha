@@ -44,11 +44,11 @@ def mock_session_buddy() -> MockSessionBuddyMCP:
 async def test_session_buddy_returns_canned_code_graphs(
     mock_session_buddy: MockSessionBuddyMCP,
 ) -> None:
-    """A POST /tools/call with list_code_graphs returns the canned graphs."""
+    """A POST /mcp/tools/call with list_code_graphs returns the canned graphs."""
     transport = httpx.ASGITransport(app=mock_session_buddy)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
-            "/tools/call",
+            "/mcp/tools/call",
             json={"name": "list_code_graphs", "arguments": {"limit": 100}},
         )
     assert response.status_code == 200
@@ -63,11 +63,11 @@ async def test_session_buddy_returns_canned_code_graphs(
 async def test_session_buddy_get_code_graph_returns_full_payload(
     mock_session_buddy: MockSessionBuddyMCP,
 ) -> None:
-    """A POST /tools/call with get_code_graph returns the canned full graph."""
+    """A POST /mcp/tools/call with get_code_graph returns the canned full graph."""
     transport = httpx.ASGITransport(app=mock_session_buddy)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
-            "/tools/call",
+            "/mcp/tools/call",
             json={
                 "name": "get_code_graph",
                 "arguments": {
@@ -91,7 +91,7 @@ async def test_session_buddy_rejects_unknown_tool(
     transport = httpx.ASGITransport(app=mock_session_buddy)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
-            "/tools/call", json={"name": "unknown_tool", "arguments": {}}
+            "/mcp/tools/call", json={"name": "unknown_tool", "arguments": {}}
         )
     assert response.status_code == 200  # JSON-RPC convention: error in body
     body = response.json()
@@ -158,10 +158,11 @@ async def test_ecosystem_start_yields_urls_and_stops_cleanly() -> None:
         }
     ]
     async with MockBodaiEcosystem(code_graphs=code_graphs, otel_spans=spans) as eco:
-        # session_buddy_url is the base; the mock serves /tools/call under it.
+        # session_buddy_url ends in /mcp; the mock serves /mcp/tools/call
+        # under that base path. CodeGraphIngester appends /tools/call to
+        # the base, producing the absolute path /mcp/tools/call.
         assert eco.session_buddy_url.startswith("http://127.0.0.1:")
         assert eco.otel_endpoint.startswith("http://127.0.0.1:")
-        # session_buddy_url + /tools/call must be reachable
         async with _httpx.AsyncClient() as c:
             r = await c.post(
                 eco.session_buddy_url + "/tools/call",
