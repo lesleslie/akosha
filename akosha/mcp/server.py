@@ -506,9 +506,16 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 session_buddy_endpoint = os.getenv(
                     "SESSION_BUDDY_MCP_URL", "http://localhost:8678/mcp"
                 )
+                # ``AKOSHA_CODE_GRAPH_POLL_SECONDS`` lets test suites and
+                # operators shorten the 60s default. Documented in
+                # docs/superpowers/specs/2026-09-06-live-mcp-smoke-test-design.md
+                code_graph_poll_seconds = int(
+                    os.getenv("AKOSHA_CODE_GRAPH_POLL_SECONDS", "60")
+                )
                 _code_graph_ingester = CodeGraphIngester(
                     hot_store=hot_store,
                     session_buddy_endpoint=session_buddy_endpoint,
+                    poll_interval_seconds=code_graph_poll_seconds,
                 )
                 await _code_graph_ingester.start()
                 logger.info(
@@ -540,11 +547,21 @@ def create_app(mode: Any | None = None) -> FastMCP:
                     "AKOSHA_OTLP_ENDPOINT", "http://localhost:4318/v1/traces"
                 )
                 poll_seconds = int(os.getenv("AKOSHA_OTEL_POLL_SECONDS", "60"))
+                # Spec-listed knobs (see
+                # docs/superpowers/specs/2026-09-06-otel-trace-ingester-design.md).
+                max_spans_per_poll = int(
+                    os.getenv("AKOSHA_OTEL_MAX_SPANS_PER_POLL", "500")
+                )
+                initial_lookback_seconds = int(
+                    os.getenv("AKOSHA_OTEL_INITIAL_LOOKBACK_SECONDS", "3600")
+                )
                 _otel_trace_ingester = OtelTraceIngester(
                     hot_store=hot_store,
                     embedding_service=embedding_service,
                     otlp_endpoint=otel_endpoint,
                     poll_interval_seconds=poll_seconds,
+                    max_spans_per_poll=max_spans_per_poll,
+                    initial_lookback_seconds=initial_lookback_seconds,
                 )
                 await _otel_trace_ingester.start()
                 logger.info(

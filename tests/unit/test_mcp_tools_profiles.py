@@ -165,3 +165,26 @@ def test_register_health_tools_akosha_delegates_to_shared_contract(
         f"drifted from akosha.__version__ {__version__!r}"
     )
     assert kwargs["dependencies"] == tools_module.DEFAULT_DEPENDENCIES
+
+
+def test_readme_tool_count_matches_full_registrations() -> None:
+    """Sync-guard: README's tool count claim must match the FULL profile.
+
+    Pinned after review found README claimed 25 tools while the FULL
+    profile actually registers 26 (6 minimal + 20 not_loaded in
+    ``tests/unit/test_mcp_tools_profiles.py::test_discover_tools_for_minimal_profile``).
+    """
+    from pathlib import Path
+
+    readme = Path(__file__).resolve().parents[2] / "README.md"
+    text = readme.read_text(encoding="utf-8")
+    # FULL count is 26 = sum of all groups registered in
+    # FULL_REGISTRATIONS. Each register_*_group contributes at least 1
+    # tool. ``loaded_count + not_loaded_count == 26`` is pinned in
+    # tests/unit/test_mcp_tools_profiles.py:58.
+    expected_count = 26
+    assert f"({expected_count} tools)" in text, (
+        f"README.md tool count missing '({expected_count} tools)'; "
+        f"checking that the FULL profile claim matches the registration"
+        f"map (currently {expected_count} tools)."
+    )

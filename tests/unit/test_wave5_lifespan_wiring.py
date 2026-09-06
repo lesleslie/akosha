@@ -169,9 +169,16 @@ def lifespan_deps(monkeypatch: pytest.MonkeyPatch):
     ingester_instances: list[Any] = []
 
     class FakeCodeGraphIngester:
-        def __init__(self, hot_store: Any, session_buddy_endpoint: str = "") -> None:
+        def __init__(
+            self,
+            hot_store: Any,
+            session_buddy_endpoint: str = "",
+            poll_interval_seconds: int = 60,
+            **_kwargs: Any,
+        ) -> None:
             self.hot_store = hot_store
             self.session_buddy_endpoint = session_buddy_endpoint
+            self.poll_interval_seconds = poll_interval_seconds
             self._running = False
             self.start_calls = 0
             self.stop_calls = 0

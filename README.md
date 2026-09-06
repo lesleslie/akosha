@@ -386,9 +386,9 @@ akosha start --host 0.0.0.0 --port 8000
 ### MCP Tools (Profile-Gated Inventory)
 
 Akosha exposes its tools via the `AKOSHA_TOOL_PROFILE` environment variable.
-The list below is the **FULL profile** (25 tools), which is the default.
+The list below is the **FULL profile** (26 tools), which is the default.
 Profiles: **MINIMAL** (6 tools, health probes only) → **STANDARD** (14 tools,
-adds core memory aggregation) → **FULL** (25 tools, adds Session-Buddy,
+adds core memory aggregation) → **FULL** (26 tools, adds Session-Buddy,
 PyCharm, OTel, fitness, and EventBridge integrations).
 
 Source of truth: `akosha/mcp/tools/profiles.py:60-95`
@@ -511,7 +511,7 @@ ______________________________________________________________________
 - Mock embedding service
 - Time-series analytics
 - Cross-system correlation
-- 25 MCP tools integrated (FULL profile)
+- 26 MCP tools integrated (FULL profile)
 
 ### Phase 3: Production Hardening
 
