@@ -321,8 +321,9 @@ class TestComputeChecksum:
     def test_is_hex_string(self) -> None:
         svc = AgingService(_make_hot_store(), _make_warm_store())
         result = svc._compute_checksum("data")
-        int(result, 16)  # Raises if not valid hex
-        assert True
+        # Raises on non-hex input (line above); then verify every char is hex
+        int(result, 16)
+        assert all(c in "0123456789abcdef" for c in result.lower())
 
     def test_different_inputs_different_hashes(self) -> None:
         svc = AgingService(_make_hot_store(), _make_warm_store())

@@ -590,9 +590,14 @@ class TestRegisterPyCharmTools:
 
         old = mod._pycharm_adapter
         mod._pycharm_adapter = None
-        register_pycharm_tools(MagicMock(), MagicMock())
+        # MagicMock registry is not a FastMCPToolRegistry; the function
+        # must not raise, but it also must not register any tools
+        # (app.tool should not be called).
+        app = MagicMock()
+        app.tool = MagicMock()
+        register_pycharm_tools(app, MagicMock())
         mod._pycharm_adapter = old
-        assert True
+        assert app.tool.call_count == 0
 
     def test_registers_5_tools(self):
         import akosha.mcp.tools.pycharm_tools as mod

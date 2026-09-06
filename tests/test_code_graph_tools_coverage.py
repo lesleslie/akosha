@@ -531,8 +531,10 @@ class TestGetCrossRepoFunctionUsage:
 class TestRegisterCodeGraphAnalysisTools:
     def test_invalid_registry(self):
         hot_store = MagicMock()
-        register_code_graph_analysis_tools("not a registry", hot_store)
-        assert True
+        # String is not a FastMCPToolRegistry — function must return without
+        # raising and must not crash trying to iterate .tools.
+        result = register_code_graph_analysis_tools("not a registry", hot_store)
+        assert result is None
 
     def test_valid_registry(self):
         registry, captured = _make_registry()
