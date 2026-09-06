@@ -10,8 +10,11 @@ embedding_service is the lifespan-owned EmbeddingService.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import time
 from contextlib import suppress
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import httpx2 as httpx
@@ -81,7 +84,154 @@ class OtelTraceIngester:
         logger.info("Stopped OTel trace ingestion")
 
     async def _polling_loop(self) -> None:
-        """Main polling loop. Implemented in Task 2."""
-        # Placeholder; Task 2 fills this in.
-        while self._running:
-            await asyncio.sleep(self.poll_interval_seconds)
+        """Main polling loop. One cycle per ``poll_interval_seconds``."""
+        try:
+            while self._running:
+                try:
+                    # Each system_id polls independently; the watermark
+                    # gates the since parameter.
+                    for system_id in list(self._watermarks.keys() or ["__default__"]):
+                        watermark = self._watermarks.get(system_id)
+                        if watermark is None:
+                            # Restart recovery window
+                            watermark = self._now_unix_nano() - (
+                                self.initial_lookback_seconds * 1_000_000_000
+                            )
+                        spans = await self._fetch_spans(since_unix_nano=watermark)
+                        if spans:
+                            logger.info(
+                                f"Fetched {len(spans)} OTel spans for {system_id}"
+                            )
+                        for span in spans[: self.max_spans_per_poll]:
+                            try:
+                                await self._ingest_span(span, system_id=system_id)
+                            except asyncio.CancelledError:
+                                raise
+                            except Exception as e:
+                                logger.exception(
+                                    f"OTel span ingestion failed for "
+                                    f"span_id={span.get('spanId', 'unknown')}: {e}"
+                                )
+                    # Wait before next poll
+                    await asyncio.sleep(self.poll_interval_seconds)
+                except asyncio.CancelledError:
+                    logger.info("OTel polling loop cancelled")
+                    break
+                except Exception as e:
+                    logger.exception(f"Error in OTel polling loop: {e}")
+                    await asyncio.sleep(self.poll_interval_seconds)
+        except asyncio.CancelledError:
+            pass
+
+    async def _fetch_spans(self, since_unix_nano: int) -> list[dict[str, Any]]:
+        """Fetch spans newer than ``since_unix_nano`` from the OTLP/HTTP endpoint.
+
+        Returns a flat list of span dicts. OTLP/HTTP wraps spans in
+        ``resourceSpans[].scopeSpans[].spans[]``; this method unwraps
+        that nesting.
+        """
+        if self._http_client is None:
+            raise RuntimeError("HTTP client not initialized; call start() first")
+        response = await self._http_client.get(
+            self.otlp_endpoint,
+            params={"since": str(since_unix_nano)},
+        )
+        response.raise_for_status()
+        body = response.json()
+        result: list[dict[str, Any]] = []
+        for resource_spans in body.get("resourceSpans", []):
+            for scope_spans in resource_spans.get("scopeSpans", []):
+                for span in scope_spans.get("spans", []):
+                    result.append(span)
+        return result
+
+    def _normalize_span(
+        self,
+        span: dict[str, Any],
+        system_id: str,
+        embedding: list[float],
+    ) -> Any:  # returns HotRecord; Any to avoid runtime import in TYPE_CHECKING
+        """Map an OTel span to a HotRecord.
+
+        ``content`` is a JSON dump of the span fields (sans traceId,
+        spanId, which are duplicated in the conversation_id and metadata).
+        ``metadata.attributes.task_class`` is extracted from the
+        ``task.class`` semantic attribute so ``query_local_traces`` can
+        filter on it via the existing SQL WHERE clause.
+        """
+        from akosha.storage.models import HotRecord
+
+        attrs = self._attrs_to_dict(span.get("attributes", []))
+        task_class = attrs.get("task.class")
+
+        # Serialize the span (drop spanId/traceId — those land in
+        # conversation_id and metadata.otel.trace_id).
+        span_for_content = {
+            k: v for k, v in span.items() if k not in ("traceId", "spanId")
+        }
+        content = json.dumps(span_for_content, sort_keys=True, default=str)
+
+        start_unix_nano = int(span.get("startTimeUnixNano", "0"))
+        ts = datetime.fromtimestamp(start_unix_nano / 1_000_000_000, tz=UTC)
+
+        return HotRecord(
+            system_id=system_id,
+            conversation_id=f"{system_id}:{span.get('spanId', '')}",
+            content=content,
+            embedding=embedding,
+            timestamp=ts,
+            metadata={
+                "attributes": {"task_class": task_class} if task_class else {},
+                "otel": {"trace_id": span.get("traceId", "")},
+            },
+        )
+
+    async def _ingest_span(
+        self,
+        span: dict[str, Any],
+        system_id: str,
+    ) -> None:
+        """Embed the span content, insert as a HotRecord, advance the watermark."""
+        content_for_embedding = (
+            f"{span.get('name', '')} "
+            f"{self._attrs_to_dict(span.get('attributes', []))}"
+        )
+        embedding_array = await self.embedding_service.generate_embedding(
+            content_for_embedding
+        )
+        record = self._normalize_span(
+            span, system_id=system_id, embedding=embedding_array.tolist()
+        )
+        await self.hot_store.insert(record)
+        # Watermark advances ONLY on successful insert.
+        start_unix_nano = int(span.get("startTimeUnixNano", "0"))
+        self._watermarks[system_id] = max(
+            self._watermarks.get(system_id, 0), start_unix_nano
+        )
+
+    @staticmethod
+    def _attrs_to_dict(attrs: list[dict[str, Any]] | None) -> dict[str, Any]:
+        """Flatten OTel attributes list ``[{key, value}]`` into a dict.
+
+        OTel value entries are wrapped: ``{"stringValue": "..."}`` or
+        ``{"intValue": "..."}``. We unwrap the stringValue/intValue
+        variant for the common cases.
+        """
+        result: dict[str, Any] = {}
+        for entry in attrs or []:
+            key = entry.get("key")
+            value_entry = entry.get("value", {})
+            if "stringValue" in value_entry:
+                result[key] = value_entry["stringValue"]
+            elif "intValue" in value_entry:
+                result[key] = int(value_entry["intValue"])
+            elif "boolValue" in value_entry:
+                result[key] = bool(value_entry["boolValue"])
+            else:
+                result[key] = value_entry
+        return result
+
+    @staticmethod
+    def _now_unix_nano() -> int:
+        """Current wall-clock time in unix nanoseconds (OTLP convention)."""
+        return int(time.time_ns())
