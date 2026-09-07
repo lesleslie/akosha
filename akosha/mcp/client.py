@@ -74,11 +74,9 @@ class BodaiComponentMCPClient:
     def session_id(self) -> Any:
         """Return the current MCP session ID, or None if not established.
 
-        Note: FastMCP v4 dropped the ``get_session_id`` callback that the
-        previous transport yielded as the third tuple element of
-        ``streamable_http_client``. ``self._get_session_id`` is retained
-        so this property still resolves through its prior path; with the
-        callback gone, it is always ``None`` after a successful session.
+        Populated from the third tuple element yielded by
+        ``streamable_http_client``; ``None`` before ``_ensure_session``
+        has run successfully.
         """
         if self._get_session_id is not None:
             return self._get_session_id()
@@ -101,11 +99,12 @@ class BodaiComponentMCPClient:
 
         self._transport_context = streamable_http_client(
             self.base_url,
-            http_client=http_client,
+            http_client=http_client,  # ty: ignore[invalid-argument-type]
             terminate_on_close=True,
         )
 
-        rs, ws = await self._transport_context.__aenter__()
+        rs, ws, get_session_id_callback = await self._transport_context.__aenter__()
+        self._get_session_id = get_session_id_callback
         self._session = ClientSession(rs, ws)
         await self._session.__aenter__()
         await self._session.initialize()

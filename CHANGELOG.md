@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.1] - 2026-09-06
+
+### Fixed
+
+- akosha: Sync 5 version stamps + README to 0.15.0 (T1-T5)
+
+### Build
+
+- deps+fix: FastMCP v4 migration (akosha Phase 2 — pin lift + client.py transport fix)
+
 ## [0.15.0] - 2026-09-06
 
 ### Added
@@ -20,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - akosha: Drop dead register_otel_query_tools from legacy path (M16)
-- akosha: Extract _env_truthy() helper to deduplicate opt-out env reads
+- akosha: Extract \_env_truthy() helper to deduplicate opt-out env reads
 
 ### Fixed
 
@@ -53,7 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - akosha: Cover dhara_http_client lifecycle + parse tolerance (+12 tests)
 - akosha: Cover embedding_dim exception branches (+5 tests)
 - akosha: Cover fitness_analyzer trace fetch + Dhara write + DLQ paths (+10 tests)
-- akosha: Dedupe mock + cancel _poll_task + close CodeGraphIngester (M5/M6/M7)
+- akosha: Dedupe mock + cancel \_poll_task + close CodeGraphIngester (M5/M6/M7)
 - akosha: Drift test recognizes Wave 5 W0 group registration path
 - akosha: Exact-path match in mock fixtures; update unit tests to match
 - akosha: Guard against empty no-assert tests (Task 4.3)

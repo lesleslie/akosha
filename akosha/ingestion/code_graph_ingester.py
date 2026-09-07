@@ -239,13 +239,10 @@ class CodeGraphIngester:
             # The ``hasattr`` short-circuit keeps MagicMock-based
             # tests working — they patch ``store_code_graph`` directly
             # without going through the isinstance chain.
-            if (
-                not isinstance(self.hot_store, HotStore)
-                and not hasattr(self.hot_store, "store_code_graph")
+            if not isinstance(self.hot_store, HotStore) and not hasattr(
+                self.hot_store, "store_code_graph"
             ):
-                logger.debug(
-                    "CodeGraphIngester: hot_store lacks store_code_graph; skipping write"
-                )
+                logger.debug("CodeGraphIngester: hot_store lacks store_code_graph; skipping write")
                 return True
             await self.hot_store.store_code_graph(  # ty: ignore[call-non-callable]
                 repo_path=graph_data["repo_path"],
