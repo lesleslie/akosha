@@ -96,7 +96,7 @@ class TestRegisterToDharaOnce:
             mock_client_cls.return_value = mock_instance
 
             result = await _register_to_dhara_once(
-                "http://localhost:8683",
+                "http://localhost:8683/mcp",
                 "component_endpoint/akosha",
                 "http://localhost:8682/mcp",
             )
@@ -104,7 +104,7 @@ class TestRegisterToDharaOnce:
             assert result == "success"
             mock_instance.post.assert_called_once()
             call_args = mock_instance.post.call_args
-            assert call_args[0][0] == "http://localhost:8683/tools/call"
+            assert call_args[0][0] == "http://localhost:8683/mcp/tools/call"
             assert call_args[1]["json"] == {
                 "name": "put",
                 "arguments": {
