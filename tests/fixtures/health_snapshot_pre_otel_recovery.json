@@ -1,0 +1,137 @@
+{
+  "_methodology": {
+    "purpose": "Captures the pre-recovery values produced by `_default_health_probe` in akosha/mcp/server.py for the local_traces_feed block. Used as a parity baseline so Phase 3 of the akosha OTel feed recovery plan can verify the post-change payload structurally (REQ-005).",
+    "captured_at": "2026-09-09",
+    "plan": "docs/superpowers/plans/2026-09-09-akosha-otel-feed-recovery.md (Phase 3, Tasks 3.1-3.3)",
+    "source_function": "akosha/mcp/server.py::_default_health_probe (lifespan closure, lines 665-817)",
+    "pre_change_formula": "local_traces_ok = (local_traces_count > 0 or not any_producer_ever_cycled or not any_producer_alive)",
+    "inputs_synthesis": "Each case documents the module-level global state (_otel_trace_ingester, _kg_refresh_task, _kg_refresh_cycles, _kg_refresh_errors, hot_store contents) that would produce the listed payload. The probe is a lifespan closure that cannot be invoked directly without spinning up the full server, so each payload was hand-derived by walking the exact pre-change code path with the listed inputs.",
+    "bug_under_test": "Case A (otel running, empty feed) currently reports ok=False even though the producer is alive and merely has not received spans yet. This violates the wire-up contract's intent (a running-but-empty feed should be tolerated as 'warming up' rather than degraded) and breaks Phase 3 REQ-005.",
+    "expected_post_change": [
+      "Case A: ok flips to True (the producer is warming up; not degraded)",
+      "Case A: a new feed_populated=false field appears in the payload",
+      "Case B: unchanged (ok=true, feed_populated=true)",
+      "Case C: unchanged (ok=true via the new otel_disabled short-circuit; feed_populated unchanged semantically since no producer was ever configured)"
+    ]
+  },
+  "case_a_otel_running_empty_feed": {
+    "description": "OtelTraceIngester is alive and polling (cycles_total=1, errors_total=1) but the hot_store has no trace rows yet. Pre-change formula reports ok=False even though the producer is alive.",
+    "inputs": {
+      "_otel_trace_ingester": {
+        "_running": true,
+        "_cycles_total": 1,
+        "_errors_total": 1,
+        "_last_poll_at": "2026-09-09T10:00:00+00:00",
+        "_poll_task": "<active asyncio.Task, done() == False>",
+        "otlp_endpoint": "http://localhost:4318/v1/traces"
+      },
+      "_kg_refresh_task": null,
+      "_kg_refresh_cycles": 0,
+      "_kg_refresh_errors": 0,
+      "hot_store.query_traces": "[]  (0 rows)"
+    },
+    "computed_intermediates": {
+      "local_traces_count": 0,
+      "local_traces_otel_running": true,
+      "local_traces_otel_cycles": 1,
+      "local_traces_otel_errors": 1,
+      "local_traces_otel_last_poll_at": "2026-09-09T10:00:00+00:00",
+      "otel_poll_task_is_not_none": true,
+      "otel_task_alive": true,
+      "kg_task_alive": false,
+      "any_producer_ever_cycled": true,
+      "any_producer_alive": true,
+      "local_traces_ok_pre_change": "0 > 0 OR NOT True OR NOT True = False OR False OR False = False"
+    },
+    "payload_local_traces_feed_pre_change": {
+      "ok": false,
+      "feed_entities_count": 0,
+      "cycles_total": 1,
+      "errors_total": 1,
+      "feed_last_updated_timestamp": "2026-09-09T10:00:00+00:00",
+      "otel_ingester_running": true,
+      "otel_endpoint": "http://localhost:4318/v1/traces",
+      "otel_cycles_total": 1,
+      "otel_errors_total": 1,
+      "source": "hot_store.query_traces (populated via kg_refresh + OtelTraceIngester)"
+    }
+  },
+  "case_b_otel_running_with_data": {
+    "description": "OtelTraceIngester is alive and has populated hot_store with 100 trace rows. Pre-change formula reports ok=True via the local_traces_count>0 short-circuit.",
+    "inputs": {
+      "_otel_trace_ingester": {
+        "_running": true,
+        "_cycles_total": 5,
+        "_errors_total": 0,
+        "_last_poll_at": "2026-09-09T10:05:00+00:00",
+        "_poll_task": "<active asyncio.Task, done() == False>",
+        "otlp_endpoint": "http://localhost:4318/v1/traces"
+      },
+      "_kg_refresh_task": null,
+      "_kg_refresh_cycles": 0,
+      "_kg_refresh_errors": 0,
+      "hot_store.query_traces": "[<100 rows>]"
+    },
+    "computed_intermediates": {
+      "local_traces_count": 100,
+      "local_traces_otel_running": true,
+      "local_traces_otel_cycles": 5,
+      "local_traces_otel_errors": 0,
+      "local_traces_otel_last_poll_at": "2026-09-09T10:05:00+00:00",
+      "otel_poll_task_is_not_none": true,
+      "otel_task_alive": true,
+      "kg_task_alive": false,
+      "any_producer_ever_cycled": true,
+      "any_producer_alive": true,
+      "local_traces_ok_pre_change": "100 > 0 OR NOT True OR NOT True = True OR False OR False = True"
+    },
+    "payload_local_traces_feed_pre_change": {
+      "ok": true,
+      "feed_entities_count": 100,
+      "cycles_total": 5,
+      "errors_total": 0,
+      "feed_last_updated_timestamp": "2026-09-09T10:05:00+00:00",
+      "otel_ingester_running": true,
+      "otel_endpoint": "http://localhost:4318/v1/traces",
+      "otel_cycles_total": 5,
+      "otel_errors_total": 0,
+      "source": "hot_store.query_traces (populated via kg_refresh + OtelTraceIngester)"
+    }
+  },
+  "case_c_otel_skipped_via_env": {
+    "description": "AKOSHA_SKIP_OTEL_INGESTER=1 — OtelTraceIngester was never constructed. No kg_refresh task either. Pre-change formula reports ok=True via the 'not any_producer_ever_cycled' and 'not any_producer_alive' clauses (both producers absent = no degradation possible).",
+    "inputs": {
+      "env": {"AKOSHA_SKIP_OTEL_INGESTER": "1"},
+      "_otel_trace_ingester": null,
+      "_kg_refresh_task": null,
+      "_kg_refresh_cycles": 0,
+      "_kg_refresh_errors": 0,
+      "hot_store.query_traces": "[]  (0 rows)"
+    },
+    "computed_intermediates": {
+      "local_traces_count": 0,
+      "local_traces_otel_running": false,
+      "local_traces_otel_cycles": 0,
+      "local_traces_otel_errors": 0,
+      "local_traces_otel_last_poll_at": null,
+      "otel_poll_task_is_not_none": false,
+      "otel_task_alive": false,
+      "kg_task_alive": false,
+      "any_producer_ever_cycled": false,
+      "any_producer_alive": false,
+      "local_traces_ok_pre_change": "0 > 0 OR NOT False OR NOT False = False OR True OR True = True"
+    },
+    "payload_local_traces_feed_pre_change": {
+      "ok": true,
+      "feed_entities_count": 0,
+      "cycles_total": 0,
+      "errors_total": 0,
+      "feed_last_updated_timestamp": null,
+      "otel_ingester_running": false,
+      "otel_endpoint": null,
+      "otel_cycles_total": 0,
+      "otel_errors_total": 0,
+      "source": "hot_store.query_traces (populated via kg_refresh + OtelTraceIngester)"
+    }
+  }
+}
