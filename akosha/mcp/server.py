@@ -760,6 +760,17 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # masked as ``done() -> ok`` — the audit failure case the
             # discipline was written to catch. Drop the ``done()``
             # exemption: a finished producer with no data is degraded.
+            #
+            # REQ-005 (Phase 3 OTel feed recovery): tolerate a running-but-empty
+            # producer as "warming up" rather than degraded, and emit
+            # ``feed_populated`` below so callers can distinguish empty-feed
+            # from crash-without-data. The producer-alive check above still
+            # flags a producer that died on its first cycle.
+            #
+            # REQ-007: honour the existing ``AKOSHA_SKIP_OTEL_INGESTER`` env
+            # var (no new opt-out). When set, the ingester was never
+            # constructed and ``otel_disabled`` short-circuits the formula.
+            otel_disabled = _env_truthy("AKOSHA_SKIP_OTEL_INGESTER")
             otel_poll_task = (
                 getattr(_otel_trace_ingester, "_poll_task", None)
                 if _otel_trace_ingester is not None
@@ -770,7 +781,10 @@ def create_app(mode: Any | None = None) -> FastMCP:
             any_producer_ever_cycled = _kg_refresh_cycles > 0 or local_traces_otel_cycles > 0
             any_producer_alive = kg_task_alive or otel_task_alive or local_traces_otel_running
             local_traces_ok = (
-                local_traces_count > 0 or not any_producer_ever_cycled or not any_producer_alive
+                otel_disabled
+                or (local_traces_count > 0)
+                or (not any_producer_ever_cycled)
+                or (not any_producer_alive)
             )
             checks["code_graphs_feed"] = {
                 "ok": code_graphs_ok,
@@ -802,6 +816,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
             checks["local_traces_feed"] = {
                 "ok": local_traces_ok,
                 "feed_entities_count": local_traces_count,
+                "feed_populated": local_traces_count > 0,
                 "cycles_total": _kg_refresh_cycles + local_traces_otel_cycles,
                 "errors_total": _kg_refresh_errors + local_traces_otel_errors,
                 "feed_last_updated_timestamp": local_traces_last_poll_at,
