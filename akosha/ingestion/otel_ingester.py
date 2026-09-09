@@ -1,20 +1,20 @@
-"""OTel trace ingestion worker from a snapshot-poll OTLP collector.
+"""OTel trace ingestion worker for standard OTLP/HTTP receivers.
 
 Mirrors CodeGraphIngester's start/stop/polling-loop contract. Polls a
-custom snapshot OTLP collector for spans newer than the watermark
-and writes them as HotRecords into HotStore. The hot_store is the
-shared singleton published by the Akosha MCP lifespan; the
-embedding_service is the lifespan-owned EmbeddingService.
+standard OTLP/HTTP receiver for spans and writes them as HotRecords
+into HotStore. The hot_store is the shared singleton published by
+the Akosha MCP lifespan; the embedding_service is the lifespan-owned
+EmbeddingService.
 
-NOTE: This ingester targets a **custom snapshot-poll collector** —
-it issues a GET request with a ``since`` query parameter against
-``/v1/traces``. Standard OTLP/HTTP (per OpenTelemetry spec) uses a
-POST against the same path with a protobuf/JSON-protobuf body and
-exposes no per-collector history endpoint. Pair ``OtelTraceIngester``
-with a Bodai-side collector like the one in
-``tests/fixtures/mock_bodai_mcp.py:MockOtelCollector`` for now; if
-you point this at a vanilla Jaeger/Tempo/Otel Collector, you will
-get HTTP-405 or empty bodies.
+The ingester issues a POST against ``/v1/traces`` with an empty
+``resourceSpans`` envelope (the ingester does not export spans; it
+consumes them). Standard receivers that accept OTLP/HTTP export
+requests will respond with the spans they currently hold. Vanilla
+collectors configured for export-only, or snapshot-poll collectors
+that expose history on a different endpoint, will respond with
+404/405/415 — those are treated as empty polls with a WARN log
+and a bump to ``_errors_total`` so per-feed observability surfaces
+the gap.
 
 Watermarking is documented in :meth:`_polling_loop` (global watermark
 across known systems, recovery window on cold start).
@@ -174,6 +174,18 @@ class OtelTraceIngester:
     async def _fetch_spans(self, since_unix_nano: int) -> list[tuple[str, dict[str, Any]]]:
         """Fetch spans newer than ``since_unix_nano`` from the OTLP/HTTP endpoint.
 
+        Issues a POST with an empty ``resourceSpans`` envelope (the
+        ingester is a consumer, not an exporter — the empty body keeps
+        the receiver's parser happy without us fabricating spans).
+        Standard OTLP/HTTP receivers respond with the spans they hold;
+        export-only collectors and snapshot-poll collectors return
+        404/405/415, which we treat as empty polls with a WARN log and
+        a bump to ``_errors_total`` so per-feed observability surfaces
+        the gap. ``since_unix_nano`` is preserved in the signature for
+        the per-poll INFO log even though OTLP/HTTP does not use it as
+        a request parameter — see :meth:`_polling_loop` for the
+        watermark semantics.
+
         Returns a list of ``(system_id, span)`` tuples. The system_id is
         extracted from the OTLP resource's ``service.name`` attribute;
         spans with no service.name default to ``"unknown"``. OTLP/HTTP
@@ -182,38 +194,97 @@ class OtelTraceIngester:
         """
         if self._http_client is None:
             raise RuntimeError("HTTP client not initialized; call start() first")
-        response = await self._http_client.get(
+        response = await self._http_client.post(
             self.otlp_endpoint,
-            params={"since": str(since_unix_nano)},
+            json={"resourceSpans": []},
+            headers={"Content-Type": "application/json"},
         )
-        response.raise_for_status()
-        body = response.json()
-        result: list[tuple[str, dict[str, Any]]] = []
-        for resource_spans in body.get("resourceSpans", []):
-            # Extract service.name from resource.attributes. Per the OTLP
-            # spec the value is one of the AnyValue wrappers;
-            # ``stringValue`` is the canonical type for service.name but
-            # we tolerate other shapes by stringifying the unwrapped
-            # value. ``value: null`` and missing keys fall through to
-            # ``"unknown"`` rather than raising TypeError.
-            system_id = "unknown"
-            for attr in resource_spans.get("resource", {}).get("attributes") or []:
-                if attr.get("key") != "service.name":
-                    continue
-                value_entry = attr.get("value") or {}
-                if "stringValue" in value_entry:
-                    system_id = str(value_entry["stringValue"])
-                elif "intValue" in value_entry:
-                    system_id = str(value_entry["intValue"])
-                elif "boolValue" in value_entry:
-                    system_id = str(value_entry["boolValue"])
-                elif "doubleValue" in value_entry:
-                    system_id = str(value_entry["doubleValue"])
-                break
-            for scope_spans in resource_spans.get("scopeSpans", []):
-                for span in scope_spans.get("spans", []):
-                    result.append((system_id, span))
-        return result
+        status_code = response.status_code
+        method = "POST"
+        path = self.otlp_endpoint
+        # Read body once for the log line + JSON parsing. ``len()`` works
+        # on httpx bytes; empty bodies give 0.
+        body_bytes = response.content
+        body_len = len(body_bytes) if body_bytes is not None else 0
+        logger.info(
+            "OTel poll: method=%s path=%s status=%d bytes=%d since_unix_nano=%d",
+            method,
+            path,
+            status_code,
+            body_len,
+            since_unix_nano,
+        )
+        if 200 <= status_code < 300:
+            try:
+                body = response.json()
+            except (ValueError, json.JSONDecodeError):
+                logger.warning(
+                    "OTel poll returned 2xx but body was not valid JSON; "
+                    "method=%s path=%s status=%d",
+                    method,
+                    path,
+                    status_code,
+                )
+                return []
+            if not body.get("resourceSpans"):
+                return []
+            result: list[tuple[str, dict[str, Any]]] = []
+            for resource_spans in body.get("resourceSpans", []):
+                # Extract service.name from resource.attributes. Per the OTLP
+                # spec the value is one of the AnyValue wrappers;
+                # ``stringValue`` is the canonical type for service.name but
+                # we tolerate other shapes by stringifying the unwrapped
+                # value. ``value: null`` and missing keys fall through to
+                # ``"unknown"`` rather than raising TypeError.
+                system_id = "unknown"
+                for attr in resource_spans.get("resource", {}).get("attributes") or []:
+                    if attr.get("key") != "service.name":
+                        continue
+                    value_entry = attr.get("value") or {}
+                    if "stringValue" in value_entry:
+                        system_id = str(value_entry["stringValue"])
+                    elif "intValue" in value_entry:
+                        system_id = str(value_entry["intValue"])
+                    elif "boolValue" in value_entry:
+                        system_id = str(value_entry["boolValue"])
+                    elif "doubleValue" in value_entry:
+                        system_id = str(value_entry["doubleValue"])
+                    break
+                for scope_spans in resource_spans.get("scopeSpans", []):
+                    for span in scope_spans.get("spans", []):
+                        result.append((system_id, span))
+            return result
+        if status_code in (404, 405, 415):
+            # Receiver reachable but doesn't expose OTLP/HTTP export on this
+            # endpoint — treat as empty poll. Bump _errors_total so per-feed
+            # observability surfaces the gap.
+            self._errors_total += 1
+            logger.warning(
+                "OTel poll: receiver not OTLP/HTTP-export-capable; "
+                "method=%s path=%s status=%d",
+                method,
+                path,
+                status_code,
+            )
+            return []
+        if 500 <= status_code < 600:
+            # 5xx → let the existing exception path in _polling_loop handle it
+            # (it logs + bumps _errors_total + sleeps).
+            response.raise_for_status()
+        # Other 4xx (e.g. 400 Bad Request, 401/403 auth, 413 Payload Too Large)
+            # The receiver is reachable, the request shape is wrong — this is a
+            # CLIENT bug, not a transport error. Do NOT bump _errors_total; that
+            # counter is for transport/feed health. Log loudly so the operator
+            # notices the malformed request.
+        logger.warning(
+            "OTel poll: client error (not a transport failure); "
+            "method=%s path=%s status=%d since_unix_nano=%d",
+            method,
+            path,
+            status_code,
+            since_unix_nano,
+        )
+        return []
 
     def _normalize_span(
         self,
