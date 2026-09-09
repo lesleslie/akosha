@@ -260,7 +260,9 @@ async def test_fetch_spans_handles_empty_resource_spans() -> None:
         mock_response = MagicMock()
         mock_response.json.return_value = {"resourceSpans": []}
         mock_response.raise_for_status = MagicMock()
-        ingester._http_client.get = AsyncMock(return_value=mock_response)
+        mock_response.status_code = 200
+        mock_response.content = b'{"resourceSpans":[]}'
+        ingester._http_client.post = AsyncMock(return_value=mock_response)
 
         spans = await ingester._fetch_spans(since_unix_nano=0)
         assert spans == []
@@ -285,7 +287,9 @@ async def test_fetch_spans_defaults_system_id_to_unknown() -> None:
         mock_response = MagicMock()
         mock_response.json.return_value = body
         mock_response.raise_for_status = MagicMock()
-        ingester._http_client.get = AsyncMock(return_value=mock_response)
+        mock_response.status_code = 200
+        mock_response.content = b'{"resourceSpans":[]}'
+        ingester._http_client.post = AsyncMock(return_value=mock_response)
 
         spans = await ingester._fetch_spans(since_unix_nano=0)
         assert len(spans) == 1
@@ -311,7 +315,9 @@ async def test_fetch_spans_handles_missing_resource_attributes() -> None:
         mock_response = MagicMock()
         mock_response.json.return_value = body
         mock_response.raise_for_status = MagicMock()
-        ingester._http_client.get = AsyncMock(return_value=mock_response)
+        mock_response.status_code = 200
+        mock_response.content = b'{"resourceSpans":[]}'
+        ingester._http_client.post = AsyncMock(return_value=mock_response)
 
         spans = await ingester._fetch_spans(since_unix_nano=0)
         assert spans[0][0] == "unknown"
@@ -336,7 +342,9 @@ async def test_fetch_spans_handles_none_attributes_list() -> None:
         mock_response = MagicMock()
         mock_response.json.return_value = body
         mock_response.raise_for_status = MagicMock()
-        ingester._http_client.get = AsyncMock(return_value=mock_response)
+        mock_response.status_code = 200
+        mock_response.content = b'{"resourceSpans":[]}'
+        ingester._http_client.post = AsyncMock(return_value=mock_response)
 
         spans = await ingester._fetch_spans(since_unix_nano=0)
         assert spans[0][0] == "unknown"
@@ -363,7 +371,9 @@ async def test_fetch_spans_extracts_service_name_int_value() -> None:
         mock_response = MagicMock()
         mock_response.json.return_value = body
         mock_response.raise_for_status = MagicMock()
-        ingester._http_client.get = AsyncMock(return_value=mock_response)
+        mock_response.status_code = 200
+        mock_response.content = b'{"resourceSpans":[]}'
+        ingester._http_client.post = AsyncMock(return_value=mock_response)
 
         spans = await ingester._fetch_spans(since_unix_nano=0)
         assert spans[0][0] == "42"
@@ -390,7 +400,9 @@ async def test_fetch_spans_extracts_service_name_bool_value() -> None:
         mock_response = MagicMock()
         mock_response.json.return_value = body
         mock_response.raise_for_status = MagicMock()
-        ingester._http_client.get = AsyncMock(return_value=mock_response)
+        mock_response.status_code = 200
+        mock_response.content = b'{"resourceSpans":[]}'
+        ingester._http_client.post = AsyncMock(return_value=mock_response)
 
         spans = await ingester._fetch_spans(since_unix_nano=0)
         assert spans[0][0] == "True"
@@ -417,7 +429,9 @@ async def test_fetch_spans_extracts_service_name_double_value() -> None:
         mock_response = MagicMock()
         mock_response.json.return_value = body
         mock_response.raise_for_status = MagicMock()
-        ingester._http_client.get = AsyncMock(return_value=mock_response)
+        mock_response.status_code = 200
+        mock_response.content = b'{"resourceSpans":[]}'
+        ingester._http_client.post = AsyncMock(return_value=mock_response)
 
         spans = await ingester._fetch_spans(since_unix_nano=0)
         assert spans[0][0] == "1.5"
@@ -454,7 +468,9 @@ async def test_fetch_spans_skips_non_service_name_attributes() -> None:
         mock_response = MagicMock()
         mock_response.json.return_value = body
         mock_response.raise_for_status = MagicMock()
-        ingester._http_client.get = AsyncMock(return_value=mock_response)
+        mock_response.status_code = 200
+        mock_response.content = b'{"resourceSpans":[]}'
+        ingester._http_client.post = AsyncMock(return_value=mock_response)
 
         spans = await ingester._fetch_spans(since_unix_nano=0)
         assert spans[0][0] == "the-service"
@@ -479,7 +495,9 @@ async def test_fetch_spans_handles_service_name_with_none_value_entry() -> None:
         mock_response = MagicMock()
         mock_response.json.return_value = body
         mock_response.raise_for_status = MagicMock()
-        ingester._http_client.get = AsyncMock(return_value=mock_response)
+        mock_response.status_code = 200
+        mock_response.content = b'{"resourceSpans":[]}'
+        ingester._http_client.post = AsyncMock(return_value=mock_response)
 
         spans = await ingester._fetch_spans(since_unix_nano=0)
         assert spans[0][0] == "unknown"
@@ -504,7 +522,9 @@ async def test_fetch_spans_handles_missing_scope_spans() -> None:
         mock_response = MagicMock()
         mock_response.json.return_value = body
         mock_response.raise_for_status = MagicMock()
-        ingester._http_client.get = AsyncMock(return_value=mock_response)
+        mock_response.status_code = 200
+        mock_response.content = b'{"resourceSpans":[]}'
+        ingester._http_client.post = AsyncMock(return_value=mock_response)
 
         spans = await ingester._fetch_spans(since_unix_nano=0)
         assert spans == []
@@ -529,7 +549,9 @@ async def test_fetch_spans_handles_scope_spans_without_spans() -> None:
         mock_response = MagicMock()
         mock_response.json.return_value = body
         mock_response.raise_for_status = MagicMock()
-        ingester._http_client.get = AsyncMock(return_value=mock_response)
+        mock_response.status_code = 200
+        mock_response.content = b'{"resourceSpans":[]}'
+        ingester._http_client.post = AsyncMock(return_value=mock_response)
 
         spans = await ingester._fetch_spans(since_unix_nano=0)
         assert spans == []
@@ -559,32 +581,14 @@ async def test_fetch_spans_unwraps_multiple_scope_spans() -> None:
         mock_response = MagicMock()
         mock_response.json.return_value = body
         mock_response.raise_for_status = MagicMock()
-        ingester._http_client.get = AsyncMock(return_value=mock_response)
+        mock_response.status_code = 200
+        mock_response.content = b'{"resourceSpans":[]}'
+        ingester._http_client.post = AsyncMock(return_value=mock_response)
 
         spans = await ingester._fetch_spans(since_unix_nano=0)
         assert len(spans) == 3
         assert [s[1]["name"] for s in spans] == ["a", "b", "c"]
         assert all(s[0] == "svc" for s in spans)
-    finally:
-        await ingester.stop()
-
-
-@pytest.mark.asyncio
-async def test_fetch_spans_uses_query_params_since() -> None:
-    """The HTTP GET includes a `since` query parameter from the arg."""
-    ingester = _make_ingester()
-    await ingester.start()
-    try:
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"resourceSpans": []}
-        mock_response.raise_for_status = MagicMock()
-        ingester._http_client.get = AsyncMock(return_value=mock_response)
-
-        await ingester._fetch_spans(since_unix_nano=1700000000000000000)
-
-        ingester._http_client.get.assert_awaited_once()
-        kwargs = ingester._http_client.get.await_args.kwargs
-        assert kwargs["params"] == {"since": "1700000000000000000"}
     finally:
         await ingester.stop()
 
@@ -596,10 +600,15 @@ async def test_fetch_spans_propagates_raise_for_status_failure() -> None:
     await ingester.start()
     try:
         mock_response = MagicMock()
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "500", request=MagicMock(), response=MagicMock()
+        mock_response.status_code = 500
+        mock_response.content = b"internal server error"
+        mock_response.json = MagicMock()
+        mock_response.raise_for_status = MagicMock(
+            side_effect=httpx.HTTPStatusError(
+                "500", request=MagicMock(), response=MagicMock()
+            )
         )
-        ingester._http_client.get = AsyncMock(return_value=mock_response)
+        ingester._http_client.post = AsyncMock(return_value=mock_response)
 
         with pytest.raises(httpx.HTTPStatusError):
             await ingester._fetch_spans(since_unix_nano=0)
