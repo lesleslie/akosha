@@ -729,11 +729,26 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # warming up (``cycles == 0``) is intentionally True so the
             # probe doesn't fail during normal startup.
             code_graphs_ok = code_graphs_count > 0 or ingester_cycles == 0 or not ingester_running
+            # REQ-005 follow-up (kg side, symmetric to the OTel fix in
+            # 43d85de): a running kg_refresh task that has cycled at
+            # least once and has zero errors is "warming up" — it
+            # polls Session-Buddy on a timer and reports empty until
+            # the upstream is wired. Treat it as ok=True so /health
+            # does not 503 the wrapper during the warming-up window.
+            # The errors_total guard is deliberate: a non-zero error
+            # counter means the task surfaced a real problem and must
+            # NOT be masked.
+            kg_warming_up = (
+                _kg_refresh_task is not None
+                and not _kg_refresh_task.done()
+                and _kg_refresh_errors == 0
+            )
             kg_ok = (
                 kg_entities_count > 0
                 or _kg_refresh_cycles == 0
                 or _kg_refresh_task is None
                 or _kg_refresh_task.done()
+                or kg_warming_up
             )
             local_traces_otel_running = bool(
                 _otel_trace_ingester is not None

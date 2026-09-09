@@ -499,10 +499,12 @@ async def test_health_probe_surfaces_per_feed_aggregates(
     assert "knowledge_graph_feed" in result
     assert result["knowledge_graph_feed"]["feed_entities_count"] == 0
     assert result["knowledge_graph_feed"]["edges_count"] == 0
-    # knowledge_graph_feed has run ≥1 cycle (kg_refresh_interval=0.05s in
-    # the fixture); the feed is empty; per the new contract, ``ok`` is
-    # False. Pre-fix this assertion was ``is True`` (vacuous).
-    assert result["knowledge_graph_feed"]["ok"] is False
+    # REQ-005 follow-up (kg side, symmetric to the OTel fix in
+    # 43d85de): the kg_refresh task is alive, has cycled once with no
+    # errors, and the feed is empty. Under the new contract
+    # (``kg_warming_up`` disjunct), this is "warming up" and reports
+    # ok=True.
+    assert result["knowledge_graph_feed"]["ok"] is True
     assert result["knowledge_graph_feed"]["cycles_total"] >= 1
     # The result was captured INSIDE the ``async with``, so the
     # kg_refresh task was still active when the probe ran.

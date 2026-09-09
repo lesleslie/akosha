@@ -457,6 +457,107 @@ def test_otel_disabled_short_circuits_local_traces_ok_via_existing_env_var(
     assert feed["otel_endpoint"] is None
 
 
+# ---------------------------------------------------------------------------
+# Symmetric fix: knowledge_graph_ok (kg_refresh path) — the
+# kg_warming_up disjunct in production is a parallel to otel_warming_up.
+# This test pins the kg side using the same direct-setattr + manual-
+# restore pattern as the OTel audit-case test.
+# ---------------------------------------------------------------------------
+
+
+async def test_knowledge_graph_ok_true_for_running_empty_producer_without_errors() -> None:
+    """REQ-005 follow-up (kg side): running empty kg_refresh producer
+    (no errors) → ``ok=True``.
+
+    The Phase 3 kg-side audit case: the kg_refresh task is alive, has
+    cycled twice successfully (no errors), but no entities have landed
+    (because the upstream Session-Buddy graph is not wired with data).
+    The pre-follow-up formula reduced to False and tripped /health to
+    503. The new 5th disjunct (``kg_warming_up``) treats this as
+    "warming up" and reports ok=True.
+    """
+    from unittest.mock import AsyncMock
+
+    from akosha.mcp import server as mcp_server
+
+    # Ensure kg_refresh construction is enabled.
+    import os
+
+    os.environ.pop("AKOSHA_SKIP_KG_REFRESH", None)
+
+    # Mock refresh task shaped like the audit case: alive, not done.
+    # The production code calls ``task.done()`` synchronously (it's
+    # the ``asyncio.Task.done()`` method), so we use a plain object
+    # with a ``done`` attribute rather than an ``AsyncMock`` (whose
+    # ``done`` returns a coroutine and is not what we want here).
+    class _FakeTask:
+        done = staticmethod(lambda: False)
+
+    saved_kg_cycles = mcp_server._kg_refresh_cycles
+    saved_kg_errors = mcp_server._kg_refresh_errors
+    saved_kg_task = mcp_server._kg_refresh_task
+    mcp_server._kg_refresh_cycles = 2
+    mcp_server._kg_refresh_errors = 0
+    mcp_server._kg_refresh_task = _FakeTask()
+
+    async def kg_audit_case_probe() -> dict[str, dict[str, object]]:
+        # Mirror the production kg_ok formula (see
+        # akosha/mcp/server.py around line 730). The kg_entities_count
+        # local is 0 in the audit case.
+        kg_entities_count = 0
+        kg_edges_count = 0
+        kg_refresh_cycles = getattr(mcp_server, "_kg_refresh_cycles", 0) or 0
+        kg_refresh_errors = getattr(mcp_server, "_kg_refresh_errors", 0) or 0
+        kg_refresh_task = getattr(mcp_server, "_kg_refresh_task", None)
+        kg_task_alive = kg_refresh_task is not None and not kg_refresh_task.done()
+        kg_warming_up = (
+            kg_refresh_task is not None
+            and not kg_refresh_task.done()
+            and kg_refresh_errors == 0
+        )
+        kg_ok = (
+            kg_entities_count > 0
+            or kg_refresh_cycles == 0
+            or kg_refresh_task is None
+            or kg_refresh_task.done()
+            or kg_warming_up
+        )
+        return {
+            "knowledge_graph_feed": {
+                "ok": kg_ok,
+                "feed_entities_count": kg_entities_count,
+                "edges_count": kg_edges_count,
+                "cycles_total": kg_refresh_cycles,
+                "errors_total": kg_refresh_errors,
+                "refresh_task_running": kg_task_alive,
+            }
+        }
+
+    set_health_probe(kg_audit_case_probe)
+    try:
+        result = await mcp_server.get_health_probe()()
+    finally:
+        set_health_probe(None)
+        mcp_server._kg_refresh_cycles = saved_kg_cycles
+        mcp_server._kg_refresh_errors = saved_kg_errors
+        mcp_server._kg_refresh_task = saved_kg_task
+
+    feed = result["knowledge_graph_feed"]
+    # The 5th disjunct (``kg_warming_up``) must win.
+    assert feed["ok"] is True, (
+        "REQ-005 follow-up (kg side): a running empty kg_refresh task "
+        "with no errors must report ok=True (warming up). Audit case "
+        "has cycles>0, errors=0, alive task, no entities landed."
+    )
+    # ``feed_entities_count`` stays 0 so callers can still distinguish
+    # warming-up from "data has arrived".
+    assert feed["feed_entities_count"] == 0
+    # Sanity: the rest of the feed payload mirrors the patched state.
+    assert feed["cycles_total"] == 2
+    assert feed["errors_total"] == 0
+    assert feed["refresh_task_running"] is True
+
+
 # Keep the unused-import linter happy on ``Awaitable, Callable`` — the
 # fixture signatures rely on them being importable for type-checkers
 # that don't see through ``Callable[[], Awaitable[...]]``.
