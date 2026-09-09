@@ -510,9 +510,14 @@ async def test_health_probe_surfaces_per_feed_aggregates(
 
     assert "local_traces_feed" in result
     assert result["local_traces_feed"]["feed_entities_count"] == 0
-    # local_traces_feed is fed by the same kg_refresh pipeline, so it
-    # surfaces the same empty-after-cycles drift.
-    assert result["local_traces_feed"]["ok"] is False
+    # REQ-005 follow-up: the OTel ingester starts under the lifespan and
+    # cycles once successfully. Under the new contract (the
+    # ``otel_warming_up`` disjunct in local_traces_ok), a running
+    # producer with zero errors is "warming up" and reports ok=True.
+    # ``feed_populated`` stays False so operators can still tell the
+    # difference between warming-up and "data has arrived".
+    assert result["local_traces_feed"]["ok"] is True
+    assert result["local_traces_feed"]["feed_populated"] is False
     assert result["local_traces_feed"]["cycles_total"] >= 1
 
 

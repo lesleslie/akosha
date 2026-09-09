@@ -755,17 +755,24 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 else None
             )
             # ``local_traces_ok`` is True iff data exists OR no producer
-            # has ever cycled (warming up). A crashed kg_refresh task
+            # has ever cycled (warming up) OR a producer is alive but empty
+            # (warming up, waiting for first spans). A crashed kg_refresh task
             # (``done()`` without ever populating traces) was previously
             # masked as ``done() -> ok`` — the audit failure case the
             # discipline was written to catch. Drop the ``done()``
             # exemption: a finished producer with no data is degraded.
             #
-            # REQ-005 (Phase 3 OTel feed recovery): tolerate a running-but-empty
-            # producer as "warming up" rather than degraded, and emit
-            # ``feed_populated`` below so callers can distinguish empty-feed
-            # from crash-without-data. The producer-alive check above still
-            # flags a producer that died on its first cycle.
+            # REQ-005 (Phase 3 OTel feed recovery, follow-up #2): the previous
+            # Phase 3 commit still reported ``ok=False`` for the live audit
+            # case — OTel producer alive, cycled once (HTTP 200, 21 bytes,
+            # errors=0), no spans received yet. None of the four disjuncts
+            # above could see that case as healthy: data was empty, the
+            # producer HAD cycled, and the producer WAS alive. The 5th
+            # disjunct (Phase 3 follow-up) treats that exact surface as
+            # ``warming up`` so ``/health`` returns 200, while ``feed_populated``
+            # below keeps callers able to distinguish empty-feed from
+            # crash-without-data. The producer-alive check still flags a
+            # producer that died on its first cycle.
             #
             # REQ-007: honour the existing ``AKOSHA_SKIP_OTEL_INGESTER`` env
             # var (no new opt-out). When set, the ingester was never
@@ -780,11 +787,20 @@ def create_app(mode: Any | None = None) -> FastMCP:
             kg_task_alive = _kg_refresh_task is not None and not _kg_refresh_task.done()
             any_producer_ever_cycled = _kg_refresh_cycles > 0 or local_traces_otel_cycles > 0
             any_producer_alive = kg_task_alive or otel_task_alive or local_traces_otel_running
+            # REQ-005 follow-up: a producer that is *running* and has *no errors*
+            # but has not yet landed spans is "warming up", not degraded. The
+            # ``otel_errors == 0`` guard is deliberate: an OTel producer with
+            # a non-zero error counter has surfaced a transport or parsing
+            # problem and should NOT be masked by this disjunct. ``feed_populated``
+            # in the payload below carries the empty-feed signal separately so
+            # operators can still distinguish warming-up from crash-without-data.
+            otel_warming_up = local_traces_otel_running and local_traces_otel_errors == 0
             local_traces_ok = (
                 otel_disabled
                 or (local_traces_count > 0)
                 or (not any_producer_ever_cycled)
                 or (not any_producer_alive)
+                or otel_warming_up
             )
             checks["code_graphs_feed"] = {
                 "ok": code_graphs_ok,
