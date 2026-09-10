@@ -27,7 +27,7 @@ def register_otel_query_tools(
         hot_store: HotStore instance for data access
     """
 
-    @app.tool()
+    @app.tool(name="akosha_query_local_traces")
     async def query_local_traces(
         system_id: str,
         start_time: str | None = None,

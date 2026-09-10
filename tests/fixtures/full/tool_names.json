@@ -1,13 +1,13 @@
 [
-  "cross_repo_capability_search",
+  "akosha_cross_repo_capability_search",
+  "akosha_get_fitness_analyzer_status",
+  "akosha_publish_to_eventbridge",
+  "akosha_run_fitness_analysis",
   "discover_tools",
-  "get_fitness_analyzer_status",
   "get_liveness",
   "get_readiness",
   "health_check_all",
   "health_check_service",
-  "publish_to_eventbridge",
-  "run_fitness_analysis",
   "wait_for_all_dependencies",
   "wait_for_dependency"
 ]

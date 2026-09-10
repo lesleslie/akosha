@@ -34,7 +34,7 @@ class TestStoreMemory:
         with patch("akosha.models.HotRecord") as mock_record_class:
             register_session_buddy_tools(registry, hot_store)
 
-            store_func = registry.tools["store_memory"].decorated
+            store_func = registry.tools["akosha_store_memory"].decorated
             result = await store_func(
                 memory_id="mem_123",
                 text="test content",
@@ -61,7 +61,7 @@ class TestStoreMemory:
         hot_store = AsyncMock()
         register_session_buddy_tools(registry, hot_store)
 
-        store_func = registry.tools["store_memory"].decorated
+        store_func = registry.tools["akosha_store_memory"].decorated
         result = await store_func(memory_id="", text="content")
 
         assert result["status"] == "failed"
@@ -73,7 +73,7 @@ class TestStoreMemory:
         hot_store = AsyncMock()
         register_session_buddy_tools(registry, hot_store)
 
-        store_func = registry.tools["store_memory"].decorated
+        store_func = registry.tools["akosha_store_memory"].decorated
         result = await store_func(memory_id="mem_1", text="")
 
         assert result["status"] == "failed"
@@ -87,7 +87,7 @@ class TestStoreMemory:
         with patch("akosha.models.HotRecord", MagicMock):
             register_session_buddy_tools(registry, hot_store)
 
-        store_func = registry.tools["store_memory"].decorated
+        store_func = registry.tools["akosha_store_memory"].decorated
         result = await store_func(
             memory_id="mem_1",
             text="content",
@@ -104,7 +104,7 @@ class TestStoreMemory:
         hot_store = AsyncMock()
         register_session_buddy_tools(registry, hot_store)
 
-        store_func = registry.tools["store_memory"].decorated
+        store_func = registry.tools["akosha_store_memory"].decorated
         result = await store_func(memory_id="mem_1", text="content")
 
         assert result["status"] == "failed"
@@ -116,7 +116,7 @@ class TestStoreMemory:
         hot_store = AsyncMock()
         register_session_buddy_tools(registry, hot_store)
 
-        store_func = registry.tools["store_memory"].decorated
+        store_func = registry.tools["akosha_store_memory"].decorated
         with patch("akosha.models.HotRecord", MagicMock):
             result = await store_func(
                 memory_id="mem_1", text="content", embedding=[0.1] * 384, metadata=None
@@ -132,7 +132,7 @@ class TestStoreMemory:
         hot_store.insert.side_effect = RuntimeError("db error")
         register_session_buddy_tools(registry, hot_store)
 
-        store_func = registry.tools["store_memory"].decorated
+        store_func = registry.tools["akosha_store_memory"].decorated
         with patch("akosha.models.HotRecord", MagicMock):
             result = await store_func(memory_id="mem_1", text="content", embedding=[0.1] * 384)
 
@@ -145,7 +145,7 @@ class TestStoreMemory:
         hot_store = AsyncMock()
         register_session_buddy_tools(registry, hot_store)
 
-        store_func = registry.tools["store_memory"].decorated
+        store_func = registry.tools["akosha_store_memory"].decorated
         with patch("akosha.models.HotRecord", MagicMock):
             result = await store_func(
                 memory_id="mem_1",
@@ -166,7 +166,7 @@ class TestBatchStoreMemories:
         with patch("akosha.models.HotRecord", MagicMock):
             register_session_buddy_tools(registry, hot_store)
 
-        batch_func = registry.tools["batch_store_memories"].decorated
+        batch_func = registry.tools["akosha_batch_store_memories"].decorated
         result = await batch_func(
             memories=[
                 {"memory_id": "mem_1", "text": "First", "embedding": [0.1] * 384},
@@ -185,7 +185,7 @@ class TestBatchStoreMemories:
         hot_store = AsyncMock()
         register_session_buddy_tools(registry, hot_store)
 
-        batch_func = registry.tools["batch_store_memories"].decorated
+        batch_func = registry.tools["akosha_batch_store_memories"].decorated
         result = await batch_func(memories=[{"memory_id": f"m{i}"} for i in range(1001)])
 
         assert result["status"] == "failed"
@@ -210,7 +210,7 @@ class TestBatchStoreMemories:
         with patch("akosha.models.HotRecord", MagicMock):
             register_session_buddy_tools(registry, hot_store)
 
-        batch_func = registry.tools["batch_store_memories"].decorated
+        batch_func = registry.tools["akosha_batch_store_memories"].decorated
         result = await batch_func(
             memories=[
                 {"memory_id": "mem_1", "text": "First", "embedding": [0.1] * 384},
@@ -228,7 +228,7 @@ class TestBatchStoreMemories:
         hot_store = AsyncMock()
         register_session_buddy_tools(registry, hot_store)
 
-        batch_func = registry.tools["batch_store_memories"].decorated
+        batch_func = registry.tools["akosha_batch_store_memories"].decorated
         result = await batch_func(
             memories=[
                 {"memory_id": "mem_1"},  # missing text
@@ -250,7 +250,7 @@ class TestBatchStoreMemories:
         with patch("akosha.models.HotRecord", MagicMock):
             register_session_buddy_tools(registry, hot_store)
 
-        batch_func = registry.tools["batch_store_memories"].decorated
+        batch_func = registry.tools["akosha_batch_store_memories"].decorated
         result = await batch_func(
             memories=[
                 {"memory_id": "mem_1", "text": "First", "embedding": [0.1] * 384},
@@ -267,7 +267,7 @@ class TestBatchStoreMemories:
         with patch("akosha.models.HotRecord", MagicMock):
             register_session_buddy_tools(registry, hot_store)
 
-        batch_func = registry.tools["batch_store_memories"].decorated
+        batch_func = registry.tools["akosha_batch_store_memories"].decorated
         result = await batch_func("not a list")
 
         assert result["status"] == "failed"
@@ -285,5 +285,5 @@ class TestRegisterSessionBuddyTools:
         register_session_buddy_tools(registry, hot_store)
 
         tools = registry.tools
-        assert "store_memory" in tools
-        assert "batch_store_memories" in tools
+        assert "akosha_store_memory" in tools
+        assert "akosha_batch_store_memories" in tools

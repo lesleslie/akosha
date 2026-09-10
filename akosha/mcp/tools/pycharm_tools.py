@@ -338,7 +338,7 @@ def register_pycharm_tools(
 
     @registry.register(
         ToolMetadata(
-            name="search_code_patterns",
+            name="akosha_search_code_patterns",
             description="Search for code patterns across all indexed repositories using regex",
             category=ToolCategory.SEARCH,
         )
@@ -436,7 +436,7 @@ def register_pycharm_tools(
 
     @registry.register(
         ToolMetadata(
-            name="get_code_problems",
+            name="akosha_get_code_problems",
             description="Get code problems (diagnostics) across indexed repositories",
             category=ToolCategory.ANALYTICS,
         )
@@ -531,7 +531,7 @@ def register_pycharm_tools(
 
     @registry.register(
         ToolMetadata(
-            name="find_function_usage",
+            name="akosha_find_function_usage",
             description="Find usage of a function across all indexed repositories",
             category=ToolCategory.SEARCH,
         )
@@ -656,7 +656,7 @@ def register_pycharm_tools(
 
     @registry.register(
         ToolMetadata(
-            name="analyze_imports",
+            name="akosha_analyze_imports",
             description="Analyze imports across indexed repositories (unused, circular, patterns)",
             category=ToolCategory.ANALYTICS,
         )
@@ -795,7 +795,7 @@ def register_pycharm_tools(
 
     @registry.register(
         ToolMetadata(
-            name="pycharm_health",
+            name="akosha_pycharm_health",
             description="Check health status of PyCharm MCP integration",
             category=ToolCategory.SYSTEM,
         )

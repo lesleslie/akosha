@@ -168,20 +168,27 @@ class TestRegisterCodeGraphAnalysisTools:
 
         registered = []
 
+        last_name = [None]
+
         def mock_tool(fn):
-            registered.append(fn.__name__)
+            key = last_name[0] if last_name[0] else fn.__name__
+            registered.append(key)
             return fn
+
+        def tool_factory(name=None):
+            last_name[0] = name
+            return mock_tool
 
         mock_registry = MagicMock()
         mock_mcp = MagicMock()
-        mock_mcp.tool.return_value = mock_tool
+        mock_mcp.tool.side_effect = tool_factory
 
         with patch("akosha.mcp.tools.tool_registry.FastMCPToolRegistry", type(mock_registry)):
             mock_registry.app = mock_mcp
             register_code_graph_analysis_tools(mock_registry, MagicMock())
-            assert "list_ingested_code_graphs" in registered
-            assert "get_code_graph_details" in registered
-            assert "find_similar_repositories" in registered
+            assert "akosha_list_ingested_code_graphs" in registered
+            assert "akosha_get_code_graph_details" in registered
+            assert "akosha_find_similar_repositories" in registered
 
 
 class TestCodeGraphToolsRuntime:
@@ -194,9 +201,10 @@ class TestCodeGraphToolsRuntime:
             def __init__(self) -> None:
                 self.tools: dict[str, object] = {}
 
-            def tool(self, *args, **kwargs):
+            def tool(self, *args, name=None, **kwargs):
                 def decorator(func):
-                    self.tools[func.__name__] = func
+                    key = name if name else func.__name__
+                    self.tools[key] = func
                     return func
 
                 return decorator
@@ -254,10 +262,10 @@ class TestCodeGraphToolsRuntime:
 
         register_code_graph_analysis_tools(registry, hot_store)
 
-        list_code_graphs = app.tools["list_ingested_code_graphs"]
-        details = app.tools["get_code_graph_details"]
-        similar = app.tools["find_similar_repositories"]
-        usage = app.tools["get_cross_repo_function_usage"]
+        list_code_graphs = app.tools["akosha_list_ingested_code_graphs"]
+        details = app.tools["akosha_get_code_graph_details"]
+        similar = app.tools["akosha_find_similar_repositories"]
+        usage = app.tools["akosha_get_cross_repo_function_usage"]
 
         listed = await list_code_graphs()
         assert listed["status"] == "success"

@@ -472,14 +472,14 @@ class AuthenticationMiddleware:
             "graph",
         }
         self.protected_tools = protected_tools or {
-            "search_all_systems",
-            "get_system_metrics",
-            "analyze_trends",
-            "detect_anomalies",
-            "correlate_systems",
-            "query_knowledge_graph",
-            "find_path",
-            "get_graph_statistics",
+            "akosha_search_all_systems",
+            "akosha_get_system_metrics",
+            "akosha_analyze_trends",
+            "akosha_detect_anomalies",
+            "akosha_correlate_systems",
+            "akosha_query_knowledge_graph",
+            "akosha_find_path",
+            "akosha_get_graph_statistics",
         }
 
         logger.info(
@@ -623,7 +623,7 @@ headers = {{
 }}
 
 result = await mcp.call_tool(
-    "search_all_systems",
+    "akosha_search_all_systems",
     arguments={{"query": "test"}},
     headers=headers
 )
@@ -641,14 +641,14 @@ result = await mcp.call_tool(
 
 The following aggregation endpoints require authentication:
 
-- `search_all_systems` - Cross-system semantic search
-- `get_system_metrics` - System-wide metrics and statistics
-- `analyze_trends` - Time-series trend analysis
-- `detect_anomalies` - Anomaly detection in metrics
-- `correlate_systems` - Cross-system correlation analysis
-- `query_knowledge_graph` - Knowledge graph queries
-- `find_path` - Graph path finding
-- `get_graph_statistics` - Graph statistics
+- `akosha_search_all_systems` - Cross-system semantic search
+- `akosha_get_system_metrics` - System-wide metrics and statistics
+- `akosha_analyze_trends` - Time-series trend analysis
+- `akosha_detect_anomalies` - Anomaly detection in metrics
+- `akosha_correlate_systems` - Cross-system correlation analysis
+- `akosha_query_knowledge_graph` - Knowledge graph queries
+- `akosha_find_path` - Graph path finding
+- `akosha_get_graph_statistics` - Graph statistics
 
 For more information, see: akosha/security.py
 """

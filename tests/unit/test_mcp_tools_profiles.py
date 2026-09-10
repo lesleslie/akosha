@@ -18,9 +18,10 @@ class DummyFastMCP:
     def __init__(self) -> None:
         self.registered: dict[str, Callable[..., object]] = {}
 
-    def tool(self, *_args, **_kwargs):
+    def tool(self, *_args, name=None, **_kwargs):
         def decorator(fn):
-            self.registered[fn.__name__] = fn
+            key = name if name else fn.__name__
+            self.registered[key] = fn
             return fn
 
         return decorator
@@ -67,8 +68,8 @@ async def test_register_all_tools_minimal_profile(monkeypatch: pytest.MonkeyPatc
     assert result["loaded_tools"] == []
     assert result["not_loaded_count"] == 2
     assert result["not_loaded_tools"] == [
-        "batch_store_memories",
-        "store_memory",
+        "akosha_batch_store_memories",
+        "akosha_store_memory",
     ]
 
 
@@ -103,8 +104,8 @@ async def test_register_all_tools_full_profile_and_discovery(
     assert result["query"] == "session"
     assert result["loaded_count"] == 2
     assert result["loaded_tools"] == [
-        "batch_store_memories",
-        "store_memory",
+        "akosha_batch_store_memories",
+        "akosha_store_memory",
     ]
     assert result["not_loaded_count"] == 0
     assert result["not_loaded_tools"] == []

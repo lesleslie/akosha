@@ -33,10 +33,12 @@ class _DummyFastMCP:
     def tool(
         self,
         *_args: Any,
+        name: str | None = None,
         **_kwargs: Any,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-            self.registered[fn.__name__] = fn
+            key = name if name else fn.__name__
+            self.registered[key] = fn
             return fn
 
         return decorator
@@ -80,7 +82,7 @@ async def test_register_akosha_group_wires_embedding_service(
 
     # The hardcoded ``None`` regression made every tool group skip registration.
     # After the fix, embedding tools must appear in the registry.
-    assert "generate_embedding" in app.registered, (
+    assert "akosha_generate_embedding" in app.registered, (
         "register_akosha_group hardcoded embedding_service=None; "
         "embedding tools were silently skipped at startup."
     )
@@ -114,10 +116,10 @@ async def test_register_akosha_group_wires_analytics_and_graph(
 
     # detect_anomalies comes from register_analytics_tools; query_knowledge_graph
     # comes from register_graph_tools. Both should be present when services wire.
-    assert "detect_anomalies" in app.registered, (
+    assert "akosha_detect_anomalies" in app.registered, (
         "analytics tools skipped — analytics_service never reached register_akosha_tools"
     )
-    assert "query_knowledge_graph" in app.registered, (
+    assert "akosha_query_knowledge_graph" in app.registered, (
         "graph tools skipped — graph_builder never reached register_akosha_tools"
     )
 

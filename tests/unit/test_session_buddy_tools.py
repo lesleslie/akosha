@@ -17,9 +17,9 @@ def _get_registered_tools(registry):
     store_fn = None
     batch_fn = None
     for name, func in registry._registered_tools.items():
-        if name == "store_memory":
+        if name == "akosha_store_memory":
             store_fn = func
-        elif name == "batch_store_memories":
+        elif name == "akosha_batch_store_memories":
             batch_fn = func
     return store_fn, batch_fn
 
@@ -48,7 +48,7 @@ class TestStoreMemory:
         mock_registry.register = mock_register
         register_session_buddy_tools(mock_registry, mock_hot_store)
 
-        store_memory_fn = registered.get("store_memory")
+        store_memory_fn = registered.get("akosha_store_memory")
         return mock_registry, mock_hot_store, store_memory_fn
 
     @pytest.mark.asyncio
@@ -200,7 +200,7 @@ class TestBatchStoreMemories:
         mock_registry.register = mock_register
         register_session_buddy_tools(mock_registry, mock_hot_store)
 
-        batch_fn = registered.get("batch_store_memories")
+        batch_fn = registered.get("akosha_batch_store_memories")
         return mock_registry, mock_hot_store, batch_fn
 
     @pytest.mark.asyncio
@@ -351,7 +351,7 @@ class TestSessionBuddyToolsIntegration:
         mock_registry.register = mock_register
         register_session_buddy_tools(mock_registry, mock_hot_store)
 
-        store_memory = registered["store_memory"]
+        store_memory = registered["akosha_store_memory"]
 
         with patch("akosha.models.HotRecord") as mock_record_class:
             mock_record = MagicMock()

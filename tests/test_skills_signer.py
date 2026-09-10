@@ -593,7 +593,7 @@ class TestEndToEndFlow:
             "name": "akosha-search-insights",
             "version": "1.0.0",
             "description": "Search across Akosha-indexed systems",
-            "tool_refs": ["mcp__akosha__search_all_systems"],
+            "tool_refs": ["mcp__akosha__akosha_search_all_systems"],
             "dependencies": [],
         }
         canonical_bytes = canonical_payload_for_signing(server_metadata)

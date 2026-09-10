@@ -404,7 +404,7 @@ def register_cross_repo_tools(
 
     @registry.register(
         ToolMetadata(
-            name="cross_repo_capability_search",
+            name="akosha_cross_repo_capability_search",
             description=(
                 "Search the indexed Bodai capability catalog (adapters, "
                 "tools, error conventions) across all components."

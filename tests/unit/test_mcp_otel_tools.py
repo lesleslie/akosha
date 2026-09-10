@@ -33,11 +33,12 @@ class _FakeApp:
     def __init__(self) -> None:
         self.tools: dict[str, Any] = {}
 
-    def tool(self) -> Any:
+    def tool(self, name: str | None = None) -> Any:
         """Decorator factory matching FastMCP's ``@app.tool()`` shape."""
 
         def decorator(fn: Any) -> Any:
-            self.tools[fn.__name__] = fn
+            key = name if name else fn.__name__
+            self.tools[key] = fn
             return fn
 
         return decorator
@@ -50,8 +51,8 @@ class TestRegisterOtelQueryTools:
         """``register_otel_query_tools`` must attach a ``query_local_traces`` callable."""
         app = _FakeApp()
         register_otel_query_tools(app=app, hot_store=MagicMock())
-        assert "query_local_traces" in app.tools
-        assert callable(app.tools["query_local_traces"])
+        assert "akosha_query_local_traces" in app.tools
+        assert callable(app.tools["akosha_query_local_traces"])
 
     def test_registration_logs_info(self, caplog: pytest.LogCaptureFixture) -> None:
         """Successful registration emits an info-level log line."""
@@ -69,7 +70,7 @@ class TestRegisterOtelQueryTools:
         register_otel_query_tools(app=app, hot_store=MagicMock())  # no error
         # The registration must produce a registered tool even when the
         # store is a bare MagicMock (no async surface, no methods set).
-        assert "query_local_traces" in app.tools
+        assert "akosha_query_local_traces" in app.tools
 
 
 class TestQueryLocalTracesSuccess:
@@ -90,7 +91,7 @@ class TestQueryLocalTracesSuccess:
         """
         app = _FakeApp()
         register_otel_query_tools(app=app, hot_store=hot_store)
-        return app.tools["query_local_traces"]
+        return app.tools["akosha_query_local_traces"]
 
     @pytest.mark.asyncio
     async def test_returns_empty_list_when_hot_store_returns_empty(
@@ -200,7 +201,7 @@ class TestQueryLocalTracesError:
             query_traces=AsyncMock(side_effect=RuntimeError("db connection lost")),
         )
         register_otel_query_tools(app=app, hot_store=mock_store)
-        return app.tools["query_local_traces"]
+        return app.tools["akosha_query_local_traces"]
 
     @pytest.mark.asyncio
     async def test_returns_empty_list_on_runtime_error(self, tool_with_failing_store: Any) -> None:
@@ -227,6 +228,6 @@ class TestQueryLocalTracesError:
             query_traces=AsyncMock(side_effect=ValueError("bad input")),
         )
         register_otel_query_tools(app=app, hot_store=mock_store)
-        tool = app.tools["query_local_traces"]
+        tool = app.tools["akosha_query_local_traces"]
         result = await tool(system_id="akosha")
         assert result == []

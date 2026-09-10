@@ -54,7 +54,7 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
 
     @registry.register(
         ToolMetadata(
-            name="store_memory",
+            name="akosha_store_memory",
             description="Store a memory directly from Session-Buddy via HTTP push endpoint",
             category=ToolCategory.INGESTION,
             examples=[
@@ -204,7 +204,7 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
 
     @registry.register(
         ToolMetadata(
-            name="batch_store_memories",
+            name="akosha_batch_store_memories",
             description="Store multiple memories from Session-Buddy in a single batch",
             category=ToolCategory.INGESTION,
             examples=[

@@ -50,7 +50,7 @@ class TestSessionBuddyToolsRegistration:
         first_call = mock_registry.register.call_args_list[0]
         metadata = first_call[0][0]
         store_func = captured[0]
-        assert metadata.name == "store_memory"
+        assert metadata.name == "akosha_store_memory"
         assert "Store a memory" in metadata.description
         assert hasattr(store_func, "__code__")
 
@@ -58,7 +58,7 @@ class TestSessionBuddyToolsRegistration:
         second_call = mock_registry.register.call_args_list[1]
         metadata = second_call[0][0]
         batch_func = captured[1]
-        assert metadata.name == "batch_store_memories"
+        assert metadata.name == "akosha_batch_store_memories"
         assert "Store multiple memories" in metadata.description
         assert hasattr(batch_func, "__code__")
 

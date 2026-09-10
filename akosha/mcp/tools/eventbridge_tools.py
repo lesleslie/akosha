@@ -102,7 +102,7 @@ def register_eventbridge_tools(
     else:
         _resolved_enabled_fn = enabled_fn
 
-    @mcp_app.tool()
+    @mcp_app.tool(name="akosha_publish_to_eventbridge")
     async def publish_to_eventbridge(
         topic: str,
         payload: dict[str, Any],

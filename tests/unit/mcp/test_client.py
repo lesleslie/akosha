@@ -138,7 +138,7 @@ async def test_query_local_traces_passes_through_task_class_and_window() -> None
         await client.query_local_traces(task_class="swarm", time_range_minutes=15)
 
     mock_call.assert_awaited_once_with(
-        "query_local_traces",
+        "akosha_query_local_traces",
         {"task_class": "swarm", "time_range_minutes": 15},
     )
 
@@ -152,7 +152,7 @@ async def test_query_local_traces_default_window_is_60_minutes() -> None:
         await client.query_local_traces(task_class="documentation")
 
     mock_call.assert_awaited_once_with(
-        "query_local_traces",
+        "akosha_query_local_traces",
         {"task_class": "documentation", "time_range_minutes": 60},
     )
 
@@ -176,7 +176,7 @@ async def test_call_tool_raises_when_session_not_initialized() -> None:
         patch.object(client, "_ensure_session", AsyncMock()),
         pytest.raises(RuntimeError, match="not initialized"),
     ):
-        await client.call_tool("query_local_traces", {})
+        await client.call_tool("akosha_query_local_traces", {})
 
 
 # ---------------------------------------------------------------------------

@@ -121,7 +121,7 @@ def register_embedding_tools(
 
     @registry.register(
         ToolMetadata(
-            name="generate_embedding",
+            name="akosha_generate_embedding",
             description="Generate semantic embedding for text using local AI model",
             category=ToolCategory.SEARCH,
             examples=[
@@ -187,7 +187,7 @@ def register_embedding_tools(
 
     @registry.register(
         ToolMetadata(
-            name="generate_batch_embeddings",
+            name="akosha_generate_batch_embeddings",
             description="Generate embeddings for multiple texts at once",
             category=ToolCategory.SEARCH,
         )
@@ -286,7 +286,7 @@ def register_search_tools(
 
     @registry.register(
         ToolMetadata(
-            name="search_all_systems",
+            name="akosha_search_all_systems",
             description="Search across all system memories using semantic similarity",
             category=ToolCategory.SEARCH,
             examples=[
@@ -475,7 +475,7 @@ def register_analytics_tools(
 
     @registry.register(
         ToolMetadata(
-            name="get_system_metrics",
+            name="akosha_get_system_metrics",
             description="Get metrics and statistics for all systems",
             category=ToolCategory.ANALYTICS,
         )
@@ -526,7 +526,7 @@ def register_analytics_tools(
 
     @registry.register(
         ToolMetadata(
-            name="analyze_trends",
+            name="akosha_analyze_trends",
             description="Analyze trends across systems over time",
             category=ToolCategory.ANALYTICS,
             examples=[
@@ -639,7 +639,7 @@ def register_analytics_tools(
 
     @registry.register(
         ToolMetadata(
-            name="detect_anomalies",
+            name="akosha_detect_anomalies",
             description="Detect statistical anomalies in system metrics",
             category=ToolCategory.ANALYTICS,
             examples=[
@@ -750,7 +750,7 @@ def register_analytics_tools(
 
     @registry.register(
         ToolMetadata(
-            name="correlate_systems",
+            name="akosha_correlate_systems",
             description="Analyze correlations between systems for a metric",
             category=ToolCategory.ANALYTICS,
             examples=[
@@ -852,7 +852,7 @@ def register_analytics_tools(
 
         @registry.register(
             ToolMetadata(
-                name="analyze_changepoints",
+                name="akosha_analyze_changepoints",
                 description=(
                     "Detect structural breaks and abrupt transitions in metric time series. "
                     "Use when cliff events or segment boundaries matter. "
@@ -973,7 +973,7 @@ def register_graph_tools(
 
     @registry.register(
         ToolMetadata(
-            name="query_knowledge_graph",
+            name="akosha_query_knowledge_graph",
             description="Query the cross-system knowledge graph",
             category=ToolCategory.GRAPH,
             examples=[
@@ -1060,7 +1060,7 @@ def register_graph_tools(
 
     @registry.register(
         ToolMetadata(
-            name="find_path",
+            name="akosha_find_path",
             description="Find shortest path between entities in knowledge graph",
             category=ToolCategory.GRAPH,
         )
@@ -1149,7 +1149,7 @@ def register_graph_tools(
 
     @registry.register(
         ToolMetadata(
-            name="get_graph_statistics",
+            name="akosha_get_graph_statistics",
             description="Get knowledge graph statistics",
             category=ToolCategory.GRAPH,
         )

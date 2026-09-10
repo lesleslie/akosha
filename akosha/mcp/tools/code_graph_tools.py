@@ -31,7 +31,7 @@ def register_code_graph_analysis_tools(
     # FastMCPToolRegistry has an 'app' attribute
     mcp = registry.app  # type: ignore[attr-defined]
 
-    @mcp.tool()
+    @mcp.tool(name="akosha_list_ingested_code_graphs")
     async def list_ingested_code_graphs(
         repo_path: str | None = None,
         limit: int = 100,
@@ -55,7 +55,7 @@ def register_code_graph_analysis_tools(
                 "code_graphs": [],
             }
 
-    @mcp.tool()
+    @mcp.tool(name="akosha_get_code_graph_details")
     async def get_code_graph_details(
         repo_path: str,
         commit_hash: str,
@@ -82,7 +82,7 @@ def register_code_graph_analysis_tools(
                 "message": f"Failed to get code graph: {e}",
             }
 
-    @mcp.tool()
+    @mcp.tool(name="akosha_find_similar_repositories")
     async def find_similar_repositories(
         repo_path: str,
         min_similarity: float = 0.3,
@@ -177,7 +177,7 @@ def register_code_graph_analysis_tools(
                 "repositories": [],
             }
 
-    @mcp.tool()
+    @mcp.tool(name="akosha_get_cross_repo_function_usage")
     async def get_cross_repo_function_usage(
         function_name: str,
         limit: int = 20,

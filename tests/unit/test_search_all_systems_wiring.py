@@ -111,7 +111,7 @@ async def test_search_all_systems_returns_real_results_when_hot_store_populated(
 
     registry = CapturingRegistry()
     register_search_tools(registry, embedding_service, hot_store=hot_store)
-    search_all_systems = registry.tools["search_all_systems"]
+    search_all_systems = registry.tools["akosha_search_all_systems"]
 
     result = await search_all_systems(
         query="websocket_get_status failures 2026-08-29",
@@ -154,7 +154,7 @@ async def test_search_all_systems_falls_back_to_informational_when_hot_store_emp
 
     registry = CapturingRegistry()
     register_search_tools(registry, embedding_service, hot_store=hot_store)
-    search_all_systems = registry.tools["search_all_systems"]
+    search_all_systems = registry.tools["akosha_search_all_systems"]
 
     result = await search_all_systems(
         query="anything at all",
@@ -182,7 +182,7 @@ async def test_search_all_systems_falls_back_when_hot_store_is_none() -> None:
 
     registry = CapturingRegistry()
     register_search_tools(registry, embedding_service, hot_store=None)
-    search_all_systems = registry.tools["search_all_systems"]
+    search_all_systems = registry.tools["akosha_search_all_systems"]
 
     result = await search_all_systems(query="hello", limit=10, threshold=0.7)
 
@@ -204,7 +204,7 @@ async def test_register_akosha_tools_threads_hot_store_through() -> None:
 
     registry = CapturingRegistry()
     register_akosha_tools(registry, embedding_service, hot_store=hot_store)
-    search_all_systems = registry.tools["search_all_systems"]
+    search_all_systems = registry.tools["akosha_search_all_systems"]
 
     result = await search_all_systems(query="hello", limit=10, threshold=0.7)
 

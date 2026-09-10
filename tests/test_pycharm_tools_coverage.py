@@ -621,11 +621,11 @@ class TestRegisterPyCharmTools:
         register_pycharm_tools(registry, hot_store)
 
         tools = registry.tools
-        assert "search_code_patterns" in tools
-        assert "get_code_problems" in tools
-        assert "find_function_usage" in tools
-        assert "analyze_imports" in tools
-        assert "pycharm_health" in tools
+        assert "akosha_search_code_patterns" in tools
+        assert "akosha_get_code_problems" in tools
+        assert "akosha_find_function_usage" in tools
+        assert "akosha_analyze_imports" in tools
+        assert "akosha_pycharm_health" in tools
         mod._pycharm_adapter = old
 
 
@@ -1155,9 +1155,10 @@ class TestPyCharmToolRuntimeBranches:
             def __init__(self) -> None:
                 self.tools: dict[str, object] = {}
 
-            def tool(self, *args, **kwargs):
+            def tool(self, *args, name=None, **kwargs):
                 def decorator(func):
-                    self.tools[func.__name__] = func
+                    key = name if name else func.__name__
+                    self.tools[key] = func
                     return func
 
                 return decorator
@@ -1221,17 +1222,17 @@ class TestPyCharmToolRuntimeBranches:
 
             register_pycharm_tools(registry, hot_store)
 
-            search = await app.tools["search_code_patterns"](pattern="foo", limit=5)
-            problems = await app.tools["get_code_problems"](severity="WARNING", limit=10)
-            usages = await app.tools["find_function_usage"](function_name="my_func", limit=10)
-            imports_unused = await app.tools["analyze_imports"](analysis_type="unused", limit=10)
-            imports_circular = await app.tools["analyze_imports"](
+            search = await app.tools["akosha_search_code_patterns"](pattern="foo", limit=5)
+            problems = await app.tools["akosha_get_code_problems"](severity="WARNING", limit=10)
+            usages = await app.tools["akosha_find_function_usage"](function_name="my_func", limit=10)
+            imports_unused = await app.tools["akosha_analyze_imports"](analysis_type="unused", limit=10)
+            imports_circular = await app.tools["akosha_analyze_imports"](
                 analysis_type="circular", limit=10
             )
-            imports_patterns = await app.tools["analyze_imports"](
+            imports_patterns = await app.tools["akosha_analyze_imports"](
                 analysis_type="patterns", limit=10
             )
-            health = await app.tools["pycharm_health"]()
+            health = await app.tools["akosha_pycharm_health"]()
 
             assert search["status"] == "success"
             assert search["count"] == 1

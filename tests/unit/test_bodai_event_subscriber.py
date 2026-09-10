@@ -125,7 +125,7 @@ def _envelope_triplet(
         if payload is not None
         else {
             "version": SUPPORTED_SCHEMA_VERSION,
-            "tool": "search_all_systems",
+            "tool": "akosha_search_all_systems",
             "surface": "claude_code",
             "result": "ok",
             "duration_ms": 12,
@@ -889,7 +889,7 @@ class TestBuildContent:
 
     def test_formats_all_fields(self) -> None:
         payload = {
-            "tool": "search_all_systems",
+            "tool": "akosha_search_all_systems",
             "surface": "claude_code",
             "result": "ok",
             "duration_ms": 42,
@@ -898,7 +898,7 @@ class TestBuildContent:
         content = BodaiToolInvocationSubscriber._build_content(payload)
         assert content == (
             "websocket tool invocation: "
-            "tool=search_all_systems "
+            "tool=akosha_search_all_systems "
             "surface=claude_code "
             "result=ok "
             "duration_ms=42 "

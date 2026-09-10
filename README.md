@@ -405,44 +405,44 @@ Source of truth: `akosha/mcp/tools/profiles.py:60-95`
 
 **Core Memory Aggregation (8):**
 
-- `generate_embedding` - Generate semantic embedding for one text
-- `generate_batch_embeddings` - Batch embedding generation
-- `search_all_systems` - Semantic search across systems
-- `detect_anomalies` - Statistical anomaly detection
-- `analyze_trends` - Time-series trend analysis (increasing/decreasing/stable)
-- `correlate_systems` - Cross-system correlation analysis
-- `query_knowledge_graph` - Entity and relationship queries
-- `get_system_metrics` - Aggregate system metrics
+- `akosha_generate_embedding` - Generate semantic embedding for one text
+- `akosha_generate_batch_embeddings` - Batch embedding generation
+- `akosha_search_all_systems` - Semantic search across systems
+- `akosha_detect_anomalies` - Statistical anomaly detection
+- `akosha_analyze_trends` - Time-series trend analysis (increasing/decreasing/stable)
+- `akosha_correlate_systems` - Cross-system correlation analysis
+- `akosha_query_knowledge_graph` - Entity and relationship queries
+- `akosha_get_system_metrics` - Aggregate system metrics
 
 **Session-Buddy Integration (2):**
 
-- `store_memory` - Store a memory directly from Session-Buddy (in-process hot store)
-- `batch_store_memories` - Bulk-store memory entries from Session-Buddy
+- `akosha_store_memory` - Store a memory directly from Session-Buddy (in-process hot store)
+- `akosha_batch_store_memories` - Bulk-store memory entries from Session-Buddy
 
 **PyCharm / IDE Integration (5):**
 
-- `get_code_problems` - Pull file-level diagnostics from PyCharm
-- `search_code_patterns` - Project-wide regex search across indexed repos
-- `find_function_usage` - Find usages of a function symbol
-- `analyze_imports` - Analyze imports for a file
-- `pycharm_health` - PyCharm MCP connectivity
+- `akosha_get_code_problems` - Pull file-level diagnostics from PyCharm
+- `akosha_search_code_patterns` - Project-wide regex search across indexed repos
+- `akosha_find_function_usage` - Find usages of a function symbol
+- `akosha_analyze_imports` - Analyze imports for a file
+- `akosha_pycharm_health` - PyCharm MCP connectivity
 
 **OpenTelemetry Trace Queries (1):**
 
-- `query_local_traces` - Query OTel traces by task class + time window
+- `akosha_query_local_traces` - Query OTel traces by task class + time window
 
 **Fitness Analyzer (2):**
 
-- `run_fitness_analysis` - On-demand fitness signal computation
-- `get_fitness_analyzer_status` - Fitness analyzer status
+- `akosha_run_fitness_analysis` - On-demand fitness signal computation
+- `akosha_get_fitness_analyzer_status` - Fitness analyzer status
 
 **EventBridge Publisher (1):**
 
-- `publish_to_eventbridge` - Emit analytics events to the Bodai EventBridge
+- `akosha_publish_to_eventbridge` - Emit analytics events to the Bodai EventBridge
 
 **Cross-Repo Capability Search (1):**
 
-- `cross_repo_capability_search` - Phase 1 cross-repo capability search (Bodai component adapter/tool/error catalog)
+- `akosha_cross_repo_capability_search` - Phase 1 cross-repo capability search (Bodai component adapter/tool/error catalog)
 
 ______________________________________________________________________
 

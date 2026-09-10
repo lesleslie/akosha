@@ -342,11 +342,11 @@ class TestLogMCPToolAccess:
     def test_logs_tool_access(self, sec_logger):
         logger, records = sec_logger
         with patch("akosha.observability.security_logging.record_counter"):
-            logger.log_mcp_tool_access("search_all_systems", "user1", "10.0.0.1", True)
+            logger.log_mcp_tool_access("akosha_search_all_systems", "user1", "10.0.0.1", True)
         parsed = json.loads(records[0].getMessage())
         assert parsed["event_type"] == "mcp_tool_access"
         assert parsed["severity"] == "INFO"
-        assert parsed["tool_name"] == "search_all_systems"
+        assert parsed["tool_name"] == "akosha_search_all_systems"
         assert parsed["user_id"] == "user1"
         assert parsed["success"] is True
 

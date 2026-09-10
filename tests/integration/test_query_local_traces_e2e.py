@@ -39,11 +39,12 @@ class _ToolRegistry:
     def __init__(self) -> None:
         self._tools: dict[str, Any] = {}
 
-    def tool(self) -> Any:
+    def tool(self, name: str | None = None) -> Any:
         """Decorator factory that mimics FastMCP's ``@app.tool()``."""
 
         def _decorator(func: Any) -> Any:
-            self._tools[func.__name__] = func
+            key = name if name else func.__name__
+            self._tools[key] = func
             return func
 
         return _decorator
@@ -116,7 +117,7 @@ async def test_query_local_traces_returns_seeded_record(
     # tests/unit/test_otel_trace_ingester.py + the query_traces
     # unit tests. The discipline-mandated assertion here is
     # "non-empty results" against a real HotStore.
-    tool_fn = registry._tools["query_local_traces"]
+    tool_fn = registry._tools["akosha_query_local_traces"]
     result = await tool_fn(
         system_id="akosha",
         limit=10,

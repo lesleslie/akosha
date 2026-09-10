@@ -405,11 +405,11 @@ class TestAnalyzeChangepointsMCPAuth:
             register_analytics_tools(registry, analytics_service, changepoint_analytics)
 
         # The registered coroutine is the require_auth-wrapped function
-        assert "analyze_changepoints" in registry.tools, (
+        assert "akosha_analyze_changepoints" in registry.tools, (
             "analyze_changepoints tool was not registered — check changepoint_analytics wiring"
         )
 
-        fn = registry.tools["analyze_changepoints"].coroutine
+        fn = registry.tools["akosha_analyze_changepoints"].coroutine
 
         # Calling without an auth token must raise — proves @require_auth is applied
         with pytest.raises(Exception, match=r"(?i)(token|auth|permission|unauthorized)"):

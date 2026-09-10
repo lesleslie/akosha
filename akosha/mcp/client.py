@@ -142,7 +142,7 @@ class BodaiComponentMCPClient:
             List of trace summary dicts from the component's local store.
         """
         result = await self.call_tool(
-            "query_local_traces",
+            "akosha_query_local_traces",
             {
                 "task_class": task_class,
                 "time_range_minutes": time_range_minutes,
