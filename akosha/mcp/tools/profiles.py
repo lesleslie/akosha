@@ -30,7 +30,11 @@ MINIMAL_REGISTRATIONS: list[str] = [
     "register_health_tools_akosha",
 ]
 
-STANDARD_REGISTRATIONS: list[str] = [*MINIMAL_REGISTRATIONS, "register_akosha_tools"]
+STANDARD_REGISTRATIONS: list[str] = [
+    *MINIMAL_REGISTRATIONS,
+    "register_akosha_tools",
+    "register_skill_tools",
+]
 
 FULL_REGISTRATIONS: list[str] = [
     *STANDARD_REGISTRATIONS,
@@ -58,6 +62,7 @@ REGISTRATION_DESCRIPTIONS: dict[str, str] = {
     "register_fitness_tools": "Fitness analysis for Bodai routing feedback loop (failure rate, p99 latency per task class)",
     "register_eventbridge_tools": "EventBridge publisher: emit Akosha analytics events to the unified Bodai queue",
     "register_cross_repo_tools": "Phase 1 cross-repo capability search (Bodai component adapter/tool/error catalog)",
+    "register_skill_tools": "Phase 1 server-published skills (list_skills + get_skill, signed via skills_signer)",
 }
 
 REGISTRATION_TOOLS: dict[str, list[str]] = {
@@ -97,6 +102,7 @@ REGISTRATION_TOOLS: dict[str, list[str]] = {
     ],
     "register_eventbridge_tools": ["akosha_publish_to_eventbridge"],
     "register_cross_repo_tools": ["akosha_cross_repo_capability_search"],
+    "register_skill_tools": ["akosha_list_skills", "akosha_get_skill"],
 }
 
 
@@ -135,6 +141,7 @@ def _build_registration_map() -> dict[str, Callable[[FastMCP], Awaitable[None] |
         register_otel_query_group,
         register_pycharm_group,
         register_session_buddy_group,
+        register_skill_tools_group,
     )
 
     return {
@@ -146,6 +153,7 @@ def _build_registration_map() -> dict[str, Callable[[FastMCP], Awaitable[None] |
         "register_fitness_tools": register_fitness_group,
         "register_eventbridge_tools": register_eventbridge_group,
         "register_cross_repo_tools": register_cross_repo_group,
+        "register_skill_tools": register_skill_tools_group,
     }
 
 

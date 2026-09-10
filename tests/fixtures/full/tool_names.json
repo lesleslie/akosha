@@ -1,6 +1,8 @@
 [
   "akosha_cross_repo_capability_search",
   "akosha_get_fitness_analyzer_status",
+  "akosha_get_skill",
+  "akosha_list_skills",
   "akosha_publish_to_eventbridge",
   "akosha_run_fitness_analysis",
   "discover_tools",

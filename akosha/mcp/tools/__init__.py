@@ -34,6 +34,7 @@ from akosha.mcp.tools.profiles import (
 )
 from akosha.mcp.tools.pycharm_tools import register_pycharm_tools
 from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
+from akosha.mcp.tools.skill_tools import register_skill_tools
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ _ALL_REGISTERS: dict[str, Any] = {
     "register_akosha_tools": register_akosha_tools,
     "register_session_buddy_tools": register_session_buddy_tools,
     "register_pycharm_tools": register_pycharm_tools,
+    "register_skill_tools": register_skill_tools,
 }
 
 
@@ -126,6 +128,14 @@ def register_all_tools(
     if "register_pycharm_tools" in allowed and hot_store:
         register_pycharm_tools(registry, hot_store)
         logger.info("Registered PyCharm integration tools")
+
+    if "register_skill_tools" in allowed:
+        # Phase 1: list_skills + get_skill. No service dependency —
+        # the lifespan-owned SkillsSigner is read via the module-level
+        # singleton populated at startup. Both tools return informative
+        # error envelopes if the signer has not been initialized yet.
+        register_skill_tools(app)
+        logger.info("Registered skill_tools (list_skills + get_skill)")
 
     # OTel query tools are wired through the W0 profile path
     # (akosha.mcp.tools.profiles.register_otel_query_group) via the

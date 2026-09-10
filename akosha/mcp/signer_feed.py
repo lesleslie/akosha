@@ -23,12 +23,13 @@ contract is explicit.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from akosha.skills_signer import PubkeyManifest
+    from akosha.skills_signer import PubkeyManifest, SkillsSigner
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,8 @@ class SignerFeedState:
 
     Attributes:
         manifest: the :class:`PubkeyManifest` published in ``/health``.
+        signer: the :class:`SkillsSigner` for producing Phase 1
+            ``get_skill`` / ``get_agent`` response signatures.
         last_updated_timestamp: unix timestamp of the most recent update
             (initial creation or last :meth:`record_cycle`).
         cycles_total: count of successful feed update cycles since startup.
@@ -54,6 +57,7 @@ class SignerFeedState:
     """
 
     manifest: PubkeyManifest
+    signer: SkillsSigner
     last_updated_timestamp: float = field(default_factory=time.time)
     cycles_total: int = 0
     errors_total: int = 0
@@ -103,4 +107,53 @@ class SignerFeedState:
         }
 
 
-__all__ = ["SignerFeedState"]
+__all__ = [
+    "SignerFeedState",
+    "get_signer_feed_state",
+    "init_signer_feed_state",
+    "reset_signer_feed_state",
+]
+
+
+# ---------------------------------------------------------------------------
+# Module-level singleton (Phase 1 helper surface).
+#
+# The lifespan populates this after constructing the SignerFeedState, so
+# Phase 1 ``list_skills`` / ``get_skill`` MCP tools can read the signer
+# without taking it as a function parameter. The other 4 Bodai servers
+# (mahavishnu / session-buddy / dhara / crackerjack) use the same module-
+# level pattern with their own state classes; Phase 2's installer reads
+# /health directly, not these helpers, so the API stays per-server.
+# ---------------------------------------------------------------------------
+
+_signer_state: SignerFeedState | None = None
+_signer_state_lock = threading.Lock()
+
+
+def init_signer_feed_state(state: SignerFeedState) -> None:
+    """Install the lifespan-owned :class:`SignerFeedState` singleton.
+
+    Idempotent: a second call replaces the singleton (used in tests and
+    on key load retry). Logs at INFO so the audit trail shows when the
+    signer became available.
+    """
+    global _signer_state
+    with _signer_state_lock:
+        _signer_state = state
+    logger.info(
+        "init_signer_feed_state: signer singleton installed (key_id=%s, generation=%d)",
+        state.signer.key_id,
+        state.generation,
+    )
+
+
+def get_signer_feed_state() -> SignerFeedState | None:
+    """Return the active :class:`SignerFeedState`, or ``None`` pre-lifespan."""
+    return _signer_state
+
+
+def reset_signer_feed_state() -> None:
+    """Clear the singleton (test-only helper; production never calls this)."""
+    global _signer_state
+    with _signer_state_lock:
+        _signer_state = None

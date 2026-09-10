@@ -386,9 +386,9 @@ akosha start --host 0.0.0.0 --port 8682
 ### MCP Tools (Profile-Gated Inventory)
 
 Akosha exposes its tools via the `AKOSHA_TOOL_PROFILE` environment variable.
-The list below is the **FULL profile** (26 tools), which is the default.
-Profiles: **MINIMAL** (6 tools, health probes only) → **STANDARD** (14 tools,
-adds core memory aggregation) → **FULL** (26 tools, adds Session-Buddy,
+The list below is the **FULL profile** (28 tools), which is the default.
+Profiles: **MINIMAL** (6 tools, health probes only) → **STANDARD** (16 tools,
+adds core memory aggregation + Phase 1 skill catalog) → **FULL** (28 tools, adds Session-Buddy,
 PyCharm, OTel, fitness, and EventBridge integrations).
 
 Source of truth: `akosha/mcp/tools/profiles.py:60-95`
@@ -443,6 +443,11 @@ Source of truth: `akosha/mcp/tools/profiles.py:60-95`
 **Cross-Repo Capability Search (1):**
 
 - `akosha_cross_repo_capability_search` - Phase 1 cross-repo capability search (Bodai component adapter/tool/error catalog)
+
+**Skill Catalog (Phase 1, 2):**
+
+- `akosha_list_skills` - List metadata for server-published skills (≥3 entries; Phase 1 of bodai-skill-agent-distribution plan)
+- `akosha_get_skill` - Return signed metadata + body for one skill; ed25519 signature over canonicalized metadata (B-1); path-traversal allowlist enforced at the API boundary (B-4)
 
 ______________________________________________________________________
 
@@ -511,7 +516,7 @@ ______________________________________________________________________
 - Mock embedding service
 - Time-series analytics
 - Cross-system correlation
-- 26 MCP tools integrated (FULL profile)
+- 28 MCP tools integrated (FULL profile)
 
 ### Phase 3: Production Hardening
 

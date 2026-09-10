@@ -110,6 +110,22 @@ def register_cross_repo_group(app: FastMCP) -> None:
     logger.info("Registered cross-repo capability search tools")
 
 
+def register_skill_tools_group(app: FastMCP) -> None:
+    """Register Phase 1 ``list_skills`` / ``get_skill`` MCP tools.
+
+    No service dependencies — the tools read the static catalog from
+    ``akosha/mcp/skills_catalog/`` and access the :class:`SkillsSigner`
+    via the module-level singleton populated at lifespan startup
+    (``akosha.mcp.signer_feed.init_signer_feed_state``). Both tools
+    return informative error envelopes if the signer has not been
+    initialized yet (pre-lifespan / lite mode).
+    """
+    from akosha.mcp.tools.skill_tools import register_skill_tools
+
+    register_skill_tools(app)
+    logger.info("Registered skill_tools (list_skills + get_skill)")
+
+
 async def register_session_buddy_group(app: FastMCP) -> None:
     """Register Session-Buddy integration tools. Skipped if hot_store cannot be built."""
     from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools

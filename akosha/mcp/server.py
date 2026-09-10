@@ -24,6 +24,7 @@ from fastmcp import FastMCP
 
 from akosha.config import DEFAULT_MCP_PORT
 from akosha.skills_signer import (
+    SkillsSigner,
     build_pubkey_manifest,
     load_or_create_keypair,
 )
@@ -704,12 +705,25 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # every restart produces a fresh ``key_id`` and breaks all previously
         # installed Skills (review R2-H1).
         # ------------------------------------------------------------------
-        from akosha.mcp.signer_feed import SignerFeedState
+        from akosha.mcp.signer_feed import (
+            SignerFeedState,
+            init_signer_feed_state,
+        )
 
         key_path = _resolve_skills_signer_key_path()
         server_keypair = load_or_create_keypair(key_path)
         server_manifest = build_pubkey_manifest(server_keypair)
-        signer_feed_state = SignerFeedState(manifest=server_manifest)
+        # Phase 1: SkillsSigner wraps the same keypair so list_skills /
+        # get_skill MCP tools can produce signatures without re-reading the
+        # PEM from disk. The signer lives only on the SignerFeedState
+        # dataclass; the lifespan publishes it via init_signer_feed_state
+        # so the tools can read it.
+        server_signer = SkillsSigner.from_keypair(server_keypair)
+        signer_feed_state = SignerFeedState(
+            manifest=server_manifest,
+            signer=server_signer,
+        )
+        init_signer_feed_state(signer_feed_state)
         logger.info(
             "Phase 1.5: signer feed state initialized key_id=%s key_path=%s",
             server_keypair.key_id,

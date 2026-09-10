@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 import pytest
 from mcp_common.tools import ToolProfile
@@ -56,7 +59,7 @@ async def test_register_all_tools_minimal_profile(monkeypatch: pytest.MonkeyPatc
     assert default_result["profile"] == "minimal"
     assert default_result["query"] is None
     assert default_result["loaded_count"] == 6
-    assert default_result["not_loaded_count"] == 20
+    assert default_result["not_loaded_count"] == 22
     # Hint must point operators toward loading more tools (minimal
     # profile is the most restrictive; the full default is reachable
     # by unsetting the env var).
@@ -180,11 +183,13 @@ def test_readme_tool_count_matches_full_registrations() -> None:
 
     readme = Path(__file__).resolve().parents[2] / "README.md"
     text = readme.read_text(encoding="utf-8")
-    # FULL count is 26 = sum of all groups registered in
+    # FULL count is 28 = sum of all groups registered in
     # FULL_REGISTRATIONS. Each register_*_group contributes at least 1
-    # tool. ``loaded_count + not_loaded_count == 26`` is pinned in
-    # tests/unit/test_mcp_tools_profiles.py:58.
-    expected_count = 26
+    # tool. ``loaded_count + not_loaded_count == 28`` is pinned in
+    # tests/unit/test_mcp_tools_profiles.py:58. Phase 1 added
+    # ``akosha_list_skills`` + ``akosha_get_skill``; updated expected
+    # count from 26 to 28.
+    expected_count = 28
     assert f"({expected_count} tools)" in text, (
         f"README.md tool count missing '({expected_count} tools)'; "
         f"checking that the FULL profile claim matches the registration"

@@ -1,4 +1,6 @@
 [
+  "akosha_get_skill",
+  "akosha_list_skills",
   "discover_tools",
   "get_liveness",
   "get_readiness",
