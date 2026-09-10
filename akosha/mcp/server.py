@@ -17,11 +17,16 @@ from __future__ import annotations
 import asyncio
 import os
 from contextlib import asynccontextmanager, suppress
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, cast
 
 from fastmcp import FastMCP
 
 from akosha.config import DEFAULT_MCP_PORT
+from akosha.skills_signer import (
+    build_pubkey_manifest,
+    load_or_create_keypair,
+)
 from akosha.storage.hot_store import HotStore
 
 if TYPE_CHECKING:
@@ -46,7 +51,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 APP_NAME: Final = "akosha-mcp"
-APP_VERSION: Final = "0.15.0"
+APP_VERSION: Final = "0.15.1"
 
 DHARA_DEFAULT_URL = "http://localhost:8683"
 
@@ -80,6 +85,20 @@ def set_health_probe(
 def get_health_probe() -> Callable[[], Awaitable[dict[str, dict[str, Any]]]] | None:
     """Return the currently-registered health probe (test helper)."""
     return _health_probe_fn
+
+
+# ---------------------------------------------------------------------------
+# Skills signer (Phase 1.5 of bodai-skill-agent-distribution plan)
+# ---------------------------------------------------------------------------
+# The signing keypair and the lifespan-owned ``SignerFeedState`` live as
+# closure variables inside ``create_app()`` — NOT module globals. Module
+# globals would let concurrent app instances (tests, hot reload) cross-
+# contaminate each other's /health outputs (see review R3-H3).
+#
+# The persistence path is resolved at lifespan startup via
+# :func:`_resolve_skills_signer_key_path`. Without persistence, every
+# restart produces a fresh ``key_id`` and breaks all previously installed
+# Skills (see review R2-H1).
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +196,23 @@ def _get_mcp_url() -> str:
     return f"http://{host}:{mcp_port}/mcp"
 
 
+def _resolve_skills_signer_key_path() -> Path:
+    """Resolve the persisted keypair path for the skills_signer.
+
+    The keypair must persist across ``create_app()`` calls so every
+    restart preserves the same ``key_id``; otherwise previously
+    installed Skills (Phase 2/6) become unverifiable.
+
+    Default: ``~/.akosha/state/skills_signer/private_key.pem``. Override
+    via ``AKOSHA_SKILLS_SIGNER_KEY_PATH`` (e.g. for tests that want an
+    isolated location).
+    """
+    env_path = os.getenv("AKOSHA_SKILLS_SIGNER_KEY_PATH")
+    if env_path:
+        return Path(env_path).expanduser()
+    return Path.home() / ".akosha" / "state" / "skills_signer" / "private_key.pem"
+
+
 async def _register_to_dhara_once(dhara_url: str, key: str, mcp_url: str) -> str:
     """Single attempt to write component_endpoint/{name} -> mcp_url to Dhara.
 
@@ -201,7 +237,7 @@ async def _register_to_dhara_once(dhara_url: str, key: str, mcp_url: str) -> str
         # Dhara explicitly rejected the put (4xx/5xx). Retrying won't fix
         # an API bug; bail so lifespan startup doesn't sit in a 31s backoff.
         return "give_up"
-    except httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError:
+    except (httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError):
         # Transient — Dhara might come up, the network might recover.
         return "retry"
     except Exception:
@@ -659,6 +695,27 @@ def create_app(mode: Any | None = None) -> FastMCP:
         mcp_url = _get_mcp_url()
         await _register_component_to_dhara(mcp_url)
 
+        # ------------------------------------------------------------------
+        # Phase 1.5: load (or generate + persist) the signing keypair and
+        # build the lifespan-owned SignerFeedState. This MUST happen BEFORE
+        # the health probe is defined — the probe closes over
+        # ``signer_feed_state`` as its single source of truth (no module
+        # globals; see the module-level comment above). Without persistence,
+        # every restart produces a fresh ``key_id`` and breaks all previously
+        # installed Skills (review R2-H1).
+        # ------------------------------------------------------------------
+        from akosha.mcp.signer_feed import SignerFeedState
+
+        key_path = _resolve_skills_signer_key_path()
+        server_keypair = load_or_create_keypair(key_path)
+        server_manifest = build_pubkey_manifest(server_keypair)
+        signer_feed_state = SignerFeedState(manifest=server_manifest)
+        logger.info(
+            "Phase 1.5: signer feed state initialized key_id=%s key_path=%s",
+            server_keypair.key_id,
+            key_path,
+        )
+
         # Register a default health probe that surfaces the state of every
         # in-process data feed. Per mcp-backend-wiring-discipline.md, /health
         # returns 503 unless every feed reports ``ok=True``.
@@ -860,7 +917,25 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 "source": "hot_store.query_traces (populated via kg_refresh + OtelTraceIngester)",
             }
 
+            # Phase 1.5: publish the signer feed state so clients can verify
+            # SkillMetadata.signature / AgentMetadata.signature without an
+            # out-of-band key-exchange. The SignerFeedState is the
+            # lifespan's single source of truth — it owns the manifest AND
+            # the four mandatory feed signals (entities_count,
+            # last_updated_timestamp, cycles_total, errors_total). ``ok``
+            # is computed from manifest invariants (empty -> False).
+            if signer_feed_state is None:
+                checks["skills_signer"] = {
+                    "ok": False,
+                    "error": "signer feed state not initialized; awaiting lifespan",
+                }
+            else:
+                checks["skills_signer"] = signer_feed_state.as_dict()
+
             return checks
+
+        # Phase 1.5 signer init was moved above the probe definition so the
+        # probe can close over ``signer_feed_state``. Nothing to do here.
 
         set_health_probe(_default_health_probe)
 
