@@ -8,7 +8,7 @@
 
 Universal memory aggregation and cross-system analytics for the Bodai ecosystem.
 
-**Version:** 0.15.0
+**Version:** 0.15.1
 **Status:** Active pilot deployment for the current phase
 
 ## Bodai Ecosystem Role
@@ -353,7 +353,7 @@ akosha version
 akosha info
 
 # Start Akosha server
-akosha start --host 0.0.0.0 --port 8000
+akosha start --host 0.0.0.0 --port 8682
 ```
 
 ## Architecture
@@ -416,15 +416,15 @@ Source of truth: `akosha/mcp/tools/profiles.py:60-95`
 
 **Session-Buddy Integration (2):**
 
-- `ingest_session_memory` - Direct HTTP memory ingestion from Session-Buddy
-- `get_cross_system_summary` - Cross-system memory summary
+- `store_memory` - Store a memory directly from Session-Buddy (in-process hot store)
+- `batch_store_memories` - Bulk-store memory entries from Session-Buddy
 
 **PyCharm / IDE Integration (5):**
 
-- `get_ide_diagnostics` - Pull file-level diagnostics from PyCharm
-- `search_code` - Project-wide code search via PyCharm index
-- `get_symbol_info` - Symbol metadata
-- `find_usages` - Symbol usage lookup
+- `get_code_problems` - Pull file-level diagnostics from PyCharm
+- `search_code_patterns` - Project-wide regex search across indexed repos
+- `find_function_usage` - Find usages of a function symbol
+- `analyze_imports` - Analyze imports for a file
 - `pycharm_health` - PyCharm MCP connectivity
 
 **OpenTelemetry Trace Queries (1):**
@@ -562,6 +562,26 @@ We welcome contributions! Please follow these guidelines:
 - **Coverage**: Maintain 89%+
 
 ______________________________________________________________________
+
+## Recent Hardening (2026-09-05)
+
+A coordinated 5-wave hardening effort (W1–W5, 2026-09-05) closed the audit's
+most severe findings and locked in the MCP backend wiring discipline:
+
+| Wave | Topic | Status |
+|------|-------|--------|
+| 1 | Critical bugs + dependency hygiene (real ColdStore upload, `/health` aggregator, IPython shell stubs) | built |
+| 2 | High bugs + zero-coverage test pass | built |
+| 3 | Medium bugs + coverage ratchet (87.62% → 89.0%) | built |
+| 4 | Test-quality refactor (empty no-assert tests rewritten) | built |
+| 5 | **Live MCP backend wiring** (CodeGraphIngester in lifespan, KnowledgeGraphBuilder populated, `/health` per-feed probes) | **built + wired** |
+
+All deliverables are tracked in
+`docs/feature-tracking/2026-09-05-akosha-hardening-wave-{1..5}.md`. After Wave 5,
+the `/health` endpoint returns probe-driven aggregate with 503 when any data
+feed is unhealthy; `discover_tools` surfaces the FULL profile accurately; shell
+intelligence commands return explicit `{"status": "stub", ...}` envelopes
+instead of fake-success payloads.
 
 ## License
 

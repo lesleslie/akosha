@@ -8,7 +8,7 @@ scrape_configs:
   # Akosha MCP Server metrics
   - job_name: 'akosha-mcp'
     static_configs:
-      - targets: ['localhost:3002']
+      - targets: ['localhost:8682']
     metrics_path: /metrics
     scrape_interval: 15s
     scrape_timeout: 10s

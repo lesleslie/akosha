@@ -215,11 +215,11 @@ kubectl apply -f kubernetes/grafana/dashboards/
 kubectl get services -n akosha
 
 # Port-forward to test locally
-kubectl port-forward -n akosha svc/akosha-api 8000:8000
+kubectl port-forward -n akosha svc/akosha-api 8682:8682
 
 # Test API
-curl http://localhost:8000/health
-curl http://localhost:8000/metrics
+curl http://localhost:8682/health
+curl http://localhost:8682/metrics
 ```
 
 ______________________________________________________________________

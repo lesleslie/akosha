@@ -10,6 +10,13 @@ topic: lifecycle
 
 # Akosha Current Status & Task Summary
 
+> **⚠️ STALE NOTICE (2026-09-09)** — This document is marked `role: historical`
+> in its frontmatter but its body still claims `Version: 0.3.0` and
+> `Date: 2025-01-27`. The current Akosha version is **0.15.1** (see
+> `pyproject.toml`). For current status, see `README.md` and `ARCHITECTURE.md`.
+> This file is retained for provenance of the Phase 1–3 work that did happen;
+> the body content has been superseded.
+
 **Date**: 2025-01-27
 **Version**: 0.3.0 (Phase 3 Complete + Enhancements)
 

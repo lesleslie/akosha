@@ -102,10 +102,10 @@ kubectl apply -f kubernetes/
 
 # Verify deployment
 kubectl get pods -n akosha
-kubectl port-forward -n akosha svc/akosha-api 8000:8000
+kubectl port-forward -n akosha svc/akosha-api 8682:8682
 
 # Check metrics
-curl http://localhost:8000/metrics
+curl http://localhost:8682/metrics
 ```
 
 See [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) for complete production setup.

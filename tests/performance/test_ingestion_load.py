@@ -127,27 +127,27 @@ class SpikeUser(HttpUser):
 
 if __name__ == "__main__":
     # Run load test
-    # locust -f test_ingestion_load.py --host=http://localhost:8000 --users=10 --spawn-rate=1
+    # locust -f test_ingestion_load.py --host=http://localhost:8682 --users=10 --spawn-rate=1
     print("Akosha Load Testing Suite")
     print("=" * 50)
     print("\nUsage:")
     print("1. Baseline test (10 users, spawn rate 1/s):")
     print(
-        "   locust -f test_ingestion_load.py --host=http://localhost:8000 --users=10 --spawn-rate=1"
+        "   locust -f test_ingestion_load.py --host=http://localhost:8682 --users=10 --spawn-rate=1"
     )
     print("\n2. Target test (100 users, spawn rate 10/s):")
     print(
-        "   locust -f test_ingestion_load.py --host=http://localhost:8000 --users=100 --spawn-rate=10"
+        "   locust -f test_ingestion_load.py --host=http://localhost:8682 --users=100 --spawn-rate=10"
     )
     print("\n3. Spike test (50 users, spawn rate 50/s):")
     print(
-        "   locust -f test_ingestion_load.py --host=http://localhost:8000 --users=50 --spawn-rate=50"
+        "   locust -f test_ingestion_load.py --host=http://localhost:8682 --users=50 --spawn-rate=50"
     )
     print("\n4. Run specific user classes:")
     print(
-        "   locust -f test_ingestion_load.py --host=http://localhost:8000 --users=20 AkoshaQueryUser"
+        "   locust -f test_ingestion_load.py --host=http://localhost:8682 --users=20 AkoshaQueryUser"
     )
     print("\n5. With HTML results:")
     print(
-        "   locust -f test_ingestion_load.py --host=http://localhost:8000 --users=10 --html results.html"
+        "   locust -f test_ingestion_load.py --host=http://localhost:8682 --users=10 --html results.html"
     )

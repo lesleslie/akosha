@@ -4,9 +4,9 @@ ______________________________________________________________________
 
 # Akosha Architecture Documentation
 
-**Version**: 0.3.0 (Phase 1: Production Pilot Ready)
-**Last Updated**: 2025-02-08
-**Status**: Production Ready for 100-System Pilot <!-- legacy status — see YAML frontmatter -->
+**Version**: 0.15.1 (post-2026-09-05 hardening waves; see `docs/feature-tracking/`)
+**Last Updated**: 2026-09-09
+**Status**: Production Ready (Phase 3 hardening complete; Phase 4 in progress) <!-- legacy status — see YAML frontmatter -->
 
 ## System Overview
 
@@ -91,7 +91,7 @@ sequenceDiagram
 
 #### Hot Tier (0-7 days)
 
-**Technology**: DuckDB in-memory + Redis cache
+**Technology**: DuckDB in-memory (development) **OR** `PgvectorHotStore` (production, gated by `AKOSHA__STORAGE__HOT__BACKEND`). Redis cache. See `akosha/storage/hot_store.py` for current tier-class deprecation note.
 
 **Purpose**: Real-time search, recent analytics
 
@@ -303,14 +303,14 @@ graph LR
 
 #### Cache Layer
 
-**Module**: `akosha/cache/layered_cache.py`
+**Status**: L1 (in-process DuckDB) is operational. L2 (Redis) is configured via
+`settings/akosha.yaml` (`cache.backend: redis`) but the `layered_cache` wrapper
+module was removed in 2026 hardening.
 
-**Two-tier caching**:
+**Configuration**: `settings/akosha.yaml` `cache.*` keys (`backend`, `host`,
+`port`, `db`, `local_ttl_seconds`, `redis_ttl_seconds`).
 
-- **L1**: In-memory cache (1000 entries, 5min TTL)
-- **L2**: Redis cache (100k entries, 1hr TTL)
-
-**Cache Strategy**: Write-through with TTL expiration
+**Cache Strategy**: Write-through with TTL expiration.
 
 ### 5. API Layer
 
@@ -325,7 +325,9 @@ graph LR
 - Input validation (Pydantic schemas)
 - Security logging (SIEM integration)
 
-**Tools**: 9 MCP tools exposed via FastMCP
+**Tools**: 32–34 MCP tools exposed via FastMCP (FULL profile); discoverable
+via the `discover_tools` meta-tool. See `akosha/mcp/tools/profiles.py:REGISTRATION_TOOLS`
+for the authoritative list.
 
 ## Data Flow Diagrams
 
@@ -474,47 +476,56 @@ graph TB
 
 ### Health Checks
 
-- `/health` - Liveness probe (service running)
-- `/metrics` - Prometheus metrics endpoint
-- `/ready` - Readiness probe (dependencies ready)
+- `/health` - Probe-driven readiness aggregator (`akosha/mcp/server.py:health_check`).
+  Returns `200 {status: ok, checks: {feed: ok|...}}` when all data feeds are healthy;
+  **503** `{status: degraded, ...}` otherwise.
+- `/healthz` - Kubernetes-style process-liveness probe (unconditional `200 {status: ok}`).
+- `/metrics` - Prometheus exposition endpoint (text/plain; version=0.0.4).
+
+**Note**: there is no separate `/ready` route — readiness semantics live on `/health`.
 
 ## Configuration
 
 ### Environment Variables
 
 ```bash
-# Storage
-AKOSHA_HOT_PATH=/data/akosha/hot
-AKOSHA_WARM_PATH=/data/akosha/warm
-AKOSHA_COLD_BUCKET=akosha-cold-data
-
-# Oneiric Storage
-S3_BUCKET=akosha-cold-data
-S3_REGION=us-west-2
+# Storage (resolved via StoragePathResolver; see akosha/storage/path_resolver.py)
+AKOSHA__STORAGE__HOT__BACKEND=duckdb-memory  # or duckdb-ssd | pgvector
+AKOSHA__STORAGE__HOT__PG_URL=postgresql://...  # only when backend=pgvector
+AKOSHA__STORAGE__COLD__BUCKET=akosha-cold-data
+AKOSHA__STORAGE__COLD__REGION=us-west-2
+AKOSHA__STORAGE__COLD__FORMAT=parquet
 
 # Cache
-REDIS_HOST=redis.cache.local
-REDIS_PORT=6379
-REDIS_DB=0
+AKOSHA_REDIS_HOST=redis.cache.local
+AKOSHA_REDIS_PORT=6379
 
 # API
-AKOSHA_MCP_PORT=8682
+AKOSHA_MCP_PORT=8682  # See akosha/config.py:DEFAULT_MCP_PORT — 8682 is canonical (Bodai port convention)
 
-# Security
+# JWT auth (consumed by akosha/api/middleware.py:verify_token)
 JWT_SECRET=<generated>
-RATE_LIMIT_RPS=10
-RATE_LIMIT_BURST=100
 
 # Feature Flags
 USE_BATCH_MIGRATION=true
 USE_CONCURRENT_DISCOVERY=true
 ```
 
+**Removed from prior revisions** (not bound in `akosha/config.py`):
+`AKOSHA_HOT_PATH`, `AKOSHA_WARM_PATH`, `REDIS_DB`, `RATE_LIMIT_RPS`,
+`RATE_LIMIT_BURST`. If you set these, they are silently ignored.
+
 ### Configuration Files
 
-- `config/akosha.yaml` - Main configuration
-- `config/akosha_storage.yaml` - Storage backend
-- `config/akosha_secrets.yaml` - Secrets (not in git)
+- `settings/akosha.yaml` - **Single source of truth** for all runtime config.
+  Loaded by Oneiric layered-config (defaults → `settings/akosha.yaml` →
+  `settings/local.yaml` → env vars prefixed with `AKOSHA_`).
+- Secrets are loaded from environment variables only
+  (`akosha/api/middleware.py:verify_token`); no secrets file is checked in.
+
+**Note**: The legacy `config/akosha.yaml`, `config/akosha_storage.yaml`,
+`config/akosha_secrets.yaml` referenced in older revisions of this doc do not
+exist. The canonical config path is `settings/akosha.yaml`.
 
 ## Implementation Status
 
@@ -528,7 +539,7 @@ Components delivered:
 - ✅ Three-tier storage architecture (Hot/Warm/Cold)
 - ✅ Basic ingestion pipeline (pull-based worker)
 - ✅ Knowledge graph construction
-- ✅ MCP server framework with 11 tools
+- ✅ MCP server framework (tool count grew to 32–34 in FULL profile; see `akosha/mcp/tools/profiles.py`)
 - ✅ Sharding layer (256 shards, consistent hashing)
 - ✅ Tier aging service (Hot→Warm→Cold)
 
@@ -544,8 +555,8 @@ Components delivered:
 - ✅ ONNX embedding service (with deterministic fallback)
 - ✅ Time-series analytics (trend, anomaly, correlation)
 - ✅ Knowledge graph with bidirectional BFS
-- ✅ 11 MCP tools integrated
-- ✅ L1/L2 layered caching (memory + Redis)
+- ✅ MCP tools expanded (current count: 32–34 in FULL profile)
+- ✅ L1 in-process cache (DuckDB); L2 Redis configured but `layered_cache` wrapper removed
 
 **Coverage**: 76-97% for Phase 2 components
 
@@ -712,7 +723,7 @@ async def search_similar(query_embedding):
 
 **Breakdown**:
 
-- Architecture: 100/100 ✅
+- Architecture: 95/100 ✅ (hot tier requires `PgvectorHotStore` for production; DuckDB hot tier is dev-only)
 - Implementation: 95/100 ✅
 - Testing: 90/100 ✅
 - Security: 95/100 ✅

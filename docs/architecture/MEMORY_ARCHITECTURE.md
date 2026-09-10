@@ -321,7 +321,7 @@ gracefully when the model isn't loaded.
 | `get_cross_repo_function_usage` | All code graphs; scans `nodes` for `function_name` substring | "Who calls X?" across all indexed repos |
 | `search_code_patterns` | PyCharm adapter **and** code-graph `nodes[].source` regex | Cross-cutting regex with IDE fallback |
 | `get_code_problems` | `nodes[].problems[]` filtered by severity | IDE diagnostics rollup |
-| `find_function_usage` | Code-graph `nodes[]` matching `function_name` substring; PyCharm `find_usages` as enrichment | "Where is function `parse_config` referenced?" |
+| `find_function_usage` | Code-graph `nodes[]` matching `function_name` substring; PyCharm search as enrichment | "Where is function `parse_config` referenced?" |
 | `analyze_imports` | Code-graph `nodes[].type == "import"` vs `edges[].type == "imports"` | Unused / circular / pattern analysis |
 
 ### Analytics (time-series + anomaly + correlation + changepoint)
@@ -608,7 +608,7 @@ mcp__akosha__find_function_usage(
 ```
 
 Walks every `code_graphs` row, scans `nodes[]` for substring matches,
-optionally enriches with PyCharm's `find_usages`.
+optionally enriches with PyCharm search.
 
 ### Q5 — Detect anomalies in error_rate
 

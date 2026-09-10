@@ -1,8 +1,16 @@
 ______________________________________________________________________
 
-## status: active role: canonical date: 2026-07-16 last_reviewed: 2026-07-16 superseded_by: null blocks_on: [] topic: observability
+## status: active role: canonical date: 2026-09-09 last_reviewed: 2026-09-09 superseded_by: null blocks_on: [] topic: observability
 
 # Akosha Admin Shell
+
+> **⚠️ STUB NOTICE (2026-09-09)** — The "Intelligence Commands" section below
+> (`aggregate`, `search`, `detect`, `graph`, `trends`) describes aspirational
+> behavior. As of this audit, all five commands return `{"status": "stub", ...}`
+> envelopes from `akosha/shell/adapter.py:115, 146, 177, 208, 241`. They do not
+> return real results. The doc is retained because the shell interface is
+> real — only the intelligence-command implementations are pending. See
+> `docs/feature-tracking/` for the in-progress adapter.
 
 The Akosha admin shell provides an interactive IPython environment for distributed intelligence operations and pattern recognition across systems.
 

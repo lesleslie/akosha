@@ -330,7 +330,7 @@ ______________________________________________________________________
 
 ### Task 10.1: Kubernetes Manifests
 
-**File**: `k8s/deployment.yaml`
+**File**: `kubernetes/deployment.yaml`
 
 ```yaml
 apiVersion: v1
@@ -502,7 +502,7 @@ class AkoshaUser(HttpUser):
 
 if __name__ == "__main__":
     # Run load test
-    # locust -f tests/performance/test_load.py --host=http://localhost:8000
+    # locust -f tests/performance/test_load.py --host=http://localhost:8682
     pass
 ```
 
@@ -520,8 +520,8 @@ ______________________________________________________________________
 
 ### Week 10
 
-- [x] Kubernetes deployment manifests <!-- verified 2026-07-15: k8s/ + kubernetes/ directories -->
-- [x] HPA configuration <!-- verified 2026-07-15: k8s/hpa.yaml -->
+- [x] Kubernetes deployment manifests <!-- verified 2026-07-15: kubernetes/ directory -->
+- [x] HPA configuration <!-- verified 2026-07-15: kubernetes/services.yaml (HPA inline) -->
 - [ ] Health check endpoints
 - [ ] Load testing with Locust
 - [ ] Performance profiling and optimization

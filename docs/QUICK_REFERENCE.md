@@ -1,8 +1,16 @@
 ______________________________________________________________________
 
-## status: active role: canonical date: 2026-07-16 last_reviewed: 2026-07-16 superseded_by: null blocks_on: [] topic: lifecycle
+## status: superseded role: historical date: 2026-09-09 last_reviewed: 2026-09-09 superseded_by: ARCHITECTURE.md blocks_on: [] topic: lifecycle
 
 # Akosha Oneiric Integration - Quick Reference
+
+> **⚠️ SUPERSEDED (2026-09-09)** — This doc describes a Oneiric
+> `AdapterMetadata` / `register_adapter_metadata` pattern that was never
+> implemented in this form. Akosha loads its `settings/akosha.yaml` directly
+> via Oneiric layered-config; the hot/warm/cold blocks are static YAML, not
+> adapter-registered metadata. The Phase 1–5 checklists (marked complete)
+> reference work that did not happen against this architecture. For current
+> architecture, see `ARCHITECTURE.md` and `settings/akosha.yaml`.
 
 ## TL;DR
 

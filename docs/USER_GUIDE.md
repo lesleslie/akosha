@@ -21,6 +21,13 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
+> **Recent Hardening (2026-09-05)** — A 5-wave hardening pass closed the
+> audit's most severe findings and wired the live MCP backend. See
+> `README.md` § Recent Hardening and
+> `docs/feature-tracking/2026-09-05-akosha-hardening-wave-{1..5}.md`.
+
+______________________________________________________________________
+
 ## Getting Started
 
 ### Installation Verification

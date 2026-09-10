@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-09-09
+
+Documentation audit pass — 5-agent parallel audit (MCP surface, ecosystem,
+API endpoints, architecture, runbooks) found 91 drift items (31 HIGH, 34
+MED, 26 LOW). Reports at `AKOSHA_DOCS_AUDIT_2026-09-09.md` and
+`AKOSHA_ARCHITECTURE_AUDIT_2026-09-09.md`.
+
+### Fixed
+
+- akosha: Standardize Akosha port to **8682** across all docs and config
+  (was 8000/3002 in 9 sites) — `settings/akosha.yaml`, `QUICKSTART.md`,
+  `DEPLOYMENT_GUIDE.md`, `PHASE_3_PRODUCTION_HARDENING.md`, `README.md`,
+  `akosha/CLAUDE.md`, `prometheus.yml`, `tests/performance/test_ingestion_load.py`
+- akosha: Update `akosha/mcp/tools/profiles.py:REGISTRATION_TOOLS` to actual
+  tool names (`store_memory`, `batch_store_memories`, `search_code_patterns`,
+  `get_code_problems`, `find_function_usage`, `analyze_imports`) — previously
+  listed 6 hallucinated names in both README and profile registry
+- akosha: Update test assertions in `test_mcp_tools_profiles.py` and
+  `test_mcp_tool_inventory.py` to match corrected tool names
+- akosha: Update `akosha/scripts/generate_secrets.py` defaults from `k8s/`
+  paths to `kubernetes/` (canonical deployment layout)
+- akosha: Update `MEMORY_ARCHITECTURE.md` references — removed `find_usages`
+  (hallucinated PyCharm tool name; real name is `find_function_usage`)
+
+### Documentation
+
+- akosha: Rewrite `docs/ARCHITECTURE.md` — 9 drift points fixed (version
+  stamp 0.3.0→0.15.1, hot tier production guidance, removed
+  `akosha/cache/layered_cache.py` reference for deleted module, MCP tool
+  count 9/11→32–34, real `/health` response shape with 503 contract, env
+  var bindings, configuration paths, production readiness score 100/100→95/100)
+- akosha: Add new "API Contract (Current)" section to
+  `docs/IMPLEMENTATION_GUIDE.md` — canonical `/health` shape and `/api/v1`
+  versioning decision (no prefix, intentional)
+- akosha: Tombstone `docs/runbooks/MILVUS_FAILURE.md` — entire file references
+  non-existent Milvus infrastructure (`grep` confirms 0 matches)
+- akosha: Tombstone `docs/IMPLEMENTATION_GUIDE.md` Week 4 API Layer section
+  (references non-existent `akosha/api/routes.py`)
+- akosha: Tombstone `docs/WARM_TIER_STORAGE_STRATEGY.md` Health Check
+  Endpoints section (references non-existent `akosha/api/health.py`)
+- akosha: Add "STUB NOTICE" banner to `docs/ADMIN_SHELL.md` — 5 intelligence
+  commands (`aggregate`, `search`, `detect`, `graph`, `trends`) return
+  `{"status": "stub", ...}` envelopes
+- akosha: Mark `docs/QUICK_REFERENCE.md` as superseded — describes Oneiric
+  adapter pattern that was never implemented
+- akosha: Add "Recent Hardening (2026-09-05)" section to `README.md` —
+  5-wave hardening effort that closed audit findings; previously unmentioned
+  in user-facing docs
+- akosha: Add hardening note to `docs/USER_GUIDE.md`
+- akosha: Add stale notice to `docs/CURRENT_STATUS.md` (claimed v0.3.0;
+  actual is v0.15.1)
+- akosha: Create `config/README.md` tombstone — `config/` directory is
+  legacy (pre-Oneiric configs use obsolete ports 8000/3001); canonical is
+  `settings/akosha.yaml`
+- akosha: Add legacy banner to `k8s/README.md` — `k8s/` is the pre-split
+  deployment layout (port 3002, akosha-mcp); canonical is `kubernetes/` (port
+  8682, split components)
+
 ## [0.15.1] - 2026-09-06
 
 ### Fixed

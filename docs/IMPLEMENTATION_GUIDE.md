@@ -616,105 +616,83 @@ ______________________________________________________________________
 
 ## Week 4: API Layer
 
+<!-- ARCHIVED 2026-09-09: This section described `akosha/api/routes.py` with
+     `@app.post("/api/v1/search", response_model=SearchResponse)` which does not
+     exist — `akosha/api/` contains only `middleware.py`. The canonical HTTP
+     surface is registered on the FastMCP app factory at
+     `akosha/mcp/server.py:create_app()` and exposes three routes:
+
+     - `GET /health` (probe-driven readiness aggregator, 503 on degraded)
+     - `GET /healthz` (Kubernetes-style liveness probe)
+     - `GET /metrics` (Prometheus exposition)
+
+     No `/api/v1/` prefix is registered. See `ARCHITECTURE.md` § Health Checks
+     for the current contract. -->
+
 ### Task 4.1: REST API with FastAPI
 
-**File**: `akosha/api/routes.py`
+**File**: `akosha/api/routes.py` — **does not exist** (see archival note above).
 
-```python
-"""FastAPI routes for Akosha."""
+For the current HTTP surface, see `akosha/mcp/server.py` and `ARCHITECTURE.md`.
 
-from __future__ import annotations
-import logging
-from datetime import UTC, datetime
+**Acceptance Criteria** (superseded — see archival note above):
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+______________________________________________________________________
 
-from akosha.storage.hot_store import HotStore
+## API Contract (Current — 2026-09-09)
 
-logger = logging.getLogger(__name__)
+This section is the **canonical HTTP contract** for Akosha. It supersedes the
+archived Week 4 example above and is the source of truth referenced by
+`ARCHITECTURE.md` and the runbooks.
 
-app = FastAPI(title="Akosha Universal Memory API")
+### Routes
 
-# Initialize hot store (TODO: use dependency injection)
-hot_store = HotStore()
+Registered on the FastMCP app factory at `akosha/mcp/server.py:create_app()`:
 
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| GET | `/health` | none | Probe-driven readiness aggregator — 200 OK when all feeds healthy, **503** when degraded |
+| GET | `/healthz` | none | Kubernetes-style process liveness (unconditional `200 {"status": "ok"}`) |
+| GET | `/metrics` | none | Prometheus exposition (`text/plain; version=0.0.4`) |
 
-class SearchRequest(BaseModel):
-    """Search request."""
+**There is no `/ready` route** — readiness semantics live on `/health`.
+**There is no `/api/v1/` prefix** — routes are mounted at root.
 
-    query: str = Field(..., description="Search query text")
-    system_id: str | None = Field(None, description="Filter to system")
-    limit: int = Field(10, ge=1, le=100, description="Max results")
-    threshold: float = Field(0.7, ge=0.0, le=1.0, description="Min similarity")
+### `/health` response shape
 
-
-class SearchResponse(BaseModel):
-    """Search response."""
-
-    total_results: int
-    results: list[dict]
-    query_time_ms: int
-
-
-@app.on_event("startup")
-async def startup():
-    """Initialize hot store on startup."""
-    await hot_store.initialize()
-    logger.info("Akosha API started")
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    """Close hot store on shutdown."""
-    await hot_store.close()
-    logger.info("Akosha API stopped")
-
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy"}
-
-
-@app.post("/api/v1/search", response_model=SearchResponse)
-async def search_conversations(request: SearchRequest) -> SearchResponse:
-    """Search across all system memories.
-
-    Args:
-        request: Search request
-
-    Returns:
-        Search response with results
-    """
-    start_time = datetime.now(UTC)
-
-    # Generate query embedding (TODO: implement embedding service)
-    query_embedding = [0.0] * 384  # Placeholder
-
-    # Search hot store
-    results = await hot_store.search_similar(
-        query_embedding=query_embedding,
-        system_id=request.system_id,
-        limit=request.limit,
-        threshold=request.threshold,
-    )
-
-    elapsed_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
-
-    return SearchResponse(
-        total_results=len(results),
-        results=results,
-        query_time_ms=elapsed_ms,
-    )
+```json
+{
+  "status": "ok",
+  "service": "akosha",
+  "version": "0.15.1",
+  "checks": {
+    "code_graphs_feed":       {"ok": true, "entities_count": 42},
+    "knowledge_graph_feed":   {"ok": true, "entities_count": 1024, "edges_count": 3517},
+    "local_traces_feed":      {"ok": true, "entities_count": 891},
+    "ingestion_backlog_feed": {"ok": true, "last_updated_timestamp": "..."}
+  }
+}
 ```
 
-**Acceptance Criteria**:
+- **HTTP 200** when all probes report `ok: true`
+- **HTTP 503** when any probe reports `ok: false` (or no probe is registered)
 
-- [ ] FastAPI server starts successfully
-- [ ] Health check endpoint working
-- [ ] Search endpoint accepts requests
-- [ ] Proper startup/shutdown hooks
+This is the contract formalized by **Wave 1 (C2) — `/health` aggregator** and
+extended by **Wave 5 — `/health` probe surfaces per-feed state** of the
+2026-09-05 hardening effort.
+
+### `/api/v1` versioning decision (2026-09-09)
+
+There is **no `/api/v1/` prefix** on any registered route. The Akosha HTTP
+surface is intentionally flat (root-mounted) because:
+
+1. The surface is tiny — 3 routes total, all operational probes
+2. There are no public-facing, versioned API contracts to preserve
+3. Adding a `/v1/` prefix is a backward-compatibility commitment that adds
+   no value at the current scale
+
+If a future public API surface requires versioning, it will be added under
+`/api/vN/` rather than retrofitting `/v1/` onto existing routes.
 
 ______________________________________________________________________
 
@@ -792,7 +770,7 @@ uv run crackerjack lint
 
 ### Kubernetes (Future)
 
-See `k8s/deployment.yaml` for Kubernetes deployment manifests.
+See `kubernetes/README.md` and `kubernetes/ingestion.yaml` for Kubernetes deployment manifests.
 
 ______________________________________________________________________
 

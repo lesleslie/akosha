@@ -1,8 +1,22 @@
 ______________________________________________________________________
 
-## status: active role: canonical date: 2026-07-16 last_reviewed: 2026-07-16 superseded_by: null blocks_on: [] topic: observability
+## status: superseded role: historical date: 2026-09-09 last_reviewed: 2026-09-09 superseded_by: null blocks_on: [] topic: observability
 
-# MILVUS_FAILURE - Vector Database Fallback
+# MILVUS_FAILURE - Vector Database Fallback (ARCHIVED)
+
+> **⚠️ ARCHIVED 2026-09-09** — This runbook is entirely fictional. Akosha has
+> **no Milvus integration**: `grep -rn "pymilvus|Milvus|MILVUS" akosha/ pyproject.toml`
+> returns 0 matches. All Milvus-specific infrastructure referenced here
+> (`milvus` Deployment, `milvus` StatefulSet, `milvusctl`, `app=milvus` label,
+> `/api/v1/metrics` Prometheus circuit-breaker state) does not exist.
+>
+> Storage failure handling for Akosha lives in:
+> - `HOT_STORE_FAILURE.md` (in this directory) — DuckDB hot-store recovery
+> - The probe-driven `/health` endpoint (`akosha/mcp/server.py:health_check`) —
+>   returns 503 with per-feed `checks` when degraded
+> - `ARCHITECTURE.md` § Health Checks — canonical contract
+
+This file is retained for provenance. **Do not follow its procedures.**
 
 ## Severity
 

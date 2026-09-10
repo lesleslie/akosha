@@ -2,10 +2,13 @@
 """Generate production secrets for Akosha deployment.
 
 This script generates cryptographically secure secrets for production
-Kubernetes deployments and saves them to k8s/secret.production.yaml.
+Kubernetes deployments and saves them to kubernetes/secrets.yaml
+(the canonical layout — see kubernetes/README.md).
 
 Usage:
     python -m akosha.scripts.generate_secrets
+
+For the legacy k8s/ layout, pass --output/--template explicitly.
 """
 
 from __future__ import annotations
@@ -33,8 +36,8 @@ def generate_encryption_key() -> str:
 
 
 def generate_production_secrets(
-    output_path: str | Path = "k8s/secret.production.yaml",
-    template_path: str | Path = "k8s/secret.production.yaml.template",
+    output_path: str | Path = "kubernetes/secrets.yaml",
+    template_path: str | Path = "kubernetes/secrets.yaml.template",
 ) -> None:
     """Generate production Kubernetes secret file.
 
@@ -88,8 +91,8 @@ stringData:
     print()
     print("⚠️  IMPORTANT:")
     print(f"   1. Store {output_file.name} securely (do NOT commit to git)")
-    print("   2. Apply to cluster: kubectl apply -f k8s/secret.production.yaml")
-    print("   3. Add to .gitignore: echo 'k8s/secret.production.yaml' >> .gitignore")
+    print(f"   2. Apply to cluster: kubectl apply -f {output_path}")
+    print(f"   3. Add to .gitignore: echo '{output_path}' >> .gitignore")
     print()
 
 
@@ -101,13 +104,13 @@ def main() -> None:
     parser.add_argument(
         "--output",
         "-o",
-        default="k8s/secret.production.yaml",
+        default="kubernetes/secrets.yaml",
         help="Output path for generated secret file",
     )
     parser.add_argument(
         "--template",
         "-t",
-        default="k8s/secret.production.yaml.template",
+        default="kubernetes/secrets.yaml.template",
         help="Template file path",
     )
 

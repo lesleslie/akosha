@@ -33,8 +33,10 @@ cache:
   redis_ttl_seconds: 3600
 
 # API configuration
+# Both API (HTTP/FastMCP) and MCP listen on 8682 (Bodai port convention).
+# See akosha/config.py:DEFAULT_MCP_PORT for the source-of-truth comment.
 api_port: 8682
-mcp_port: 3002
+mcp_port: 8682
 debug: false
 
 # Processing configuration

@@ -311,7 +311,7 @@ return all_results[:limit]
 
 ```bash
 # Check backlog size
-curl http://akosha:8000/api/v1/metrics | jq .akosha_backlog_count
+curl http://akosha:8682/api/v1/metrics | jq .akosha_backlog_count
 
 # Scale up pods
 kubectl scale deployment akosha-ingestion --replicas=10
@@ -321,10 +321,10 @@ kubectl scale deployment akosha-ingestion --replicas=10
 
 ```bash
 # Check hot store health
-curl http://akosha:8000/health
+curl http://akosha:8682/health
 
 # Check cache hit rate
-curl http://akosha:8000/api/v1/metrics | jq .akosha_cache_hit_rate
+curl http://akosha:8682/api/v1/metrics | jq .akosha_cache_hit_rate
 ```
 
 **Issue**: Memory usage high

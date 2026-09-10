@@ -67,8 +67,8 @@ async def test_register_all_tools_minimal_profile(monkeypatch: pytest.MonkeyPatc
     assert result["loaded_tools"] == []
     assert result["not_loaded_count"] == 2
     assert result["not_loaded_tools"] == [
-        "get_cross_system_summary",
-        "ingest_session_memory",
+        "batch_store_memories",
+        "store_memory",
     ]
 
 
@@ -103,8 +103,8 @@ async def test_register_all_tools_full_profile_and_discovery(
     assert result["query"] == "session"
     assert result["loaded_count"] == 2
     assert result["loaded_tools"] == [
-        "get_cross_system_summary",
-        "ingest_session_memory",
+        "batch_store_memories",
+        "store_memory",
     ]
     assert result["not_loaded_count"] == 0
     assert result["not_loaded_tools"] == []

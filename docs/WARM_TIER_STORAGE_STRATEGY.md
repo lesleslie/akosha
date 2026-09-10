@@ -255,7 +255,7 @@ ______________________________________________________________________
 ### Development/Minikube
 
 ```yaml
-# k8s/dev/pvc-warm.yaml
+# See kubernetes/README.md — dev paths merged into canonical layout
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -275,7 +275,7 @@ spec:
 #### GCP GKE Example
 
 ```yaml
-# k8s/prod/pvc-warm.yaml
+# See kubernetes/README.md — edit kubernetes/warm-store.yaml for prod storage
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -297,7 +297,7 @@ spec:
 **StorageClass**:
 
 ```yaml
-# k8s/prod/storageclass-premium.yaml
+# See kubernetes/README.md — provision premium storage class outside the manifests
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -319,7 +319,7 @@ allowedTopologies:
 #### AWS EKS Example
 
 ```yaml
-# k8s/prod/pvc-warm-aws.yaml
+# See kubernetes/README.md — AWS-specific overrides via kustomize patches
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -337,7 +337,7 @@ spec:
 **StorageClass**:
 
 ```yaml
-# k8s/prod/storageclass-gp3.yaml
+# See kubernetes/README.md — provision gp3 storage class outside the manifests
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -356,7 +356,7 @@ allowVolumeExpansion: true
 ### Deployment Configuration
 
 ```yaml
-# k8s/prod/deployment.yaml
+# See kubernetes/README.md — main deployment is kubernetes/ingestion.yaml + query.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -464,7 +464,7 @@ spec:
 1. Dedicated PVC per pod (for sharding)
 
 ```yaml
-# k8s/prod/statefulset.yaml
+# See kubernetes/README.md — StatefulSets are kubernetes/hot-store.yaml + warm-store.yaml
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -598,7 +598,7 @@ class StorageConfig:
 ### Kubernetes ConfigMap
 
 ```yaml
-# k8s/prod/configmap.yaml
+# See kubernetes/README.md — configmap is kubernetes/configmap.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -628,7 +628,7 @@ stringData:
 **Usage in Deployment**:
 
 ```yaml
-# k8s/prod/deployment.yaml (partial)
+# See kubernetes/README.md — main deployment is kubernetes/ingestion.yaml + query.yaml (partial)
 spec:
   template:
     spec:
@@ -750,13 +750,13 @@ jobs:
       - name: Deploy to production
         run: |
           # Blue-green deployment with canary
-          kubectl apply -f k8s/prod/deployment-canary.yaml
+          kubectl apply -f kubernetes/ingestion.yaml
 
           # Monitor canary for 15 minutes
           ./scripts/monitor-canary.sh --duration=15m
 
           # Promote to full production
-          kubectl apply -f k8s/prod/deployment.yaml
+          kubectl apply -f kubernetes/query.yaml
 
       - name: Verify deployment
         run: |
@@ -1061,7 +1061,7 @@ def update_storage_info(warm_path: Path, backend: str, environment: str = "produ
 ### Alerting Rules
 
 ```yaml
-# k8s/prod/prometheus-rules.yaml
+# See kubernetes/README.md — Prometheus rules live alongside observability manifests
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -1124,94 +1124,16 @@ spec:
 
 ### Health Check Endpoints
 
-```python
-# akosha/api/health.py
-"""Health check endpoints for storage monitoring."""
+<!-- ARCHIVED 2026-09-09: This section described `akosha/api/health.py` with
+     `@router.get("/health/warm", response_model=StorageHealth)` and
+     `@router.get("/metrics/storage")` which do not exist — `akosha/api/`
+     contains only `middleware.py`, and there is no per-tier health route.
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from pathlib import Path
-import os
-
-router = APIRouter()
-
-
-class StorageHealth(BaseModel):
-    """Storage health status."""
-
-    healthy: bool
-    path: str
-    size_bytes: int
-    available_bytes: int
-    usage_percent: float
-    status: str
-
-
-@router.get("/health/warm", response_model=StorageHealth)
-async def check_warm_storage_health() -> StorageHealth:
-    """Check warm storage health.
-
-    Returns:
-        Storage health status
-
-    Raises:
-        HTTPException: If storage is inaccessible
-    """
-    from akosha.config import get_current_config
-
-    config = get_current_config()
-    warm_path = config.get_warm_path()
-
-    if not warm_path.exists():
-        raise HTTPException(
-            status_code=503, detail=f"Warm storage path does not exist: {warm_path}"
-        )
-
-    try:
-        stat = os.statvfs(warm_path)
-        total_space = stat.f_frsize * stat.f_blocks
-        available_space = stat.f_frsize * stat.f_bavail
-        used_space = total_space - available_space
-        usage_percent = (used_space / total_space) * 100
-
-        # Determine health status
-        if usage_percent > 90:
-            status = "critical"
-            healthy = False
-        elif usage_percent > 75:
-            status = "warning"
-            healthy = True
-        else:
-            status = "healthy"
-            healthy = True
-
-        return StorageHealth(
-            healthy=healthy,
-            path=str(warm_path),
-            size_bytes=used_space,
-            available_bytes=available_space,
-            usage_percent=round(usage_percent, 2),
-            status=status,
-        )
-
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Failed to check warm storage: {e}")
-
-
-@router.get("/metrics/storage")
-async def get_storage_metrics():
-    """Get detailed storage metrics."""
-    from akosha.monitoring.disk_metrics import collect_disk_metrics, collect_database_metrics
-    from akosha.config import get_current_config
-
-    config = get_current_config()
-    warm_path = config.get_warm_path()
-
-    collect_disk_metrics(warm_path, environment="production")
-    collect_database_metrics(warm_path, environment="production")
-
-    return {"status": "metrics collected"}
-```
+     Storage health is surfaced via the probe-driven `/health` endpoint
+     (`akosha/mcp/server.py:health_check`), which aggregates per-feed `checks`
+     and returns 503 on degraded. See `ARCHITECTURE.md` § Health Checks for
+     the current contract, and `akosha/observability/prometheus_metrics.py`
+     for storage-related metrics. -->
 
 ______________________________________________________________________
 
@@ -1400,7 +1322,7 @@ echo "✅ Restore completed successfully"
 ### Backup Kubernetes CronJob
 
 ```yaml
-# k8s/prod/cronjob-backup.yaml
+# See kubernetes/README.md — backup CronJob is kubernetes/aging.yaml
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -1495,7 +1417,7 @@ metadata:
 
    ```bash
    # Create new PVC
-   kubectl apply -f k8s/prod/pvc-warm-recovery.yaml
+   kubectl apply -f kubernetes/warm-store.yaml
    ```
 
 1. **Restore from latest backup** (30 min)
