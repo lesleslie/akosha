@@ -5,7 +5,7 @@
 **Scope**: 6 architecture docs vs. `akosha/` source reality
 **Method**: Read-only. Each finding cites `doc:line` vs. `code:line`.
 
----
+______________________________________________________________________
 
 ## 1. Architecture Inventory
 
@@ -31,7 +31,7 @@
 | **`akosha/websocket/` (server/auth/tls_config)** | Real, NOT mentioned in `PROJECT_STRUCTURE.md`. `ARCHITECTURE.md` doesn't mention WebSocket at all (no port, no protocol, no event types). | **MISSING FROM DOC** |
 | **`akosha/shell/`, `akosha/alerting/`, `akosha/mcp/`, `akosha/security.py`, `akosha/config.py`, `akosha/main.py`, `akosha/cli.py`, `akosha/__main__.py`, `akosha/storage/{pgvector_hot_store,dhara_http_client,path_resolver,models}.py`, `akosha/ingestion/{otel,code_graph,bodai,websocket_invocations}_*.py`** | All real, all missing from `PROJECT_STRUCTURE.md`. | **MISSING FROM DOC** |
 
----
+______________________________________________________________________
 
 ## 2. Storage Tier Audit (Hot / Warm / Cold — claimed vs. actual)
 
@@ -43,13 +43,14 @@
 | **Aging Hot→Warm** | Hot→Warm at 7 days, Warm→Cold at 90 days (line 30-33 mermaid, 528-533 Phase 1 bullets) | Hot→Warm at 7-day cutoff (line 46) | `AgingService.migrate_hot_to_warm(cutoff_days: int = 7)` is real (`akosha/storage/aging.py:43-159`). Includes INT8 quantization + summary gen + checksum verification (Wave 2 H3 + Wave 3 wiring fix). | Matches docs. |
 | **Aging Warm→Cold** | Documented in ARCHITECTURE.md | `MEMORY_ARCHITECTURE.md:170-171` correctly says "(planned) warm→cold exporter; current `export_batch` writes a temp Parquet then logs the S3 key — upload is TODO" | `ColdStore.export_batch` writes Parquet to temp, then `_upload_to_storage` (real after Wave 1) uploads to chosen backend. **But no aging service calls it** — warm→cold is still un-wired. | **DOC LIES.** ARCHITECTURE.md does not flag warm→cold as un-implemented; the Ingestion Flow mermaid (line 333-346) shows "Aging: Warm→Cold after 90 days" as if operational. MEMORY_ARCHITECTURE.md is honest about it. |
 
----
+______________________________________________________________________
 
 ## 3. Findings (by severity and drift class)
 
 ### HIGH severity
 
 **F-1 [A — Layer drift / Cache module]**
+
 - **Doc ref**: `docs/ARCHITECTURE.md:306-313`, `:548-549`, Phase 2 delivery list at `:548`. Also referenced in mermaid diagrams at `:355`.
 - **Code ref**: `akosha/cache/` directory does **not exist**. `find /Users/les/Projects/akosha/akosha -type d -name "cache"` returns 0 hits. `redis>=5.0.0` is a declared dep but no layered_cache module consumes it.
 - **Impact**: ARCHITECTURE.md claims Phase 2 delivered "L1/L2 layered caching (memory + Redis)" as completed (`✅` on line 548). It didn't. The "Cache Layer" section (`:304-313`) describes a `akosha/cache/layered_cache.py` module that was never built.
@@ -57,18 +58,21 @@
 - **Fix**: Either remove the claim from ARCHITECTURE.md or implement the module.
 
 **F-2 [B — Backend drift / Hot tier]**
+
 - **Doc ref**: `docs/ARCHITECTURE.md:94` "Hot Tier (0-7 days) ... **Technology**: DuckDB in-memory + Redis cache". Phase 1 delivery list at `:528` "✅ Three-tier storage architecture". Production readiness score at `:715` "Architecture: 100/100 ✅".
 - **Code ref**: `akosha/storage/hot_store.py:11-26` deprecation notice; `akosha/storage/pgvector_hot_store.py:1-8` "drop-in replacement for HotStore (DuckDB) when `AKOSHA__STORAGE__HOT__BACKEND=pgvector`"; `akosha/storage/__init__.py:96-110` factory with pgvector branch.
 - **Impact**: ARCHITECTURE.md says DuckDB is the production hot tier. The code itself says DuckDB is the dev/test backend and pgvector is the production default. Docs are stale or wrong.
 - **Fix**: Update ARCHITECTURE.md hot-tier section to describe both backends and reference `docs/plans/2026-08-29-pgvector-default.md`.
 
 **F-3 [C — Data flow drift / IngestionWorker wired but not actually wired]**
+
 - **Doc ref**: `docs/ARCHITECTURE.md:60-88` "Ingestion Pipeline" section claims `IngestionWorker` polls S3/R2 every 30s and ingests. Mermaid diagram at `:21-51` shows the same. Sequence diagram at `:67-82` shows SB→S3→Worker→Hot.
 - **Code ref**: `akosha/main.py:118` `self.ingestion_workers: list[Any] = []`. No `.append(IngestionWorker(...))` call exists in `akosha/main.py` or anywhere in `akosha/`. Active ingestion paths in main.py:227-249 are `WebSocketInvocationsSubscriber` and `BodaiEventSubscriber` — both consume events, neither polls S3/R2.
 - **Impact**: ARCHITECTURE.md describes an ingestion pipeline that is not running in production. Session-Buddy → S3 → Akosha pull model is not the actual data path.
 - **Fix**: Either remove the S3-poller section from ARCHITECTURE.md (push-based ingest is reality) or wire `IngestionWorker`.
 
 **F-4 [G — CURRENT_STATUS staleness]**
+
 - **Doc ref**: `docs/CURRENT_STATUS.md` last touched **2026-07-17 03:22** (verified via `stat -f %Sm`).
 - **Code reality**:
   - `pyproject.toml` says version **0.15.1**. CURRENT_STATUS.md says **0.3.0**.
@@ -79,6 +83,7 @@
 - **Fix**: Refresh CURRENT_STATUS.md. Frontmatter `status: complete role: historical date: 2026-07-16` already says it's historical; but a working status doc needs to exist alongside it.
 
 **F-5 [F — Stale 2025 review / Several items now wrong]**
+
 - **Doc ref**: `docs/COMPREHENSIVE_ARCHITECTURE_REVIEW_2025-01-31.md` dated 2025-01-31.
 - **Code reality** (today, 2026-09-09):
   - Line 121, 129: "`akosha/storage/sharding.py` doesn't exist" → NOW EXISTS (123 lines, `ShardRouter` class).
@@ -92,24 +97,28 @@
 ### MEDIUM severity
 
 **F-6 [D — Hot/Warm/Cold tier drift / Cold backend count]**
+
 - **Doc ref**: `docs/ARCHITECTURE.md:32-33` "Cold Store ... Parquet/S3". `docs/ARCHITECTURE.md:167-194` describes S3/R2 only.
 - **Code ref**: `akosha/storage/cold_store.py:13-30` imports 4 storage adapters (local, s3, gcs, azure). `storage_backend` parameter is `Literal["local","s3","gcs","azure"]`.
 - **Impact**: Docs claim S3/R2-only; code is multi-cloud.
 - **Fix**: Update cold tier section in ARCHITECTURE.md.
 
 **F-7 [D — Hot/Warm/Cold tier drift / Warm→Cold un-implemented]**
+
 - **Doc ref**: `docs/ARCHITECTURE.md:333-346` Ingestion Flow mermaid shows "Aging: Warm→Cold after 90 days" as a step. ARCHITECTURE.md does not flag warm→cold as un-implemented.
 - **Code ref**: `ColdStore.export_batch` is implemented (real upload post-Wave 1), but no aging service calls it. `MEMORY_ARCHITECTURE.md:170-171` honestly says "(planned) warm→cold not implemented".
 - **Impact**: The Ingestion Flow diagram suggests warm→cold is operational when it is not.
 - **Fix**: Either remove the warm→cold step from the diagram or wire it.
 
 **F-8 [E — MinHash drift / Dedup doc gap]**
+
 - **Doc ref**: `docs/ARCHITECTURE.md:199-213` describes "Deduplication" generically as "Exact deduplication: SHA-256 content hash; Fuzzy deduplication: MinHash LSH". Doesn't name `datasketch`, doesn't describe the backend selection mechanism (`backend="minhash" | "sha256"`), doesn't mention the production-default status of MinHash.
 - **Code ref**: `akosha/processing/deduplication.py:65-67` `DeduplicationService(backend="minhash", num_perm=128, threshold=0.5)` is the production default. `akosha/processing/deduplication.py:46-49` says "MinHash path is the production default; SHA-256 exists as a deterministic fallback". `pyproject.toml:30` pins `datasketch>=0.6.0` with comment "audit H2: MinHash for fuzzy deduplication".
 - **Impact**: ARCHITECTURE.md doesn't describe the actual deduplication contract. Anyone reading it can't predict behavior.
 - **Fix**: Update dedup section to describe backend selection, datasketch pinning, and Jaccard threshold.
 
 **F-9 [H — Hardening wave drift / ARCHITECTURE.md missing 5 waves]**
+
 - **Doc ref**: `docs/ARCHITECTURE.md` frontmatter `last_reviewed: 2026-07-16`. File mtime is 2026-09-06 (verified).
 - **Code ref**: `docs/feature-tracking/2026-09-05-akosha-hardening-wave-{1,2,3,4,5}.md` document 5 hardening waves (all dated 2026-09-05). ARCHITECTURE.md does not reflect any of:
   - **Wave 1**: real `ColdStore` upload (4 backends), `/health` aggregator, IPython shell stubs, aiohttp dep declaration.
@@ -121,6 +130,7 @@
 - **Fix**: Add "Hardening History" section or update frontmatter `last_reviewed` and re-review.
 
 **F-10 [A — Layer drift / PROJECT_STRUCTURE.md omits whole subsystems]**
+
 - **Doc ref**: `docs/PROJECT_STRUCTURE.md` (file mtime 2026-07-21).
 - **Code ref**: Missing from PROJECT_STRUCTURE.md:
   - `akosha/observability/` (6 files)
@@ -139,66 +149,76 @@
 ### LOW severity
 
 **F-11 [A — Module-level claim / enrichment/vector_indexer/time_series]**
+
 - **Doc ref**: `docs/PROJECT_STRUCTURE.md:27-31` lists `enrichment.py`, `vector_indexer.py`, `time_series.py`.
 - **Code ref**: None of these files exist. Vector indexing lives in `akosha/storage/hot_store.py`. Time-series analytics lives in `akosha/processing/analytics.py`. No enrichment module exists.
 - **Impact**: Stale doc.
 - **Fix**: Update PROJECT_STRUCTURE.md (covered by F-10).
 
 **F-12 [A — Module-level claim / api/routes.py]**
+
 - **Doc ref**: `docs/PROJECT_STRUCTURE.md:42` lists `akosha/api/routes.py` and `akosha/api/middleware.py`.
 - **Code ref**: Only `akosha/api/middleware.py` exists (122 lines). FastAPI routes live in `akosha/mcp/server.py`.
 - **Impact**: Stale doc.
 - **Fix**: Update PROJECT_STRUCTURE.md (covered by F-10).
 
 **F-13 [B — Backend drift / Oneiric adapter pattern]**
+
 - **Doc ref**: `docs/AKOSHA_STORAGE_ARCHITECTURE.md:38-95, 800-895` describes Oneiric's `AdapterBridge` universal adapter registration pattern with `register_adapter_metadata()` and 4-tier resolution precedence.
 - **Code ref**: `akosha/storage/cold_store.py:13-17` uses **direct imports** of `S3StorageAdapter`, `GCSStorageAdapter`, etc. — no `AdapterBridge` or `Resolver`. `akosha/storage/pgvector_hot_store.py:11` uses `from oneiric.adapters.vector.pgvector import PgvectorAdapter` directly. `akosha/storage/__init__.py:96-110` is a simple factory function with an `if/elif` chain.
 - **Impact**: AKOSHA_STORAGE_ARCHITECTURE.md describes an architectural pattern that is not implemented. The doc is a **design proposal** more than documentation of current code.
 - **Fix**: Mark AKOSHA_STORAGE_ARCHITECTURE.md as `role: design-proposal` or `role: aspirational` rather than `canonical`.
 
 **F-14 [C — Data flow drift / MCP tool count]**
+
 - **Doc ref**: `docs/ARCHITECTURE.md:328` "Tools: 9 MCP tools exposed via FastMCP". `docs/ARCHITECTURE.md:530-547` says Phase 1 delivered "MCP server framework with 11 tools" and Phase 2 added 11 tools.
 - **Code ref**: `akosha/mcp/tools/` has 11 modules: `akosha_tools.py`, `code_graph_tools.py`, `eventbridge_tools.py`, `fitness_tools.py`, `otel_tools.py`, `session_buddy_tools.py`, `pycharm_tools.py`, `cross_repo_tools.py`, `group_registers.py`, `tool_registry.py`, `profiles.py`. Each module registers multiple tools. Real tool count is **multi-dozen**, gated by `AKOSHA_TOOL_PROFILE` (full/standard/minimal) per `akosha/mcp/tools/profiles.py`.
 - **Impact**: Tool count is wrong. Profile gating is not described.
 - **Fix**: Update tool count and add profile section.
 
 **F-15 [C — Data flow drift / Ingestion Flow mermaid]**
+
 - **Doc ref**: `docs/ARCHITECTURE.md:333-346` Ingestion Flow shows SHA-256 dedup → MinHash dedup → vector indexing → hot insert → aging → cold.
 - **Code ref**: `DeduplicationService` backend selection (`akosha/processing/deduplication.py:65`) uses MinHash as default, not sequential SHA-256 then MinHash. Flow is backend-configurable, not always both.
 - **Impact**: Doc oversimplifies.
 - **Fix**: Update mermaid to show backend-configurable dedup.
 
 **F-16 [G — CURRENT_STATUS internal contradiction]**
+
 - **Doc ref**: `docs/CURRENT_STATUS.md:25` says "Core tools (40+ MCP tools)". `docs/ARCHITECTURE.md:328` says "Tools: 9 MCP tools exposed via FastMCP". `docs/ARCHITECTURE.md:531` says "MCP server framework with 11 tools".
 - **Code reality**: Actual count > 9, probably > 40 (need to verify by counting `@mcp.tool` decorators in `akosha/mcp/tools/*.py`).
 - **Impact**: Two docs disagree on the same fact.
 - **Fix**: Reconcile and document the profile gating.
 
 **F-17 [D — Tier drift / Schema field]**
+
 - **Doc ref**: `docs/ARCHITECTURE.md:111-128` schema has `embedding FLOAT[384]` hardcoded for hot tier.
 - **Code ref**: `akosha/storage/hot_store.py` constructor accepts `embedding_dim` (configurable). `akosha/processing/embedding_dim.py:resolve_embedding_dim()` resolves dim at startup from the active embedding backend, defaulting to 384. `akosha/storage/pgvector_hot_store.py:53-66` honors the same resolution.
 - **Impact**: Hardcoded 384 is misleading.
 - **Fix**: Update schema diagram to show `FLOAT[N]` parameterized.
 
 **F-18 [G — CURRENT_STATUS.md date stamping]**
+
 - **Doc ref**: `docs/CURRENT_STATUS.md:13` "**Date**: 2025-01-27". File mtime **2026-07-17**.
 - **Code reality**: Body content references Phase 3 work (Jul 2025). No mention of post-Jul-2025 work.
 - **Impact**: Even the "Date" header is wrong by 17 months.
 - **Fix**: Refresh or mark as historical.
 
 **F-19 [E — MinHash drift / Cold tier MinHash aspirational]**
+
 - **Doc ref**: `docs/ARCHITECTURE.md:184-186` declares cold Parquet schema `("fingerprint", pa.binary()),  # MinHash`.
 - **Code ref**: `akosha/storage/cold_store.py` exports Parquet batches but does **not compute MinHash fingerprints** — `ColdRecord` model (`akosha/storage/models.py`) does not carry MinHash.
 - **Impact**: Schema describes MinHash column; actual export does not produce it.
 - **Fix**: Either compute MinHash in cold export (Datasketch MinHash of tokenized content) or drop MinHash from cold schema.
 
 **F-20 [H — Hardening wave drift / MEMORY_ARCHITECTURE.md also stale]**
+
 - **Doc ref**: `docs/architecture/MEMORY_ARCHITECTURE.md:48` "ColdStore ... TODO; current code logs and unlinks".
 - **Code reality**: Wave 1 C1 (2026-09-05) replaced the placeholder upload. `akosha/storage/cold_store.py:240` `_upload_to_storage` is now a real async upload via Oneiric adapters.
 - **Impact**: MEMORY_ARCHITECTURE.md is also stale, just by 4 days.
 - **Fix**: Update cold-store row to reflect 4 backends + real upload.
 
----
+______________________________________________________________________
 
 ## 4. Staleness Report — `docs/CURRENT_STATUS.md`
 
@@ -207,6 +227,7 @@
 **Age**: ~54 days
 
 **Header claims**:
+
 - "Date: 2025-01-27" → actual mtime 2026-07-17 (file was modified 54 days ago but date header says Jan 2025; **header is wrong by 17 months**)
 - "Version: 0.3.0" → `pyproject.toml` says **0.15.1** (54 minor versions off, after 5 hardening wave bumps)
 - "Phase 3 Complete + Enhancements" → Phase 3 was Jul 2025; today we're post-Phase 4 scale prep, post-5 hardening waves
@@ -227,11 +248,12 @@
 
 **Verdict**: CURRENT_STATUS.md is **historical**. Its YAML frontmatter says `status: complete role: historical date: 2026-07-16` — but a working status doc should sit alongside it reflecting post-Jul-2026 work. **No such doc exists.**
 
----
+______________________________________________________________________
 
 ## 5. Summary
 
 **Architecture docs vs. code reality in Akosha**:
+
 - **6 of 6 docs reviewed** (ARCHITECTURE, AKOSHA_STORAGE_ARCHITECTURE, MEMORY_ARCHITECTURE, PROJECT_STRUCTURE, COMPREHENSIVE_ARCHITECTURE_REVIEW_2025-01-31, CURRENT_STATUS).
 - **20 findings**: 5 HIGH, 6 MEDIUM, 9 LOW.
 - **Top 3 most consequential drift classes**:
@@ -240,18 +262,21 @@
   - **(G/H) CURRENT_STATUS.md + ARCHITECTURE.md both miss the 5 hardening waves** dated 2026-09-05 that closed the P0-P2 audit findings.
 
 **Architecture docs that are accurate**:
+
 - `MEMORY_ARCHITECTURE.md` (`docs/architecture/MEMORY_ARCHITECTURE.md`) is the **most accurate** — it correctly describes dual hot backends, admits warm→cold is un-implemented, names pgvector, references code paths. Only minor staleness on cold-store upload (Wave 1 fix not reflected).
 
 **Architecture docs that are aspirational rather than factual**:
+
 - `AKOSHA_STORAGE_ARCHITECTURE.md` describes an Oneiric AdapterBridge pattern that is not implemented. Code uses direct Oneiric imports.
 
 **Recommended next actions** (prioritized):
+
 1. **Move `CURRENT_STATUS.md` and `COMPREHENSIVE_ARCHITECTURE_REVIEW_2025-01-31.md` to `docs/archive/`** — they're historical, but currently sit at docs root.
-2. **Refresh `PROJECT_STRUCTURE.md`** with `tree`-generated output (single command, single edit).
-3. **Update `ARCHITECTURE.md` hot-tier section** to describe pgvector backend and deprecate DuckDB as production.
-4. **Update `ARCHITECTURE.md` cache section** to remove the `akosha/cache/layered_cache.py` claim or implement the module.
-5. **Update `ARCHITECTURE.md` ingestion flow diagram** to show the actual wired paths (websocket_invocations_subscriber + bodai_event_subscriber), not the unwired IngestionWorker pull model.
-6. **Append a "Hardening History" or "Post-Jul-2026 Status" section to ARCHITECTURE.md** referencing the 5 hardening waves.
-7. **Refresh `MEMORY_ARCHITECTURE.md:48`** — cold-store upload is now real (Wave 1 C1).
+1. **Refresh `PROJECT_STRUCTURE.md`** with `tree`-generated output (single command, single edit).
+1. **Update `ARCHITECTURE.md` hot-tier section** to describe pgvector backend and deprecate DuckDB as production.
+1. **Update `ARCHITECTURE.md` cache section** to remove the `akosha/cache/layered_cache.py` claim or implement the module.
+1. **Update `ARCHITECTURE.md` ingestion flow diagram** to show the actual wired paths (websocket_invocations_subscriber + bodai_event_subscriber), not the unwired IngestionWorker pull model.
+1. **Append a "Hardening History" or "Post-Jul-2026 Status" section to ARCHITECTURE.md** referencing the 5 hardening waves.
+1. **Refresh `MEMORY_ARCHITECTURE.md:48`** — cold-store upload is now real (Wave 1 C1).
 
 **Files**: `/Users/les/Projects/akosha/AKOSHA_ARCHITECTURE_AUDIT_2026-09-09.md`

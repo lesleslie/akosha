@@ -121,12 +121,12 @@ docker-compose exec akosha ls -la /data/akosha/dev/warm
 ### 4.1 Create Namespace and PVC
 
 ```bash
-# Apply Kubernetes manifests
-kubectl create namespace akosha-dev
-kubectl apply -f k8s/dev/pvc-warm.yaml
-kubectl apply -f k8s/dev/configmap.yaml
-kubectl apply -f k8s/dev/deployment.yaml
+# Configuration via Oneiric layered settings (Kubernetes manifests dropped 2026-09-10)
+export AKOSHA_NAMESPACE=akosha-dev
+mahavishnu mcp start
 ```
+
+For dev-only overrides, edit `settings/local.yaml` and point the namespace at `akosha-dev` before starting.
 
 ### 4.2 Verify PVC Binding
 
@@ -183,10 +183,11 @@ AKOSHA_WARM_PATH=~/.akosha/dev/warm \
 ### 6.2 Schedule Cron Job (Kubernetes)
 
 ```bash
-kubectl apply -f k8s/dev/cronjob-backup.yaml
+# Cron jobs are configured via Oneiric layered settings (Kubernetes manifests dropped 2026-09-10)
+mahavishnu mcp start
 
-# Verify cron job created
-kubectl get cronjob -n akosha-dev
+# Verify schedule
+curl http://localhost:8682/health
 
 # Manually trigger backup for testing
 kubectl create job test-backup \

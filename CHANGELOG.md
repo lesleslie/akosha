@@ -5,12 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-09-10
+
+### Added
+
+- skills_signer: Phase 1.5 cryptographic core + /health wiring
+
+### Fixed
+
+- mcp-server: Tolerate running-but-empty kg_refresh producer
+- mcp-server: Tolerate running-but-empty OTel producer
+- mcp-server: Tolerate running-but-empty OTel producer
+- otel-ingester: Use OTLP/HTTP POST + structured logging
+
+### Documentation
+
+- 5-agent parallel audit pass + 91 drift fixes (2026-09-09)
+- ops+plan: OTel→Tempo hand-off + akosha-otel-feed-recovery plan
+
+### Testing
+
+- mcp-phase0: Expect canonical /mcp-suffixed Dhara registration URL
+- mcp-server: Add parity tests for local_traces_ok
+- otel-ingester: Migrate coverage tests to POST contract
+
+### Internal
+
+- gitignore: Apply Bodai canonical snippet
+
 ## [Unreleased] - 2026-09-09
 
 Documentation audit pass — 5-agent parallel audit (MCP surface, ecosystem,
 API endpoints, architecture, runbooks) found 91 drift items (31 HIGH, 34
 MED, 26 LOW). Reports at `AKOSHA_DOCS_AUDIT_2026-09-09.md` and
 `AKOSHA_ARCHITECTURE_AUDIT_2026-09-09.md`.
+
+### Removed
+
+- akosha: Drop Kubernetes deployment support ecosystem-wide — remove both
+  `k8s/` (legacy pre-split layout, 21 files) and `kubernetes/` (split-component
+  layout, 13 files). Supersedes the 2026-09-09 audit recommendation to archive
+  one layout. Future deployments use environment-based config (Oneiric
+  layered settings + `MAHAVISHNU_*` env vars). `akosha/scripts/generate_secrets.py`
+  marked `.. deprecated::`; ruff `pyproject.toml` `k8s/**` exclude removed.
 
 ### Fixed
 

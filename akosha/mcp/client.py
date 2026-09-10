@@ -63,7 +63,6 @@ class BodaiComponentMCPClient:
         self._token = token
         self._session: ClientSession | None = None
         self._transport_context: Any = None
-        self._get_session_id: Any = None
 
     @property
     def tools_url(self) -> str:
@@ -71,15 +70,13 @@ class BodaiComponentMCPClient:
         return self.base_url
 
     @property
-    def session_id(self) -> Any:
+    def session_id(self) -> None:
         """Return the current MCP session ID, or None if not established.
 
-        Populated from the third tuple element yielded by
-        ``streamable_http_client``; ``None`` before ``_ensure_session``
-        has run successfully.
+        The streamable_http transport in mcp>=2.0 manages the session
+        ID internally; no callback is exposed. This property is kept
+        for API compatibility and always returns None.
         """
-        if self._get_session_id is not None:
-            return self._get_session_id()
         return None
 
     async def _ensure_session(self) -> None:
@@ -103,13 +100,12 @@ class BodaiComponentMCPClient:
             terminate_on_close=True,
         )
 
-        rs, ws, get_session_id_callback = await self._transport_context.__aenter__()
-        self._get_session_id = get_session_id_callback
+        rs, ws = await self._transport_context.__aenter__()
         self._session = ClientSession(rs, ws)
         await self._session.__aenter__()
         await self._session.initialize()
 
-        logger.debug("MCP session established: %s", self.session_id)
+        logger.debug("MCP session established")
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
         """Call an MCP tool over HTTP.
@@ -169,7 +165,6 @@ class BodaiComponentMCPClient:
         if self._transport_context is not None:
             await self._transport_context.__aexit__(None, None, None)
             self._transport_context = None
-        self._get_session_id = None
 
 
 class DharaServiceRegistryClient:

@@ -330,7 +330,7 @@ ______________________________________________________________________
 
 ### Task 10.1: Kubernetes Manifests
 
-**File**: `kubernetes/deployment.yaml`
+**File**: `settings/akosha.yaml` (Oneiric layered settings — Kubernetes manifests dropped 2026-09-10)
 
 ```yaml
 apiVersion: v1
@@ -520,8 +520,8 @@ ______________________________________________________________________
 
 ### Week 10
 
-- [x] Kubernetes deployment manifests <!-- verified 2026-07-15: kubernetes/ directory -->
-- [x] HPA configuration <!-- verified 2026-07-15: kubernetes/services.yaml (HPA inline) -->
+- [x] ~~Kubernetes deployment manifests~~ — dropped 2026-09-10
+- [x] HPA configuration — relocated to Oneiric settings
 - [ ] Health check endpoints
 - [ ] Load testing with Locust
 - [ ] Performance profiling and optimization

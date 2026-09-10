@@ -343,7 +343,7 @@ ingestion:
 1. **Auto-scale trigger**:
 
    ```yaml
-   # k8s/hpa.yaml
+   # HPA was previously inlined in kubernetes/services.yaml (manifest dropped 2026-09-10)
    apiVersion: autoscaling/v2
    kind: HorizontalPodAutoscaler
    spec:
@@ -776,7 +776,7 @@ class IngestionWorker:
 1. **Kubernetes preStop hook**:
 
    ```yaml
-   # k8s/deployment.yaml
+   # lifecycle was previously in kubernetes/ingestion.yaml (manifest dropped 2026-09-10)
    lifecycle:
      preStop:
        exec:

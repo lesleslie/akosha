@@ -73,15 +73,6 @@ akosha/
 │   ├── deploy.sh              # Deployment script
 │   ├── migrate_hot_to_warm.py # Manual migration trigger
 │   └── benchmark.py           # Performance benchmarks
-├── k8s/                       # Kubernetes manifests
-│   ├── deployment.yaml        # Akosha deployment
-│   ├── hpa.yaml               # Horizontal pod autoscaler
-│   ├── service.yaml           # Kubernetes service
-│   ├── configmap.yaml         # Configuration management
-│   ├── ingress.yaml           # Ingress configuration
-│   └── grafana/
-│       └── dashboards/
-│           └── akosha-dashboard.json
 ├── docs/                      # Documentation
 │   ├── ADR_001_ARCHITECTURE_DECISIONS.md  # Architecture decisions
 │   ├── IMPLEMENTATION_GUIDE.md           # Implementation guide

@@ -155,7 +155,7 @@ ______________________________________________________________________
 - [ ] Retry with exponential backoff
 - [x] OpenTelemetry tracing <!-- verified 2026-07-15: akosha/observability/tracing.py (353 lines) -->
 - [x] Prometheus metrics <!-- verified 2026-07-15: akosha/observability/prometheus_metrics.py (1376 lines) -->
-- [x] Kubernetes deployment <!-- verified 2026-07-15: k8s/ + kubernetes/ directories -->
+- [x] ~~Kubernetes deployment~~ — dropped 2026-09-10 (use Oneiric layered settings)
 - [ ] Load testing (1000 req/min)
 - [ ] Zero-downtime deployments
 
@@ -229,8 +229,8 @@ uv run python -m akosha.mcp
 **For Operations**:
 
 ```bash
-# Deploy to Kubernetes
-kubectl apply -f k8s/
+# Deploy via Bodai orchestrator (Kubernetes manifests dropped 2026-09-10)
+mahavishnu mcp start
 
 # Check status
 kubectl get pods -n akosha

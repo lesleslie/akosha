@@ -97,12 +97,12 @@ For production deployment with Kubernetes, monitoring, and security:
 # Review deployment guide
 cat docs/DEPLOYMENT_GUIDE.md
 
-# Deploy to Kubernetes
-kubectl apply -f kubernetes/
+# Deploy via Oneiric layered settings
+export MAHAVISHNU_API_KEY=...
+mahavishnu mcp start
 
 # Verify deployment
-kubectl get pods -n akosha
-kubectl port-forward -n akosha svc/akosha-api 8682:8682
+curl http://localhost:8682/health
 
 # Check metrics
 curl http://localhost:8682/metrics

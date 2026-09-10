@@ -671,21 +671,12 @@ async def search_similar(query_embedding):
   - `MigrationCompleted` - Tier migration completed
   - `AkoshaSystemHealthy` - All systems operational
 
-#### Kubernetes Deployment
+#### Deployment
 
-**Manifests** (`kubernetes/`):
-
-- ✅ Deployment configurations (ingestion, query, hot/warm stores)
-- ✅ Service definitions (ClusterIP, NodePort)
-- ✅ ConfigMap (environment variables)
-- ✅ Secrets (S3 credentials, auth config, Redis)
-- ✅ Ingress (TLS termination, routing)
-- ✅ HPA (Horizontal Pod Autoscaler)
-- ✅ PodDisruptionBudgets (zero-downtime deployments)
-- ✅ NetworkPolicies (security boundaries)
-- ✅ CronJobs (aging service)
-
-**Deployment Guide**: [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
+Kubernetes manifests were dropped ecosystem-wide on 2026-09-10. Deploy via
+Oneiric layered settings (`settings/akosha.yaml` + `MAHAVISHNU_*` env vars)
+or by integrating with the Bodai orchestrator (see
+[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)).
 
 #### Documentation Updates
 

@@ -126,7 +126,7 @@ under `/Users/les/Projects/akosha/`. Akosha v0.15.1 is the Bodai ecosystem's
   EventBridge/Cross-Repo/Session-Buddy/code-graph mentions)
 - **`DEPLOYMENT_GUIDE.md:319-333` Prometheus metric names disagree** with both
   `PROMETHEUS_METICS.md` and `akosha/observability/prometheus_metrics.py`
-- **`docs/PROMETHEUS_METICS.md` filename typo** (METICS not METRICS)
+- **`docs/PROMETHEUS_METICS.md` filename typo** (METRICS not METRICS)
 - **Hardcoded version `'0.1.0'`** in `docs/ADMIN_SHELL.md:147` (real is 0.15.1)
 - **`.env.example` referenced** in `akosha/CLAUDE.md:23,204` but doesn't exist
 - **3 stub runbooks missing recovery content** (INGESTION_BACKLOG,

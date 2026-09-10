@@ -15,7 +15,7 @@ This guide provides step-by-step instructions for deploying Akosha to a producti
 1. [Prerequisites](#prerequisites)
 1. [Architecture Overview](#architecture-overview)
 1. [Environment Setup](#environment-setup)
-1. [Kubernetes Deployment](#kubernetes-deployment)
+1. [Deployment](#deployment)
 1. [Configuration](#configuration)
 1. [Monitoring & Observability](#monitoring--observability)
 1. [Security Hardening](#security-hardening)
@@ -155,72 +155,32 @@ kubectl create secret generic akosha-redis-config \
 ### 4. Create ConfigMaps
 
 ```bash
-kubectl apply -f kubernetes/configmap.yaml
+# ConfigMaps are no longer managed via kubernetes/ manifests.
+# Use Oneiric layered settings (settings/akosha.yaml) + MAHAVISHNU_* env vars.
 ```
 
 ______________________________________________________________________
 
-## Kubernetes Deployment
+## Deployment
 
-### 1. Deploy Core Components
-
-```bash
-# Deploy all Akosha components
-kubectl apply -f kubernetes/
-
-# Verify deployment
-kubectl get pods -n akosha
-kubectl get services -n akosha
-kubectl get deployments -n akosha
-```
-
-Expected output:
-
-```
-NAME                          READY   STATUS    RESTARTS   AGE
-akosha-ingestion-xxx-xxx      1/1     Running   0          2m
-akosha-query-xxx-xxx          1/1     Running   0          2m
-akosha-hot-store-xxx-xxx      1/1     Running   0          2m
-akosha-warm-store-xxx-xxx     1/1     Running   0          2m
-akosha-aging-xxx-xxx          1/1     Running   0          2m
-```
-
-### 2. Deploy Redis (if not external)
+Kubernetes manifests (`kubernetes/`, `k8s/`) were dropped ecosystem-wide on
+2026-09-10. Deploy via the Bodai orchestrator instead:
 
 ```bash
-# Deploy Redis cluster
-kubectl apply -f kubernetes/redis/
+# 1. Configure Oneiric layered settings
+cp settings/akosha.yaml settings/local.yaml   # gitignored overrides
+# edit settings/local.yaml with your environment
 
-# Verify
-kubectl get pods -l app=redis
-```
+# 2. Start the MCP server
+mahavishnu mcp start
 
-### 3. Deploy Monitoring Stack
-
-```bash
-# Deploy Prometheus
-kubectl apply -f kubernetes/prometheus/
-
-# Deploy Grafana
-kubectl apply -f kubernetes/grafana/
-
-# Import dashboards
-kubectl apply -f kubernetes/grafana/dashboards/
-```
-
-### 4. Verify Services
-
-```bash
-# Check services
-kubectl get services -n akosha
-
-# Port-forward to test locally
-kubectl port-forward -n akosha svc/akosha-api 8682:8682
-
-# Test API
+# 3. Verify
 curl http://localhost:8682/health
 curl http://localhost:8682/metrics
 ```
+
+For Mahavishnu-pool-managed deployment, see `docs/POOL_REFERENCE.md`.
+For environment variable configuration, see [Configuration](#configuration).
 
 ______________________________________________________________________
 
@@ -228,7 +188,7 @@ ______________________________________________________________________
 
 ### Environment Variables
 
-Key configuration via `kubernetes/configmap.yaml`:
+Key configuration via `settings/akosha.yaml` (Oneiric layered settings):
 
 ```yaml
 apiVersion: v1
@@ -682,8 +642,8 @@ kubectl rollout status deployment/akosha-ingestion -n akosha
 # Scale to zero (emergency stop)
 kubectl scale deployment/akosha-ingestion --replicas=0 -n akosha
 
-# Restore from backup (if needed)
-kubectl apply -f kubernetes/backups/akosha-ingestion-v1.2.3.yaml
+# Restore from backup (if needed — Kubernetes manifests dropped 2026-09-10)
+# Use Bodai backup tools or your orchestrator's restore workflow.
 ```
 
 ______________________________________________________________________

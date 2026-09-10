@@ -219,7 +219,7 @@ scrape_configs:
 
 **Purpose**: Dashboard visualization
 
-**Status**: Pre-built dashboards provided in `k8s/monitoring/`
+**Status**: Pre-built dashboards shipped alongside the Akosha Helm chart (see project README for the chart location).
 
 ## Security Considerations
 

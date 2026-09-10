@@ -255,7 +255,7 @@ ______________________________________________________________________
 ### Development/Minikube
 
 ```yaml
-# See kubernetes/README.md — dev paths merged into canonical layout
+# Dev paths configured via Oneiric layered settings (kubernetes/ dropped 2026-09-10)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -275,7 +275,7 @@ spec:
 #### GCP GKE Example
 
 ```yaml
-# See kubernetes/README.md — edit kubernetes/warm-store.yaml for prod storage
+# See settings/akosha.yaml — edit warm-store config for prod storage (kubernetes/ dropped 2026-09-10)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -297,7 +297,7 @@ spec:
 **StorageClass**:
 
 ```yaml
-# See kubernetes/README.md — provision premium storage class outside the manifests
+# See settings/akosha.yaml — provision premium storage class outside the settings (kubernetes/ dropped 2026-09-10)
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -319,7 +319,7 @@ allowedTopologies:
 #### AWS EKS Example
 
 ```yaml
-# See kubernetes/README.md — AWS-specific overrides via kustomize patches
+# See settings/akosha.yaml — AWS-specific overrides via Oneiric layered settings (kubernetes/ dropped 2026-09-10)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -337,7 +337,7 @@ spec:
 **StorageClass**:
 
 ```yaml
-# See kubernetes/README.md — provision gp3 storage class outside the manifests
+# See settings/akosha.yaml — provision gp3 storage class outside the settings (kubernetes/ dropped 2026-09-10)
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -356,7 +356,7 @@ allowVolumeExpansion: true
 ### Deployment Configuration
 
 ```yaml
-# See kubernetes/README.md — main deployment is kubernetes/ingestion.yaml + query.yaml
+# See settings/akosha.yaml — main deployment is settings/akosha.yaml (kubernetes/ dropped 2026-09-10)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -464,7 +464,7 @@ spec:
 1. Dedicated PVC per pod (for sharding)
 
 ```yaml
-# See kubernetes/README.md — StatefulSets are kubernetes/hot-store.yaml + warm-store.yaml
+# See settings/akosha.yaml — StatefulSets configured via Oneiric (kubernetes/ dropped 2026-09-10)
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -598,7 +598,7 @@ class StorageConfig:
 ### Kubernetes ConfigMap
 
 ```yaml
-# See kubernetes/README.md — configmap is kubernetes/configmap.yaml
+# See settings/akosha.yaml — configmap section in Oneiric settings (kubernetes/ dropped 2026-09-10)
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -628,7 +628,7 @@ stringData:
 **Usage in Deployment**:
 
 ```yaml
-# See kubernetes/README.md — main deployment is kubernetes/ingestion.yaml + query.yaml (partial)
+# See settings/akosha.yaml — main deployment in Oneiric settings (kubernetes/ dropped 2026-09-10)
 spec:
   template:
     spec:
@@ -749,14 +749,14 @@ jobs:
     steps:
       - name: Deploy to production
         run: |
-          # Blue-green deployment with canary
-          kubectl apply -f kubernetes/ingestion.yaml
+          # Blue-green deployment with canary (kubernetes/ manifests dropped 2026-09-10)
+          mahavishnu mcp start --canary
 
           # Monitor canary for 15 minutes
           ./scripts/monitor-canary.sh --duration=15m
 
           # Promote to full production
-          kubectl apply -f kubernetes/query.yaml
+          mahavishnu mcp promote
 
       - name: Verify deployment
         run: |
@@ -1061,7 +1061,7 @@ def update_storage_info(warm_path: Path, backend: str, environment: str = "produ
 ### Alerting Rules
 
 ```yaml
-# See kubernetes/README.md — Prometheus rules live alongside observability manifests
+# See settings/akosha.yaml — Prometheus rules configured via Oneiric (kubernetes/ dropped 2026-09-10)
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -1322,7 +1322,7 @@ echo "✅ Restore completed successfully"
 ### Backup Kubernetes CronJob
 
 ```yaml
-# See kubernetes/README.md — backup CronJob is kubernetes/aging.yaml
+# See settings/akosha.yaml — backup schedule configured via Oneiric (kubernetes/ dropped 2026-09-10)
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -1416,8 +1416,8 @@ metadata:
 1. **Provision new PV** (15 min)
 
    ```bash
-   # Create new PVC
-   kubectl apply -f kubernetes/warm-store.yaml
+   # Create new PVC (Kubernetes manifests dropped 2026-09-10)
+   # Use Oneiric layered settings to manage warm-store storage.
    ```
 
 1. **Restore from latest backup** (30 min)

@@ -217,7 +217,7 @@ class OtelTraceIngester:
         if 200 <= status_code < 300:
             try:
                 body = response.json()
-            except (ValueError, json.JSONDecodeError):
+            except ValueError, json.JSONDecodeError:
                 logger.warning(
                     "OTel poll returned 2xx but body was not valid JSON; "
                     "method=%s path=%s status=%d",
@@ -260,8 +260,7 @@ class OtelTraceIngester:
             # observability surfaces the gap.
             self._errors_total += 1
             logger.warning(
-                "OTel poll: receiver not OTLP/HTTP-export-capable; "
-                "method=%s path=%s status=%d",
+                "OTel poll: receiver not OTLP/HTTP-export-capable; method=%s path=%s status=%d",
                 method,
                 path,
                 status_code,
@@ -272,10 +271,10 @@ class OtelTraceIngester:
             # (it logs + bumps _errors_total + sleeps).
             response.raise_for_status()
         # Other 4xx (e.g. 400 Bad Request, 401/403 auth, 413 Payload Too Large)
-            # The receiver is reachable, the request shape is wrong — this is a
-            # CLIENT bug, not a transport error. Do NOT bump _errors_total; that
-            # counter is for transport/feed health. Log loudly so the operator
-            # notices the malformed request.
+        # The receiver is reachable, the request shape is wrong — this is a
+        # CLIENT bug, not a transport error. Do NOT bump _errors_total; that
+        # counter is for transport/feed health. Log loudly so the operator
+        # notices the malformed request.
         logger.warning(
             "OTel poll: client error (not a transport failure); "
             "method=%s path=%s status=%d since_unix_nano=%d",

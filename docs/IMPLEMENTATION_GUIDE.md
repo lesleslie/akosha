@@ -768,10 +768,6 @@ uv run pytest
 uv run crackerjack lint
 ```
 
-### Kubernetes (Future)
-
-See `kubernetes/README.md` and `kubernetes/ingestion.yaml` for Kubernetes deployment manifests.
-
 ______________________________________________________________________
 
 ## Checklist

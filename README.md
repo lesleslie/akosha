@@ -96,12 +96,12 @@ For deployment details, operational setup, and metrics configuration:
 # 1. Review deployment guide
 cat docs/DEPLOYMENT_GUIDE.md
 
-# 2. Deploy to Kubernetes
-kubectl apply -f kubernetes/
+# 2. Deploy via Oneiric layered settings
+export MAHAVISHNU_API_KEY=...
+mahavishnu mcp start
 
 # 3. Verify deployment
-kubectl get pods -n akosha
-kubectl port-forward -n akosha svc/akosha-api 8682:8682
+curl http://localhost:8682/health
 
 # 4. Check metrics
 curl http://localhost:8682/metrics

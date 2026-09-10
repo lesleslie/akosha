@@ -1,9 +1,0 @@
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: akosha
-  labels:
-    name: akosha
-    project: akosha
-    environment: production

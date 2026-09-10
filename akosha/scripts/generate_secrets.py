@@ -1,14 +1,11 @@
 #!/usr/bin/env python
 """Generate production secrets for Akosha deployment.
 
-This script generates cryptographically secure secrets for production
-Kubernetes deployments and saves them to kubernetes/secrets.yaml
-(the canonical layout — see kubernetes/README.md).
-
-Usage:
-    python -m akosha.scripts.generate_secrets
-
-For the legacy k8s/ layout, pass --output/--template explicitly.
+.. deprecated::
+    Kubernetes support has been dropped ecosystem-wide (2026-09-10).
+    This script is retained for historical reference only and will be
+    removed in a future release. Use Akosha's environment-based secrets
+    management (MAHAVISHNU_API_KEY, etc.) instead.
 """
 
 from __future__ import annotations

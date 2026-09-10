@@ -84,9 +84,7 @@ def public_key_from_bytes(raw: bytes) -> Ed25519PublicKey:
         ValueError: when ``raw`` is not exactly 32 bytes.
     """
     if len(raw) != 32:
-        raise ValueError(
-            f"ed25519 public key must be exactly 32 bytes; got {len(raw)}"
-        )
+        raise ValueError(f"ed25519 public key must be exactly 32 bytes; got {len(raw)}")
     return ed25519.Ed25519PublicKey.from_public_bytes(raw)
 
 
@@ -140,8 +138,7 @@ def load_or_create_keypair(path: Path) -> Keypair:
         loaded = serialization.load_pem_private_key(raw, password=None)
         if not isinstance(loaded, ed25519.Ed25519PrivateKey):
             raise ValueError(
-                f"key at {path} is not an ed25519 private key "
-                f"(got {type(loaded).__name__})"
+                f"key at {path} is not an ed25519 private key (got {type(loaded).__name__})"
             )
         public_key = loaded.public_key()
         return Keypair(
