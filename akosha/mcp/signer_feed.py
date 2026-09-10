@@ -23,9 +23,11 @@ contract is explicit.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -130,21 +132,58 @@ _signer_state: SignerFeedState | None = None
 _signer_state_lock = threading.Lock()
 
 
-def init_signer_feed_state(state: SignerFeedState) -> None:
-    """Install the lifespan-owned :class:`SignerFeedState` singleton.
+def init_signer_feed_state() -> SignerFeedState:
+    """Build, persist, and install the lifespan-owned :class:`SignerFeedState`.
 
-    Idempotent: a second call replaces the singleton (used in tests and
-    on key load retry). Logs at INFO so the audit trail shows when the
-    signer became available.
+    Loads (or generates + persists) the ed25519 keypair at the canonical
+    path, builds the pubkey manifest, wraps the keypair in a
+    :class:`SkillsSigner`, and installs a fresh
+    :class:`SignerFeedState` as the module singleton. Idempotent
+    within a single ``create_app()`` invocation; subsequent calls
+    overwrite the singleton and bump the generation token.
+
+    Matches the parameterless signature used by the other 4 Bodai
+    servers (mahavishnu, session-buddy, dhara, crackerjack) so
+    Phase 2's installer code and any future Phase 3+ caller can use
+    one helper API across the ecosystem.
+
+    Raises:
+        OSError: when the persistence path cannot be created.
+        ValueError: when the persisted file is not a valid ed25519
+            PEM private key.
     """
+    from akosha.skills_signer import (
+        SkillsSigner,
+        build_pubkey_manifest,
+        load_or_create_keypair,
+    )
+
     global _signer_state
+
+    key_path = _resolve_akosha_signer_key_path()
+    keypair = load_or_create_keypair(key_path)
+    manifest = build_pubkey_manifest(keypair)
+    signer = SkillsSigner.from_keypair(keypair)
+
+    if _signer_state is not None:
+        # Re-init: bump the generation token so the old probe's
+        # captured state is invalidated.
+        new_state = SignerFeedState(
+            manifest=manifest,
+            signer=signer,
+            generation=_signer_state.generation + 1,
+        )
+    else:
+        new_state = SignerFeedState(manifest=manifest, signer=signer)
+
     with _signer_state_lock:
-        _signer_state = state
+        _signer_state = new_state
     logger.info(
         "init_signer_feed_state: signer singleton installed (key_id=%s, generation=%d)",
-        state.signer.key_id,
-        state.generation,
+        new_state.signer.key_id,
+        new_state.generation,
     )
+    return new_state
 
 
 def get_signer_feed_state() -> SignerFeedState | None:
@@ -157,3 +196,25 @@ def reset_signer_feed_state() -> None:
     global _signer_state
     with _signer_state_lock:
         _signer_state = None
+
+
+def _resolve_akosha_signer_key_path() -> Path:
+    """Resolve the persisted keypair path for Akosha.
+
+    Default: ``~/.akosha/state/skills_signer/private_key.pem``.
+    Override via ``AKOSHA_SKILLS_SIGNER_KEY_PATH`` for tests and
+    non-standard locations.
+    """
+    env_path = os.getenv("AKOSHA_SKILLS_SIGNER_KEY_PATH")
+    if env_path:
+        return Path(env_path).expanduser()
+    return Path.home() / ".akosha" / "state" / "skills_signer" / "private_key.pem"
+
+
+__all__ = [
+    "SignerFeedState",
+    "_resolve_akosha_signer_key_path",
+    "get_signer_feed_state",
+    "init_signer_feed_state",
+    "reset_signer_feed_state",
+]
