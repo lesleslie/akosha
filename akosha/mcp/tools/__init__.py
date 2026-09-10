@@ -20,6 +20,10 @@ from akosha.mcp.tools.akosha_tools import (  # noqa: F401
     register_akosha_tools,
     register_code_graph_tools,
 )
+from akosha.mcp.tools.agents_tools import register_agents_tools  # noqa: F401  # Phase 3
+from akosha.mcp.tools.ecosystem_skills import (  # noqa: F401
+    register_ecosystem_skills,
+)
 from akosha.mcp.tools.fitness_tools import (
     init_fitness_analyzer,
     register_fitness_tools,
@@ -63,6 +67,8 @@ _ALL_REGISTERS: dict[str, Any] = {
     "register_session_buddy_tools": register_session_buddy_tools,
     "register_pycharm_tools": register_pycharm_tools,
     "register_skill_tools": register_skill_tools,
+    "register_agents_tools": register_agents_tools,
+    "register_ecosystem_skills": register_ecosystem_skills,
 }
 
 
@@ -136,6 +142,22 @@ def register_all_tools(
         # error envelopes if the signer has not been initialized yet.
         register_skill_tools(app)
         logger.info("Registered skill_tools (list_skills + get_skill)")
+
+    if "register_agents_tools" in allowed:
+        # Phase 3: list_agents + get_agent. Same pattern as Phase 1 —
+        # no service dependency, signer singleton. Per plan §11 B-6,
+        # ``get_agent`` returns ``body == system_prompt`` so the
+        # installer writes a fully-functional agent file.
+        register_agents_tools(app)
+        logger.info("Registered agents_tools (list_agents + get_agent)")
+
+    if "register_ecosystem_skills" in allowed:
+        # Phase 4: akosha_list_ecosystem_skills — federates across all 5
+        # Bodai servers. No lifespan dependency; the file cache and
+        # circuit-breaker registry are constructed on demand. Registered
+        # at every profile tier per AKOSHA_MANDATORY_GROUPS.
+        register_ecosystem_skills(app)
+        logger.info("Registered ecosystem_skills federation tool")
 
     # OTel query tools are wired through the W0 profile path
     # (akosha.mcp.tools.profiles.register_otel_query_group) via the
@@ -346,4 +368,7 @@ def _register_discovery_tool(app: FastMCP, profile: ToolProfile) -> None:
         }
 
 
-__all__ = ["register_all_tools"]
+__all__ = [
+    "register_all_tools",
+    "register_ecosystem_skills",
+]

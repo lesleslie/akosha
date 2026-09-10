@@ -45,6 +45,8 @@ FULL_REGISTRATIONS: list[str] = [
     "register_eventbridge_tools",
     # Phase 1 cross-repo capability search
     "register_cross_repo_tools",
+    # Phase 4 federation — list_ecosystem_skills aggregator
+    "register_ecosystem_skills",
 ]
 
 PROFILE_REGISTRATIONS: dict[ToolProfile, list[str]] = {
@@ -63,6 +65,14 @@ REGISTRATION_DESCRIPTIONS: dict[str, str] = {
     "register_eventbridge_tools": "EventBridge publisher: emit Akosha analytics events to the unified Bodai queue",
     "register_cross_repo_tools": "Phase 1 cross-repo capability search (Bodai component adapter/tool/error catalog)",
     "register_skill_tools": "Phase 1 server-published skills (list_skills + get_skill, signed via skills_signer)",
+    "register_agents_tools": (
+        "Phase 3 server-published agents (list_agents + get_agent, signed via "
+        "skills_signer; mandatory at every profile tier per plan §11 B-6)"
+    ),
+    "register_ecosystem_skills": (
+        "Phase 4 federation: list_ecosystem_skills aggregator across all 5 "
+        "Bodai servers (1s/server timeout, circuit breaker, file cache, pagination)"
+    ),
 }
 
 REGISTRATION_TOOLS: dict[str, list[str]] = {
@@ -103,6 +113,8 @@ REGISTRATION_TOOLS: dict[str, list[str]] = {
     "register_eventbridge_tools": ["akosha_publish_to_eventbridge"],
     "register_cross_repo_tools": ["akosha_cross_repo_capability_search"],
     "register_skill_tools": ["akosha_list_skills", "akosha_get_skill"],
+    "register_agents_tools": ["akosha_list_agents", "akosha_get_agent"],
+    "register_ecosystem_skills": ["akosha_list_ecosystem_skills"],
 }
 
 
@@ -133,8 +145,10 @@ def _build_registration_map() -> dict[str, Callable[[FastMCP], Awaitable[None] |
     via the legacy ``register_all_tools`` path).
     """
     from akosha.mcp.tools.group_registers import (
+        register_agents_tools_group,
         register_akosha_group,
         register_cross_repo_group,
+        register_ecosystem_skills_group,
         register_eventbridge_group,
         register_fitness_group,
         register_health_akosha_group,
@@ -154,15 +168,24 @@ def _build_registration_map() -> dict[str, Callable[[FastMCP], Awaitable[None] |
         "register_eventbridge_tools": register_eventbridge_group,
         "register_cross_repo_tools": register_cross_repo_group,
         "register_skill_tools": register_skill_tools_group,
+        "register_agents_tools": register_agents_tools_group,
+        "register_ecosystem_skills": register_ecosystem_skills_group,
     }
 
 
 REGISTRATION_MAP: dict[str, Callable[[FastMCP], Awaitable[None] | None]] = _build_registration_map()
 
 # Always-on groups: registered at every profile level in addition to the
-# per-profile list. Health checks must be reachable from any profile tier
-# (load balancers / orchestrators depend on them).
-AKOSHA_MANDATORY_GROUPS: set[str] = {"register_health_tools_akosha"}
+# per-profile list. Per plan §11 B-6, the Phase 3 ``register_agents_tools``
+# group MUST be available at the MINIMAL tier — the installer reaches for
+# ``list_agents`` / ``get_agent`` even when running in a stripped-down
+# profile. The Phase 4 federation is also mandatory so orchestrators can
+# discover skills via the federation path regardless of profile.
+AKOSHA_MANDATORY_GROUPS: set[str] = {
+    "register_health_tools_akosha",
+    "register_ecosystem_skills",
+    "register_agents_tools",
+}
 
 
 __all__ = [

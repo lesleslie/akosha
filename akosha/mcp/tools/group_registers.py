@@ -126,6 +126,47 @@ def register_skill_tools_group(app: FastMCP) -> None:
     logger.info("Registered skill_tools (list_skills + get_skill)")
 
 
+def register_agents_tools_group(app: FastMCP) -> None:
+    """Register Phase 3 ``list_agents`` / ``get_agent`` MCP tools.
+
+    Mirrors :func:`register_skill_tools_group`'s shape — no service
+    dependencies, reads the static catalog from
+    ``akosha/mcp/tools/agents/``, accesses the lifespan-owned
+    :class:`SkillsSigner` via the module-level singleton. Both tools
+    return informative error envelopes if the signer has not been
+    initialized yet (pre-lifespan / lite mode).
+
+    **B-6 critical contract**: the ``akosha_get_agent`` tool returns
+    ``body == system_prompt``. Without this, the installer would ship
+    non-functional agents. The end-to-end test
+    ``tests/integration/test_get_agent_e2e.py`` asserts this invariant.
+    """
+    from akosha.mcp.tools.agents_tools import register_agents_tools
+
+    register_agents_tools(app)
+    logger.info("Registered agents_tools (list_agents + get_agent)")
+
+
+def register_ecosystem_skills_group(app: FastMCP) -> None:
+    """Register Phase 4 federation tool ``akosha_list_ecosystem_skills``.
+
+    Aggregates ``mcp__<server>__list_skills`` responses from all 5 Bodai
+    servers with a 1-second per-server timeout, per-server circuit
+    breaker (3 failures in 30s → 60s skip), atomic file-cache at
+    ``~/.akosha/cache/ecosystem_skills.json``, and cursor-based
+    pagination. No service dependencies on lifespan-owned singletons;
+    the cache and circuit-breaker registry are constructed inline.
+
+    Federation is registered through the lifecycle via
+    ``register_ecosystem_skills`` (kept distinct from the W0 wrapper for
+    direct test access — the same callable is invoked here).
+    """
+    from akosha.mcp.tools.ecosystem_skills import register_ecosystem_skills
+
+    register_ecosystem_skills(app)
+    logger.info("Registered ecosystem_skills federation tool")
+
+
 async def register_session_buddy_group(app: FastMCP) -> None:
     """Register Session-Buddy integration tools. Skipped if hot_store cannot be built."""
     from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
@@ -261,7 +302,7 @@ def _get_shared_kg_builder():
     """Return the lifespan-owned KnowledgeGraphBuilder, or ``None``.
 
     Mirrors :func:`_try_create_hot_store`'s shared-instance preference.
-    Used by ``register_akosha_group`` so the graph the periodic-refresh
+    Used by :func:`register_akosha_group` so the graph the periodic-refresh
     task populates is the same instance the ``get_graph_statistics``
     tool reads.
     """
@@ -274,12 +315,15 @@ def _get_shared_kg_builder():
 
 
 __all__ = [
+    "register_agents_tools_group",
     "register_akosha_group",
     "register_cross_repo_group",
+    "register_ecosystem_skills_group",
     "register_eventbridge_group",
     "register_fitness_group",
     "register_health_akosha_group",
     "register_otel_query_group",
     "register_pycharm_group",
     "register_session_buddy_group",
+    "register_skill_tools_group",
 ]
