@@ -3,10 +3,10 @@ revision = 3
 requires-python = ">=3.14"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
-    "python_full_version < '3.15' and sys_platform == 'win32'",
     "python_full_version >= '3.15' and sys_platform == 'emscripten'",
-    "python_full_version < '3.15' and sys_platform == 'emscripten'",
     "python_full_version >= '3.15' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.15' and sys_platform == 'win32'",
+    "python_full_version < '3.15' and sys_platform == 'emscripten'",
     "python_full_version < '3.15' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
@@ -130,7 +130,7 @@ wheels = [
 
 [[package]]
 name = "akosha"
-version = "0.16.0"
+version = "0.17.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -197,7 +197,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "fastmcp", specifier = ">=3.4.0,<5" },
     { name = "httpx2", specifier = ">=0.28.1" },
-    { name = "mcp-common", specifier = ">=0.18.0" },
+    { name = "mcp-common", specifier = ">=0.26.0,<0.27.0" },
     { name = "numpy", specifier = ">=2.0.0" },
     { name = "oneiric", specifier = ">=0.20" },
     { name = "opentelemetry-api", specifier = ">=1.0.0" },
@@ -2509,7 +2509,7 @@ wheels = [
 
 [[package]]
 name = "mcp-common"
-version = "0.25.3"
+version = "0.26.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
@@ -2524,9 +2524,9 @@ dependencies = [
     { name = "typer" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ed/c5/6e78495e9c21b273914e6f7bd213607c6c7b1fed65c9f65072ff63f4bd9a/mcp_common-0.25.3.tar.gz", hash = "sha256:af5b486fea71a97e28659de372f6af2a5d7c81326b41deb94ab8e974f4cd79b7", size = 1073357, upload-time = "2026-09-14T01:03:32.314Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8a/fe/c59133220f225a42e0becc3dc876fb6b781dfb0db156561dbc125a7301e6/mcp_common-0.26.0.tar.gz", hash = "sha256:26fecaacec8df0ff0f70a0246d8892f3b04de2dda2a2c9895411cd44a5072106", size = 1089253, upload-time = "2026-09-14T08:50:14.373Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/61/45/7ed6d96cb47994246ce4fedc9e31f78d7825ff614ce725759cbfbf912545/mcp_common-0.25.3-py3-none-any.whl", hash = "sha256:5379df25858e1827096158e9ae63e4e11c09727385a07ace99471ae807f33ee2", size = 427788, upload-time = "2026-09-14T01:03:30.625Z" },
+    { url = "https://files.pythonhosted.org/packages/ea/a4/9ae692cab3f8a444505e070b18b36c4852e7b07d6de696205a07dd2739da/mcp_common-0.26.0-py3-none-any.whl", hash = "sha256:cb303438ccea67782a5411f5900bcfde0a541ed84bfbe343c9475b1ce8074a9b", size = 436579, upload-time = "2026-09-14T08:50:12.864Z" },
 ]
 
 [[package]]
