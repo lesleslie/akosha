@@ -375,8 +375,8 @@ async def test_fetch_traces_from_component_swallows_bodai_client_errors(
 
     analyzer = FitnessAnalyzer(component_endpoints=[("a", "http://a")])
 
-    # Patch the BodaiComponentMCPClient symbol so instantiation returns
-    # our controlled mock — the analyzer calls ``BodaiComponentMCPClient(base_url=...)``
+    # Patch the CommonMCPClient symbol so instantiation returns
+    # our controlled mock — the analyzer calls ``CommonMCPClient(base_url=...)``
     # directly (not as a context manager), so the mock factory must be
     # a callable returning the fake instance.
     fake_client = MagicMock()
@@ -384,7 +384,7 @@ async def test_fetch_traces_from_component_swallows_bodai_client_errors(
     fake_client.aclose = AsyncMock(return_value=None)
 
     monkeypatch.setattr(
-        "akosha.processing.fitness_analyzer.BodaiComponentMCPClient",
+        "akosha.processing.fitness_analyzer.CommonMCPClient",
         lambda **kw: fake_client,
     )
 

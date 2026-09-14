@@ -1,170 +1,14 @@
-"""BodaiComponentMCPClient — MCP client for polling Bodai component endpoints.
+"""DharaServiceRegistryClient — minimal async client for Dhara's service registry.
 
-Calls `query_local_traces` on each component's MCP HTTP endpoint using the official
-MCP Python client library (streamable_http transport).
+Used by Akosha to read bodai_component services from Dhara's ecosystem state
+so FitnessAnalyzer can discover registered component endpoints.
 
-Session Management (FastMCP streamable-http):
-    The streamable-http transport uses a session-based flow:
-    1. POST with initialize request (no session ID) → server creates session
-    2. Server returns session ID via mcp-session-id header in response
-    3. Client sends 'initialized' notification to complete handshake
-    4. Client opens GET SSE stream for server-to-client messages
-    5. Subsequent POST requests include the session ID header
-
-This client uses the official mcp.client.streamable_http_client() which handles
-all session lifecycle correctly.
+Does NOT use the MCP protocol — talks to Dhara's REST API directly via httpx.
 """
 
 from __future__ import annotations
 
-import logging
-from typing import TYPE_CHECKING, Any
-
-import httpx2 as httpx
-
-if TYPE_CHECKING:
-    from mcp.client.session import ClientSession
-
-logger = logging.getLogger(__name__)
-
-
-class BodaiComponentMCPClient:
-    """Async MCP client for calling tools on Bodai components.
-
-    Uses the official MCP Python client's streamable_http transport which properly
-    handles session establishment, initialized notification, and GET SSE stream
-    management for server-to-client messaging.
-
-    Parameters:
-        base_url: Full MCP HTTP server URL (e.g. "http://localhost:8680/mcp")
-        timeout: Request timeout in seconds
-        token: Optional Bearer token for auth
-    """
-
-    # Allowed URL schemes — block SSRF via file://, ftp://, gopher://, etc.
-    _ALLOWED_SCHEMES: frozenset[str] = frozenset({"http", "https"})
-
-    def __init__(
-        self,
-        base_url: str,
-        timeout: float = 30.0,
-        token: str | None = None,
-    ) -> None:
-        from urllib.parse import urlparse
-
-        parsed = urlparse(base_url)
-        if parsed.scheme not in self._ALLOWED_SCHEMES:
-            raise ValueError(
-                f"BodaiComponentMCPClient: scheme '{parsed.scheme}' is not allowed. "
-                f"Only {sorted(self._ALLOWED_SCHEMES)} are permitted (SSRF protection)."
-            )
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
-        self._token = token
-        self._session: ClientSession | None = None
-        self._transport_context: Any = None
-
-    @property
-    def tools_url(self) -> str:
-        """Return the tool invocation endpoint."""
-        return self.base_url
-
-    @property
-    def session_id(self) -> None:
-        """Return the current MCP session ID, or None if not established.
-
-        The streamable_http transport in mcp>=2.0 manages the session
-        ID internally; no callback is exposed. This property is kept
-        for API compatibility and always returns None.
-        """
-        return None
-
-    async def _ensure_session(self) -> None:
-        """Establish MCP session using official client transport."""
-        if self._session is not None:
-            return
-
-        from mcp.client.session import ClientSession
-        from mcp.client.streamable_http import streamable_http_client
-
-        http_client: httpx.AsyncClient | None = None
-        if self._token:
-            http_client = httpx.AsyncClient(
-                timeout=self.timeout,
-                headers={"Authorization": f"Bearer {self._token}"},
-            )
-
-        self._transport_context = streamable_http_client(
-            self.base_url,
-            http_client=http_client,  # ty: ignore[invalid-argument-type]
-            terminate_on_close=True,
-        )
-
-        rs, ws = await self._transport_context.__aenter__()
-        self._session = ClientSession(rs, ws)
-        await self._session.__aenter__()
-        await self._session.initialize()
-
-        logger.debug("MCP session established")
-
-    async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
-        """Call an MCP tool over HTTP.
-
-        Args:
-            name: Tool name (e.g. "query_local_traces")
-            arguments: Tool arguments dict
-
-        Returns:
-            Tool result from the MCP response
-        """
-        await self._ensure_session()
-
-        # ``_ensure_session`` always sets ``_session`` to a ``ClientSession``,
-        # but ty can't see across the await boundary. Use a runtime guard so
-        # the type narrows without a blanket ``type: ignore``.
-        session = self._session
-        if session is None:
-            raise RuntimeError("MCP session is not initialized")
-        return await session.call_tool(name, arguments)
-
-    async def query_local_traces(
-        self,
-        task_class: str,
-        time_range_minutes: int = 60,
-    ) -> list[dict[str, Any]]:
-        """Query traces from a Bodai component's local OTel store.
-
-        Args:
-            task_class: Task classification to filter traces (e.g. "code_generation")
-            time_range_minutes: How far back to query (default 60 minutes)
-
-        Returns:
-            List of trace summary dicts from the component's local store.
-        """
-        result = await self.call_tool(
-            "akosha_query_local_traces",
-            {
-                "task_class": task_class,
-                "time_range_minutes": time_range_minutes,
-            },
-        )
-        if isinstance(result, list):
-            return result  # type: ignore[return-value]
-        if isinstance(result, dict):
-            items = result.get("traces") or result.get("items") or result.get("result")
-            if isinstance(items, list):
-                return items  # type: ignore[return-value]
-        logger.debug("Unexpected query_local_traces response shape: %r", result)
-        return []
-
-    async def aclose(self) -> None:
-        """Close the MCP session and transport."""
-        if self._session is not None:
-            await self._session.__aexit__(None, None, None)
-            self._session = None
-        if self._transport_context is not None:
-            await self._transport_context.__aexit__(None, None, None)
-            self._transport_context = None
+from typing import Any
 
 
 class DharaServiceRegistryClient:
@@ -214,7 +58,7 @@ class DharaServiceRegistryClient:
             return []
 
     async def aclose(self) -> None:
-        """No-op for API compatibility with BodaiComponentMCPClient."""
+        """No-op placeholder kept for API compatibility."""
         pass
 
     async def get(self, key: str) -> dict[str, Any] | None:
