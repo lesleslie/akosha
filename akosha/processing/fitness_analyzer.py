@@ -1,6 +1,6 @@
 """Fitness analyzer — periodic background job that computes and persists routing fitness signals.
 
-Polls each Bodai component's MCP endpoint (via BodaiComponentMCPClient) for local OTel
+Polls each Bodai component's MCP endpoint (via CommonMCPClient) for local OTel
 traces, computes rolling failure_rate and p99 latency per (task_class, selector) pair,
 and writes fitness signals to Dhara at ``routing_fitness/{task_class}/{selector}``.
 
@@ -21,7 +21,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from akosha.mcp.client import BodaiComponentMCPClient
+from akosha.mcp.client import query_local_traces
+from mcp_common.clients.common_mcp_client import CommonMCPClient
 
 if TYPE_CHECKING:
     from oneiric.core.resiliency import CircuitBreaker
@@ -117,9 +118,9 @@ class FitnessAnalyzer:
         time_range_minutes: int = 60,
     ) -> list[dict[str, Any]]:
         """Fetch traces from a single component via its MCP endpoint."""
-        client = BodaiComponentMCPClient(base_url=mcp_url, timeout=15.0)
+        client = CommonMCPClient(base_url=mcp_url, timeout=15.0)
         try:
-            return await client.query_local_traces(task_class, time_range_minutes)
+            return await query_local_traces(client, task_class, time_range_minutes)
         except Exception as exc:
             logger.debug(
                 "Failed to fetch traces from %s (%s): %s",
