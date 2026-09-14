@@ -51,9 +51,7 @@ class CircuitBreakerOpen(Exception):
     def __init__(self, server_key: str, retry_after: float) -> None:
         self.server_key = server_key
         self.retry_after = retry_after
-        super().__init__(
-            f"circuit breaker open for {server_key!r}; retry in {retry_after:.1f}s"
-        )
+        super().__init__(f"circuit breaker open for {server_key!r}; retry in {retry_after:.1f}s")
 
 
 class EcosystemServerCircuit:
@@ -92,9 +90,9 @@ class EcosystemServerCircuit:
         clock: Any = None,
     ) -> None:
         self._server_key = server_key
-        self._max_failures = max(1, int(max_failures))
-        self._window_seconds = float(window_seconds)
-        self._cooldown_seconds = float(cooldown_seconds)
+        self._max_failures = max(1, max_failures)
+        self._window_seconds = window_seconds
+        self._cooldown_seconds = cooldown_seconds
         self._clock = clock if clock is not None else time.time
 
         # ``deque`` of failure timestamps (most recent at the right).
@@ -128,9 +126,7 @@ class EcosystemServerCircuit:
             if elapsed >= self._cooldown_seconds:
                 # Cooldown elapsed — half-open; the trial call goes through.
                 return True
-            raise CircuitBreakerOpen(
-                self._server_key, self._cooldown_seconds - elapsed
-            )
+            raise CircuitBreakerOpen(self._server_key, self._cooldown_seconds - elapsed)
 
     def record_success(self) -> None:
         """Record a successful call: clear the failure buffer and close the breaker.
@@ -182,11 +178,10 @@ class EcosystemServerCircuit:
         not in a "healthy closed" posture.
         """
         with self._lock:
-            if self._opened_at is None:
-                return False
-            # Open if still in cooldown OR half-open (cooldown elapsed,
-            # awaiting trial). Once the trial succeeds the field clears.
-            return True
+            # ``_opened_at`` is set on the trip-to-open transition and
+            # cleared on a successful trial; any non-``None`` value means
+            # we're either still cooling down or in half-open.
+            return self._opened_at is not None
 
     def _now(self) -> float:
         return float(self._clock())

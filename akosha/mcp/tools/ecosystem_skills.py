@@ -40,11 +40,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from akosha.mcp.skill_schema import SkillMetadata
 from akosha.mcp.tools.ecosystem_skills_cache import (
-    DEFAULT_TTL_SECONDS,
     EcosystemSkillsCache,
 )
 from akosha.mcp.tools.ecosystem_skills_circuit import (
-    CircuitBreakerOpen,
     EcosystemCircuitRegistry,
 )
 
@@ -71,7 +69,7 @@ class _FederationServer:
         description: human-readable summary used in error messages.
     """
 
-    __slots__ = ("server_key", "tool_name", "base_url", "description")
+    __slots__ = ("base_url", "description", "server_key", "tool_name")
 
     def __init__(
         self,
@@ -89,7 +87,7 @@ class _FederationServer:
 def _env(name: str, default: str) -> str:
     """Read environment override or fall back to ``default``."""
     value = os.getenv(name)
-    return value if value else default
+    return value or default
 
 
 FEDERATION_SERVERS: tuple[_FederationServer, ...] = (
@@ -197,8 +195,7 @@ def _extract_skill_items(body: dict[str, Any]) -> list[SkillMetadata]:
     :class:`SkillMetadata`. Return only the successfully-parsed items so a
     single schema miss doesn't poison the whole server's response.
     """
-    result = body.get("result", {})
-    content = result.get("content", [])
+    content = body.get("result", {}).get("content", [])
     if not isinstance(content, list) or not content:
         return []
     first = content[0]
@@ -243,9 +240,7 @@ def _score_for_ranking(skill: SkillMetadata, query_tokens: set[str]) -> float:
         return 0.0
     haystacks = [skill.description.lower(), skill.name.lower()]
     tool_ref_blob = " ".join(skill.tool_refs).lower()
-    intersect_descr = sum(1 for tok in haystacks if any(tok in h for h in haystacks))
-    # Simpler: count unique tokens intersecting across descr + name + tool_refs.
-    text_blob = " ".join(haystacks + [tool_ref_blob])
+    text_blob = " ".join([*haystacks, tool_ref_blob])
     text_tokens = {tok for tok in text_blob.replace(":", " ").replace("/", " ").split() if tok}
     overlap = len(query_tokens & text_tokens)
     if overlap == 0:
@@ -303,7 +298,7 @@ def _load_installed_skill_paths() -> list[Path]:
             import json
 
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except OSError, ValueError:
             manifest = {}
         if isinstance(manifest, dict):
             for entry in manifest.values():
@@ -339,7 +334,7 @@ def _installed_to_metadata(path: Path) -> SkillMetadata | None:
             for line in header.splitlines():
                 stripped = line.strip()
                 if stripped.startswith("description:"):
-                    description = stripped.split(":", 1)[1].strip().strip('"').strip("'")
+                    description = stripped.split(":", 1)[1].strip().strip('"\'')
                     break
     if not description:
         for line in text.splitlines():
@@ -470,7 +465,6 @@ def register_ecosystem_skills(
             tasks = [
                 _gather_one(
                     server,
-                    cache_singleton=cache_singleton,
                     circuit=circuit_singleton,
                     client=client,
                 )
@@ -509,11 +503,9 @@ def register_ecosystem_skills(
         scored: list[tuple[SkillMetadata, float]] = [
             (skill, _score_for_ranking(skill, query_tokens)) for skill in all_skills
         ]
-        page_data, next_cursor, has_more = _paginate(
-            scored, limit=limit, cursor=cursor
-        )
+        page_data, next_cursor, has_more = _paginate(scored, limit=limit, cursor=cursor)
 
-        response = EcosystemSkillsResponse(
+        payload = EcosystemSkillsResponse(
             schema_version=1,
             data=page_data,
             errors=errors,
@@ -528,8 +520,7 @@ def register_ecosystem_skills(
                 "has_more": has_more,
                 "limit": limit,
             },
-        )
-        payload = response.model_dump(mode="json")
+        ).model_dump(mode="json")
 
         # Cache only on a fully-resolved fan-out (errors dict may be
         # non-empty — partial failures ARE cacheable, they were just
@@ -541,7 +532,6 @@ def register_ecosystem_skills(
 async def _gather_one(
     server: _FederationServer,
     *,
-    cache_singleton: EcosystemSkillsCache,
     circuit: EcosystemCircuitRegistry,
     client: httpx.AsyncClient,
 ) -> tuple[list[SkillMetadata], int]:
@@ -561,7 +551,7 @@ async def _gather_one(
             timeout=PER_SERVER_TIMEOUT_SECONDS,
             client=client,
         )
-    except Exception as exc:
+    except Exception:
         breaker.record_failure()
         raise
     breaker.record_success()
@@ -608,7 +598,7 @@ def _cache_key(*, query: str | None, limit: int, cursor: str | None, include: bo
     is greppable; collisions across request shapes are not a concern
     because the breaker / TTL govern staleness.
     """
-    raw = f"{query or ''}|{limit}|{cursor or ''}|{int(bool(include))}".encode("utf-8")
+    raw = f"{query or ''}|{limit}|{cursor or ''}|{int(include)}".encode()
     return base64.urlsafe_b64encode(hashlib.sha256(raw).digest()).decode("ascii").rstrip("=")[:24]
 
 

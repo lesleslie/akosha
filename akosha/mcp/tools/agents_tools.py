@@ -52,14 +52,13 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
 from akosha.mcp.agent_schema import AgentMetadata, _allowlisted_name
-from akosha.mcp.skill_schema import SkillMetadata  # noqa: F401  # imported for parity
+from akosha.mcp.skill_schema import SkillMetadata  # imported for parity
 from akosha.skills_signer import canonical_payload_for_signing
 
 if TYPE_CHECKING:
@@ -135,8 +134,8 @@ _STATIC_AGENTS: list[dict[str, Any]] = [
         "title": "Single-System Search",
         "description": (
             "Use this agent for focused semantic search across ONE "
-            "named Bodai system (e.g. \"find anything in session-buddy "
-            "about migration\"). Narrower than akosha-specialist — "
+            'named Bodai system (e.g. "find anything in session-buddy '
+            'about migration"). Narrower than akosha-specialist — '
             "routes through mcp__akosha__akosha_search_all_systems "
             "with a system_id filter."
         ),
@@ -211,9 +210,7 @@ def _read_body(filename: str) -> str:
     """
     path = _AGENTS_DIR / filename
     if not path.is_file():
-        raise FileNotFoundError(
-            f"Agent body {filename!r} missing from catalog at {path}"
-        )
+        raise FileNotFoundError(f"Agent body {filename!r} missing from catalog at {path}")
     return path.read_text(encoding="utf-8")
 
 

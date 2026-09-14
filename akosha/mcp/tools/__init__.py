@@ -16,12 +16,12 @@ if TYPE_CHECKING:
 from mcp_common.health import DependencyConfig, register_health_tools
 from mcp_common.tools import ToolProfile  # runtime: used in discover_tools hint
 
+from akosha.mcp.tools.agents_tools import register_agents_tools  # Phase 3
 from akosha.mcp.tools.akosha_tools import (  # noqa: F401
     register_akosha_tools,
     register_code_graph_tools,
 )
-from akosha.mcp.tools.agents_tools import register_agents_tools  # noqa: F401  # Phase 3
-from akosha.mcp.tools.ecosystem_skills import (  # noqa: F401
+from akosha.mcp.tools.ecosystem_skills import (
     register_ecosystem_skills,
 )
 from akosha.mcp.tools.fitness_tools import (

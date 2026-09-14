@@ -195,9 +195,7 @@ class AgentMetadata(BaseModel):
                 "(forbidden: '/', uppercase, leading '.', length > 63)"
             )
         if ".." in value:
-            raise ValueError(
-                f"value {value!r} contains forbidden substring '..'"
-            )
+            raise ValueError(f"value {value!r} contains forbidden substring '..'")
         return value
 
     @field_validator("description")
@@ -224,7 +222,7 @@ class AgentMetadata(BaseModel):
             raise ValueError(
                 f"id {value!r} must be 'server_key:name:version' (exactly 3 colon-separated parts)"
             )
-        # Re-use the allowlist check on the server_key + name substrings;
+        # Reuse the allowlist check on the server_key + name substrings;
         # the version substring uses the same character class but allows
         # a leading ``v`` (e.g. ``v1.0.0``) — so we only check for
         # obviously-forbidden characters.

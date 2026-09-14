@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-09-13
+
+### Added
+
+- mcp: Phase 1 server-published skills (list_skills + get_skill)
+- mcp: Phase 3 server-published agents (list_agents + get_agent + AgentMetadata schema)
+- mcp: Phase 4 federation - list_ecosystem_skills aggregator with circuit breaker + cache
+
+### Changed
+
+- mcp: Align init_signer_feed_state to parameterless signature
+- skills_signer: Reformat manifest missing-fields raise to 2-line
+
+### Fixed
+
+- mcp: Drop str_strip_whitespace from AgentMetadata config (B-6 hash-pin)
+- mcp: Prefix all 27 user-facing tool names with akosha_
+
+### Documentation
+
+- Add docs/assets/images/ + .scratch/ convention
+
 ## [0.16.0] - 2026-09-10
 
 ### Added

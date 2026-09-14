@@ -151,9 +151,7 @@ def _read_body(filename: str) -> str:
     """
     path = _CATALOG_DIR / filename
     if not path.is_file():
-        raise FileNotFoundError(
-            f"Skill body {filename!r} missing from catalog at {path}"
-        )
+        raise FileNotFoundError(f"Skill body {filename!r} missing from catalog at {path}")
     return path.read_text(encoding="utf-8")
 
 
@@ -256,7 +254,9 @@ def register_skill_tools(app: FastMCP) -> None:
             try:
                 metadata = _build_unsigned_metadata(entry["name"])
             except (FileNotFoundError, ValidationError, KeyError) as exc:
-                logger.exception("list_skills: failed to build metadata for %s: %s", entry["name"], exc)
+                logger.exception(
+                    "list_skills: failed to build metadata for %s: %s", entry["name"], exc
+                )
                 continue
             out.append(metadata.model_dump(mode="json"))
         return out

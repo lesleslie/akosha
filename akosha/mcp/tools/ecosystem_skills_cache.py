@@ -139,7 +139,7 @@ class EcosystemSkillsCache:
         crash mid-write cannot leave a half-formed cache file.
         """
         all_data = self._read_all()
-        value_with_ts = dict(value)
+        value_with_ts = value.copy()
         value_with_ts["_fetched_at"] = float(self._clock())
         all_data[key] = value_with_ts
         self._atomic_write(all_data)
@@ -173,9 +173,7 @@ class EcosystemSkillsCache:
             text = self._path.read_text(encoding="utf-8")
             data = json.loads(text)
         except (OSError, ValueError) as exc:
-            logger.warning(
-                "ecosystem_skills cache read failed (%s); treating as empty", exc
-            )
+            logger.warning("ecosystem_skills cache read failed (%s); treating as empty", exc)
             return {}
         if not isinstance(data, dict):
             logger.warning(
@@ -204,10 +202,10 @@ class EcosystemSkillsCache:
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as fp:
                     fp.write(payload)
-                os.replace(tmp_path, self._path)
+                Path(tmp_path).replace(self._path)
             except Exception:
                 with suppress(OSError):
-                    os.unlink(tmp_path)
+                    Path(tmp_path).unlink()
                 raise
         except OSError as exc:
             logger.warning(
@@ -217,7 +215,7 @@ class EcosystemSkillsCache:
             )
             sibling = self._path.with_suffix(self._path.suffix + ".tmp")
             sibling.write_text(payload, encoding="utf-8")
-            os.replace(sibling, self._path)
+            sibling.replace(self._path)
 
 
 __all__ = [
