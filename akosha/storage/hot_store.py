@@ -375,44 +375,83 @@ class HotStore:
             if not self.conn:
                 raise RuntimeError("Hot store not initialized")
 
-            # Build parameterized WHERE clause
-            conditions: list[str] = []
+            # Build the common WHERE conditions (everything except task_class)
+            # and the matching parameter list.
+            common_conditions: list[str] = []
             params: list[Any] = []
 
             if system_id:
-                conditions.append("system_id = ?")
+                common_conditions.append("system_id = ?")
                 params.append(system_id)
 
             if start_time:
-                conditions.append("timestamp >= ?")
+                common_conditions.append("timestamp >= ?")
                 params.append(start_time)
 
             if end_time:
-                conditions.append("timestamp <= ?")
+                common_conditions.append("timestamp <= ?")
                 params.append(end_time)
 
+            select_cols = (
+                "system_id, conversation_id, content, timestamp, metadata"
+            )
+
             if task_class:
-                # Filter on metadata JSON: attributes.task_class or top-level task_class
-                conditions.append(
-                    "(metadata->>'task_class' = ? OR metadata->'attributes'->>'task_class' = ?)"
+                # Filter on metadata JSON: attributes.task_class OR top-level
+                # task_class.
+                #
+                # Workaround: DuckDB's optimiser miscomputes the metadata
+                # type when a JSON-path ``= ?`` predicate is ANDed with
+                # other WHERE conditions (e.g. timestamp, system_id) —
+                # surfaces as
+                # ``ConversionException: Failed to cast value to numerical``
+                # on rows whose metadata is a JSON object. The trigger
+                # is the AND-with-other-WHERE form, not just the OR.
+                #
+                # Split the query into two stages:
+                #   1. A CTE that applies ONLY the non-JSON-path filters
+                #      (timestamp range, system_id).
+                #   2. UNION ALL of two complete queries over the CTE,
+                #      each carrying exactly one JSON-path filter. No
+                #      AND with other predicates, so the optimiser path
+                #      that triggers the cast is avoided.
+                #
+                # DuckDB does NOT reset param numbering across the UNION
+                # ALL boundaries, so the common (CTE) params must be
+                # duplicated — once per sub-query.
+                cte_where = (
+                    "WHERE " + " AND ".join(common_conditions)
+                    if common_conditions
+                    else ""
                 )
-                params.extend([task_class, task_class])
 
-            where_clause = " AND ".join(conditions) if conditions else "1=1"
-
-            query = f"""
-                SELECT
-                    system_id,
-                    conversation_id,
-                    content,
-                    timestamp,
-                    metadata
-                FROM conversations
-                WHERE {where_clause}
-                ORDER BY timestamp DESC
-                LIMIT ?
-            """
-            params.append(limit)
+                inner = (
+                    f"SELECT {select_cols} FROM filtered "
+                    f"WHERE metadata->>'task_class' = ? "
+                    f"UNION ALL "
+                    f"SELECT {select_cols} FROM filtered "
+                    f"WHERE metadata->'attributes'->>'task_class' = ?"
+                )
+                query = (
+                    f"WITH filtered AS ("
+                    f"SELECT {select_cols} FROM conversations {cte_where}"
+                    f") "
+                    f"SELECT * FROM ({inner}) "
+                    f"ORDER BY timestamp DESC LIMIT ?"
+                )
+                # CTE params appear ONCE (not duplicated), then append
+                # the two task_class params, then LIMIT.
+                params.extend([task_class, task_class, limit])
+            else:
+                where_clause = (
+                    " AND ".join(common_conditions) if common_conditions else "1=1"
+                )
+                query = (
+                    f"SELECT {select_cols} FROM conversations "
+                    f"WHERE {where_clause} "
+                    f"ORDER BY timestamp DESC LIMIT ?"
+                )
+                params.append(limit)
 
             rows = self.conn.execute(query, params).fetchall()
 
