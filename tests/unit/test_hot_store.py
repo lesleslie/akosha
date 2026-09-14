@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -347,3 +347,174 @@ class TestHotStore:
             assert isinstance(results, list)
             # With parameterized queries, these will simply find no matches
             # If SQL injection worked, it could crash or return unintended data
+
+    # ------------------------------------------------------------------
+    # Regression tests for the OR-of-two-JSON-paths DuckDB optimiser bug.
+    #
+    # DuckDB's optimiser miscomputes the metadata type when a JSON-path
+    # ``= ?`` predicate is ANDed with other WHERE conditions, surfacing
+    # as ``ConversionException: Failed to cast value to numerical``.
+    # The fix wraps the non-JSON filters in a CTE and applies the
+    # JSON-path filters in UNION ALL branches.
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_query_traces_task_class_only_matches_both_shapes(
+        self, hot_store: HotStore
+    ) -> None:
+        """Filter on task_class alone matches both top-level and nested forms."""
+        now = datetime.now(UTC)
+        await hot_store.insert(
+            HotRecord(
+                system_id="ak",
+                conversation_id="c1",
+                content="x",
+                embedding=[0.0] * 384,
+                timestamp=now,
+                metadata={
+                    "task_class": "code_generation",
+                    "attributes": {"outcome": "success"},
+                },
+            )
+        )
+        await hot_store.insert(
+            HotRecord(
+                system_id="ak",
+                conversation_id="c2",
+                content="y",
+                embedding=[0.0] * 384,
+                timestamp=now,
+                metadata={
+                    "task_class": "analysis",
+                    "attributes": {
+                        "task_class": "code_generation",
+                        "outcome": "failure",
+                    },
+                },
+            )
+        )
+        await hot_store.insert(
+            HotRecord(
+                system_id="ak",
+                conversation_id="c3",
+                content="z",
+                embedding=[0.0] * 384,
+                timestamp=now,
+                metadata={"task_class": "unrelated"},
+            )
+        )
+
+        rows = await hot_store.query_traces(task_class="code_generation")
+        ids = sorted(r["conversation_id"] for r in rows)
+        assert ids == ["c1", "c2"]
+
+    @pytest.mark.asyncio
+    async def test_query_traces_task_class_with_timestamp_filter(
+        self, hot_store: HotStore
+    ) -> None:
+        """task_class AND timestamp filter — the case that triggered the bug.
+
+        NOTE: passes naive-UTC timestamp strings (no ``+00:00`` suffix)
+        because DuckDB stores ``TIMESTAMP`` (no timezone) and the
+        TIMESTAMP-vs-VARCHAR-with-tz comparison has a separate known
+        issue on PDT-local sessions. The Akosha-side fix for that
+        is out of scope for this PR; the regression test exercises
+        the JSON-path-OR fix, which is what this PR targets.
+        """
+        now = datetime.now(UTC).replace(tzinfo=None)
+        await hot_store.insert(
+            HotRecord(
+                system_id="ak",
+                conversation_id="c1",
+                content="x",
+                embedding=[0.0] * 384,
+                timestamp=now,
+                metadata={"task_class": "code_generation"},
+            )
+        )
+        # naive-UTC strings (no tz suffix) — see note above
+        start_str = (now - timedelta(seconds=60)).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        end_str = (now + timedelta(seconds=60)).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+        rows = await hot_store.query_traces(
+            task_class="code_generation",
+            start_time=start_str,
+            end_time=end_str,
+        )
+        assert len(rows) == 1
+        assert rows[0]["conversation_id"] == "c1"
+
+    @pytest.mark.asyncio
+    async def test_query_traces_task_class_with_system_id_filter(
+        self, hot_store: HotStore
+    ) -> None:
+        """task_class AND system_id filter — also triggers the bug."""
+        now = datetime.now(UTC)
+        await hot_store.insert(
+            HotRecord(
+                system_id="ak",
+                conversation_id="c1",
+                content="x",
+                embedding=[0.0] * 384,
+                timestamp=now,
+                metadata={"task_class": "code_generation"},
+            )
+        )
+        await hot_store.insert(
+            HotRecord(
+                system_id="other",
+                conversation_id="c2",
+                content="y",
+                embedding=[0.0] * 384,
+                timestamp=now,
+                metadata={"task_class": "code_generation"},
+            )
+        )
+
+        rows = await hot_store.query_traces(
+            task_class="code_generation", system_id="ak"
+        )
+        ids = [r["conversation_id"] for r in rows]
+        assert ids == ["c1"]
+
+    @pytest.mark.asyncio
+    async def test_query_traces_no_task_class_regression(
+        self, hot_store: HotStore
+    ) -> None:
+        """Non-task_class queries still work (regression check)."""
+        now = datetime.now(UTC)
+        for cid in ("c1", "c2", "c3"):
+            await hot_store.insert(
+                HotRecord(
+                    system_id="ak",
+                    conversation_id=cid,
+                    content="x",
+                    embedding=[0.0] * 384,
+                    timestamp=now,
+                    metadata={},
+                )
+            )
+
+        rows = await hot_store.query_traces(system_id="ak", limit=10)
+        ids = sorted(r["conversation_id"] for r in rows)
+        assert ids == ["c1", "c2", "c3"]
+
+    @pytest.mark.asyncio
+    async def test_query_traces_task_class_misses_rows_without_task_class(
+        self, hot_store: HotStore
+    ) -> None:
+        """Rows where metadata has no task_class are not matched."""
+        now = datetime.now(UTC)
+        await hot_store.insert(
+            HotRecord(
+                system_id="ak",
+                conversation_id="c1",
+                content="x",
+                embedding=[0.0] * 384,
+                timestamp=now,
+                metadata={"outcome": "success"},  # no task_class at all
+            )
+        )
+
+        rows = await hot_store.query_traces(task_class="code_generation")
+        assert rows == []
