@@ -126,10 +126,6 @@ class DharaHttpClient:
         for item in data:
             if isinstance(item, dict) and "key" in item and "value" in item:
                 rows.append((item["key"], item["value"]))
-            elif (
-                isinstance(item, (list, tuple))
-                and len(item) == 2
-                and isinstance(item[0], str)
-            ):
+            elif isinstance(item, (list, tuple)) and len(item) == 2 and isinstance(item[0], str):
                 rows.append((item[0], item[1]))  # type: ignore[arg-type]
         return rows

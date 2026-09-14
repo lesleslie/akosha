@@ -3,7 +3,31 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0/).
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.17.1] - 2026-09-14
+
+### Added
+
+- akosha: Migrate to CommonMCPClient + delete DharaServiceRegistryClient (Phase 3 REQ-004)
+- akosha: Migrate to mcp-common CommonMCPClient SDK
+
+### Fixed
+
+- akosha: Append /mcp to DHARA_DEFAULT_URL defaults (Phase 2 REQ-005)
+- Keep query_local_traces as Bodai-specific helper in akosha
+
+### Documentation
+
+- akosha: Document Phase 3 transport-unification changes in CHANGELOG
+
+### Testing
+
+- akosha: Rewrite MockSessionBuddyMCP for streamable-HTTP transport (Phase 3 REQ-009)
+
+### Internal
+
+- deps: Bump mcp-common floor to >=0.26.0,<0.27.0 (Phase 2.5)
 
 ## [Unreleased]
 
@@ -42,7 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - mcp: Drop str_strip_whitespace from AgentMetadata config (B-6 hash-pin)
-- mcp: Prefix all 27 user-facing tool names with akosha_
+- mcp: Prefix all 27 user-facing tool names with akosha\_
 
 ### Documentation
 

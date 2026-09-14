@@ -334,7 +334,7 @@ def _installed_to_metadata(path: Path) -> SkillMetadata | None:
             for line in header.splitlines():
                 stripped = line.strip()
                 if stripped.startswith("description:"):
-                    description = stripped.split(":", 1)[1].strip().strip('"\'')
+                    description = stripped.split(":", 1)[1].strip().strip("\"'")
                     break
     if not description:
         for line in text.splitlines():

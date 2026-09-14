@@ -21,12 +21,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from akosha.mcp.client import query_local_traces
 from mcp_common.clients.common_mcp_client import (
     CommonMCPClient,
-    MCPClientHTTPError,
-    MCPClientTimeoutError,
 )
+
+from akosha.mcp.client import query_local_traces
 
 if TYPE_CHECKING:
     from oneiric.core.resiliency import CircuitBreaker
@@ -36,7 +35,9 @@ logger = logging.getLogger(__name__)
 _DEFAULT_POLL_INTERVAL_SECONDS = 60
 _MAX_BUFFER_SIZE = 1000
 _DLQ_FAILURE_THRESHOLD = 3
-_DHARA_DEFAULT_URL = "http://localhost:8683/mcp"  # Implements: REQ-005 (Bodai MCP transport unification)
+_DHARA_DEFAULT_URL = (
+    "http://localhost:8683/mcp"  # Implements: REQ-005 (Bodai MCP transport unification)
+)
 _KEY_COMPONENT_RE = re.compile(r"^[a-zA-Z0-9_]{1,50}$")
 _INVALID_KEY_PLACEHOLDER = "unknown"
 

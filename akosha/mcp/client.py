@@ -56,7 +56,7 @@ def extract_mcp_payload(result: Any) -> Any:
 
 
 async def query_local_traces(
-    client: "CommonMCPClient",
+    client: CommonMCPClient,
     task_class: str,
     time_range_minutes: int = 60,
 ) -> list[dict[str, Any]]:
