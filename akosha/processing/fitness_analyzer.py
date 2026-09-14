@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from akosha.mcp.client import query_local_traces
 from mcp_common.clients.common_mcp_client import CommonMCPClient
 
 if TYPE_CHECKING:
@@ -119,7 +120,7 @@ class FitnessAnalyzer:
         """Fetch traces from a single component via its MCP endpoint."""
         client = CommonMCPClient(base_url=mcp_url, timeout=15.0)
         try:
-            return await client.query_local_traces(task_class, time_range_minutes)
+            return await query_local_traces(client, task_class, time_range_minutes)
         except Exception as exc:
             logger.debug(
                 "Failed to fetch traces from %s (%s): %s",

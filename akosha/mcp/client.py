@@ -1,14 +1,62 @@
-"""DharaServiceRegistryClient — minimal async client for Dhara's service registry.
+"""DharaServiceRegistryClient + Bodai-specific CommonMCPClient helpers.
 
+DharaServiceRegistryClient — minimal async client for Dhara's service registry.
 Used by Akosha to read bodai_component services from Dhara's ecosystem state
 so FitnessAnalyzer can discover registered component endpoints.
-
 Does NOT use the MCP protocol — talks to Dhara's REST API directly via httpx.
+
+``query_local_traces`` — Bodai-specific MCP helper for FitnessAnalyzer. Stays
+in akosha per plan §4.4 (response-shape coercion is Bodai-specific, not part
+of the cross-repo mcp-common SDK surface).
 """
 
 from __future__ import annotations
 
-from typing import Any
+import logging
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from mcp_common.clients.common_mcp_client import CommonMCPClient
+
+logger = logging.getLogger(__name__)
+
+
+async def query_local_traces(
+    client: "CommonMCPClient",
+    task_class: str,
+    time_range_minutes: int = 60,
+) -> list[dict[str, Any]]:
+    """Query traces from a Bodai component's local OTel store.
+
+    Args:
+        client: ``CommonMCPClient`` connected to the component's MCP endpoint.
+        task_class: Task classification to filter traces (e.g. "code_generation").
+        time_range_minutes: How far back to query (default 60 minutes).
+
+    Returns:
+        List of trace summary dicts from the component's local store.
+
+    Note:
+        This helper stays in akosha because the response-shape coercion
+        (list OR dict with ``traces``/``items``/``result`` keys) is
+        Bodai-specific. See plan §4.4 of
+        ``docs/plans/2026-09-14-common-mcp-client-transport-unification.md``.
+    """
+    result = await client.call_tool(
+        "akosha_query_local_traces",
+        {
+            "task_class": task_class,
+            "time_range_minutes": time_range_minutes,
+        },
+    )
+    if isinstance(result, list):
+        return result  # type: ignore[return-value]
+    if isinstance(result, dict):
+        items = result.get("traces") or result.get("items") or result.get("result")
+        if isinstance(items, list):
+            return items  # type: ignore[return-value]
+    logger.debug("Unexpected query_local_traces response shape: %r", result)
+    return []
 
 
 class DharaServiceRegistryClient:
