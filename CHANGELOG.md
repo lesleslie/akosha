@@ -3,7 +3,28 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0/).
+
+## [Unreleased]
+
+### Changed
+
+- **BREAKING (consumer-only, no published-API surface change): `_register_to_dhara_once` retry semantics.**
+  4xx responses now reach the generic `except Exception` branch (categorized as `"retry"`); only 5xx responses trigger the explicit `"give_up"` branch.
+  The previous `httpx.HTTPStatusError` catch (covering both 4xx and 5xx) was replaced by `mcp_common.clients.common_mcp_client.MCPClientHTTPError`, which is 5xx-only.
+  Operational impact is rare — Dhara's `put` should not return 4xx in normal operation — but operators relying on 4xx-as-give-up behavior will see a categorization change. `MCPClientHTTPError` continues to be raised on 5xx with the original HTTP `status_code` attached.
+
+- **BREAKING (consumer-only): `DharaServiceRegistryClient` class deleted.**
+  Akosha no longer instantiates the legacy REST-style client against Dhara.
+  The single production caller (mcp/tools/__init__.py:241) was migrated to `CommonMCPClient.call_tool("...")`.
+  As a side effect, `_populate_async` no longer auto-wraps bare-string `get()` responses as `{"url": "..."}` — the new `mcp_common` transport returns strings as-is per the MCP spec.
+  Operators with bare-string records stored in Dhara's KV (no documented use case but possible historical data) should migrate those records to dict form before upgrading, or update consumers to handle string returns.
+
+- **Tests:** `tests/fixtures/mock_bodai_mcp.py:MockSessionBuddyMCP` rewritten to speak the streamable-HTTP transport that `CommonMCPClient` produces (POST `/mcp` JSON-RPC envelopes, GET `/mcp` SSE preamble, DELETE `/mcp` 204). Enables the REQ-009 cross-repo smoke test in `tests/integration/test_live_mcp_smoke.py` to run with the new transport.
+
+### Known limitations (out of scope for this release)
+
+- `tests/integration/test_live_mcp_smoke.py::test_ecosystem_runs_both_ingesters_concurrently` surfaces a `RuntimeError: Attempted to exit cancel scope in a different task` warning when two `CommonMCPClient` instances are torn down inside `asyncio.gather`. Root cause is anyio TaskGroup task affinity in `mcp.client.streamable_http.streamable_http_client` clashing with asyncio's task model. Tracked separately.
 
 ## [0.17.0] - 2026-09-13
 
