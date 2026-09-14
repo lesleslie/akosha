@@ -3,6 +3,9 @@
 This module provides a worker that pulls indexed code graphs from
 Session-Buddy via MCP and stores them in Akosha's storage for
 pattern analysis and cross-repo similarity detection.
+
+MCP transport: uses ``mcp_common.clients.CommonMCPClient.call_tool``
+(streamable-HTTP) instead of legacy ``POST /tools/call`` POSTs.
 """
 
 from __future__ import annotations
@@ -12,8 +15,9 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-import httpx2 as httpx
+from mcp_common.clients.common_mcp_client import CommonMCPClient
 
+from akosha.mcp.client import extract_mcp_payload
 from akosha.storage.hot_store import HotStore
 
 if TYPE_CHECKING:
@@ -50,7 +54,7 @@ class CodeGraphIngester:
         self.max_concurrent_ingests = max_concurrent_ingests
         self._running = False
         self._poll_task: asyncio.Task[None] | None = None
-        self._http_client: httpx.AsyncClient | None = None
+        self._client: CommonMCPClient | None = None
 
         # Track last known code graphs to avoid duplicates
         self._known_graph_ids: set[str] = set()
@@ -61,8 +65,14 @@ class CodeGraphIngester:
             logger.warning("Code graph ingester already running")
             return
 
-        # Initialize HTTP client
-        self._http_client = httpx.AsyncClient(timeout=30.0)
+        # Initialize MCP client (streamable-HTTP via CommonMCPClient).
+        # Use a 30-second per-call timeout to match the prior httpx
+        # behaviour; CommonMCPClient's constructor timeout governs the
+        # session-establishment handshake.
+        self._client = CommonMCPClient(
+            base_url=self.session_buddy_endpoint,
+            timeout=30.0,
+        )
 
         self._running = True
         self._poll_task = asyncio.create_task(self._polling_loop())
@@ -85,10 +95,10 @@ class CodeGraphIngester:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._poll_task
 
-        # Close HTTP client
-        if self._http_client:
-            await self._http_client.aclose()
-            self._http_client = None
+        # Close MCP client
+        if self._client:
+            await self._client.aclose()
+            self._client = None
 
         logger.info("Stopped code graph ingestion")
 
@@ -149,21 +159,21 @@ class CodeGraphIngester:
         Returns:
             List of new code graph dictionaries
         """
-        if not self._http_client:
-            logger.warning("HTTP client not initialized")
+        if not self._client:
+            logger.warning("MCP client not initialized")
             return []
 
         try:
-            url = f"{self.session_buddy_endpoint}/tools/call"
-            payload = {
-                "name": "list_code_graphs",
-                "arguments": {"limit": 100},
-            }
+            call_result = await self._client.call_tool(
+                "list_code_graphs",
+                {"limit": 100},
+                timeout=30.0,
+            )
 
-            response = await self._http_client.post(url, json=payload)
-            response.raise_for_status()
-
-            result = response.json()
+            result = extract_mcp_payload(call_result)
+            if not isinstance(result, dict):
+                logger.warning("Unexpected list_code_graphs payload shape: %r", result)
+                return []
 
             if result.get("status") != "success":
                 logger.warning(f"Failed to list code graphs: {result.get('message')}")
@@ -184,9 +194,6 @@ class CodeGraphIngester:
 
             return new_graphs
 
-        except httpx.HTTPError as e:
-            logger.warning(f"HTTP error calling Session-Buddy: {e}")
-            return []
         except Exception as e:
             logger.warning(f"Error discovering code graphs: {e}")
             return []
@@ -200,24 +207,24 @@ class CodeGraphIngester:
         Returns:
             True if ingestion successful
         """
-        if not self._http_client:
+        if not self._client:
             return False
 
         try:
             # Fetch full code graph data
-            url = f"{self.session_buddy_endpoint}/tools/call"
-            payload = {
-                "name": "get_code_graph",
-                "arguments": {
+            call_result = await self._client.call_tool(
+                "get_code_graph",
+                {
                     "repo_path": graph_summary["repo_path"],
                     "commit_hash": graph_summary["commit_hash"],
                 },
-            }
+                timeout=30.0,
+            )
 
-            response = await self._http_client.post(url, json=payload)
-            response.raise_for_status()
-
-            result = response.json()
+            result = extract_mcp_payload(call_result)
+            if not isinstance(result, dict):
+                logger.warning("Unexpected get_code_graph payload shape: %r", result)
+                return False
 
             if result.get("status") != "success":
                 logger.warning(f"Failed to get code graph: {result.get('message')}")
@@ -259,9 +266,6 @@ class CodeGraphIngester:
 
             return True
 
-        except httpx.HTTPError as e:
-            logger.warning(f"HTTP error fetching code graph: {e}")
-            return False
         except Exception as e:
             logger.warning(f"Error ingesting code graph: {e}")
             return False

@@ -85,16 +85,30 @@ class TestRegisterToDharaOnce:
         """Should return 'success' when Dhara responds successfully."""
         _register_to_dhara_once = patched_server_module["_register_to_dhara_once"]
 
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
+        captured: dict[str, Any] = {}
 
-        with patch("httpx2.AsyncClient") as mock_client_cls:
-            mock_instance = MagicMock()
-            mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
-            mock_instance.__aexit__ = AsyncMock(return_value=None)
-            mock_instance.post = AsyncMock(return_value=mock_response)
-            mock_client_cls.return_value = mock_instance
+        class FakeMCPClient:
+            def __init__(self, **kw: object) -> None:
+                captured["base_url"] = kw.get("base_url")
+                captured["timeout"] = kw.get("timeout")
 
+            async def call_tool(
+                self,
+                name: str,
+                arguments: dict[str, Any],
+                *,
+                timeout: float | None = 5.0,
+            ) -> Any:
+                captured["name"] = name
+                captured["arguments"] = arguments
+                return {"is_error": False, "content": [{"type": "text", "text": "{}"}]}
+
+            async def aclose(self) -> None:
+                captured["closed"] = True
+
+        with patch(
+            "mcp_common.clients.common_mcp_client.CommonMCPClient", FakeMCPClient
+        ):
             result = await _register_to_dhara_once(
                 "http://localhost:8683/mcp",
                 "component_endpoint/akosha",
@@ -102,51 +116,57 @@ class TestRegisterToDharaOnce:
             )
 
             assert result == "success"
-            mock_instance.post.assert_called_once()
-            call_args = mock_instance.post.call_args
-            assert call_args[0][0] == "http://localhost:8683/mcp/tools/call"
-            assert call_args[1]["json"] == {
-                "name": "put",
-                "arguments": {
-                    "key": "component_endpoint/akosha",
-                    "value": "http://localhost:8682/mcp",
-                },
+            assert captured["name"] == "put"
+            assert captured["arguments"] == {
+                "key": "component_endpoint/akosha",
+                "value": "http://localhost:8682/mcp",
             }
+            assert captured.get("closed") is True
 
     @pytest.mark.asyncio
     async def test_returns_false_on_http_error(self, patched_server_module: dict[str, Any]) -> None:
         """Should return non-success outcome when Dhara returns an HTTP error."""
-        import httpx2 as httpx
+        from mcp_common.clients.common_mcp_client import MCPClientHTTPError
 
         _register_to_dhara_once = patched_server_module["_register_to_dhara_once"]
 
-        with patch("httpx2.AsyncClient") as mock_client_cls:
-            mock_instance = MagicMock()
-            mock_instance.__aenter__ = AsyncMock(side_effect=httpx.HTTPError("connection refused"))
-            mock_client_cls.return_value = mock_instance
+        class FakeMCPClient:
+            def __init__(self, **kw: object) -> None:
+                pass
 
+            async def call_tool(self, name: str, arguments: dict[str, Any], **kw: Any) -> Any:
+                raise MCPClientHTTPError("HTTP 500", status_code=500)
+
+            async def aclose(self) -> None:
+                pass
+
+        with patch("mcp_common.clients.common_mcp_client.CommonMCPClient", FakeMCPClient):
             result = await _register_to_dhara_once(
                 "http://localhost:8683",
                 "component_endpoint/akosha",
                 "http://localhost:8682/mcp",
             )
 
-            # HTTPError is the base class; not caught by the HTTPStatusError
-            # branch, so it falls through to the generic ``except Exception``
-            # and yields ``"retry"``. The contract assertion is just
-            # "did not succeed".
-            assert result != "success"
+            # 5xx is mapped to "give_up" so the bounded retry loop bails
+            # out instead of waiting 31 s on a non-retryable failure.
+            assert result == "give_up"
 
     @pytest.mark.asyncio
     async def test_returns_false_on_exception(self, patched_server_module: dict[str, Any]) -> None:
         """Should return 'retry' on any other exception."""
         _register_to_dhara_once = patched_server_module["_register_to_dhara_once"]
 
-        with patch("httpx2.AsyncClient") as mock_client_cls:
-            mock_instance = MagicMock()
-            mock_instance.__aenter__ = AsyncMock(side_effect=OSError("unexpected"))
-            mock_client_cls.return_value = mock_instance
+        class FakeMCPClient:
+            def __init__(self, **kw: object) -> None:
+                pass
 
+            async def call_tool(self, name: str, arguments: dict[str, Any], **kw: Any) -> Any:
+                raise OSError("unexpected")
+
+            async def aclose(self) -> None:
+                pass
+
+        with patch("mcp_common.clients.common_mcp_client.CommonMCPClient", FakeMCPClient):
             result = await _register_to_dhara_once(
                 "http://localhost:8683",
                 "component_endpoint/akosha",

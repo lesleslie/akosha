@@ -22,7 +22,11 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from akosha.mcp.client import query_local_traces
-from mcp_common.clients.common_mcp_client import CommonMCPClient
+from mcp_common.clients.common_mcp_client import (
+    CommonMCPClient,
+    MCPClientHTTPError,
+    MCPClientTimeoutError,
+)
 
 if TYPE_CHECKING:
     from oneiric.core.resiliency import CircuitBreaker
@@ -182,15 +186,27 @@ class FitnessAnalyzer:
         )
 
     async def _write_to_dhara(self, key: str, value: dict[str, Any]) -> None:
-        """Write a fitness signal to Dhara via MCP HTTP."""
-        import httpx2 as httpx
+        """Write a fitness signal to Dhara via MCP ``put`` tool.
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                f"{self._dhara_url}/tools/call",
-                json={"name": "put", "arguments": {"key": key, "value": value}},
+        Reuses a per-call ``CommonMCPClient`` because writes are rare
+        (every 60 s) and short-lived; the cost of session establishment
+        is negligible relative to the upstream Dhara write.
+
+        Raises:
+            MCPClientHTTPError: Dhara returned 5xx — let the circuit
+                breaker / DLQ layer in :meth:`_flush_buffer` decide.
+            MCPClientTimeoutError: Per-call timeout fired.
+            MCPError: JSON-RPC error envelope from Dhara.
+        """
+        client = CommonMCPClient(base_url=self._dhara_url, timeout=10.0)
+        try:
+            await client.call_tool(
+                "put",
+                {"key": key, "value": value},
+                timeout=10.0,
             )
-            response.raise_for_status()
+        finally:
+            await client.aclose()
 
     async def _flush_buffer(self) -> None:
         """Attempt to write all buffered signals to Dhara."""

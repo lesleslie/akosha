@@ -11,8 +11,7 @@ if TYPE_CHECKING:
     from fastmcp import FastMCP
     from mcp_common.tools import ToolProfile
 
-    from akosha.mcp.client import DharaServiceRegistryClient
-
+from mcp_common.clients.common_mcp_client import CommonMCPClient
 from mcp_common.health import DependencyConfig, register_health_tools
 from mcp_common.tools import ToolProfile  # runtime: used in discover_tools hint
 
@@ -233,14 +232,14 @@ def _populate_component_endpoints_from_dhara(analyzer: Any) -> None:
     import asyncio
     import os
 
-    from akosha.mcp.client import DharaServiceRegistryClient
+    from mcp_common.clients.common_mcp_client import CommonMCPClient
 
     dhara_url = os.getenv("DHARA_MCP_URL", "http://localhost:8683/mcp")
 
+    client = CommonMCPClient(base_url=dhara_url, timeout=10.0)
     try:
-        registry = DharaServiceRegistryClient(base_url=dhara_url, timeout=10.0)
         asyncio.get_running_loop()
-        _endpoint_task = asyncio.create_task(_populate_async(registry, analyzer))
+        _endpoint_task = asyncio.create_task(_populate_async(client, analyzer))
         logger.debug(
             "FitnessAnalyzer: initiated async endpoint discovery from Dhara (task=%s)",
             id(_endpoint_task),
@@ -248,7 +247,7 @@ def _populate_component_endpoints_from_dhara(analyzer: Any) -> None:
     except RuntimeError:
         # No running event loop — run synchronously
         try:
-            asyncio.run(_populate_async(registry, analyzer))
+            asyncio.run(_populate_async(client, analyzer))
         except Exception as exc:
             logger.warning(
                 "FitnessAnalyzer: could not populate endpoints from Dhara (continuing with empty list): %s",
@@ -256,29 +255,37 @@ def _populate_component_endpoints_from_dhara(analyzer: Any) -> None:
             )
 
 
-async def _populate_async(registry: DharaServiceRegistryClient, analyzer: Any) -> None:
-    """Async helper to populate endpoints from Dhara.
+async def _populate_async(client: CommonMCPClient, analyzer: Any) -> None:
+    """Async helper to populate endpoints from Dhara via ``CommonMCPClient``.
 
     Scans for registered endpoints. Tries service registry (bodai_component)
     first, then falls back to individual KV gets for known component names.
     """
+    from akosha.mcp.client import extract_mcp_payload
+
     discovered = 0
 
     # Phase 1: try ecosystem service registry (if components registered via upsert_service)
     try:
-        services = await registry.list_services(service_type="bodai_component")
-        for svc in services:
-            component_name = svc.get("service_id", "")
-            metadata: dict[str, Any] = svc.get("metadata", {}) or {}
-            mcp_url = metadata.get("mcp_url") or metadata.get("url")
-            if component_name and mcp_url:
-                analyzer.add_component(component_name, mcp_url)
-                discovered += 1
-                logger.debug(
-                    "FitnessAnalyzer: discovered via service registry %s -> %s",
-                    component_name,
-                    mcp_url,
-                )
+        result = await client.call_tool(
+            "list_services",
+            {"service_type": "bodai_component"},
+            timeout=10.0,
+        )
+        services = extract_mcp_payload(result)
+        if isinstance(services, list):
+            for svc in services:
+                component_name = svc.get("service_id", "")
+                metadata: dict[str, Any] = svc.get("metadata", {}) or {}
+                mcp_url = metadata.get("mcp_url") or metadata.get("url")
+                if component_name and mcp_url:
+                    analyzer.add_component(component_name, mcp_url)
+                    discovered += 1
+                    logger.debug(
+                        "FitnessAnalyzer: discovered via service registry %s -> %s",
+                        component_name,
+                        mcp_url,
+                    )
     except Exception as exc:
         logger.debug("Service registry scan returned no bodai_component services: %s", exc)
 
@@ -286,8 +293,13 @@ async def _populate_async(registry: DharaServiceRegistryClient, analyzer: Any) -
     # Mahavishnu uses put() to write component_endpoint/{name} in KV store
     known_components = ["mahavishnu", "crackerjack", "session-buddy"]
     for name in known_components:
-        with suppress(Exception):
-            entry = await registry.get(f"component_endpoint/{name}")
+        try:
+            result = await client.call_tool(
+                "get",
+                {"key": f"component_endpoint/{name}"},
+                timeout=10.0,
+            )
+            entry = extract_mcp_payload(result)
             if entry and isinstance(entry, dict):
                 mcp_url = entry.get("url") or entry.get("mcp_url")
                 if mcp_url:
@@ -298,8 +310,10 @@ async def _populate_async(registry: DharaServiceRegistryClient, analyzer: Any) -
                         name,
                         mcp_url,
                     )
+        except Exception:
+            continue
 
-    await registry.aclose()
+    await client.aclose()
     logger.info(
         "FitnessAnalyzer: populated %d component endpoints from Dhara",
         discovered,

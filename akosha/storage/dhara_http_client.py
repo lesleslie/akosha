@@ -4,26 +4,23 @@ Plan: docs/plans/2026-08-29-akosha-websocket-search.md (Followup 4).
 Provides the ``await list_prefix(prefix)`` async method that
 :mod:`akosha.ingestion.websocket_invocations_subscriber` consumes.
 
-Akosha's existing Dhara integration is HTTP-only -- every call goes
-through ``POST /tools/call`` (see ``akosha/mcp/server.py:70-100`` and
-``akosha/processing/fitness_analyzer.py:185-190``). This module
-extracts that pattern into a small reusable client so the subscriber
-can poll ``websocket_tool_invocation/v1/*`` without re-implementing
-httpx plumbing.
+MCP transport: uses ``mcp_common.clients.CommonMCPClient.call_tool``
+(streamable-HTTP) instead of legacy ``POST /tools/call`` POSTs.
 
-Graceful failure: every method catches httpx errors and returns empty
+Graceful failure: every method catches MCP errors and returns empty
 results / logs at WARNING. The subscriber is a best-effort consumer;
 missing or unreachable Dhara must never crash Akosha startup.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from typing import Any
 
-import httpx2 as httpx
+from mcp_common.clients.common_mcp_client import CommonMCPClient
+
+from akosha.mcp.client import extract_mcp_payload
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +29,7 @@ DHARA_DEFAULT_URL = "http://localhost:8683/mcp"
 
 
 class DharaHttpClient:
-    """Async HTTP client for Dhara's MCP-style ``POST /tools/call`` API.
+    """Async MCP client for Dhara's ``list_prefix`` and ``put`` tools.
 
     Methods:
         list_prefix(prefix) -> list[tuple[str, dict]]: list keys+values
@@ -50,22 +47,25 @@ class DharaHttpClient:
         Args:
             base_url: Dhara MCP endpoint. Defaults to ``$DHARA_MCP_URL`` or
                 ``DHARA_DEFAULT_URL``.
-            timeout_seconds: HTTP request timeout. Matches the 10-second
-                precedent at ``akosha/mcp/server.py:83``.
+            timeout_seconds: MCP per-call timeout. Matches the 10-second
+                precedent at ``akosha/mcp/server.py:227``.
         """
         self._base_url = (base_url or os.getenv("DHARA_MCP_URL", DHARA_DEFAULT_URL)).rstrip("/")
         self._timeout = timeout_seconds
         # Lazy client -- created on first call so import-time doesn't
-        # require httpx event-loop initialization.
-        self._client: httpx.AsyncClient | None = None
+        # require event-loop initialization.
+        self._client: CommonMCPClient | None = None
 
-    async def _ensure_client(self) -> httpx.AsyncClient:
+    async def _ensure_client(self) -> CommonMCPClient:
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=self._timeout)
+            self._client = CommonMCPClient(
+                base_url=self._base_url,
+                timeout=self._timeout,
+            )
         return self._client
 
     async def aclose(self) -> None:
-        """Close the underlying httpx.AsyncClient. Safe to call repeatedly."""
+        """Close the underlying MCP client. Safe to call repeatedly."""
         if self._client is not None:
             await self._client.aclose()
             self._client = None
@@ -78,15 +78,13 @@ class DharaHttpClient:
         """
         client = await self._ensure_client()
         try:
-            response = await client.post(
-                f"{self._base_url}/tools/call",
-                json={"name": "list_prefix", "arguments": {"prefix": prefix}},
+            call_result = await client.call_tool(
+                "list_prefix",
+                {"prefix": prefix},
+                timeout=self._timeout,
             )
-            response.raise_for_status()
-            data = response.json()
-            # Dhara returns MCP-format:
-            # ``{"content": [{"type": "text", "text": "<json string>"}]}``.
-            return self._parse_mcp_content(data, prefix)
+            data = extract_mcp_payload(call_result)
+            return self._parse_list_payload(data, prefix)
         except Exception as exc:
             logger.debug("DharaHttpClient.list_prefix(%r) failed: %s", prefix, exc)
             return []
@@ -99,44 +97,39 @@ class DharaHttpClient:
         """
         client = await self._ensure_client()
         try:
-            response = await client.post(
-                f"{self._base_url}/tools/call",
-                json={"name": "put", "arguments": {"key": key, "value": value}},
+            await client.call_tool(
+                "put",
+                {"key": key, "value": value},
+                timeout=self._timeout,
             )
-            response.raise_for_status()
             return True
         except Exception as exc:
             logger.debug("DharaHttpClient.put(%r) failed: %s", key, exc)
             return False
 
     @staticmethod
-    def _parse_mcp_content(data: Any, prefix: str) -> list[tuple[str, dict[str, Any]]]:
-        """Parse MCP-format tool-call response into ``[(key, value), ...]``.
+    def _parse_list_payload(data: Any, prefix: str) -> list[tuple[str, dict[str, Any]]]:
+        """Parse the unwrapped ``list_prefix`` payload.
 
-        Dhara wraps payloads in ``{"content": [{"type": "text", "text":
-        "<json>"}]}`` per the MCP spec. ``text`` is a JSON-encoded
-        string of the actual list. Be tolerant of multiple shapes --
-        Dhara's response envelope may evolve.
+        Dhara's ``list_prefix`` tool returns either a list of
+        ``{"key": ..., "value": ...}`` records OR a list of
+        ``[key, value]`` tuples. Be tolerant of both shapes.
         """
-        try:
-            content = data.get("content") if isinstance(data, dict) else None
-            if not content:
-                return []
-            text = content[0].get("text") if isinstance(content, list) and content else None
-            if not text:
-                return []
-            parsed = json.loads(text)
-            if isinstance(parsed, list):
-                return [
-                    (item["key"], item["value"])
-                    for item in parsed
-                    if isinstance(item, dict) and "key" in item and "value" in item
-                ]
-            return []
-        except (json.JSONDecodeError, KeyError, TypeError, IndexError) as exc:
+        if not isinstance(data, list):
             logger.debug(
-                "DharaHttpClient._parse_mcp_content: parse failed for prefix=%r: %s",
+                "DharaHttpClient._parse_list_payload: unexpected shape for prefix=%r: %r",
                 prefix,
-                exc,
+                data,
             )
             return []
+        rows: list[tuple[str, dict[str, Any]]] = []
+        for item in data:
+            if isinstance(item, dict) and "key" in item and "value" in item:
+                rows.append((item["key"], item["value"]))
+            elif (
+                isinstance(item, (list, tuple))
+                and len(item) == 2
+                and isinstance(item[0], str)
+            ):
+                rows.append((item[0], item[1]))  # type: ignore[arg-type]
+        return rows

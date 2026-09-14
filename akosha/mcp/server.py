@@ -216,30 +216,35 @@ async def _register_to_dhara_once(dhara_url: str, key: str, mcp_url: str) -> str
         ``"success"`` when Dhara accepted the put; ``"retry"`` for transient
         errors (timeouts, connection refused) that the bounded-retry loop
         in :func:`_register_component_to_dhara` should keep trying; or
-        ``"give_up"`` for non-transient errors (HTTP 4xx/5xx) where retrying
+        ``"give_up"`` for non-transient errors (HTTP 5xx) where retrying
         would just waste startup time.
     """
-    import httpx2 as httpx
+    from mcp_common.clients.common_mcp_client import (
+        CommonMCPClient,
+        MCPClientHTTPError,
+    )
 
+    client = CommonMCPClient(base_url=dhara_url, timeout=10.0)
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                f"{dhara_url}/tools/call",
-                json={"name": "put", "arguments": {"key": key, "value": mcp_url}},
+        try:
+            await client.call_tool(
+                "put",
+                {"key": key, "value": mcp_url},
+                timeout=10.0,
             )
-            response.raise_for_status()
             return "success"
-    except httpx.HTTPStatusError:
-        # Dhara explicitly rejected the put (4xx/5xx). Retrying won't fix
-        # an API bug; bail so lifespan startup doesn't sit in a 31s backoff.
-        return "give_up"
-    except httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError:
-        # Transient — Dhara might come up, the network might recover.
-        return "retry"
-    except Exception:
-        # Unknown failure mode: default to retry so we don't silently drop
-        # a fixable hiccup.
-        return "retry"
+        except MCPClientHTTPError:
+            # Dhara explicitly rejected the put (5xx). Retrying won't fix
+            # an API bug; bail so lifespan startup doesn't sit in a 31s
+            # backoff.
+            return "give_up"
+        except Exception:
+            # Transient (timeout, connect, parse) — Dhara might come up,
+            # the network might recover. Default to retry so we don't
+            # silently drop a fixable hiccup.
+            return "retry"
+    finally:
+        await client.aclose()
 
 
 # Module-level task reference so shutdown can cancel the heartbeat loop

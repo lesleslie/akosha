@@ -420,15 +420,13 @@ class TestDharaHttpClientIntegration:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Replace the mock Dhara handle with a real ``DharaHttpClient`` whose
-        underlying httpx call is mocked to return Dhara-format responses.
+        underlying MCP call is mocked to return Dhara-format responses.
 
         Followup 4 of the websocket-search plan: after this ships, the
-        subscriber's ``list_prefix`` actually reaches Dhara via HTTP
+        subscriber's ``list_prefix`` actually reaches Dhara via MCP
         rather than short-circuiting on ``dhara_handle=None``. This test
         proves the wiring end-to-end without standing up a real Dhara.
         """
-        import httpx2 as httpx
-
         from akosha.storage.dhara_http_client import DharaHttpClient
 
         _patch_embedding_service(monkeypatch)
@@ -453,19 +451,18 @@ class TestDharaHttpClientIntegration:
         ]
         import json as _json
 
-        mock_response = MagicMock(spec=httpx.Response)
-        mock_response.json = MagicMock(
-            return_value={"content": [{"type": "text", "text": _json.dumps(dhara_payload)}]}
-        )
-        mock_response.raise_for_status = MagicMock(return_value=None)
+        call_tool_result = {
+            "is_error": False,
+            "content": [{"type": "text", "text": _json.dumps(dhara_payload)}],
+        }
 
-        # Construct the real client, then inject a stub httpx.AsyncClient
-        # so the post() call returns our envelope without a network hop.
+        # Construct the real client, then inject a stub CommonMCPClient
+        # so the call_tool() call returns our envelope without a network hop.
         client = DharaHttpClient(base_url="http://dhara.test.invalid")
-        stub_httpx = AsyncMock(spec=httpx.AsyncClient)
-        stub_httpx.post = AsyncMock(return_value=mock_response)
-        stub_httpx.aclose = AsyncMock(return_value=None)
-        client._client = stub_httpx
+        stub_mcp = MagicMock()
+        stub_mcp.call_tool = AsyncMock(return_value=call_tool_result)
+        stub_mcp.aclose = AsyncMock(return_value=None)
+        client._client = stub_mcp
 
         from akosha.ingestion.websocket_invocations_subscriber import (
             WebSocketInvocationsSubscriber,
@@ -478,12 +475,12 @@ class TestDharaHttpClientIntegration:
         )
         await sub._tick()
 
-        # The HTTP POST should have hit the Dhara MCP ``list_prefix`` tool.
-        stub_httpx.post.assert_awaited_once()
-        post_kwargs = stub_httpx.post.await_args.kwargs
-        assert post_kwargs["json"]["name"] == "list_prefix"
-        assert post_kwargs["json"]["arguments"]["prefix"] == ("websocket_tool_invocation/v1/")
-        assert stub_httpx.post.await_args.args[0] == ("http://dhara.test.invalid/tools/call")
+        # The MCP call should have hit the Dhara ``list_prefix`` tool with
+        # the expected arguments.
+        stub_mcp.call_tool.assert_awaited_once()
+        call_args = stub_mcp.call_tool.await_args
+        assert call_args.args[0] == "list_prefix"
+        assert call_args.args[1] == {"prefix": "websocket_tool_invocation/v1/"}
 
         # And the parsed row should have made it into the HotStore.
         hot_store.insert.assert_awaited_once()

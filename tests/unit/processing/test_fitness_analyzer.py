@@ -398,76 +398,75 @@ async def test_fetch_traces_from_component_swallows_bodai_client_errors(
 async def test_write_to_dhara_posts_correct_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``_write_to_dhara`` POSTs ``{name: put, arguments: {key, value}}``."""
+    """``_write_to_dhara`` calls ``put`` with ``{key, value}`` via CommonMCPClient."""
     from akosha.processing.fitness_analyzer import FitnessAnalyzer
 
     analyzer = FitnessAnalyzer(dhara_url="http://dhara:8683")
 
     captured: dict[str, Any] = {}
-    fake_response = MagicMock()
-    fake_response.raise_for_status = MagicMock(return_value=None)
 
-    class FakeAsyncClient:
+    class FakeMCPClient:
         def __init__(self, **kw: object) -> None:
+            captured["base_url"] = kw.get("base_url")
             captured["timeout"] = kw.get("timeout")
 
-        async def __aenter__(self) -> "FakeAsyncClient":
-            return self
+        async def call_tool(
+            self,
+            name: str,
+            arguments: dict[str, Any],
+            *,
+            timeout: float | None = 5.0,
+        ) -> Any:
+            captured["name"] = name
+            captured["arguments"] = arguments
+            captured["call_timeout"] = timeout
+            return {"is_error": False, "content": [{"type": "text", "text": "{}"}]}
 
-        async def __aexit__(self, *exc: object) -> None:
-            return None
-
-        async def post(self, url: str, *, json: dict[str, Any]) -> MagicMock:
-            captured["url"] = url
-            captured["json"] = json
-            return fake_response
+        async def aclose(self) -> None:
+            captured["closed"] = True
 
     monkeypatch.setattr(
-        "httpx2.AsyncClient",
-        FakeAsyncClient,
+        "akosha.processing.fitness_analyzer.CommonMCPClient",
+        FakeMCPClient,
     )
 
     await analyzer._write_to_dhara("routing_fitness/code_generation/least_loaded", {"score": 1.0})
 
-    assert captured["url"] == "http://dhara:8683/tools/call"
-    assert captured["json"]["name"] == "put"
-    assert captured["json"]["arguments"]["key"] == "routing_fitness/code_generation/least_loaded"
+    assert captured["base_url"] == "http://dhara:8683"
+    assert captured["name"] == "put"
+    assert captured["arguments"]["key"] == "routing_fitness/code_generation/least_loaded"
+    assert captured["arguments"]["value"] == {"score": 1.0}
+    assert captured.get("closed") is True
 
 
 @pytest.mark.asyncio
 async def test_write_to_dhara_propagates_httpx_status_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A 500 from Dhara surfaces — the circuit breaker / DLQ layer
+    """A 5xx from Dhara surfaces — the circuit breaker / DLQ layer
     handles retries and eventual DLQ."""
-    import httpx2 as httpx
+    from mcp_common.clients.common_mcp_client import MCPClientHTTPError
+
     from akosha.processing.fitness_analyzer import FitnessAnalyzer
 
     analyzer = FitnessAnalyzer()
 
-    class FakeAsyncClient:
+    class FakeMCPClient:
         def __init__(self, **kw: object) -> None:
             pass
 
-        async def __aenter__(self) -> "FakeAsyncClient":
-            return self
+        async def call_tool(self, name: str, arguments: dict[str, Any], **kw: Any) -> Any:
+            raise MCPClientHTTPError("HTTP 500", status_code=500)
 
-        async def __aexit__(self, *exc: object) -> None:
-            return None
-
-        async def post(self, url: str, *, json: dict[str, Any]) -> MagicMock:
-            resp = MagicMock()
-            resp.raise_for_status = MagicMock(
-                side_effect=httpx.HTTPStatusError("500", request=MagicMock(), response=resp)
-            )
-            return resp
+        async def aclose(self) -> None:
+            pass
 
     monkeypatch.setattr(
-        "httpx2.AsyncClient",
-        FakeAsyncClient,
+        "akosha.processing.fitness_analyzer.CommonMCPClient",
+        FakeMCPClient,
     )
 
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(MCPClientHTTPError):
         await analyzer._write_to_dhara("k", {"v": 1})
 
 

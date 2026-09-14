@@ -92,6 +92,11 @@ async def test_register_all_tools_full_profile_and_discovery(
     monkeypatch.setattr(tools_module, "register_akosha_tools", akosha)
     monkeypatch.setattr(tools_module, "register_session_buddy_tools", session_buddy)
     monkeypatch.setattr(tools_module, "register_pycharm_tools", pycharm)
+    # Mock the Dhara endpoint discovery path — it spins up a
+    # CommonMCPClient (streamable-HTTP) whose anyio cancel scope
+    # otherwise hangs the test event loop during teardown. The
+    # discovery itself is exercised by integration tests, not here.
+    monkeypatch.setattr(tools_module, "_populate_component_endpoints_from_dhara", lambda _a: None)
 
     tools_module.register_all_tools(app, hot_store=object())
 
