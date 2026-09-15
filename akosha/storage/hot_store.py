@@ -141,15 +141,31 @@ class HotStore:
             """
             )
 
-            # Create HNSW index for vector search
-            try:
-                self.conn.execute("""
-                    CREATE INDEX IF NOT EXISTS embedding_hnsw_index
-                    ON conversations USING HNSW (embedding)
-                    WITH (m = 16, ef_construction = 200)
-                """)
-            except Exception as e:
-                logger.warning(f"HNSW index creation failed: {e}")
+            # Vector similarity indexes
+            # --------------------
+            # DuckDB does not ship a native HNSW index type — its
+            # documented vector-index path is the `vss` community
+            # extension using the ART (Approximate Random Tree) algorithm.
+            # The pre-Phase-5 implementation attempted
+            # ``CREATE INDEX ... USING HNSW`` and caught the resulting
+            # ``Binder Error: Unknown index type: HNSW`` on every poll
+            # cycle (5x per akosha cycle, 5x per kg_refresh cycle,
+            # 5x per OTel ingester cycle), producing noisy warnings
+            # and no useful index.
+            #
+            # Vector similarity queries on this backend use
+            # ``array_cosine_similarity(...)`` (brute-force, no index
+            # needed) — the index creation attempt was vestigial.
+            # Operators who want ANN acceleration can install the
+            # ``vss`` community extension via ``INSTALL vss; LOAD vss;``
+            # and create an ART index manually after initialize().
+            logger.info(
+                "HotStore: skipping HNSW index creation — DuckDB has no "
+                "HNSW support; vector search uses array_cosine_similarity "
+                "(brute-force). For ANN acceleration, install the `vss` "
+                "extension (INSTALL vss; LOAD vss;) and create an ART "
+                "index manually."
+            )
 
             # Create indexes for filtered queries (performance optimization)
             try:
@@ -291,16 +307,10 @@ class HotStore:
             if not self.conn:
                 raise RuntimeError("Hot store not initialized")
 
-            # Set HNSW search parameters
-            import contextlib
-
-            with contextlib.suppress(Exception):
-                self.conn.execute("SET hnsw_ef_search = 100")
-
             # Build query with parameterized WHERE clause (SQL injection prevention)
             # Note: We use separate queries for each case to ensure proper parameterization
             # Detect zero vector — cosine similarity is undefined for zero vectors,
-            # so use timestamp ordering instead (HNSW index not applicable here).
+            # so use timestamp ordering instead (brute-force scan; no ANN index).
             is_zero_vector = all(abs(x) < 1e-10 for x in query_embedding)
 
             if is_zero_vector and system_id:

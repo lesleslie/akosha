@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- akosha: Remove the always-failing `CREATE INDEX ... USING HNSW (embedding)` attempt from `HotStore.initialize()`. DuckDB has no native HNSW support (its ANN path is the `vss` extension using ART); the prior code caught the resulting `Binder Error: Unknown index type: HNSW` on every poll cycle (5x per akosha cycle, 5x per kg_refresh, 5x per OTel ingester). The vestigial index was never functional — vector similarity queries use `array_cosine_similarity(...)` (brute-force scan, no index needed). Replace with an INFO log pointing operators at `INSTALL vss; LOAD vss;` for ANN acceleration. Also removes the dead `SET hnsw_ef_search = 100` call from `search_similar()` (Phase 5, tracked separately at `docs/followups/2026-09-14-akosha-hnsw-on-duckdb.md`).
+
 - akosha: Wire `cycles_total` / `errors_total` / `last_poll_at` / `last_error_at` tracking in CodeGraphIngester's polling loop (plan §5 Phase 4 task 3 followup). Previously the ingester bumped nothing, so the aggregator's HNSW hardening always flagged `code_graphs_feed` as `degraded` with `feed_never_populated` (cycles_total == 0 + ingester_running). After this fix the first cycle flips the feed to `warming_up`; subsequent cycles with successful ingests land at `healthy`. Mirrors the existing OtelTraceIngester contract.
 
 ### Changed
