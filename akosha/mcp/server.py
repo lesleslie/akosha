@@ -913,6 +913,10 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # halflife is operator-tunable via HEALTH_FEED_HALFLIFE_SECONDS;
             # the Phase 4 spec default is 300s.
             halflife_seconds = int(os.getenv("HEALTH_FEED_HALFLIFE_SECONDS", "300"))
+            # Phase 4 observability: time the aggregator call so the
+            # ``mcp_common_health_aggregate_duration_ms`` histogram
+            # surfaces per-/health p50/p95/p99 latency to operators.
+            aggregator_start = time.perf_counter()
             snap = cast(
                 "HealthSnapshot",
                 aggregate_feed_states(
@@ -925,6 +929,34 @@ def create_app(mode: Any | None = None) -> FastMCP:
                     halflife_seconds=halflife_seconds,
                 ),
             )
+            aggregator_duration_ms = (time.perf_counter() - aggregator_start) * 1000.0
+            # Phase 4 observability: emit the canonical health metrics
+            # (plan §4 Observability + §11.4 PromQL alerts) into the
+            # shared CollectorRegistry that the existing ``/metrics``
+            # endpoint already exposes. The four metrics:
+            # ``health_feed_status``, ``health_feed_errors_within_window``,
+            # ``mcp_common_health_halflife_seconds``,
+            # ``mcp_common_health_aggregate_duration_ms`` — are exactly
+            # the names referenced by the PromQL alert rules.
+            try:
+                from mcp_common.health.metrics import update_health_metrics
+
+                from akosha.observability.prometheus_metrics import get_metrics_registry
+
+                update_health_metrics(
+                    registry=get_metrics_registry(),
+                    snap=snap,
+                    repo="akosha",
+                    halflife_seconds=halflife_seconds,
+                    duration_ms=aggregator_duration_ms,
+                )
+            except ImportError:
+                # Older mcp-common without the metrics module is a
+                # forward-compat miss; the body still works without
+                # emitting metrics. Operators see the alert rules
+                # silently produce no data — the runbook's
+                # forward-compat section documents this.
+                pass
 
             # Translate the aggregator's per-feed verdict into the legacy
             # per-feed dict shape. Each entry carries ``ok`` (legacy

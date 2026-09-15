@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- akosha: Wire `mcp_common.health.metrics.update_health_metrics` into the `/health` probe body. The aggregator's `HealthSnapshot` is now published to the existing prometheus_client CollectorRegistry (the one the `/metrics` endpoint already exposes) so the four canonical health metrics fire live: `health_feed_status{repo, feed, status}`, `health_feed_errors_within_window{repo, feed}`, `mcp_common_health_halflife_seconds{repo}`, `mcp_common_health_aggregate_duration_ms{repo}` (histogram). These are exactly the names referenced by the PromQL alert rules at `mahavishnu/config/prometheus/health_aggregator_alerts.yml`. Phase 4 Observability + §11.4. Forward-compat: missing mcp_common.metrics module is silently no-op'd via `ImportError` catch.
+
 ### Fixed
 
 - akosha: Remove the always-failing `CREATE INDEX ... USING HNSW (embedding)` attempt from `HotStore.initialize()`. DuckDB has no native HNSW support (its ANN path is the `vss` extension using ART); the prior code caught the resulting `Binder Error: Unknown index type: HNSW` on every poll cycle (5x per akosha cycle, 5x per kg_refresh, 5x per OTel ingester). The vestigial index was never functional — vector similarity queries use `array_cosine_similarity(...)` (brute-force scan, no index needed). Replace with an INFO log pointing operators at `INSTALL vss; LOAD vss;` for ANN acceleration. Also removes the dead `SET hnsw_ef_search = 100` call from `search_similar()` (Phase 5, tracked separately at `docs/followups/2026-09-14-akosha-hnsw-on-duckdb.md`).
