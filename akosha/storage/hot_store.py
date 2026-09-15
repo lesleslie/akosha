@@ -51,9 +51,10 @@ def _strip_tz_suffix(s: str) -> str:
         idx = s.rfind(sep)
         if idx > 10:  # past the date portion (YYYY-MM-DD)
             tail = s[idx:]
-            if ":" in tail and len(tail) in (6,):  # +HH:MM or -HH:MM form
+            if ":" in tail and len(tail) == 6:  # +HH:MM or -HH:MM form
                 return s[:idx]
     return s
+
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -438,9 +439,7 @@ class HotStore:
                 common_conditions.append("timestamp <= ?")
                 params.append(_strip_tz_suffix(end_time))
 
-            select_cols = (
-                "system_id, conversation_id, content, timestamp, metadata"
-            )
+            select_cols = "system_id, conversation_id, content, timestamp, metadata"
 
             if task_class:
                 # Filter on metadata JSON: attributes.task_class OR top-level
@@ -465,11 +464,7 @@ class HotStore:
                 # DuckDB does NOT reset param numbering across the UNION
                 # ALL boundaries, so the common (CTE) params must be
                 # duplicated — once per sub-query.
-                cte_where = (
-                    "WHERE " + " AND ".join(common_conditions)
-                    if common_conditions
-                    else ""
-                )
+                cte_where = "WHERE " + " AND ".join(common_conditions) if common_conditions else ""
 
                 inner = (
                     f"SELECT {select_cols} FROM filtered "
@@ -489,9 +484,7 @@ class HotStore:
                 # the two task_class params, then LIMIT.
                 params.extend([task_class, task_class, limit])
             else:
-                where_clause = (
-                    " AND ".join(common_conditions) if common_conditions else "1=1"
-                )
+                where_clause = " AND ".join(common_conditions) if common_conditions else "1=1"
                 query = (
                     f"SELECT {select_cols} FROM conversations "
                     f"WHERE {where_clause} "
