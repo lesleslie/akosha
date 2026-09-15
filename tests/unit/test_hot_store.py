@@ -518,3 +518,127 @@ class TestHotStore:
 
         rows = await hot_store.query_traces(task_class="code_generation")
         assert rows == []
+
+    # ------------------------------------------------------------------
+    # Regression tests for the DuckDB tz-aware datetime binding bug.
+    #
+    # DuckDB ``TIMESTAMP`` (not ``TIMESTAMPTZ``) stores naive wall-clock
+    # values. The Python binding for tz-aware datetimes appears to call
+    # ``.astimezone(local_tz)`` before binding, so the same instant
+    # in time gets stored at different wall-clock values depending on
+    # whether the caller passed naive or tz-aware. On a PDT session
+    # (UTC-7), ``2026-09-14 13:00:00+00:00`` ends up stored as
+    # ``2026-09-14 06:00:00`` — a silent 7-hour shift that only surfaces
+    # when the row fails to round-trip against a tz-aware query.
+    #
+    # The fix normalises tz-aware timestamps to naive UTC at insert time
+    # (and strips tz suffixes from query-time strings for defense in
+    # depth, even though current DuckDB versions handle ``+00:00``
+    # directly).
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_insert_tz_aware_datetime_stored_as_naive_utc(
+        self, hot_store: HotStore
+    ) -> None:
+        """tz-aware UTC datetime at insert must land at the naive-UTC value.
+
+        On a non-UTC session (e.g. PDT) DuckDB's binding layer would
+        otherwise silently shift the wall-clock to local time. This
+        test pins the storage layer to naive-UTC semantics regardless
+        of session tz.
+        """
+        # 13:00 UTC. Must NOT be stored as 06:00 on a PDT session.
+        ts_utc = datetime(2026, 9, 14, 13, 0, 0, tzinfo=UTC)
+        naive_utc_value = datetime(2026, 9, 14, 13, 0, 0)  # tzinfo=None
+
+        await hot_store.insert(
+            HotRecord(
+                system_id="ak",
+                conversation_id="tz-aware",
+                content="x",
+                embedding=[0.0] * 384,
+                timestamp=ts_utc,
+                metadata={"task_class": "code_generation"},
+            )
+        )
+
+        row = hot_store.conn.execute(
+            "SELECT timestamp FROM conversations WHERE conversation_id = 'tz-aware'"
+        ).fetchone()
+        assert row is not None
+        stored = row[0]
+        # Must equal naive-UTC (13:00), NOT local-time (06:00 on PDT).
+        assert stored == naive_utc_value, (
+            f"tz-aware datetime mis-bound: expected {naive_utc_value!r}, "
+            f"got {stored!r} (session tz would shift this on PDT)"
+        )
+        # Belt and suspenders: stored column must be naive.
+        assert stored.tzinfo is None
+
+    @pytest.mark.asyncio
+    async def test_query_traces_tz_suffixed_iso_string(
+        self, hot_store: HotStore
+    ) -> None:
+        """query_traces with ``+00:00`` ISO string must return naive-UTC rows.
+
+        Defense in depth: even though current DuckDB versions handle
+        the ``+00:00`` suffix correctly, query_traces normalises tz
+        suffixes off the input so a future DuckDB/ICU change cannot
+        regress this path. ``datetime.now(UTC).isoformat()`` returns
+        ``2026-09-14T11:00:00+00:00``; callers pass that string
+        unmodified.
+        """
+        now = datetime(2026, 9, 14, 12, 0, 0)  # naive UTC
+        await hot_store.insert(
+            HotRecord(
+                system_id="ak",
+                conversation_id="c1",
+                content="x",
+                embedding=[0.0] * 384,
+                timestamp=now,
+                metadata={"task_class": "code_generation"},
+            )
+        )
+
+        rows = await hot_store.query_traces(
+            task_class="code_generation",
+            start_time=(now - timedelta(hours=1)).isoformat(),  # 11:00+00:00
+        )
+        assert len(rows) == 1
+        assert rows[0]["conversation_id"] == "c1"
+
+    @pytest.mark.asyncio
+    async def test_query_traces_negative_tz_iso_string(
+        self, hot_store: HotStore
+    ) -> None:
+        """query_traces must normalise PDT tz offsets off input.
+
+        Confirms the strip-tz-suffix path handles negative offsets too,
+        which would otherwise pass local-PDT wall-clock to a TIMESTAMP
+        column that stores naive UTC.
+        """
+        now = datetime(2026, 9, 14, 12, 0, 0)  # naive UTC
+        await hot_store.insert(
+            HotRecord(
+                system_id="ak",
+                conversation_id="c1",
+                content="x",
+                embedding=[0.0] * 384,
+                timestamp=now,
+                metadata={"task_class": "code_generation"},
+            )
+        )
+
+        # Same instant expressed in PDT: 12:00 UTC = 05:00 PDT.
+        # If query_traces does NOT strip tz, DuckDB would compare
+        # 05:00 against 12:00 and return no rows.
+        pdt_start = (now - timedelta(hours=7)).astimezone(
+            __import__("datetime").timezone(timedelta(hours=-7))
+        )
+        rows = await hot_store.query_traces(
+            task_class="code_generation",
+            start_time=pdt_start.isoformat(),
+        )
+        assert len(rows) == 1
+        assert rows[0]["conversation_id"] == "c1"

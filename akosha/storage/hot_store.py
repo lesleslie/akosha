@@ -13,6 +13,48 @@ import duckdb
 
 from akosha.processing.embedding_dim import resolve_embedding_dim
 
+
+def _to_naive_utc(dt: datetime) -> datetime:
+    """Convert a possibly-tz-aware datetime to naive UTC.
+
+    DuckDB ``TIMESTAMP`` (not ``TIMESTAMPTZ``) stores naive wall-clock
+    values. The Python binding for tz-aware datetimes silently shifts
+    the value to the session's local time before dropping tz info —
+    the same instant in time can therefore land at different stored
+    values depending on whether the caller passed naive or tz-aware.
+    Normalising to naive UTC at every storage boundary makes inserts
+    session-tz-invariant and matches what the column actually stores.
+    """
+    if dt.tzinfo is not None:
+        return dt.astimezone(UTC).replace(tzinfo=None)
+    return dt
+
+
+def _strip_tz_suffix(s: str) -> str:
+    """Strip ISO-8601 tz suffix off a timestamp string (``+HH:MM`` / ``-HH:MM`` / ``Z``).
+
+    DuckDB currently accepts the ``+00:00`` suffix against a
+    ``TIMESTAMP`` column without complaint, but stripping it is
+    defense in depth — a DuckDB/ICU upgrade could regress this
+    path, and query_traces is on the hot read-side of every Bodai
+    component. The space-separator ``YYYY-MM-DD HH:MM:SS`` form
+    (also accepted by DuckDB) is unchanged.
+    """
+    if "T" not in s:
+        return s  # already space-separated, not ISO; leave as-is
+    # Trailing "Z" → drop it.
+    if s.endswith("Z"):
+        return s[:-1]
+    # Trailing "+HH:MM" or "-HH:MM" → drop it (only if it's a tz offset,
+    # not a date-parsed value; ISO dates don't carry these suffixes).
+    for sep in ("+", "-"):
+        idx = s.rfind(sep)
+        if idx > 10:  # past the date portion (YYYY-MM-DD)
+            tail = s[idx:]
+            if ":" in tail and len(tail) in (6,):  # +HH:MM or -HH:MM form
+                return s[:idx]
+    return s
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -199,7 +241,7 @@ class HotStore:
                     record.conversation_id,
                     record.content,
                     record.embedding,
-                    record.timestamp,
+                    _to_naive_utc(record.timestamp),
                     record.metadata,
                     self._compute_content_hash(record.content),
                     datetime.now(UTC),
@@ -385,12 +427,16 @@ class HotStore:
                 params.append(system_id)
 
             if start_time:
+                # Strip tz offset off ISO strings so the TIMESTAMP
+                # comparison is purely naive-UTC-vs-naive-UTC.
+                # `_strip_tz_suffix` is a no-op for already-naive
+                # strings (space-separated or unmarked ISO).
                 common_conditions.append("timestamp >= ?")
-                params.append(start_time)
+                params.append(_strip_tz_suffix(start_time))
 
             if end_time:
                 common_conditions.append("timestamp <= ?")
-                params.append(end_time)
+                params.append(_strip_tz_suffix(end_time))
 
             select_cols = (
                 "system_id, conversation_id, content, timestamp, metadata"
