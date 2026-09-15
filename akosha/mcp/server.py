@@ -85,6 +85,7 @@ if TYPE_CHECKING:
         checks: dict[str, FeedSnapshot]
         reason_codes: list[ReasonCode]
 
+
 # ---------------------------------------------------------------------------
 # /health probe registration
 # ---------------------------------------------------------------------------
@@ -917,17 +918,14 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # ``mcp_common_health_aggregate_duration_ms`` histogram
             # surfaces per-/health p50/p95/p99 latency to operators.
             aggregator_start = time.perf_counter()
-            snap = cast(
-                "HealthSnapshot",
-                aggregate_feed_states(
-                    {
-                        "code_graphs_feed": code_graphs_state,
-                        "knowledge_graph_feed": knowledge_graph_state,
-                        "local_traces_feed": local_traces_state,
-                        "skills_signer": skills_signer_state,
-                    },
-                    halflife_seconds=halflife_seconds,
-                ),
+            snap = aggregate_feed_states(
+                {
+                    "code_graphs_feed": code_graphs_state,
+                    "knowledge_graph_feed": knowledge_graph_state,
+                    "local_traces_feed": local_traces_state,
+                    "skills_signer": skills_signer_state,
+                },
+                halflife_seconds=halflife_seconds,
             )
             aggregator_duration_ms = (time.perf_counter() - aggregator_start) * 1000.0
             # Phase 4 observability: emit the canonical health metrics
@@ -938,7 +936,12 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # ``mcp_common_health_halflife_seconds``,
             # ``mcp_common_health_aggregate_duration_ms`` — are exactly
             # the names referenced by the PromQL alert rules.
-            try:
+            # Older mcp-common without the metrics module is a
+            # forward-compat miss; the body still works without
+            # emitting metrics. Operators see the alert rules
+            # silently produce no data — the runbook's
+            # forward-compat section documents this.
+            with suppress(ImportError):
                 from mcp_common.health.metrics import update_health_metrics
 
                 from akosha.observability.prometheus_metrics import get_metrics_registry
@@ -950,13 +953,6 @@ def create_app(mode: Any | None = None) -> FastMCP:
                     halflife_seconds=halflife_seconds,
                     duration_ms=aggregator_duration_ms,
                 )
-            except ImportError:
-                # Older mcp-common without the metrics module is a
-                # forward-compat miss; the body still works without
-                # emitting metrics. Operators see the alert rules
-                # silently produce no data — the runbook's
-                # forward-compat section documents this.
-                pass
 
             # Translate the aggregator's per-feed verdict into the legacy
             # per-feed dict shape. Each entry carries ``ok`` (legacy

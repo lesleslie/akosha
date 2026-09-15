@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.4] - 2026-09-15
+
+### Added
+
+- akosha: Emit health-aggregator metrics from /health probe
+
+### Fixed
+
+- akosha: Remove always-failing HNSW index attempt on DuckDB
+- akosha: Wire cycles_total tracking in CodeGraphIngester polling loop
+
 ## [0.17.3] - 2026-09-15
 
 ### Added
@@ -13,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### Changed
 
 - akosha: Wire `mcp_common.health.metrics.update_health_metrics` into the `/health` probe body. The aggregator's `HealthSnapshot` is now published to the existing prometheus_client CollectorRegistry (the one the `/metrics` endpoint already exposes) so the four canonical health metrics fire live: `health_feed_status{repo, feed, status}`, `health_feed_errors_within_window{repo, feed}`, `mcp_common_health_halflife_seconds{repo}`, `mcp_common_health_aggregate_duration_ms{repo}` (histogram). These are exactly the names referenced by the PromQL alert rules at `mahavishnu/config/prometheus/health_aggregator_alerts.yml`. Phase 4 Observability + §11.4. Forward-compat: missing mcp_common.metrics module is silently no-op'd via `ImportError` catch.
 
