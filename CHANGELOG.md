@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- akosha: Wire `cycles_total` / `errors_total` / `last_poll_at` / `last_error_at` tracking in CodeGraphIngester's polling loop (plan §5 Phase 4 task 3 followup). Previously the ingester bumped nothing, so the aggregator's HNSW hardening always flagged `code_graphs_feed` as `degraded` with `feed_never_populated` (cycles_total == 0 + ingester_running). After this fix the first cycle flips the feed to `warming_up`; subsequent cycles with successful ingests land at `healthy`. Mirrors the existing OtelTraceIngester contract.
+
 ### Changed
 
 - akosha: Replace `_default_health_probe` body with `mcp_common.health.aggregator.aggregate_feed_states` (plan §5 Phase 4 task 2). Each data feed (code_graphs, knowledge_graph, local_traces, skills_signer) becomes a HealthFeedState; the aggregator rolls them up into a worst-case `status` + per-feed verdicts. `/health` body now mirrors the aggregator's enum (`healthy` / `warming_up` / `degraded` / `failed`) instead of the legacy binary `ok` / `degraded`. HTTP code stays 200 for healthy + warming_up, 503 for degraded + failed.

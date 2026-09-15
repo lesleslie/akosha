@@ -432,3 +432,42 @@ def test_akosha_health_worst_case_rollup_mixed_states(
     assert body["checks"]["code_graphs"]["status"] == "healthy"
     assert body["checks"]["knowledge_graph"]["status"] == "warming_up"
     assert body["checks"]["local_traces"]["status"] == "failed"
+
+
+def test_akosha_health_code_graphs_warming_up_after_first_cycle(
+    http_client: TestClient,
+) -> None:
+    """CodeGraphIngester's first cycle flips status from DEGRADED → WARMING_UP.
+
+    Regression for the HNSW-on-DuckDB hardening gap: before
+    CodeGraphIngester wired ``cycles_total`` in its polling loop, the
+    feed was always reported as ``degraded`` with
+    ``feed_never_populated`` (cycles_total == 0 + ingester_running).
+    After wiring, the first cycle bumps ``cycles_total`` to 1, the
+    aggregator reports WARMING_UP (entities=0 + alive + cycled), and
+    /health stays 200.
+    """
+    probe = _probe_returning(
+        {
+            # After one cycle, the ingester has bumped cycles_total
+            # but hasn't ingested any graphs yet → warming_up.
+            "code_graphs": {
+                "entities_count": 0,
+                "cycles_total": 1,
+                "errors_total": 0,
+                "ingester_running": True,
+            },
+        }
+    )
+    set_health_probe(probe)
+
+    response = http_client.get("/health")
+    body = response.json()
+
+    assert response.status_code == 200
+    feed = body["checks"]["code_graphs"]
+    assert feed["status"] == "warming_up"
+    assert feed["ok"] is False
+    assert "warming_up_empty_feed" in feed["reason_codes"]
+    # The DEGRADED HNSW reason should NOT surface once cycles_total > 0.
+    assert "feed_never_populated" not in feed["reason_codes"]

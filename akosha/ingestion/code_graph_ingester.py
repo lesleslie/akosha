@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -58,6 +59,17 @@ class CodeGraphIngester:
 
         # Track last known code graphs to avoid duplicates
         self._known_graph_ids: set[str] = set()
+
+        # Per-feed observability counters (see mcp-backend-wiring-discipline.md):
+        # every feed must expose cycles_total, errors_total, last_poll_at,
+        # last_error_at so the /health aggregator's ``is_healthy`` predicate
+        # can escalate DEGRADED for fresh errors and HNSW hardening can
+        # distinguish broken-before-first-success producers from
+        # healthy-but-still-loading ones.
+        self._cycles_total: int = 0
+        self._errors_total: int = 0
+        self._last_poll_at: float | None = None
+        self._last_error_at: float | None = None
 
     async def start(self) -> None:
         """Start the code graph ingestion worker."""
@@ -110,6 +122,11 @@ class CodeGraphIngester:
         try:
             while self._running:
                 try:
+                    # Phase 4: bump cycles_total at the START of each cycle
+                    # (mirrors OtelTraceIngester) so the aggregator's HNSW
+                    # hardening stops flagging this feed as
+                    # broken-before-first-success after the first cycle.
+                    self._cycles_total += 1
                     # Discover new code graphs
                     new_graphs = await self._discover_code_graphs()
 
@@ -139,6 +156,11 @@ class CodeGraphIngester:
                                     exc_info=result if logger.isEnabledFor(logging.DEBUG) else None,
                                 )
 
+                    # Phase 4: record the most recent successful poll so the
+                    # aggregator can compute ``last_updated_timestamp`` and
+                    # distinguish warming_up (cycle ran, no data) from
+                    # broken-before-first-success (cycle never ran).
+                    self._last_poll_at = time.time()
                     # Wait before next poll
                     await asyncio.sleep(self.poll_interval_seconds)
 
@@ -146,6 +168,11 @@ class CodeGraphIngester:
                     logger.info("Code graph polling loop cancelled")
                     break
                 except Exception as e:
+                    # Phase 4: track per-cycle errors + last-error timestamp
+                    # so the aggregator's time-bounded decay predicate can
+                    # escalate DEGRADED for fresh errors within halflife.
+                    self._errors_total += 1
+                    self._last_error_at = time.time()
                     logger.error(f"Error in code graph polling loop: {e}", exc_info=True)
                     # Continue running despite errors
                     await asyncio.sleep(self.poll_interval_seconds)
