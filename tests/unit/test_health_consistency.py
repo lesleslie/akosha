@@ -118,7 +118,11 @@ def test_both_surfaces_carry_the_status_field(cli_runner: CliRunner) -> None:
     http_response = client.get("/health")
     assert http_response.status_code == 200
     assert "status" in http_response.json()
-    assert http_response.json()["status"] == "ok"
+    # Phase 4: body ``status`` mirrors the aggregator's verdict enum.
+    # The custom probe has no data feeds, so the aggregator's default
+    # worst_status is "healthy" → body["status"] == "healthy". The
+    # HTTP code stays 200 (healthy < warming_up threshold).
+    assert http_response.json()["status"] == "healthy"
 
 
 def test_http_default_no_probe_returns_503() -> None:

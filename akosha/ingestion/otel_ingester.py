@@ -72,6 +72,10 @@ class OtelTraceIngester:
         self._cycles_total: int = 0
         self._errors_total: int = 0
         self._last_poll_at: float | None = None
+        # Phase 4: track the most recent error timestamp so the aggregator's
+        # time-bounded decay predicate can escalate DEGRADED for fresh errors
+        # without operator intervention.
+        self._last_error_at: float | None = None
 
     async def start(self) -> None:
         """Start the OTel trace ingestion worker."""
@@ -156,6 +160,7 @@ class OtelTraceIngester:
                         raise
                     except Exception as e:
                         self._errors_total += 1
+                        self._last_error_at = time.time()
                         logger.exception(
                             f"OTel span ingestion failed for "
                             f"span_id={span.get('spanId', 'unknown')}: {e}"
@@ -168,6 +173,7 @@ class OtelTraceIngester:
                 break
             except Exception as e:
                 self._errors_total += 1
+                self._last_error_at = time.time()
                 logger.exception(f"Error in OTel polling loop: {e}")
                 await asyncio.sleep(self.poll_interval_seconds)
 
@@ -259,6 +265,7 @@ class OtelTraceIngester:
             # endpoint — treat as empty poll. Bump _errors_total so per-feed
             # observability surfaces the gap.
             self._errors_total += 1
+            self._last_error_at = time.time()
             logger.warning(
                 "OTel poll: receiver not OTLP/HTTP-export-capable; method=%s path=%s status=%d",
                 method,

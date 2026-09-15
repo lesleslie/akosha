@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, cast
@@ -127,6 +128,10 @@ _otel_trace_ingester: Any | None = None
 _kg_refresh_task: asyncio.Task[None] | None = None
 _kg_refresh_cycles: int = 0
 _kg_refresh_errors: int = 0
+# Phase 4: most-recent error timestamp for the aggregator's time-bounded
+# decay predicate. Updated alongside every ``_kg_refresh_errors += 1`` so
+# a fresh producer failure flips the aggregate to DEGRADED.
+_kg_refresh_last_error_at: float | None = None
 
 
 def set_shared_hot_store(store: Any) -> None:
@@ -635,7 +640,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # ------------------------------------------------------------------
 
         async def _kg_refresh_loop() -> None:
-            global _kg_refresh_cycles, _kg_refresh_errors
+            global _kg_refresh_cycles, _kg_refresh_errors, _kg_refresh_last_error_at
             try:
                 interval = float(os.getenv("AKOSHA_KG_REFRESH_SECONDS", "60"))
             except ValueError:
@@ -666,6 +671,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
                             await kg_builder.add_to_graph(entities, edges)
                         except Exception as exc:
                             _kg_refresh_errors += 1
+                            _kg_refresh_last_error_at = time.time()
                             logger.debug("kg_builder per-row extract failed (%s)", exc)
                     if rows:
                         logger.info(
@@ -684,6 +690,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
                     break
                 except Exception as exc:
                     _kg_refresh_errors += 1
+                    _kg_refresh_last_error_at = time.time()
                     logger.warning("kg_refresh loop iteration failed (%s); will retry", exc)
 
         if not _env_truthy("AKOSHA_SKIP_KG_REFRESH"):
@@ -721,11 +728,254 @@ def create_app(mode: Any | None = None) -> FastMCP:
         )
 
         # Register a default health probe that surfaces the state of every
-        # in-process data feed. Per mcp-backend-wiring-discipline.md, /health
-        # returns 503 unless every feed reports ``ok=True``.
+        # in-process data feed. Phase 4: body delegates per-feed evaluation
+        # to ``mcp_common.health.aggregator.aggregate_feed_states`` (plan §5).
+        # The aggregator rolls the four data feeds up into a worst-case
+        # ``status`` + per-feed verdicts (healthy/warming_up/degraded/failed);
+        # the route handler uses that top-level status to decide 200 vs 503.
+        # Infrastructure checks (hot_store, embeddings, cold_storage) sit
+        # alongside as before — they're not "data feeds" in the aggregator
+        # sense and don't fit the HealthFeedState shape.
         async def _default_health_probe() -> dict[str, dict[str, Any]]:
-            """Probe every data feed the MCP server depends on."""
+            """Probe every data feed the MCP server depends on.
+
+            Phase 4: per-feed evaluation lives in
+            :func:`mcp_common.health.aggregator.aggregate_feed_states`.
+            Each data feed (code_graphs, knowledge_graph, local_traces,
+            skills_signer) is reduced to a :class:`HealthFeedState`
+            snapshot from live producer state; the aggregator rolls them
+            up into a worst-case ``status`` + per-feed verdicts.
+            Infrastructure checks (hot_store, embeddings, cold_storage)
+            sit alongside as before — they don't fit the HealthFeedState
+            shape so they stay inline.
+            """
+            from mcp_common.health.aggregator import aggregate_feed_states
+            from mcp_common.health.feed import HealthFeedState
+
             checks: dict[str, dict[str, Any]] = {}
+
+            # ----------------------------------------------------------
+            # Phase 4: build HealthFeedState for each data feed.
+            # Live producer state lives on the lifespan-owned singletons
+            # (_code_graph_ingester, _otel_trace_ingester) and the
+            # module-level kg_refresh counters.
+            # ----------------------------------------------------------
+            code_graphs_count = 0
+            with suppress(Exception):
+                if isinstance(hot_store, HotStore):
+                    code_graphs_count = len(
+                        await hot_store.list_code_graphs(limit=1000)
+                    )
+            code_graphs_running = bool(
+                _code_graph_ingester is not None
+                and getattr(_code_graph_ingester, "_running", False)
+            )
+            code_graphs_state = HealthFeedState(
+                entities_count=code_graphs_count,
+                last_updated_timestamp=(
+                    getattr(_code_graph_ingester, "_last_poll_at", None)
+                    if _code_graph_ingester is not None
+                    else None
+                ),
+                cycles_total=(
+                    getattr(_code_graph_ingester, "_cycles_total", 0) or 0
+                    if _code_graph_ingester is not None
+                    else 0
+                ),
+                errors_total=(
+                    getattr(_code_graph_ingester, "_errors_total", 0) or 0
+                    if _code_graph_ingester is not None
+                    else 0
+                ),
+                last_error_at=(
+                    getattr(_code_graph_ingester, "_last_error_at", None)
+                    if _code_graph_ingester is not None
+                    else None
+                ),
+                ingester_running=code_graphs_running,
+            )
+
+            kg_entities_count = (
+                len(kg_builder.entities) if kg_builder is not None else 0
+            )
+            kg_edges_count = (
+                len(kg_builder.edges) if kg_builder is not None else 0
+            )
+            kg_running = (
+                _kg_refresh_task is not None and not _kg_refresh_task.done()
+            )
+            knowledge_graph_state = HealthFeedState(
+                entities_count=kg_entities_count,
+                # kg_refresh doesn't currently record a per-cycle timestamp;
+                # leave ``last_updated_timestamp`` as None. Future Phase 4+
+                # work can wire a real one if operators need it.
+                last_updated_timestamp=None,
+                cycles_total=_kg_refresh_cycles,
+                errors_total=_kg_refresh_errors,
+                last_error_at=_kg_refresh_last_error_at,
+                ingester_running=kg_running,
+            )
+
+            local_traces_count = 0
+            with suppress(Exception):
+                if isinstance(hot_store, HotStore):
+                    local_traces_count = len(
+                        await hot_store.query_traces(limit=1000)
+                    )
+            otel_running = bool(
+                _otel_trace_ingester is not None
+                and getattr(_otel_trace_ingester, "_running", False)
+            )
+            otel_cycles = (
+                getattr(_otel_trace_ingester, "_cycles_total", 0) or 0
+                if _otel_trace_ingester is not None
+                else 0
+            )
+            otel_errors = (
+                getattr(_otel_trace_ingester, "_errors_total", 0) or 0
+                if _otel_trace_ingester is not None
+                else 0
+            )
+            otel_last_poll = (
+                getattr(_otel_trace_ingester, "_last_poll_at", None)
+                if _otel_trace_ingester is not None
+                else None
+            )
+            otel_last_error = (
+                getattr(_otel_trace_ingester, "_last_error_at", None)
+                if _otel_trace_ingester is not None
+                else None
+            )
+            code_graphs_last_poll = (
+                getattr(_code_graph_ingester, "_last_poll_at", None)
+                if _code_graph_ingester is not None
+                else None
+            )
+            last_poll_candidates = [
+                t for t in (code_graphs_last_poll, otel_last_poll) if t is not None
+            ]
+            local_traces_last_poll = (
+                max(last_poll_candidates) if last_poll_candidates else None
+            )
+            last_error_candidates = [
+                t
+                for t in (_kg_refresh_last_error_at, otel_last_error)
+                if t is not None
+            ]
+            local_traces_last_error = (
+                max(last_error_candidates) if last_error_candidates else None
+            )
+            local_traces_state = HealthFeedState(
+                entities_count=local_traces_count,
+                last_updated_timestamp=local_traces_last_poll,
+                cycles_total=_kg_refresh_cycles + otel_cycles,
+                errors_total=_kg_refresh_errors + otel_errors,
+                last_error_at=local_traces_last_error,
+                ingester_running=(kg_running or otel_running),
+            )
+
+            if signer_feed_state is not None:
+                manifest_dict = signer_feed_state.manifest.as_dict()
+                skills_signer_state = HealthFeedState(
+                    entities_count=manifest_dict["key_count"],
+                    last_updated_timestamp=signer_feed_state.last_updated_timestamp,
+                    cycles_total=signer_feed_state.cycles_total,
+                    errors_total=signer_feed_state.errors_total,
+                    last_error_at=None,
+                    ingester_running=True,
+                )
+            else:
+                skills_signer_state = HealthFeedState(
+                    entities_count=0,
+                    last_updated_timestamp=None,
+                    cycles_total=0,
+                    errors_total=0,
+                    last_error_at=None,
+                    ingester_running=False,
+                )
+
+            # Aggregate via mcp-common's canonical aggregator. The
+            # halflife is operator-tunable via HEALTH_FEED_HALFLIFE_SECONDS;
+            # the Phase 4 spec default is 300s.
+            halflife_seconds = int(
+                os.getenv("HEALTH_FEED_HALFLIFE_SECONDS", "300")
+            )
+            snap = aggregate_feed_states(
+                {
+                    "code_graphs_feed": code_graphs_state,
+                    "knowledge_graph_feed": knowledge_graph_state,
+                    "local_traces_feed": local_traces_state,
+                    "skills_signer": skills_signer_state,
+                },
+                halflife_seconds=halflife_seconds,
+            )
+
+            # Translate the aggregator's per-feed verdict into the legacy
+            # per-feed dict shape. Each entry carries ``ok`` (legacy
+            # boolean — True iff status == healthy), ``status`` (the new
+            # enum string), ``reason_codes`` (the operator-facing signal),
+            # and the four mandatory wire fields. Domain-specific extras
+            # are added below per feed.
+
+            def _feed_dict(name: str, state: HealthFeedState) -> dict[str, Any]:
+                verdict = snap["checks"][name]
+                return {
+                    "ok": verdict["healthy"],
+                    "status": verdict["status"].value,
+                    "reason_codes": [c.value for c in verdict["reason_codes"]],
+                    "feed_entities_count": state.entities_count,
+                    "feed_last_updated_timestamp": state.last_updated_timestamp,
+                    "cycles_total": state.cycles_total,
+                    "errors_total": state.errors_total,
+                }
+
+            checks["code_graphs_feed"] = _feed_dict(
+                "code_graphs_feed", code_graphs_state
+            )
+            # Preserve the domain-specific ingester_running boolean on
+            # the wire (Phase 5/6 installer surfaces this in tooling).
+            checks["code_graphs_feed"]["ingester_running"] = code_graphs_running
+
+            kg_dict = _feed_dict("knowledge_graph_feed", knowledge_graph_state)
+            kg_dict["edges_count"] = kg_edges_count
+            kg_dict["refresh_task_running"] = kg_running
+            checks["knowledge_graph_feed"] = kg_dict
+
+            lt_dict = _feed_dict("local_traces_feed", local_traces_state)
+            # Preserve domain-specific OTel visibility fields.
+            lt_dict["feed_populated"] = local_traces_count > 0
+            lt_dict["otel_ingester_running"] = otel_running
+            lt_dict["otel_endpoint"] = (
+                _otel_trace_ingester.otlp_endpoint
+                if _otel_trace_ingester is not None
+                else None
+            )
+            lt_dict["otel_cycles_total"] = otel_cycles
+            lt_dict["otel_errors_total"] = otel_errors
+            lt_dict["source"] = (
+                "hot_store.query_traces "
+                "(populated via kg_refresh + OtelTraceIngester)"
+            )
+            checks["local_traces_feed"] = lt_dict
+
+            # Phase 1.5: keep the legacy manifest fields on the wire so
+            # tooling that already parses key_count / pubkeys keeps working.
+            ss_dict = _feed_dict("skills_signer", skills_signer_state)
+            if signer_feed_state is not None:
+                ss_dict["feed"] = "skills_signer"
+                ss_dict["generation"] = signer_feed_state.generation
+                manifest_dict = signer_feed_state.manifest.as_dict()
+                ss_dict["key_count"] = manifest_dict["key_count"]
+                ss_dict["pubkeys"] = manifest_dict["pubkeys"]
+            else:
+                ss_dict["error"] = (
+                    "signer feed state not initialized; awaiting lifespan"
+                )
+            checks["skills_signer"] = ss_dict
+
+            # ----------------------------------------------------------
+            # Infrastructure checks (not data feeds — kept inline).
+            # ----------------------------------------------------------
 
             # Hot store: ping if available, otherwise just check it exists.
             if hot_store is None:
@@ -759,182 +1009,25 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 else {"ok": True, "note": "disabled in current mode"}
             )
 
-            # Wave 5: per-feed aggregates. Each feed reports entities_count
-            # (the size of the feed), cycles_total (how many refresh ticks
-            # have run since startup), errors_total (how many ticks failed),
-            # and last_updated_timestamp. ``ok`` is False when the feed is
-            # empty AND the ingester/refresh has run at least one cycle —
-            # that surfaces wire-up drift that would otherwise be invisible.
-            code_graphs_count = 0
-            with suppress(Exception):
-                if isinstance(hot_store, HotStore):
-                    code_graphs_count = len(await hot_store.list_code_graphs(limit=1000))
-            kg_entities_count = len(kg_builder.entities) if kg_builder is not None else 0
-            kg_edges_count = len(kg_builder.edges) if kg_builder is not None else 0
-            local_traces_count = 0
-            with suppress(Exception):
-                if isinstance(hot_store, HotStore):
-                    local_traces_count = len(await hot_store.query_traces(limit=1000))
-            ingester_running = bool(
-                _code_graph_ingester is not None
-                and getattr(_code_graph_ingester, "_running", False)
+            # ----------------------------------------------------------
+            # Top-level aggregate verdict for the route handler.
+            # ``ok`` is True iff every per-feed verdict is healthy.
+            # ----------------------------------------------------------
+            all_data_feeds_ok = all(
+                snap["checks"][name]["healthy"]
+                for name in (
+                    "code_graphs_feed",
+                    "knowledge_graph_feed",
+                    "local_traces_feed",
+                    "skills_signer",
+                )
             )
-            ingester_cycles = getattr(_code_graph_ingester, "_cycles_total", 0) or 0
-            last_poll_at = (
-                getattr(_code_graph_ingester, "_last_poll_at", None)
-                if _code_graph_ingester is not None
-                else None
-            )
-            # ``ok`` is False iff the feed is empty AND the producer has
-            # run at least one cycle. The empty-feed case while still
-            # warming up (``cycles == 0``) is intentionally True so the
-            # probe doesn't fail during normal startup.
-            code_graphs_ok = code_graphs_count > 0 or ingester_cycles == 0 or not ingester_running
-            # REQ-005 follow-up (kg side, symmetric to the OTel fix in
-            # 43d85de): a running kg_refresh task that has cycled at
-            # least once and has zero errors is "warming up" — it
-            # polls Session-Buddy on a timer and reports empty until
-            # the upstream is wired. Treat it as ok=True so /health
-            # does not 503 the wrapper during the warming-up window.
-            # The errors_total guard is deliberate: a non-zero error
-            # counter means the task surfaced a real problem and must
-            # NOT be masked.
-            kg_warming_up = (
-                _kg_refresh_task is not None
-                and not _kg_refresh_task.done()
-                and _kg_refresh_errors == 0
-            )
-            kg_ok = (
-                kg_entities_count > 0
-                or _kg_refresh_cycles == 0
-                or _kg_refresh_task is None
-                or _kg_refresh_task.done()
-                or kg_warming_up
-            )
-            local_traces_otel_running = bool(
-                _otel_trace_ingester is not None
-                and getattr(_otel_trace_ingester, "_running", False)
-            )
-            local_traces_otel_cycles = (
-                getattr(_otel_trace_ingester, "_cycles_total", 0) or 0
-                if _otel_trace_ingester is not None
-                else 0
-            )
-            local_traces_otel_errors = (
-                getattr(_otel_trace_ingester, "_errors_total", 0) or 0
-                if _otel_trace_ingester is not None
-                else 0
-            )
-            local_traces_otel_last_poll_at = (
-                getattr(_otel_trace_ingester, "_last_poll_at", None)
-                if _otel_trace_ingester is not None
-                else None
-            )
-            # ``local_traces_ok`` is True iff data exists OR no producer
-            # has ever cycled (warming up) OR a producer is alive but empty
-            # (warming up, waiting for first spans). A crashed kg_refresh task
-            # (``done()`` without ever populating traces) was previously
-            # masked as ``done() -> ok`` — the audit failure case the
-            # discipline was written to catch. Drop the ``done()``
-            # exemption: a finished producer with no data is degraded.
-            #
-            # REQ-005 (Phase 3 OTel feed recovery, follow-up #2): the previous
-            # Phase 3 commit still reported ``ok=False`` for the live audit
-            # case — OTel producer alive, cycled once (HTTP 200, 21 bytes,
-            # errors=0), no spans received yet. None of the four disjuncts
-            # above could see that case as healthy: data was empty, the
-            # producer HAD cycled, and the producer WAS alive. The 5th
-            # disjunct (Phase 3 follow-up) treats that exact surface as
-            # ``warming up`` so ``/health`` returns 200, while ``feed_populated``
-            # below keeps callers able to distinguish empty-feed from
-            # crash-without-data. The producer-alive check still flags a
-            # producer that died on its first cycle.
-            #
-            # REQ-007: honour the existing ``AKOSHA_SKIP_OTEL_INGESTER`` env
-            # var (no new opt-out). When set, the ingester was never
-            # constructed and ``otel_disabled`` short-circuits the formula.
-            otel_disabled = _env_truthy("AKOSHA_SKIP_OTEL_INGESTER")
-            otel_poll_task = (
-                getattr(_otel_trace_ingester, "_poll_task", None)
-                if _otel_trace_ingester is not None
-                else None
-            )
-            otel_task_alive = otel_poll_task is not None and not otel_poll_task.done()
-            kg_task_alive = _kg_refresh_task is not None and not _kg_refresh_task.done()
-            any_producer_ever_cycled = _kg_refresh_cycles > 0 or local_traces_otel_cycles > 0
-            any_producer_alive = kg_task_alive or otel_task_alive or local_traces_otel_running
-            # REQ-005 follow-up: a producer that is *running* and has *no errors*
-            # but has not yet landed spans is "warming up", not degraded. The
-            # ``otel_errors == 0`` guard is deliberate: an OTel producer with
-            # a non-zero error counter has surfaced a transport or parsing
-            # problem and should NOT be masked by this disjunct. ``feed_populated``
-            # in the payload below carries the empty-feed signal separately so
-            # operators can still distinguish warming-up from crash-without-data.
-            otel_warming_up = local_traces_otel_running and local_traces_otel_errors == 0
-            local_traces_ok = (
-                otel_disabled
-                or (local_traces_count > 0)
-                or (not any_producer_ever_cycled)
-                or (not any_producer_alive)
-                or otel_warming_up
-            )
-            checks["code_graphs_feed"] = {
-                "ok": code_graphs_ok,
-                "ingester_running": ingester_running,
-                "feed_entities_count": code_graphs_count,
-                "cycles_total": ingester_cycles,
-                "errors_total": getattr(_code_graph_ingester, "_errors_total", 0) or 0,
-                "feed_last_updated_timestamp": last_poll_at,
+            checks["_aggregate"] = {
+                "status": snap["status"].value,
+                "reason_codes": [c.value for c in snap["reason_codes"]],
+                "data_feeds_ok": all_data_feeds_ok,
+                "halflife_seconds": halflife_seconds,
             }
-            checks["knowledge_graph_feed"] = {
-                "ok": kg_ok,
-                "feed_entities_count": kg_entities_count,
-                "edges_count": kg_edges_count,
-                "cycles_total": _kg_refresh_cycles,
-                "errors_total": _kg_refresh_errors,
-                "refresh_task_running": _kg_refresh_task is not None
-                and not _kg_refresh_task.done(),
-            }
-            # Combine producer counters so the feed's ``cycles_total`` /
-            # ``errors_total`` reflect every consumer of hot_store.query_traces
-            # (kg_refresh + OTel ingester). ``feed_last_updated_timestamp``
-            # is the most recent poll across all producers — mandatory
-            # per mcp-backend-wiring-discipline.md.
-            local_traces_last_poll_at = None
-            if last_poll_at is not None and local_traces_otel_last_poll_at is not None:
-                local_traces_last_poll_at = max(last_poll_at, local_traces_otel_last_poll_at)
-            else:
-                local_traces_last_poll_at = last_poll_at or local_traces_otel_last_poll_at
-            checks["local_traces_feed"] = {
-                "ok": local_traces_ok,
-                "feed_entities_count": local_traces_count,
-                "feed_populated": local_traces_count > 0,
-                "cycles_total": _kg_refresh_cycles + local_traces_otel_cycles,
-                "errors_total": _kg_refresh_errors + local_traces_otel_errors,
-                "feed_last_updated_timestamp": local_traces_last_poll_at,
-                "otel_ingester_running": local_traces_otel_running,
-                "otel_endpoint": (
-                    _otel_trace_ingester.otlp_endpoint if _otel_trace_ingester is not None else None
-                ),
-                "otel_cycles_total": local_traces_otel_cycles,
-                "otel_errors_total": local_traces_otel_errors,
-                "source": "hot_store.query_traces (populated via kg_refresh + OtelTraceIngester)",
-            }
-
-            # Phase 1.5: publish the signer feed state so clients can verify
-            # SkillMetadata.signature / AgentMetadata.signature without an
-            # out-of-band key-exchange. The SignerFeedState is the
-            # lifespan's single source of truth — it owns the manifest AND
-            # the four mandatory feed signals (entities_count,
-            # last_updated_timestamp, cycles_total, errors_total). ``ok``
-            # is computed from manifest invariants (empty -> False).
-            if signer_feed_state is None:
-                checks["skills_signer"] = {
-                    "ok": False,
-                    "error": "signer feed state not initialized; awaiting lifespan",
-                }
-            else:
-                checks["skills_signer"] = signer_feed_state.as_dict()
 
             return checks
 
@@ -1026,7 +1119,10 @@ def create_app(mode: Any | None = None) -> FastMCP:
 
     # HTTP health endpoint for Claude Code compatibility.
     # Aggregates per-feed state via the registered probe; returns 503 when
-    # any feed is degraded or no probe is registered (fail-loud default).
+    # any data feed is degraded/failed or any infrastructure check fails.
+    # Phase 4: the route uses the aggregator's top-level ``status`` rather
+    # than ``all(c.get("ok"))`` — warming_up is intentionally NOT a 503 so
+    # the launchd wrapper sees a 200 during normal startup (plan §5).
     @app.custom_route("/health", methods=["GET"])
     async def health_check(request: Any) -> Any:  # noqa: ARG001
         """HTTP readiness check — 200 only when all data feeds are healthy."""
@@ -1057,14 +1153,41 @@ def create_app(mode: Any | None = None) -> FastMCP:
             }
             return JSONResponse(body, status_code=503)
 
-        all_ok = all(bool(c.get("ok")) for c in checks.values())
+        # Phase 4: derive the worst data-feed status from the aggregator's
+        # top-level verdict (``checks["_aggregate"]["status"]``) and
+        # separately gate on infrastructure checks (hot_store, embeddings,
+        # cold_storage — these lack a ``status`` field and only carry
+        # ``ok``). 200 iff every data feed is healthy-or-warming-up AND
+        # every infrastructure check is ok.
+        aggregate = checks.get("_aggregate", {})
+        worst_status = aggregate.get("status", "healthy")
+        status_severity = {
+            "healthy": 0,
+            "warming_up": 1,
+            "degraded": 2,
+            "failed": 3,
+        }
+        worst_severity = status_severity.get(worst_status, 0)
+        infra_failure = any(
+            not bool(c.get("ok"))
+            for c in checks.values()
+            if "status" not in c
+        )
+        http_ok = (worst_severity < 2) and not infra_failure
+
+        # Body ``status`` mirrors the aggregator's worst-case verdict so
+        # callers reading ``/health`` see the same enum string operators
+        # see in the per-feed detail (``healthy`` / ``warming_up`` /
+        # ``degraded`` / ``failed``). The legacy binary "ok" / "degraded"
+        # would lose nuance — a warming_up service is operationally
+        # distinct from a degraded one even though both are 200.
         body = {
-            "status": "ok" if all_ok else "degraded",
+            "status": worst_status if not infra_failure else "degraded",
             "service": APP_NAME,
             "version": APP_VERSION,
             "checks": checks,
         }
-        return JSONResponse(body, status_code=200 if all_ok else 503)
+        return JSONResponse(body, status_code=200 if http_ok else 503)
 
     @app.custom_route("/healthz", methods=["GET"])
     async def healthz_check(request: Any) -> Any:  # noqa: ARG001

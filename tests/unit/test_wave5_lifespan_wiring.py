@@ -457,8 +457,10 @@ async def test_health_probe_surfaces_per_feed_aggregates(
 ) -> None:
     """The default health probe reports feed_entities_count, edges_count,
     cycles_total, errors_total, and ingest-task running state for the
-    three Wave-5 feeds. ``ok`` is False when a feed is empty AND the
-    producer has run at least one cycle — that surfaces wire-up drift.
+    three data feeds. Phase 4: each per-feed dict also carries the
+    aggregator's verdict (``status`` enum, ``reason_codes`` array).
+    The aggregator's time-bounded decay + HNSW hardening drive the
+    ``ok`` field — only HEALTHY is ``ok=True``.
     """
     import asyncio as _asyncio
 
@@ -467,8 +469,11 @@ async def test_health_probe_surfaces_per_feed_aggregates(
     async with lifespan(app):
         # Wait for at least one kg_refresh cycle to complete (the fixture
         # sets AKOSHA_KG_REFRESH_SECONDS=0.05, so 0.2s is enough for ≥4
-        # cycles). Without this, the probe would see cycles == 0 and
-        # report the warm-up ``ok=True`` path instead of the drift path.
+        # cycles). Without this, the probe would see the never-cycled
+        # case (cycles == 0, ingester alive) and report DEGRADED with
+        # ``feed_never_populated`` per HNSW hardening — that's also a
+        # valid Phase 4 contract, but waiting for ≥1 cycle pins the
+        # "warming up" surface that operators see in normal startup.
         for _ in range(50):
             if mcp_server._kg_refresh_cycles >= 1:
                 break
@@ -482,92 +487,134 @@ async def test_health_probe_surfaces_per_feed_aggregates(
     assert result["hot_store"]["ok"] is True
     assert result["embeddings"]["ok"] is True
 
-    # Wave-5 per-feed aggregates added. The probe was called AFTER the
-    # first kg_refresh cycle ran (fixture sets AKOSHA_KG_REFRESH_SECONDS=0.05)
-    # AND the CodeGraphIngester started a poll, but with empty hot_store
-    # data the feeds are empty. Per the new contract, ``ok`` is False
-    # when a feed is empty AND the producer has run ≥1 cycle.
+    # The four data feeds each carry the new aggregator verdict.
     assert "code_graphs_feed" in result
     assert result["code_graphs_feed"]["feed_entities_count"] == 0
     assert result["code_graphs_feed"]["ingester_running"] is True
-    # The probe surfaces the cycle + error counters on every feed; pre-fix
-    # these fields didn't exist (the implementation hardcoded "ok": True).
+    # The probe surfaces the cycle + error counters on every feed.
     assert "cycles_total" in result["code_graphs_feed"]
     assert "errors_total" in result["code_graphs_feed"]
     assert "feed_last_updated_timestamp" in result["code_graphs_feed"]
+    # Phase 4: each per-feed dict has a ``status`` enum + reason_codes
+    # array carried over from the aggregator's verdict.
+    # code_graphs's ingester is alive but cycles_total == 0 (CodeGraphIngester
+    # doesn't currently bump cycles; Phase 4+ followup will wire it).
+    # HNSW hardening therefore reports ``degraded`` with
+    # ``feed_never_populated`` — that's the aggregator correctly surfacing
+    # a broken-before-first-success producer.
+    assert result["code_graphs_feed"]["status"] == "degraded"
+    assert result["code_graphs_feed"]["ok"] is False
+    assert "feed_never_populated" in result["code_graphs_feed"]["reason_codes"]
+    assert isinstance(result["code_graphs_feed"]["reason_codes"], list)
 
     assert "knowledge_graph_feed" in result
     assert result["knowledge_graph_feed"]["feed_entities_count"] == 0
     assert result["knowledge_graph_feed"]["edges_count"] == 0
-    # REQ-005 follow-up (kg side, symmetric to the OTel fix in
-    # 43d85de): the kg_refresh task is alive, has cycled once with no
-    # errors, and the feed is empty. Under the new contract
-    # (``kg_warming_up`` disjunct), this is "warming up" and reports
-    # ok=True.
-    assert result["knowledge_graph_feed"]["ok"] is True
+    # Phase 4: kg_refresh has cycled at least once (cycles_total >= 1)
+    # AND ingester_running=True AND entities=0 → WARMING_UP. The
+    # aggregator's verdict (status="warming_up") is correct; ``ok`` is
+    # False because warming_up is not "healthy" per the strict
+    # aggregator contract (operators see ``status`` + ``reason_codes``
+    # for nuance).
+    assert result["knowledge_graph_feed"]["status"] == "warming_up"
+    assert result["knowledge_graph_feed"]["ok"] is False
     assert result["knowledge_graph_feed"]["cycles_total"] >= 1
-    # The result was captured INSIDE the ``async with``, so the
-    # kg_refresh task was still active when the probe ran.
     assert result["knowledge_graph_feed"]["refresh_task_running"] is True
 
     assert "local_traces_feed" in result
     assert result["local_traces_feed"]["feed_entities_count"] == 0
-    # REQ-005 follow-up: the OTel ingester starts under the lifespan and
-    # cycles once successfully. Under the new contract (the
-    # ``otel_warming_up`` disjunct in local_traces_ok), a running
-    # producer with zero errors is "warming up" and reports ok=True.
-    # ``feed_populated`` stays False so operators can still tell the
-    # difference between warming-up and "data has arrived".
-    assert result["local_traces_feed"]["ok"] is True
+    # Same warming_up shape as knowledge_graph_feed — kg_refresh cycled
+    # at least once with no errors, OTel ingester is alive (under the
+    # fixture's AKOSHA_SKIP_OTEL_INGESTER default the OTel path is
+    # disabled, so the local_traces verdict follows kg's).
+    assert result["local_traces_feed"]["status"] == "warming_up"
+    assert result["local_traces_feed"]["ok"] is False
     assert result["local_traces_feed"]["feed_populated"] is False
     assert result["local_traces_feed"]["cycles_total"] >= 1
 
+    # Top-level aggregate verdict for the route handler. The worst
+    # status is ``degraded`` (from code_graphs's HNSW hardening), even
+    # though kg + local_traces are warming_up — the aggregator's
+    # worst-case roll-up is what the route handler uses for 200/503.
+    assert result["_aggregate"]["status"] == "degraded"
+    assert result["_aggregate"]["data_feeds_ok"] is False
+    assert result["_aggregate"]["halflife_seconds"] == 300
+
 
 @pytest.mark.asyncio
-async def test_health_route_returns_200_when_all_feeds_ok(
+async def test_health_route_returns_503_when_any_feed_degraded(
     fastmcp_factory: DummyFastMCP, lifespan_deps: dict[str, Any]
 ) -> None:
-    """End-to-end: /health route aggregates the probe and returns 200
-    with per-feed counts in the body."""
+    """End-to-end: /health route returns 503 when any feed is degraded.
+
+    Phase 4 contract: the route handler returns 503 whenever the
+    aggregator's worst-case ``status`` is ``degraded`` or ``failed``.
+    Healthy + warming_up stay 200; degraded + failed → 503. This test
+    exercises the degraded path because code_graphs's HNSW hardening
+    flips its status to ``degraded`` (cycles_total == 0 + ingester
+    alive = broken-before-first-success).
+    """
+    import asyncio as _asyncio
+
     app = create_app()
     lifespan = app._mcp_server.lifespan
     async with lifespan(app):
+        for _ in range(50):
+            if mcp_server._kg_refresh_cycles >= 1:
+                break
+            await _asyncio.sleep(0.01)
         response = await app.routes["/health"]["handler"](None)
     body = json.loads(response.body)
-    assert body["status"] == "ok"
+    # 503 because code_graphs is degraded (HNSW hardening).
+    assert response.status_code == 503
+    assert body["status"] == "degraded"
     assert "checks" in body
     assert "code_graphs_feed" in body["checks"]
     assert "knowledge_graph_feed" in body["checks"]
     assert "local_traces_feed" in body["checks"]
+    # The aggregator's worst-case roll-up is degraded.
+    assert body["checks"]["_aggregate"]["status"] == "degraded"
 
 
 @pytest.mark.asyncio
-async def test_health_probe_warmup_paths_report_ok(
+async def test_health_probe_disabled_producers_report_failed(
     fastmcp_factory: DummyFastMCP, lifespan_deps: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """During warm-up (no cycles yet), the probe reports ``ok=True`` even
-    when the feeds are empty. This is the complement of
-    ``test_health_probe_surfaces_per_feed_aggregates``: the new contract
-    is that ``ok`` is False ONLY when the producer has run ≥1 cycle AND
-    the feed is still empty."""
-    # Disable the kg_refresh + CodeGraphIngester so cycles == 0 when the
-    # probe runs. The probe must report ok=True on empty feeds while the
-    # producers haven't ticked yet.
+    """When producers are disabled (AKOSHA_SKIP_* env vars), the probe
+    reports the data feeds as ``failed`` because no producer is alive.
+
+    Phase 4 contract: ``ingester_running=False`` + ``entities_count=0``
+    → FAILED with reason codes ``feed_never_populated`` and
+    ``ingester_not_running``. This is the opposite of the pre-Phase-4
+    hand-rolled formula which masked the no-producer case as ok=True.
+    """
     monkeypatch.setenv("AKOSHA_SKIP_CODE_GRAPH_INGESTER", "1")
     monkeypatch.setenv("AKOSHA_SKIP_KG_REFRESH", "1")
     app = create_app()
     lifespan = app._mcp_server.lifespan
     async with lifespan(app):
-        # Probe IMMEDIATELY before any cycle can run.
         probe = mcp_server.get_health_probe()
         assert probe is not None
         result = await probe()
 
-        assert result["code_graphs_feed"]["ok"] is True
+        # No producer → ingester_running=False → FAILED → ok=False.
+        assert result["code_graphs_feed"]["ok"] is False
+        assert result["code_graphs_feed"]["status"] == "failed"
         assert result["code_graphs_feed"]["ingester_running"] is False
-        assert result["knowledge_graph_feed"]["ok"] is True
+        assert "feed_never_populated" in result["code_graphs_feed"]["reason_codes"]
+        assert "ingester_not_running" in result["code_graphs_feed"]["reason_codes"]
+
+        assert result["knowledge_graph_feed"]["ok"] is False
+        assert result["knowledge_graph_feed"]["status"] == "failed"
         assert result["knowledge_graph_feed"]["refresh_task_running"] is False
-        assert result["local_traces_feed"]["ok"] is True
+        assert "feed_never_populated" in result["knowledge_graph_feed"]["reason_codes"]
+
+        # Top-level aggregate is failed.
+        assert result["_aggregate"]["status"] == "failed"
+
+        # The /health route handler returns 503 for FAILED.
+        response = await app.routes["/health"]["handler"](None)
+        assert response.status_code == 503
 
 
 # ---------------------------------------------------------------------------

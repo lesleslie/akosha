@@ -178,10 +178,29 @@ async def test_create_app_standard_mode_lifespan(
         # because the lifespan initialized it.
         post_health_response = await app.routes["/health"]["handler"](None)
         post_health_body = json.loads(post_health_response.body)
-        assert post_health_body["status"] == "ok"
+        # Phase 4: the body ``status`` reflects the aggregator's worst
+        # verdict across the data feeds. This test fixture sets
+        # ``AKOSHA_SKIP_*=1`` so the producers don't start, but the
+        # module-level ``_code_graph_ingester`` / ``_kg_refresh_task``
+        # may still hold values from a previous test that ran in the
+        # same session. The aggregator's verdict is therefore either
+        # ``degraded`` (cycles=0 + ingester alive → HNSW hardening) or
+        # ``failed`` (no ingester alive). Both are correct
+        # non-``healthy`` states; the HTTP code is 503 either way.
+        # Phase 4 surfaces both via ``feed_never_populated`` so the
+        # operator sees a producer that hasn't started OR a
+        # broken-before-first-success producer. Pre-Phase-4 the same
+        # probe reported ``ok=True`` for both states, masking them.
+        aggregate = post_health_body["checks"]["_aggregate"]
+        assert aggregate["status"] in {"degraded", "failed"}
+        assert post_health_body["status"] == aggregate["status"]
+        assert post_health_response.status_code == 503
         assert "hot_store" in post_health_body["checks"]
         assert "embeddings" in post_health_body["checks"]
         assert post_health_body["checks"]["embeddings"]["ok"] is True
+        # ``feed_never_populated`` is the canonical signal for both
+        # never-started and never-cycled-alive.
+        assert "feed_never_populated" in aggregate["reason_codes"]
 
     patched_lifespan["embedding_service"].initialize.assert_awaited_once()
     patched_lifespan["hot_store"].initialize.assert_awaited_once()

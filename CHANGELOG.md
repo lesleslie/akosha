@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- akosha: Replace `_default_health_probe` body with `mcp_common.health.aggregator.aggregate_feed_states` (plan §5 Phase 4 task 2). Each data feed (code_graphs, knowledge_graph, local_traces, skills_signer) becomes a HealthFeedState; the aggregator rolls them up into a worst-case `status` + per-feed verdicts. `/health` body now mirrors the aggregator's enum (`healthy` / `warming_up` / `degraded` / `failed`) instead of the legacy binary `ok` / `degraded`. HTTP code stays 200 for healthy + warming_up, 503 for degraded + failed.
+
+### Fixed
+
+- akosha: Wire `last_error_at` tracking in OtelTraceIngester and kg_refresh so the aggregator's time-bounded decay predicate can escalate DEGRADED for fresh errors (plan §5 Phase 4 task 3).
+- akosha: Surfaces broken-before-first-success producers (cycles_total == 0 + ingester_running == True) as DEGRADED with `feed_never_populated` via HNSW hardening, replacing the previous warm-up masking.
+
+### Added
+
+- akosha: tests/integration/test_health_aggregator.py — end-to-end pin of the aggregator contract via the `/health` HTTP route (plan §5 Phase 4 task 1). Covers time-bounded decay, warming_up 200 contract, HNSW hardening, reason_codes population, and worst-case roll-up across mixed states.
+
 ## [0.17.2] - 2026-09-14
 
 ### Fixed
