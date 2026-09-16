@@ -7,13 +7,15 @@ shim that preserves the legacy ``AgentMetadata`` class name + the
 helper functions used by tests and tool handlers. New code should
 import directly from ``mcp_common.canonical_schemas``.
 
-The previous version of this module carried a 22-field model with
-B-4 path-traversal allowlist validators, B-6 body-integrity
-``model_validator`` (``sha256(system_prompt) == content_hash``), and
-``extra="forbid"`` / ``validate_assignment=True`` semantics. All of
-these now live in :class:`mcp_common.canonical_schemas.agent.AgentCanonicalSchema`.
-This shim preserves ``isinstance(x, AgentMetadata)`` for callers that
-import the legacy name (the alias resolves to the same class object).
+AkoSHA is the only Bodai component that strictly enforces the B-6
+body-integrity invariant (``sha256(system_prompt) == content_hash``)
+at the schema layer. Other components enforce the hash at the
+agents_tools layer instead. We expose that strict behavior via a
+subclass :class:`AgentMetadata` that extends the canonical schema with
+the body-integrity model_validator. Callers and tests that import
+``akosha.mcp.agent_schema.AgentMetadata`` get the strict version;
+callers that want the permissive canonical class can import
+``AgentCanonicalSchema`` directly.
 
 Refs:
 - docs/superpowers/specs/2026-09-14-dhara-mcp-decomposition-design.md §4.11
@@ -21,8 +23,6 @@ Refs:
 """
 
 from __future__ import annotations
-
-from typing import Any
 
 from mcp_common.canonical_schemas.agent import AgentCanonicalSchema
 from mcp_common.canonical_schemas._validators import (
@@ -32,11 +32,30 @@ from mcp_common.canonical_schemas._validators import (
     coerce_tools_value,
     compute_content_hash,
 )
+from pydantic import model_validator
 
-# Backward-compat alias. ``isinstance(x, AgentMetadata)`` resolves to
-# ``isinstance(x, AgentCanonicalSchema)`` because Python treats the
-# alias as the same class object.
-AgentMetadata = AgentCanonicalSchema
+
+class AgentMetadata(AgentCanonicalSchema):
+    """AkoSHA's strict variant of the canonical AgentCanonicalSchema.
+
+    Adds the B-6 body-integrity ``model_validator`` that asserts
+    ``content_hash == sha256(system_prompt)``. A forged hash is rejected
+    at the model boundary; an empty ``system_prompt`` is allowed (the
+    agents_tools layer rejects empty bodies before signing).
+    """
+
+    @model_validator(mode="after")
+    def _validate_body_integrity(self) -> AgentMetadata:
+        if not self.system_prompt and not self.content_hash:
+            return self
+        expected = compute_content_hash(self.system_prompt)
+        if self.content_hash and self.content_hash != expected:
+            raise ValueError(
+                f"content_hash mismatch: declared {self.content_hash!r} "
+                f"but sha256(system_prompt)={expected!r}"
+            )
+        return self
+
 
 # Re-exported for the agents_tools layer to validate name allowlist at
 # the API boundary without importing the schema (mirrors skill_tools).
@@ -48,6 +67,7 @@ _allowlisted_name = allowlisted_name
 
 __all__ = [
     "AgentMetadata",
+    "AgentCanonicalSchema",
     "NAME_OR_SERVER_RE",
     "_allowlisted_name",
     "allowlisted_name",
