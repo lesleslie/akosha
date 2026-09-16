@@ -54,6 +54,25 @@ def _strip_tz_suffix(s: str) -> str:
     return s
 
 
+def _is_zero_vector(v: list[float]) -> bool:
+    """True iff every component of ``v`` is numerically ~zero.
+
+    Used by :meth:`HotStore.search_similar` to detect callers that
+    probe with a zero embedding (e.g. watermark detection in
+    :func:`akosha.ingestion.bodai_event_subscriber._read_watermark_async`).
+    A zero query produces NULL cosine similarities against every row
+    (``0 / 0 = NaN`` in DuckDB), and ``NULL >= threshold`` filters them
+    out — so without this guard the substrate returns ``[]`` and
+    silently breaks the watermark-detection call path.
+
+    Threshold ``1e-10`` matches the pre-Phase-5 akosha heuristic;
+    tight enough to reject actual zero vectors but loose enough to
+    not flag legitimate near-zero embeddings (which are extremely
+    rare in practice for normalized embeddings).
+    """
+    return all(abs(x) < 1e-10 for x in v)
+
+
 class HotStore(DuckdbHotStore):
     """AkoSHA's HotStore: Oneiric DuckdbHotStore + code-graph overlay.
 
@@ -103,7 +122,22 @@ class HotStore(DuckdbHotStore):
 
         Vector similarity uses ``array_cosine_similarity(...)`` —
         no index required (HNSW skipped; see ``initialize``).
+
+        Zero-vector fallback: a zero query vector produces NULL
+        cosine similarities against every row (``0 / 0 = NaN`` in
+        DuckDB), and ``NULL >= threshold`` filters them out — so the
+        substrate silently returns ``[]`` even though callers like
+        :func:`akosha.ingestion.bodai_event_subscriber._read_watermark_async`
+        (which probes with ``[0.0] * embedding_dim``) expect a
+        time-ordered scan as a fallback. Pre-refactor akosha
+        returned the timestamp-ordered fallback; this override
+        preserves that contract so substrate changes cannot
+        regress it.
         """
+        if _is_zero_vector(query_embedding):
+            return await self._search_recent(
+                system_id=system_id, limit=limit
+            )
         results = await super().search_similar(
             query_embedding=query_embedding,
             system_id=system_id,
@@ -111,6 +145,52 @@ class HotStore(DuckdbHotStore):
             threshold=threshold,
         )
         return [{**r, "similarity": r["score"]} for r in results]
+
+    async def _search_recent(
+        self,
+        *,
+        system_id: str | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """Zero-vector fallback: timestamp-ordered scan with ``similarity=None``.
+
+        Returns the most-recent ``limit`` conversations, optionally
+        filtered by ``system_id``. ``score`` is left absent (the
+        AkoSHA override layer adds ``similarity=None``). Mirrors the
+        pre-Phase-5 akosha behavior so callers probing with a zero
+        embedding (e.g. watermark detection) keep getting a result
+        set even after the substrate lift.
+        """
+        async with self._lock:
+            if not self.conn:
+                raise RuntimeError("Hot store not initialized")
+            conditions: list[str] = []
+            params: list[Any] = []
+            if system_id is not None:
+                conditions.append("system_id = ?")
+                params.append(system_id)
+            where_clause = " AND ".join(conditions) if conditions else "TRUE"
+            rows = self.conn.execute(
+                f"""
+                SELECT system_id, conversation_id, content, timestamp, metadata
+                FROM conversations
+                WHERE {where_clause}
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                [*params, limit],
+            ).fetchall()
+            return [
+                {
+                    "system_id": r[0],
+                    "conversation_id": r[1],
+                    "content": r[2],
+                    "timestamp": r[3],
+                    "metadata": r[4],
+                    "similarity": None,
+                }
+                for r in rows
+            ]
 
     async def initialize(self) -> None:
         """Initialize conversations table (inherited) + code_graphs table (overlay).
