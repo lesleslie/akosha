@@ -59,7 +59,12 @@ class SignerFeedState:
     """
 
     manifest: PubkeyManifest
-    signer: SkillsSigner
+    # Signer is optional so feed-state tests can construct SignerFeedState
+    # with just a manifest (the feed-state contract only requires the four
+    # mandatory signals — feed_entities_count, feed_last_updated_timestamp,
+    # cycles_total, errors_total — not the signing capability itself).
+    # ``init_signer_feed_state()`` always passes a real ``SkillsSigner``.
+    signer: SkillsSigner | None = None
     last_updated_timestamp: float = field(default_factory=time.time)
     cycles_total: int = 0
     errors_total: int = 0
