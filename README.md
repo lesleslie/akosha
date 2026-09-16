@@ -8,6 +8,8 @@
 
 Universal memory aggregation and cross-system analytics for distributed systems.
 
+**Version:** 0.17.5
+
 ## Quick Links
 
 - [Overview](#what-is-akosha)
