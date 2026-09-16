@@ -148,22 +148,39 @@ async def test_initialize_code_graphs_table_logs_index_failures(
 
 
 @pytest.mark.asyncio
-async def test_initialize_logs_conversation_index_failures(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Hot-store initialization should log and continue when conversation indexes fail."""
+async def test_initialize_logs_conversation_index_failures(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Hot-store initialization should log and continue when conversation indexes fail.
+
+    Post-Phase 5 follow-up: the conversations-table index DDL + log
+    messages moved to substrate (oneiric DuckdbHotStore). Uses
+    FakeInitConnection (raises on the substrate's index CREATE) +
+    caplog (which captures rendered messages at the handler level,
+    unlike ``logger.warning`` monkeypatch which captures the format
+    string).
+    """
+    import logging
+
     store = HotStore()
     fake_conn = FakeInitConnection()
     monkeypatch.setattr(
         "akosha.storage.hot_store.duckdb.connect", lambda *_args, **_kwargs: fake_conn
     )
 
-    warnings: list[str] = []
-    monkeypatch.setattr("akosha.storage.hot_store.logger.warning", lambda msg: warnings.append(msg))
+    with caplog.at_level(logging.WARNING):
+        await store.initialize()
 
-    await store.initialize()
-
-    assert any("system_id index creation failed" in msg for msg in warnings)
-    assert any("timestamp index creation failed" in msg for msg in warnings)
-    assert any("Composite index creation failed" in msg for msg in warnings)
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("system_id index creation failed" in m for m in messages)
+    assert any("timestamp index creation failed" in m for m in messages)
+    # Substrate logs the composite index using its physical name
+    # ``composite_system_timestamp`` (the index DDL name), not the
+    # friendly label "composite" the pre-refactor akosha code used.
+    assert any(
+        "composite_system_timestamp index creation failed" in m
+        for m in messages
+    )
 
 
 @pytest.mark.asyncio

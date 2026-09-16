@@ -106,7 +106,7 @@ class TestHotStore:
         assert len(results) >= 1
         # First result should be conv-1 (most similar)
         assert results[0]["conversation_id"] == "conv-1"
-        assert "similarity" in results[0]
+        assert "score" in results[0]
 
     @pytest.mark.asyncio
     async def test_search_similar_with_system_filter(self, hot_store: HotStore) -> None:
@@ -188,7 +188,7 @@ class TestHotStore:
         assert len(results) >= 1
         # All results should meet threshold
         for result in results:
-            assert result["similarity"] >= 0.95
+            assert result["score"] >= 0.95
 
     @pytest.mark.asyncio
     async def test_search_similar_limit(self, hot_store: HotStore) -> None:

@@ -1,33 +1,29 @@
-"""Hot store: DuckDB in-memory for recent data."""
+"""AkoSHA HotStore — extends Oneiric DuckdbHotStore with code-graph overlay.
 
+Post-Phase 5 follow-up (spec §Phase 5 follow-up). The
+conversations-table surface is inherited from Oneiric's substrate;
+AkoSHA retains only the code-graph overlay + ``query_traces`` (an
+AkoSHA-specific JSON-path CTE query). Conversations-table DDL lives
+in ``oneiric/adapters/vector/duckdb_hot_store.py`` — substrate is the
+single source of truth. See commits ``93f60cd`` + ``198564e`` in
+oneiric for the substrate lift.
+"""
 from __future__ import annotations
 
-import asyncio
-import hashlib
-import json
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import duckdb
 
+from oneiric.adapters.vector.duckdb_hot_store import DuckdbHotStore
+
 from akosha.processing.embedding_dim import resolve_embedding_dim
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
-def _to_naive_utc(dt: datetime) -> datetime:
-    """Convert a possibly-tz-aware datetime to naive UTC.
-
-    DuckDB ``TIMESTAMP`` (not ``TIMESTAMPTZ``) stores naive wall-clock
-    values. The Python binding for tz-aware datetimes silently shifts
-    the value to the session's local time before dropping tz info —
-    the same instant in time can therefore land at different stored
-    values depending on whether the caller passed naive or tz-aware.
-    Normalising to naive UTC at every storage boundary makes inserts
-    session-tz-invariant and matches what the column actually stores.
-    """
-    if dt.tzinfo is not None:
-        return dt.astimezone(UTC).replace(tzinfo=None)
-    return dt
+logger = logging.getLogger(__name__)
 
 
 def _strip_tz_suffix(s: str) -> str:
@@ -56,38 +52,21 @@ def _strip_tz_suffix(s: str) -> str:
     return s
 
 
-if TYPE_CHECKING:
-    from pathlib import Path
+class HotStore(DuckdbHotStore):
+    """AkoSHA's HotStore: Oneiric DuckdbHotStore + code-graph overlay.
 
-    from akosha.models import HotRecord
+    The conversations-table surface (``__init__``, ``initialize``,
+    ``insert``, ``search_similar``, ``close``,
+    ``_compute_content_hash``) is inherited from substrate; AkoSHA
+    adds the code-graph methods. Constructor delegates to
+    ``DuckdbHotStore.__init__`` after resolving AkoSHA's
+    :func:`resolve_embedding_dim` (queries the embedding service
+    at runtime), so the schema dim matches the active backend.
 
-logger = logging.getLogger(__name__)
-
-
-class HotStore:
-    """Hot store with DuckDB in-memory storage.
-
-    .. warning::
-
-        **This is the development / test backend.** In-memory DuckDB
-        loses all indexed rows on restart. **File-backed DuckDB is NOT
-        recommended** for serverless or ephemeral-filesystem deployments:
-        the filesystem does not survive container restarts, so the file
-        is silently lost. For production deployments that require
-        persistence, use :class:`akosha.storage.PgvectorHotStore` —
-        pgvector-backed storage on Postgres survives restarts and is
-        the recommended production default.
-
-        Plan: docs/plans/2026-08-29-pgvector-default.md Phase 3.
-
-    Embedding dim is configurable via the ``embedding_dim`` constructor
-    argument; ``None`` resolves via
-    :func:`akosha.processing.embedding_dim.resolve_embedding_dim` which
-    defaults to the active embedding backend's dim at startup, falling
-    back to 384 when no service is initialized. The resolved dim is
-    baked into the DuckDB schema (``FLOAT[N]``) at ``initialize()`` time,
-    so callers MUST set ``embedding_dim`` to the value their embedding
-    service will produce *before* the first ``initialize()`` call.
+    **Development/test backend only** — in-memory DuckDB loses
+    rows on restart; file-backed DuckDB is not safe on ephemeral
+    filesystems. Use :class:`akosha.storage.PgvectorHotStore` for
+    production persistence.
     """
 
     def __init__(
@@ -95,175 +74,14 @@ class HotStore:
         database_path: str | Path = ":memory:",
         embedding_dim: int | None = None,
     ) -> None:
-        """Initialize hot store.
-
-        Args:
-            database_path: DuckDB database path (":memory:" for in-memory)
-            embedding_dim: Embedding vector dimension. ``None`` resolves
-                via :func:`resolve_embedding_dim` so the schema dim
-                matches the active backend; pass an explicit ``int`` to
-                pin it (e.g. in tests that never call
-                ``get_embedding_service().initialize()``).
-        """
-        self.db_path = database_path
-        self.conn: duckdb.DuckDBPyConnection | None = None
-        self._lock = asyncio.Lock()
-        # Schema dim is baked into the CREATE TABLE DDL at initialize()
-        # time — capture it now so the SQL can interpolate
-        # ``FLOAT[<resolved>]`` as a literal. ``resolve_embedding_dim``
-        # always returns an ``int``; the conditional handles the
-        # caller-supplied ``embedding_dim`` which is already typed ``int``.
-        self._embedding_dim: int = (
-            embedding_dim if embedding_dim is not None else resolve_embedding_dim()
+        # Resolve AkoSHA's smarter embedding dim before delegating so
+        # the schema dim matches the active backend.
+        if embedding_dim is None:
+            embedding_dim = resolve_embedding_dim()
+        super().__init__(
+            database_path=database_path,
+            embedding_dim=embedding_dim,
         )
-
-    async def initialize(self) -> None:
-        """Initialize database schema."""
-        async with self._lock:
-            self.conn = duckdb.connect(str(self.db_path))
-
-            # Create conversations table with HNSW index support.
-            # ``embedding FLOAT[N]`` is interpolated at __init__ time so
-            # the schema dim matches the active backend; this MUST match
-            # the dim the embedding service produces or insert() raises.
-            self.conn.execute(
-                f"""
-                CREATE TABLE IF NOT EXISTS conversations (
-                    system_id VARCHAR,
-                    conversation_id VARCHAR PRIMARY KEY,
-                    content TEXT,
-                    embedding FLOAT[{self._embedding_dim}],
-                    timestamp TIMESTAMP,
-                    metadata JSON,
-                    content_hash VARCHAR,
-                    uploaded_at TIMESTAMP DEFAULT NOW()
-                )
-            """
-            )
-
-            # Vector similarity indexes
-            # --------------------
-            # DuckDB does not ship a native HNSW index type — its
-            # documented vector-index path is the `vss` community
-            # extension using the ART (Approximate Random Tree) algorithm.
-            # The pre-Phase-5 implementation attempted
-            # ``CREATE INDEX ... USING HNSW`` and caught the resulting
-            # ``Binder Error: Unknown index type: HNSW`` on every poll
-            # cycle (5x per akosha cycle, 5x per kg_refresh cycle,
-            # 5x per OTel ingester cycle), producing noisy warnings
-            # and no useful index.
-            #
-            # Vector similarity queries on this backend use
-            # ``array_cosine_similarity(...)`` (brute-force, no index
-            # needed) — the index creation attempt was vestigial.
-            # Operators who want ANN acceleration can install the
-            # ``vss`` community extension via ``INSTALL vss; LOAD vss;``
-            # and create an ART index manually after initialize().
-            logger.info(
-                "HotStore: skipping HNSW index creation — DuckDB has no "
-                "HNSW support; vector search uses array_cosine_similarity "
-                "(brute-force). For ANN acceleration, install the `vss` "
-                "extension (INSTALL vss; LOAD vss;) and create an ART "
-                "index manually."
-            )
-
-            # Create indexes for filtered queries (performance optimization)
-            try:
-                # Index on system_id for fast filtering
-                self.conn.execute("""
-                    CREATE INDEX IF NOT EXISTS system_id_index
-                    ON conversations (system_id)
-                """)
-                logger.info("Created system_id index")
-            except Exception as e:
-                logger.warning(f"system_id index creation failed: {e}")
-
-            try:
-                # Index on timestamp for aging queries
-                self.conn.execute("""
-                    CREATE INDEX IF NOT EXISTS timestamp_index
-                    ON conversations (timestamp)
-                """)
-                logger.info("Created timestamp index")
-            except Exception as e:
-                logger.warning(f"timestamp index creation failed: {e}")
-
-            try:
-                # Composite index for system_id + timestamp (common query pattern)
-                self.conn.execute("""
-                    CREATE INDEX IF NOT EXISTS system_timestamp_index
-                    ON conversations (system_id, timestamp)
-                """)
-                logger.info("Created composite system_id+timestamp index")
-            except Exception as e:
-                logger.warning(f"Composite index creation failed: {e}")
-
-            # Create the code_graphs table in the same initialization pass so
-            # ``search_code_patterns`` / ``find_function_usage`` don't fail with
-            # ``Catalog Error: Table with name code_graphs does not exist!``
-            # when the tool runs against a freshly-initialised store. The
-            # SQL is run inline (without re-acquiring ``_lock``) — we are
-            # already inside the lock here, and ``asyncio.Lock`` is NOT
-            # reentrant, so calling ``initialize_code_graphs_table`` would
-            # deadlock. ``_create_code_graphs_schema`` is the lock-free
-            # implementation shared with the public method.
-            self._create_code_graphs_schema(self.conn)
-
-            logger.info("Hot store initialized")
-
-    async def insert(self, record: HotRecord) -> None:
-        """Insert conversation into hot store.
-
-        Args:
-            record: Hot record to insert
-
-        Raises:
-            ValueError: If ``len(record.embedding) != self._embedding_dim``.
-                This is the fail-loud contract — a dim mismatch indicates
-                the embedding backend changed (or was misconfigured)
-                since ``__init__`` baked the schema. Catching this at
-                the subscriber layer keeps the fail-soft behaviour for
-                per-row failures.
-        """
-        # Fail loud BEFORE acquiring the lock — the check is cheap and
-        # the value error is the signal callers (e.g.
-        # websocket_invocations_subscriber) hook into for fail-soft
-        # logging.
-        actual_dim = len(record.embedding)
-        if actual_dim != self._embedding_dim:
-            logger.warning(
-                "akosha.hot_store.dim_mismatch",
-                extra={
-                    "expected": self._embedding_dim,
-                    "actual": actual_dim,
-                    "conversation_id": record.conversation_id,
-                },
-            )
-            raise ValueError(
-                f"HotStore.insert: embedding dim mismatch "
-                f"(expected {self._embedding_dim}, got {actual_dim})"
-            )
-
-        async with self._lock:
-            if not self.conn:
-                raise RuntimeError("Hot store not initialized")
-
-            self.conn.execute(
-                """
-                INSERT INTO conversations
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                [
-                    record.system_id,
-                    record.conversation_id,
-                    record.content,
-                    record.embedding,
-                    _to_naive_utc(record.timestamp),
-                    record.metadata,
-                    self._compute_content_hash(record.content),
-                    datetime.now(UTC),
-                ],
-            )
 
     async def search_similar(
         self,
@@ -272,133 +90,63 @@ class HotStore:
         limit: int = 10,
         threshold: float = 0.7,
     ) -> list[dict[str, Any]]:
-        """Search for similar conversations using vector similarity.
+        """Search for similar conversations; returns ``similarity`` key.
 
-        Args:
-            query_embedding: Query vector (FLOAT[N], dim matches schema)
-            system_id: Optional system filter
-            limit: Maximum results to return
-            threshold: Minimum similarity score (0-1)
+        AkoSHA preserves its pre-substrate public API by mapping the
+        substrate's ``score`` key to ``similarity``. Substrate's
+        ``DuckdbHotStore.search_similar`` returns ``score`` (more
+        generic — could be any metric); AkoSHA's consumers expect
+        ``similarity`` (the metric this codebase actually computes).
+        Delegates everything else to substrate.
 
-        Returns:
-            List of similar conversations with metadata
-
-        Raises:
-            ValueError: If ``len(query_embedding) != self._embedding_dim``.
-                Fails fast before hitting DuckDB so callers see a clear
-                dim-mismatch signal instead of an opaque CAST error.
+        Vector similarity uses ``array_cosine_similarity(...)`` —
+        no index required (HNSW skipped; see ``initialize``).
         """
-        query_dim = len(query_embedding)
-        if query_dim != self._embedding_dim:
-            logger.warning(
-                "akosha.hot_store.dim_mismatch",
-                extra={
-                    "expected": self._embedding_dim,
-                    "actual": query_dim,
-                    "operation": "search_similar",
-                },
-            )
-            raise ValueError(
-                f"HotStore.search_similar: query dim mismatch "
-                f"(expected {self._embedding_dim}, got {query_dim})"
-            )
+        results = await super().search_similar(
+            query_embedding=query_embedding,
+            system_id=system_id,
+            limit=limit,
+            threshold=threshold,
+        )
+        return [{**r, "similarity": r["score"]} for r in results]
 
-        async with self._lock:
-            if not self.conn:
-                raise RuntimeError("Hot store not initialized")
+    async def initialize(self) -> None:
+        """Initialize conversations table (inherited) + code_graphs table (overlay).
 
-            # Build query with parameterized WHERE clause (SQL injection prevention)
-            # Note: We use separate queries for each case to ensure proper parameterization
-            # Detect zero vector — cosine similarity is undefined for zero vectors,
-            # so use timestamp ordering instead (brute-force scan; no ANN index).
-            is_zero_vector = all(abs(x) < 1e-10 for x in query_embedding)
+        Preserves AkoSHA's intentional HNSW skip. Substrate's
+        ``DuckdbHotStore.initialize()`` attempts HNSW index creation
+        (always fails on DuckDB without the ``vss`` extension); the
+        pre-Phase-5 akosha code documented this as 5×/cycle operator-UX
+        noise with no useful index. We silence ONLY the HNSW message
+        via a targeted filter, drop the failed index, and surface the
+        akosha intent. Vector search uses brute-force
+        ``array_cosine_similarity`` — no index required.
+        """
 
-            if is_zero_vector and system_id:
-                # Zero vector: order by timestamp descending (most recent first)
-                query = """
-                    SELECT
-                        system_id,
-                        conversation_id,
-                        content,
-                        timestamp,
-                        metadata,
-                        NULL as similarity
-                    FROM conversations
-                    WHERE system_id = ?
-                    ORDER BY timestamp DESC
-                    LIMIT ?
-                """
-                results = self.conn.execute(query, [system_id, limit]).fetchall()
-            elif is_zero_vector:
-                # Zero vector, no system_id filter: order by timestamp
-                query = """
-                    SELECT
-                        system_id,
-                        conversation_id,
-                        content,
-                        timestamp,
-                        metadata,
-                        NULL as similarity
-                    FROM conversations
-                    ORDER BY timestamp DESC
-                    LIMIT ?
-                """
-                results = self.conn.execute(query, [limit]).fetchall()
-            elif system_id:
-                query = f"""
-                    SELECT
-                        system_id,
-                        conversation_id,
-                        content,
-                        timestamp,
-                        metadata,
-                        array_cosine_similarity(embedding, ?::FLOAT[{self._embedding_dim}]) as similarity
-                    FROM conversations
-                    WHERE system_id = ?
-                    ORDER BY similarity DESC
-                    LIMIT ?
-                """
-                results = self.conn.execute(query, [query_embedding, system_id, limit]).fetchall()
-            else:
-                query = f"""
-                    SELECT
-                        system_id,
-                        conversation_id,
-                        content,
-                        timestamp,
-                        metadata,
-                        array_cosine_similarity(embedding, ?::FLOAT[{self._embedding_dim}]) as similarity
-                    FROM conversations
-                    ORDER BY similarity DESC
-                    LIMIT ?
-                """
-                results = self.conn.execute(query, [query_embedding, limit]).fetchall()
+        class _HnswFilter(logging.Filter):
+            def filter(self, record: logging.LogRecord) -> bool:
+                return "HNSW index creation failed" not in record.getMessage()
 
-            # Filter by threshold (NULL similarity from zero-vector path always passes)
-            return [
-                {
-                    "system_id": r[0],
-                    "conversation_id": r[1],
-                    "content": r[2],
-                    "timestamp": r[3],
-                    "metadata": r[4],
-                    "similarity": r[5],
-                }
-                for r in results
-                if r[5] is None or r[5] >= threshold
-            ]
-
-    @staticmethod
-    def _compute_content_hash(content: str) -> str:
-        """Compute SHA-256 hash of content."""
-        return hashlib.sha256(content.encode("utf-8")).hexdigest()
-
-    async def close(self) -> None:
-        """Close database connection."""
-        async with self._lock:
-            if self.conn:
-                self.conn.close()
-                logger.info("Hot store closed")
+        substrate_logger = logging.getLogger(
+            "oneiric.adapters.vector.duckdb_hot_store"
+        )
+        hnsw_filter = _HnswFilter()
+        substrate_logger.addFilter(hnsw_filter)
+        try:
+            await super().initialize()
+        finally:
+            substrate_logger.removeFilter(hnsw_filter)
+        if self.conn is not None:
+            try:
+                self.conn.execute("DROP INDEX IF EXISTS embedding_hnsw_index")
+            except Exception:
+                pass
+        logger.info(
+            "HotStore: skipping HNSW index — DuckDB has no native HNSW; "
+            "vector search uses array_cosine_similarity (brute-force). "
+            "For ANN acceleration, install the `vss` extension."
+        )
+        await self.initialize_code_graphs_table()
 
     async def query_traces(
         self,
@@ -410,26 +158,15 @@ class HotStore:
     ) -> list[dict[str, Any]]:
         """Query traces using SQL WHERE on metadata JSON attributes.
 
-        This method pushes attribute filters (task_class, time range) into the SQL
-        WHERE clause rather than fetching all traces and filtering in Python.
-        The HNSW index is NOT used for this query.
-
-        Args:
-            system_id: Optional system_id filter
-            start_time: ISO8601 start time (inclusive)
-            end_time: ISO8601 end time (inclusive)
-            task_class: Filter traces where metadata.attributes.task_class matches
-            limit: Maximum results to return
-
-        Returns:
-            List of trace records with conversation_id, content, timestamp, metadata
+        AkoSHA-specific extension — DuckdbHotStore has no equivalent.
+        Pushes attribute filters (task_class, time range) into the SQL
+        WHERE clause rather than fetching all traces and filtering
+        in Python. The HNSW index is NOT used for this query.
         """
         async with self._lock:
             if not self.conn:
                 raise RuntimeError("Hot store not initialized")
 
-            # Build the common WHERE conditions (everything except task_class)
-            # and the matching parameter list.
             common_conditions: list[str] = []
             params: list[Any] = []
 
@@ -438,10 +175,9 @@ class HotStore:
                 params.append(system_id)
 
             if start_time:
-                # Strip tz offset off ISO strings so the TIMESTAMP
-                # comparison is purely naive-UTC-vs-naive-UTC.
-                # `_strip_tz_suffix` is a no-op for already-naive
-                # strings (space-separated or unmarked ISO).
+                # Strip tz offset so TIMESTAMP comparison is purely
+                # naive-UTC-vs-naive-UTC; ``_strip_tz_suffix`` is a
+                # no-op for already-naive strings.
                 common_conditions.append("timestamp >= ?")
                 params.append(_strip_tz_suffix(start_time))
 
@@ -449,32 +185,24 @@ class HotStore:
                 common_conditions.append("timestamp <= ?")
                 params.append(_strip_tz_suffix(end_time))
 
-            select_cols = "system_id, conversation_id, content, timestamp, metadata"
+            select_cols = (
+                "system_id, conversation_id, content, timestamp, metadata"
+            )
 
             if task_class:
                 # Filter on metadata JSON: attributes.task_class OR top-level
-                # task_class.
-                #
-                # Workaround: DuckDB's optimiser miscomputes the metadata
+                # task_class. DuckDB's optimiser miscomputes the metadata
                 # type when a JSON-path ``= ?`` predicate is ANDed with
-                # other WHERE conditions (e.g. timestamp, system_id) —
-                # surfaces as
-                # ``ConversionException: Failed to cast value to numerical``
-                # on rows whose metadata is a JSON object. The trigger
-                # is the AND-with-other-WHERE form, not just the OR.
-                #
-                # Split the query into two stages:
-                #   1. A CTE that applies ONLY the non-JSON-path filters
-                #      (timestamp range, system_id).
-                #   2. UNION ALL of two complete queries over the CTE,
-                #      each carrying exactly one JSON-path filter. No
-                #      AND with other predicates, so the optimiser path
-                #      that triggers the cast is avoided.
-                #
-                # DuckDB does NOT reset param numbering across the UNION
-                # ALL boundaries, so the common (CTE) params must be
-                # duplicated — once per sub-query.
-                cte_where = "WHERE " + " AND ".join(common_conditions) if common_conditions else ""
+                # other WHERE conditions (e.g. timestamp, system_id),
+                # surfacing ``ConversionException: Failed to cast value
+                # to numerical``. A CTE (non-JSON filters) + UNION ALL of
+                # two complete queries (one per JSON path) avoids the
+                # optimiser path that triggers the cast.
+                cte_where = (
+                    "WHERE " + " AND ".join(common_conditions)
+                    if common_conditions
+                    else ""
+                )
 
                 inner = (
                     f"SELECT {select_cols} FROM filtered "
@@ -490,11 +218,13 @@ class HotStore:
                     f"SELECT * FROM ({inner}) "
                     f"ORDER BY timestamp DESC LIMIT ?"
                 )
-                # CTE params appear ONCE (not duplicated), then append
-                # the two task_class params, then LIMIT.
                 params.extend([task_class, task_class, limit])
             else:
-                where_clause = " AND ".join(common_conditions) if common_conditions else "1=1"
+                where_clause = (
+                    " AND ".join(common_conditions)
+                    if common_conditions
+                    else "1=1"
+                )
                 query = (
                     f"SELECT {select_cols} FROM conversations "
                     f"WHERE {where_clause} "
@@ -520,18 +250,12 @@ class HotStore:
         async with self._lock:
             if not self.conn:
                 raise RuntimeError("Hot store not initialized")
-
             self._create_code_graphs_schema(self.conn)
-            logger.info("Code graphs table initialized")
 
-    def _create_code_graphs_schema(self, conn: duckdb.DuckDBPyConnection) -> None:
-        """Create the code_graphs table + indexes. Lock-free helper.
-
-        Shared by ``initialize`` (which already holds ``_lock``) and the
-        public ``initialize_code_graphs_table`` (which acquires it).
-        ``asyncio.Lock`` is NOT reentrant, so this method MUST NOT acquire
-        the lock — callers are responsible for serialisation.
-        """
+    def _create_code_graphs_schema(
+        self, conn: duckdb.DuckDBPyConnection
+    ) -> None:
+        """Idempotent CREATE TABLE + indexes for the code_graphs table."""
         conn.execute("""
             CREATE TABLE IF NOT EXISTS code_graphs (
                 repo_path VARCHAR,
@@ -541,36 +265,29 @@ class HotStore:
                 metadata JSON,
                 ingested_at TIMESTAMP DEFAULT NOW(),
                 PRIMARY KEY (repo_path, commit_hash)
-            )
-        """)
-
-        # Create indexes for common queries
-        try:
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS code_graphs_repo_index
-                ON code_graphs (repo_path)
-            """)
-            logger.info("Created code_graphs repo_path index")
-        except Exception as e:
-            logger.warning(f"code_graphs repo_path index creation failed: {e}")
-
-        try:
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS code_graphs_nodes_index
-                ON code_graphs (nodes_count DESC)
-            """)
-            logger.info("Created code_graphs nodes_count index")
-        except Exception as e:
-            logger.warning(f"code_graphs nodes_count index creation failed: {e}")
-
-        try:
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS code_graphs_ingested_index
-                ON code_graphs (ingested_at DESC)
-            """)
-            logger.info("Created code_graphs ingested_at index")
-        except Exception as e:
-            logger.warning(f"code_graphs ingested_at index creation failed: {e}")
+            )""")
+        for name, ddl in (
+            (
+                "code_graphs repo_path",
+                "CREATE INDEX IF NOT EXISTS code_graphs_repo_index "
+                "ON code_graphs (repo_path)",
+            ),
+            (
+                "code_graphs nodes_count",
+                "CREATE INDEX IF NOT EXISTS code_graphs_nodes_index "
+                "ON code_graphs (nodes_count DESC)",
+            ),
+            (
+                "code_graphs ingested_at",
+                "CREATE INDEX IF NOT EXISTS code_graphs_ingested_index "
+                "ON code_graphs (ingested_at DESC)",
+            ),
+        ):
+            try:
+                conn.execute(ddl)
+                logger.info(f"Created {name} index")
+            except Exception as e:
+                logger.warning(f"{name} index creation failed: {e}")
 
     async def store_code_graph(
         self,
@@ -580,27 +297,16 @@ class HotStore:
         graph_data: dict[str, Any],
         metadata: dict[str, Any],
     ) -> None:
-        """Store a code graph in the hot store.
-
-        Args:
-            repo_path: Path to the repository
-            commit_hash: Git commit hash
-            nodes_count: Number of nodes in the code graph
-            graph_data: Complete code graph data (nodes, edges, etc.)
-            metadata: Optional metadata dictionary
-        """
+        """Insert or replace a code-graph snapshot."""
         async with self._lock:
             if not self.conn:
                 raise RuntimeError("Hot store not initialized")
-
             import json
 
             self.conn.execute(
-                """
-                INSERT OR REPLACE INTO code_graphs
-                (repo_path, commit_hash, nodes_count, graph_data, metadata, ingested_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """,
+                """INSERT OR REPLACE INTO code_graphs
+                       (repo_path, commit_hash, nodes_count, graph_data, metadata, ingested_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
                 [
                     repo_path,
                     commit_hash,
@@ -616,41 +322,29 @@ class HotStore:
         repo_path: str,
         commit_hash: str,
     ) -> dict[str, Any] | None:
-        """Get a code graph by repo path and commit hash.
+        """Fetch a code-graph snapshot, or None if missing."""
+        import json
 
-        Args:
-            repo_path: Path to the repository
-            commit_hash: Git commit hash
-
-        Returns:
-            Code graph data or None if not found
-        """
         async with self._lock:
             if not self.conn:
                 raise RuntimeError("Hot store not initialized")
-
-            result = self.conn.execute(
-                """
-                SELECT repo_path, commit_hash, nodes_count, graph_data, metadata, ingested_at
-                FROM code_graphs
-                WHERE repo_path = ? AND commit_hash = ?
-                """,
+            row = self.conn.execute(
+                """SELECT repo_path, commit_hash, nodes_count, graph_data, metadata, ingested_at
+                  FROM code_graphs
+                  WHERE repo_path = ? AND commit_hash = ?""",
                 [repo_path, commit_hash],
             ).fetchone()
-
-            if not result or len(result) < 6:
+            if not row or len(row) < 6:
                 return None
-
-            graph_data = json.loads(result[3]) if result[3] else {}  # type: ignore[unreachable]
-            metadata = json.loads(result[4]) if result[4] else {}  # type: ignore[unreachable]
-
+            graph_data = json.loads(row[3]) if row[3] else {}
+            metadata = json.loads(row[4]) if row[4] else {}
             return {
-                "repo_path": result[0],
-                "commit_hash": result[1],
-                "nodes_count": result[2],
+                "repo_path": row[0],
+                "commit_hash": row[1],
+                "nodes_count": row[2],
                 "graph_data": graph_data,
                 "metadata": metadata,
-                "ingested_at": result[5],
+                "ingested_at": row[5],
             }
 
     async def list_code_graphs(
@@ -658,41 +352,24 @@ class HotStore:
         repo_path: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
-        """List code graphs with optional filtering.
-
-        Args:
-            repo_path: Optional repo path filter
-            limit: Maximum number of results
-
-        Returns:
-            List of code graph summaries
-        """
+        """List code-graph snapshots, optionally filtered by repo_path."""
         async with self._lock:
             if not self.conn:
                 raise RuntimeError("Hot store not initialized")
-
-            if repo_path:
-                results = self.conn.execute(
-                    """
-                    SELECT repo_path, commit_hash, nodes_count, ingested_at
-                    FROM code_graphs
-                    WHERE repo_path = ?
-                    ORDER BY ingested_at DESC
-                    LIMIT ?
-                    """,
+            if repo_path is not None:
+                rows = self.conn.execute(
+                    """SELECT repo_path, commit_hash, nodes_count, ingested_at
+                      FROM code_graphs WHERE repo_path = ?
+                      ORDER BY ingested_at DESC LIMIT ?""",
                     [repo_path, limit],
                 ).fetchall()
             else:
-                results = self.conn.execute(
-                    """
-                    SELECT repo_path, commit_hash, nodes_count, ingested_at
-                    FROM code_graphs
-                    ORDER BY ingested_at DESC
-                    LIMIT ?
-                    """,
+                rows = self.conn.execute(
+                    """SELECT repo_path, commit_hash, nodes_count, ingested_at
+                      FROM code_graphs
+                      ORDER BY ingested_at DESC LIMIT ?""",
                     [limit],
                 ).fetchall()
-
             return [
                 {
                     "repo_path": r[0],
@@ -700,5 +377,7 @@ class HotStore:
                     "nodes_count": r[2],
                     "ingested_at": r[3],
                 }
-                for r in results
+                for r in rows
             ]
+__all__ = ["HotStore"]
+

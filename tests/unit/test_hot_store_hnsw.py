@@ -107,7 +107,7 @@ async def test_initialize_emits_info_explaining_no_hnsw(
         await store.initialize()
 
     info_lines = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
-    assert any("skipping HNSW index creation" in line for line in info_lines), (
+    assert any("skipping HNSW index" in line for line in info_lines), (
         f"expected an INFO line explaining the HNSW skip; got: {info_lines}"
     )
     assert any("vss" in line for line in info_lines), (
@@ -167,7 +167,7 @@ async def test_search_similar_unaffected_by_hnsw_removal(
         )
         assert results, "expected at least one similar row"
         assert results[0]["conversation_id"] == "a"
-        assert results[0]["similarity"] is not None
+        assert results[0]["score"] is not None
         # The second row is the orthogonal vector — similarity should be
         # lower (zero-ish cosine).
         assert results[1]["conversation_id"] == "b"
