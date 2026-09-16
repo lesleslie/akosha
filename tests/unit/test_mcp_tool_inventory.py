@@ -52,6 +52,9 @@ _DOC_TOOLS: set[str] = {
     "akosha_cross_repo_capability_search",
     "akosha_list_skills",
     "akosha_get_skill",
+    "akosha_list_agents",
+    "akosha_get_agent",
+    "akosha_list_ecosystem_skills",
 }
 
 
@@ -93,19 +96,18 @@ def test_readme_inventory_has_no_phantom_tools() -> None:
 
 @pytest.mark.unit
 def test_full_profile_count_matches_documented_count() -> None:
-    """Total FULL-profile tool count must equal the README's claim (28).
+    """Total FULL-profile tool count must equal the README's claim (31).
 
-    Phase 1 (bodai-skill-agent-distribution plan) added 2 tools
-    (``akosha_list_skills`` + ``akosha_get_skill``) to the STANDARD
-    profile; they are included in the FULL profile too. Updated to 28
-    from the pre-Phase-1 count of 26.
+    Phase 1 added 2 tools (``akosha_list_skills`` + ``akosha_get_skill``)
+    → 28. Phase 3/4 added 3 more (``akosha_list_agents``,
+    ``akosha_get_agent``, ``akosha_list_ecosystem_skills``) → 31.
     """
     registered = {t for tools in REGISTRATION_TOOLS.values() for t in tools}
     documented = _read_readme_tools()
     documented_tools = {name for name in documented if "_" in name}
-    assert len(registered) == 28, f"Expected 28 FULL-profile tools, found {len(registered)}"
-    assert len(documented_tools) == 28, (
-        f"README documents {len(documented_tools)} tools but expected 28"
+    assert len(registered) == 31, f"Expected 31 FULL-profile tools, found {len(registered)}"
+    assert len(documented_tools) == 31, (
+        f"README documents {len(documented_tools)} tools but expected 31"
     )
 
 
