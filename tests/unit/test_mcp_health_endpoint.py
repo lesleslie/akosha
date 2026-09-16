@@ -64,12 +64,15 @@ def degraded_probe() -> Callable[[], Awaitable[dict[str, dict[str, Any]]]]:
 def test_health_returns_200_when_all_feeds_ok(
     http_client: TestClient, all_ok_probe: Callable[[], Awaitable[dict[str, dict[str, Any]]]]
 ) -> None:
-    """All-healthy probe → 200 + status=ok + per-feed breakdown."""
+    """All-healthy probe → 200 + status=healthy + per-feed breakdown."""
     set_health_probe(all_ok_probe)
     response = http_client.get("/health")
     assert response.status_code == 200
     body = response.json()
-    assert body["status"] == "ok"
+    # Phase 4 changed body["status"] from the legacy binary "ok"/"degraded"
+    # to mirror the aggregator's worst-case verdict (healthy/warming_up/
+    # degraded/failed). The /healthz endpoint below still returns "ok".
+    assert body["status"] == "healthy"
     assert body["service"] == APP_NAME
     assert body["version"] == APP_VERSION
     assert body["checks"]["hot_store"]["ok"] is True
@@ -162,7 +165,7 @@ def test_set_health_probe_overrides_previous() -> None:
 
 
 def test_empty_checks_dict_is_healthy(http_client: TestClient) -> None:
-    """A probe that returns ``{}`` is treated as all-ok (vacuous truth)."""
+    """A probe that returns ``{}`` is treated as all-healthy (vacuous truth)."""
 
     async def empty_probe() -> dict[str, dict[str, Any]]:
         return {}
@@ -170,7 +173,9 @@ def test_empty_checks_dict_is_healthy(http_client: TestClient) -> None:
     set_health_probe(empty_probe)
     response = http_client.get("/health")
     assert response.status_code == 200
-    assert response.json()["status"] == "ok"
+    # Phase 4 body["status"] mirrors the aggregator's worst-case verdict;
+    # no _aggregate → defaults to "healthy".
+    assert response.json()["status"] == "healthy"
 
 
 @pytest.mark.parametrize(
