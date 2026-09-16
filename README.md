@@ -6,15 +6,7 @@
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![Python: 3.14+](https://img.shields.io/badge/python-3.14%2B-green)](https://www.python.org/downloads/)
 
-Universal memory aggregation and cross-system analytics for the Bodai ecosystem.
-
-## Bodai Ecosystem Role
-
-Akosha is the **seer** of the [Bodai ecosystem](https://github.com/lesleslie/bodai) — the cross-system intelligence layer that aggregates embeddings, semantic search, and pattern detection across Bodai services such as Session-Buddy, Mahavishnu, Dhara, Crackerjack, and Oneiric.
-
-Within Bodai, Akosha provides shared memory aggregation, semantic search, and
-cross-system analytics. See [bodai/docs](https://github.com/lesleslie/bodai) for
-integration patterns.
+Universal memory aggregation and cross-system analytics for distributed systems.
 
 ## Quick Links
 
@@ -455,6 +447,18 @@ Source of truth: [`akosha/mcp/tools/profiles.py`](akosha/mcp/tools/profiles.py),
 - `akosha_list_ecosystem_skills` - Aggregate skill metadata across Bodai MCP servers
 
 ______________________________________________________________________
+
+## Bodai Integration
+
+When deployed inside the [Bodai ecosystem](https://github.com/lesleslie/bodai),
+Akosha serves as the **seer** — the cross-system intelligence layer that
+aggregates embeddings, semantic search, and pattern detection across the other
+Bodai components (Session-Buddy, Mahavishnu, Crackerjack, Oneiric). The
+standalone install is identical: Bodai adds no special-case overrides; the
+PyArrow / DuckDB / pgvector backend, the Watcher + Eval pipeline, and the
+MCP tool surface behave the same in any other Python deployment. Bodai
+plugins wire their ingesters into `akosha.search_all_systems` to make their
+locally stored memories discoverable across the cluster.
 
 ## Contributing
 

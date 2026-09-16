@@ -8,13 +8,13 @@ in ``oneiric/adapters/vector/duckdb_hot_store.py`` — substrate is the
 single source of truth. See commits ``93f60cd`` + ``198564e`` in
 oneiric for the substrate lift.
 """
+
 from __future__ import annotations
 
+import contextlib
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
-
-import duckdb
 
 from oneiric.adapters.vector.duckdb_hot_store import DuckdbHotStore
 
@@ -22,6 +22,8 @@ from akosha.processing.embedding_dim import resolve_embedding_dim
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    import duckdb
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +118,7 @@ class HotStore(DuckdbHotStore):
         Preserves AkoSHA's intentional HNSW skip. Substrate's
         ``DuckdbHotStore.initialize()`` attempts HNSW index creation
         (always fails on DuckDB without the ``vss`` extension); the
-        pre-Phase-5 akosha code documented this as 5×/cycle operator-UX
+        pre-Phase-5 akosha code documented this as 5x/cycle operator-UX
         noise with no useful index. We silence ONLY the HNSW message
         via a targeted filter, drop the failed index, and surface the
         akosha intent. Vector search uses brute-force
@@ -127,9 +129,7 @@ class HotStore(DuckdbHotStore):
             def filter(self, record: logging.LogRecord) -> bool:
                 return "HNSW index creation failed" not in record.getMessage()
 
-        substrate_logger = logging.getLogger(
-            "oneiric.adapters.vector.duckdb_hot_store"
-        )
+        substrate_logger = logging.getLogger("oneiric.adapters.vector.duckdb_hot_store")
         hnsw_filter = _HnswFilter()
         substrate_logger.addFilter(hnsw_filter)
         try:
@@ -137,10 +137,8 @@ class HotStore(DuckdbHotStore):
         finally:
             substrate_logger.removeFilter(hnsw_filter)
         if self.conn is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self.conn.execute("DROP INDEX IF EXISTS embedding_hnsw_index")
-            except Exception:
-                pass
         logger.info(
             "HotStore: skipping HNSW index — DuckDB has no native HNSW; "
             "vector search uses array_cosine_similarity (brute-force). "
@@ -185,9 +183,7 @@ class HotStore(DuckdbHotStore):
                 common_conditions.append("timestamp <= ?")
                 params.append(_strip_tz_suffix(end_time))
 
-            select_cols = (
-                "system_id, conversation_id, content, timestamp, metadata"
-            )
+            select_cols = "system_id, conversation_id, content, timestamp, metadata"
 
             if task_class:
                 # Filter on metadata JSON: attributes.task_class OR top-level
@@ -198,11 +194,7 @@ class HotStore(DuckdbHotStore):
                 # to numerical``. A CTE (non-JSON filters) + UNION ALL of
                 # two complete queries (one per JSON path) avoids the
                 # optimiser path that triggers the cast.
-                cte_where = (
-                    "WHERE " + " AND ".join(common_conditions)
-                    if common_conditions
-                    else ""
-                )
+                cte_where = "WHERE " + " AND ".join(common_conditions) if common_conditions else ""
 
                 inner = (
                     f"SELECT {select_cols} FROM filtered "
@@ -220,11 +212,7 @@ class HotStore(DuckdbHotStore):
                 )
                 params.extend([task_class, task_class, limit])
             else:
-                where_clause = (
-                    " AND ".join(common_conditions)
-                    if common_conditions
-                    else "1=1"
-                )
+                where_clause = " AND ".join(common_conditions) if common_conditions else "1=1"
                 query = (
                     f"SELECT {select_cols} FROM conversations "
                     f"WHERE {where_clause} "
@@ -252,9 +240,7 @@ class HotStore(DuckdbHotStore):
                 raise RuntimeError("Hot store not initialized")
             self._create_code_graphs_schema(self.conn)
 
-    def _create_code_graphs_schema(
-        self, conn: duckdb.DuckDBPyConnection
-    ) -> None:
+    def _create_code_graphs_schema(self, conn: duckdb.DuckDBPyConnection) -> None:
         """Idempotent CREATE TABLE + indexes for the code_graphs table."""
         conn.execute("""
             CREATE TABLE IF NOT EXISTS code_graphs (
@@ -269,8 +255,7 @@ class HotStore(DuckdbHotStore):
         for name, ddl in (
             (
                 "code_graphs repo_path",
-                "CREATE INDEX IF NOT EXISTS code_graphs_repo_index "
-                "ON code_graphs (repo_path)",
+                "CREATE INDEX IF NOT EXISTS code_graphs_repo_index ON code_graphs (repo_path)",
             ),
             (
                 "code_graphs nodes_count",
@@ -379,5 +364,6 @@ class HotStore(DuckdbHotStore):
                 }
                 for r in rows
             ]
-__all__ = ["HotStore"]
 
+
+__all__ = ["HotStore"]
