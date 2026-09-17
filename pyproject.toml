@@ -33,7 +33,6 @@ dependencies = [
     "pybreaker>=1.0.0",
     "pyjwt>=2.9.0",  # JWT authentication support
     "cryptography>=50.0.0",  # ed25519 signing for skill/agent distribution (Phase 1.5)
-    "dhara>=0.8.2",
     "pyarrow>=16.0.0",
     "pytrendy>=0.2",
     "pandas>=2.0.0",
@@ -154,7 +153,6 @@ exclude_deps = [
     "circuitbreaker",
     "pybreaker",
     "pydantic-settings",
-    "dhara",
     "asyncpg",
     "pgvector",
 ]

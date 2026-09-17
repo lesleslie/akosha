@@ -3,10 +3,10 @@ revision = 3
 requires-python = ">=3.14"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
-    "python_full_version < '3.15' and sys_platform == 'win32'",
     "python_full_version >= '3.15' and sys_platform == 'emscripten'",
-    "python_full_version < '3.15' and sys_platform == 'emscripten'",
     "python_full_version >= '3.15' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.15' and sys_platform == 'win32'",
+    "python_full_version < '3.15' and sys_platform == 'emscripten'",
     "python_full_version < '3.15' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
@@ -130,14 +130,13 @@ wheels = [
 
 [[package]]
 name = "akosha"
-version = "0.17.4"
+version = "0.17.5"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "circuitbreaker" },
     { name = "cryptography" },
     { name = "datasketch" },
-    { name = "dhara" },
     { name = "duckdb" },
     { name = "fastapi" },
     { name = "fastmcp" },
@@ -192,7 +191,6 @@ requires-dist = [
     { name = "circuitbreaker", specifier = ">=2.0.0" },
     { name = "cryptography", specifier = ">=50.0.0" },
     { name = "datasketch", specifier = ">=0.6.0" },
-    { name = "dhara", specifier = ">=0.8.2" },
     { name = "duckdb", specifier = ">=0.10.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "fastmcp", specifier = ">=3.4.0,<5" },
