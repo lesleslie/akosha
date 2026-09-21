@@ -183,6 +183,13 @@ def init_signer_feed_state() -> SignerFeedState:
 
     with _signer_state_lock:
         _signer_state = new_state
+    # ``SignerFeedState.signer`` is Optional so feed-state tests can
+    # build the dataclass with just a manifest. ``init_signer_feed_state``
+    # always passes a real ``SkillsSigner`` (line above), so any None
+    # here is an internal invariant violation.
+    if new_state.signer is None:
+        msg = "init_signer_feed_state must construct SignerFeedState with a real SkillsSigner"
+        raise RuntimeError(msg)
     logger.info(
         "init_signer_feed_state: signer singleton installed (key_id=%s, generation=%d)",
         new_state.signer.key_id,

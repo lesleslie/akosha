@@ -24,7 +24,6 @@ Refs:
 
 from __future__ import annotations
 
-from mcp_common.canonical_schemas.agent import AgentCanonicalSchema
 from mcp_common.canonical_schemas._validators import (
     NAME_OR_SERVER_RE,
     allowlisted_name,
@@ -32,6 +31,7 @@ from mcp_common.canonical_schemas._validators import (
     coerce_tools_value,
     compute_content_hash,
 )
+from mcp_common.canonical_schemas.agent import AgentCanonicalSchema
 from pydantic import model_validator
 
 
@@ -64,14 +64,20 @@ class AgentMetadata(AgentCanonicalSchema):
 # name used by ``akosha.mcp.tools.agents_tools``.
 _allowlisted_name = allowlisted_name
 
+# The canonical helper is exposed as ``coerce_tools_value`` (no leading
+# underscore) — the underscore-prefixed alias here preserves the legacy
+# name used by ``akosha.mcp.tools.agents_tools`` to normalize a tools
+# entry from the static catalog to ``list[str]``.
+_coerce_tools_value = coerce_tools_value
+
 
 __all__ = [
-    "AgentMetadata",
-    "AgentCanonicalSchema",
     "NAME_OR_SERVER_RE",
+    "AgentCanonicalSchema",
+    "AgentMetadata",
     "_allowlisted_name",
+    "_coerce_tools_value",
     "allowlisted_name",
     "build_agent_id",
     "compute_content_hash",
-    "_coerce_tools_value",
 ]

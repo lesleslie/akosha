@@ -754,6 +754,13 @@ def create_app(mode: Any | None = None) -> FastMCP:
         from akosha.mcp.signer_feed import init_signer_feed_state
 
         signer_feed_state = init_signer_feed_state()
+        # ``SignerFeedState.signer`` is Optional so tests can build the
+        # dataclass with just a manifest. ``init_signer_feed_state`` is
+        # contract-bound to populate it (see ``signer_feed.py``); any
+        # None at this call site is an internal invariant violation.
+        if signer_feed_state.signer is None:
+            msg = "init_signer_feed_state returned SignerFeedState without a signer"
+            raise RuntimeError(msg)
         logger.info(
             "Phase 1.5+1: signer feed state initialized key_id=%s",
             signer_feed_state.signer.key_id,

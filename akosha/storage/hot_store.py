@@ -135,9 +135,7 @@ class HotStore(DuckdbHotStore):
         regress it.
         """
         if _is_zero_vector(query_embedding):
-            return await self._search_recent(
-                system_id=system_id, limit=limit
-            )
+            return await self._search_recent(system_id=system_id, limit=limit)
         results = await super().search_similar(
             query_embedding=query_embedding,
             system_id=system_id,

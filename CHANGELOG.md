@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] - 2026-09-21
+
+### Added
+
+- akosha: Wire pgvector hot-store + Postgres 16/17/18 CI matrix
+
+### Changed
+
+- akosha: Re-export canonical AgentMetadata/SkillMetadata aliases (Phase 10 task 4)
+
+### Fixed
+
+- akosha: Align mock ecosystem tests with streamable-HTTP rewrite
+- akosha: Keep B-6 body-integrity via strict AgentMetadata subclass (Phase 10 task 4)
+- akosha: Make SignerFeedState.signer optional for feed-state tests
+- akosha: Regenerate full golden fixture for renamed ecosystem_skills tool
+- akosha: Restore zero-vector fallback in HotStore.search_similar
+- akosha: Sync version stamps to pyproject 0.17.5
+- tests: Align /health body status assertion with Phase 4 verdict enum
+- tests: Sync _DOC_TOOLS + expected count to Phase 3/4 31-tool inventory
+- tests: Sync profile counts to Phase 3/4 31-tool registry
+
+### Build
+
+- deps: Drop dhara dep from runtime + creosote exclude (Phase 8 T12)
+
 ## [0.17.5] - 2026-09-16
 
 ### Changed
