@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - akosha: Restore zero-vector fallback in HotStore.search_similar
 - akosha: Sync version stamps to pyproject 0.17.5
 - tests: Align /health body status assertion with Phase 4 verdict enum
-- tests: Sync _DOC_TOOLS + expected count to Phase 3/4 31-tool inventory
+- tests: Sync \_DOC_TOOLS + expected count to Phase 3/4 31-tool inventory
 - tests: Sync profile counts to Phase 3/4 31-tool registry
 
 ### Build

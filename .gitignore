@@ -1,4 +1,12 @@
 # ============================================================================
+# CI / GitHub Actions
+# ============================================================================
+# Akosha CI is intentionally disabled (see lesleslie/akosha#workflows).
+# Gitignoring the directory keeps any future workflow file out of version
+# control until the team re-enables CI by design.
+.github/workflows/
+
+# ============================================================================
 # Python - Generated Files
 # ============================================================================
 __pycache__/
