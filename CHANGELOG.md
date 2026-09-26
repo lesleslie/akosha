@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-09-26
+
+### Added
+
+- Migrate launcher to mcp_common.server.launcher.launch()
+
+### Fixed
+
+- akosha: Clean up ruff-check blockers before publish
+- HotStore.search_similar returns results for zero-vector queries
+
+### Documentation
+
+- akosha: Align launcher-discovery frontmatter role with Phase 4 peers
+- akosha: Phase 4b launcher mode-dispatch discovery note (REQ-013)
+
+### Internal
+
+- akosha: Add GitHub FUNDING.yml sponsor declaration
+- akosha: Drop unused deps + Python 3.16 ty deprecations
+- akosha: Remove Dhara imports (decommissioning)
+- deps: Bump mcp-common floor to >=0.28.0 for launcher migration (Phase 4)
+
 ## [0.18.0] - 2026-09-21
 
 ### Added
