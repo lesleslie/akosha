@@ -23,7 +23,6 @@ from typing import TYPE_CHECKING, Any, Final, TypedDict, cast
 
 from fastmcp import FastMCP
 
-from akosha.config import DEFAULT_MCP_PORT
 from akosha.storage.hot_store import HotStore
 
 if TYPE_CHECKING:
@@ -1007,13 +1006,12 @@ def create_app(mode: Any | None = None) -> FastMCP:
     @app.custom_route("/health", methods=["GET"])
     async def health_check(request: Any) -> Any:  # noqa: ARG001
         """HTTP readiness check — 200 only when all data feeds are healthy."""
-        from starlette.responses import JSONResponse
-
         # Phase 4c: REQ-005 — every /health body includes the
         # ``launcher`` field so incident responders can grep the
         # canonical launcher version. Per cookbook Trap C, patch the
         # existing handler (do NOT register a duplicate route).
         import mcp_common
+        from starlette.responses import JSONResponse
 
         launcher_field = f"mcp_common.server.launcher@{mcp_common.__version__}"
 

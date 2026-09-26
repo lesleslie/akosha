@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
-    from mcp_common.clients.common_mcp_client import CommonMCPClient
     from mcp_common.tools import ToolProfile
 
 from mcp_common.health import DependencyConfig, register_health_tools

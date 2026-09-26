@@ -435,9 +435,9 @@ def _start_server(
     # ``returncode=-15`` on SIGTERM, not 0. Install an explicit handler
     # so the launchd plist sees a clean exit code. ``os._exit`` is used
     # over ``sys.exit`` so lifespan teardown cannot trap the signal.
-    def _handle_sigterm(signum: int, _frame: Any) -> None:
+    def _handle_sigterm(signum: int, _frame: Any) -> None:  # noqa: ARG001
         logger.info("Received SIGTERM, exiting cleanly (per launcher migration)")
-        os._exit(0)  # noqa: SLF001
+        os._exit(0)
 
     signal.signal(signal.SIGTERM, _handle_sigterm)
 
