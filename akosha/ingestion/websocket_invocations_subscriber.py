@@ -109,8 +109,7 @@ class WebSocketInvocationsSubscriber:
 
         if self._bodai_subscriber is None:
             logger.debug(
-                "WebSocketInvocationsSubscriber: no bodai subscriber configured, "
-                "skipping start",
+                "WebSocketInvocationsSubscriber: no bodai subscriber configured, skipping start",
             )
             return
 

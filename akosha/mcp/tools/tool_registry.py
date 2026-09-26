@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
+import inspect
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
@@ -51,7 +51,7 @@ class FastMCPToolRegistry:
 
     def register(self, metadata: ToolMetadata) -> Callable[[Any], Any]:
         def decorator(func: Any) -> Any:
-            if not asyncio.iscoroutinefunction(func):
+            if not inspect.iscoroutinefunction(func):
                 raise TypeError("Akosha MCP tools must be async functions")
 
             decorated = self._app.tool(name=metadata.name, description=metadata.description)(func)

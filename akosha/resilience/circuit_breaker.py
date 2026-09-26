@@ -382,7 +382,6 @@ def with_circuit_breaker(
         @functools.wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             """Sync wrapper - only works from non-async contexts."""
-            import asyncio
 
             # For sync functions, run in executor
             async def _async_call() -> Any:
@@ -398,9 +397,8 @@ def with_circuit_breaker(
             return asyncio.run(_wrapped())
 
         # Return appropriate wrapper
-        import asyncio
 
-        if asyncio.iscoroutinefunction(func):
+        if inspect.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper
 

@@ -234,7 +234,6 @@ _CAPABILITY_CATALOG: tuple[dict[str, Any], ...] = (
     # decommissioned (per user policy: "no core components or other
     # repos should be importing from it"). The catalog now indexes only
     # the five remaining Bodai components.
-
     # ---- crackerjack ----
     {
         "repo": "crackerjack",
