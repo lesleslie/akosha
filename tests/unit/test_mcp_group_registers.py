@@ -444,10 +444,10 @@ class TestRegisterHotStoreGatedGroups:
 
 
 class TestRegisterFitnessGroup:
-    """``register_fitness_group`` wires the analyzer with Dhara endpoints."""
+    """``register_fitness_group`` builds the analyzer, inits it, and registers tools."""
 
     def test_registers_fitness_tools(self) -> None:
-        """The wrapper builds an analyzer, inits it, populates endpoints, and registers tools."""
+        """The wrapper builds an analyzer, inits it, and registers tools."""
         app = MagicMock()
         analyzer = MagicMock()
         with patch(
@@ -458,20 +458,15 @@ class TestRegisterFitnessGroup:
                 with patch(
                     "akosha.mcp.tools.fitness_tools.register_fitness_tools"
                 ) as mock_register:
-                    with patch(
-                        "akosha.mcp.tools._populate_component_endpoints_from_dhara"
-                    ) as mock_populate:
-                        from akosha.mcp.tools.group_registers import (
-                            register_fitness_group,
-                        )
+                    from akosha.mcp.tools.group_registers import (
+                        register_fitness_group,
+                    )
 
-                        register_fitness_group(app)
+                    register_fitness_group(app)
         mock_init.assert_called_once_with(analyzer)
-        mock_populate.assert_called_once_with(analyzer)
         mock_register.assert_called_once_with(app)
-        # All three collaborators invoked exactly once.
+        # Both collaborators invoked exactly once.
         assert mock_init.call_count == 1
-        assert mock_populate.call_count == 1
         assert mock_register.call_count == 1
 
     def test_logs_info_on_success(self, caplog: pytest.LogCaptureFixture) -> None:
@@ -483,13 +478,12 @@ class TestRegisterFitnessGroup:
         ):
             with patch("akosha.mcp.tools.fitness_tools.init_fitness_analyzer"):
                 with patch("akosha.mcp.tools.fitness_tools.register_fitness_tools"):
-                    with patch("akosha.mcp.tools._populate_component_endpoints_from_dhara"):
-                        from akosha.mcp.tools.group_registers import (
-                            register_fitness_group,
-                        )
+                    from akosha.mcp.tools.group_registers import (
+                        register_fitness_group,
+                    )
 
-                        with caplog.at_level(
-                            logging.INFO, logger="akosha.mcp.tools.group_registers"
-                        ):
-                            register_fitness_group(app)
+                    with caplog.at_level(
+                        logging.INFO, logger="akosha.mcp.tools.group_registers"
+                    ):
+                        register_fitness_group(app)
         assert any("Registered fitness analysis tools" in rec.message for rec in caplog.records)

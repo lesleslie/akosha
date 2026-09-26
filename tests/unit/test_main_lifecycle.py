@@ -424,10 +424,9 @@ class TestAkoshaApplicationInit:
         assert not app.shutdown_event.is_set()
 
     def test_slot_attributes_default_to_none(self) -> None:
-        """hot_store / dhara_client / websocket subscriber start as ``None``."""
+        """hot_store / websocket subscriber start as ``None``."""
         app = AkoshaApplication(stop_drain_timeout=0.0)
         assert app.hot_store is None
-        assert app.dhara_client is None
         assert app.websocket_invocations_subscriber is None
 
     def test_ingestion_workers_starts_empty(self) -> None:
@@ -486,7 +485,7 @@ def _build_stop_app() -> AkoshaApplication:
 
 
 class TestStop:
-    """``stop()`` shuts down workers, subscriber, dhara client, and hot_store."""
+    """``stop()`` shuts down workers, subscriber, and hot_store."""
 
     @pytest.mark.asyncio
     async def test_stop_with_no_workers_runs_cleanly(self) -> None:
@@ -513,26 +512,6 @@ class TestStop:
         app.hot_store = hot_store
         await app.stop()  # must not raise
         assert app.hot_store is None
-
-    @pytest.mark.asyncio
-    async def test_stop_closes_dhara_client(self) -> None:
-        """If ``dhara_client`` is set, ``stop()`` calls ``aclose`` and clears it."""
-        app = _build_stop_app()
-        dhara = AsyncMock()
-        app.dhara_client = dhara
-        await app.stop()
-        dhara.aclose.assert_awaited_once()
-        assert app.dhara_client is None
-
-    @pytest.mark.asyncio
-    async def test_stop_swallows_dhara_close_error(self) -> None:
-        """A dhara aclose error is logged at WARNING, not raised."""
-        app = _build_stop_app()
-        dhara = AsyncMock()
-        dhara.aclose.side_effect = RuntimeError("network down")
-        app.dhara_client = dhara
-        await app.stop()  # must not raise
-        assert app.dhara_client is None
 
     @pytest.mark.asyncio
     async def test_stop_calls_subscriber_stop(self) -> None:

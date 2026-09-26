@@ -25,7 +25,7 @@ Invoke this agent when the user asks:
 
 - "Is this failure rate normal for session-buddy?"
 - "What's been trending wrong in the last 24 hours?"
-- "Are mahavishnu dispatch failures correlated with dhara timeouts?"
+- "Are mahavishnu dispatch failures correlated with crackerjack quality regressions?"
 - "Detect outliers in crackerjack test latency."
 - "Show me the rolling fitness signals for any component."
 - "Which Bodai components have the worst p99 latency right now?"

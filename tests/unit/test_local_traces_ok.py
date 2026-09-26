@@ -95,16 +95,16 @@ async def test_local_traces_ok_true_for_running_empty_producer_without_errors() 
     )
 
     # We do NOT drive the production lifespan here: it would
-    # initialise OTel, embedding service, hot_store, kg_refresh, the
-    # real OTel ingester, and register a Phase 0 endpoint with Dhara
-    # — far too heavyweight for a unit test. The other tests in this
-    # file pin the production source structure (AST) and the HTTP
-    # wire format (set_health_probe swap). This test pins the formula
-    # *behaviour* by registering a small probe that mirrors the
-    # production formula against the audit-case module globals. If
-    # the production formula diverges from this test-local copy, the
-    # AST test (test_local_traces_ok_formula_references_otel_disabled)
-    # will fail and force a reconciliation.
+    # initialise OTel, embedding service, hot_store, kg_refresh, and
+    # the real OTel ingester — far too heavyweight for a unit test.
+    # The other tests in this file pin the production source structure
+    # (AST) and the HTTP wire format (set_health_probe swap). This
+    # test pins the formula *behaviour* by registering a small probe
+    # that mirrors the production formula against the audit-case
+    # module globals. If the production formula diverges from this
+    # test-local copy, the AST test
+    # (test_local_traces_ok_formula_references_otel_disabled) will
+    # fail and force a reconciliation.
 
     # Patch the module globals the test-local probe will read. We
     # use direct setattr + manual restore (not monkeypatch) because

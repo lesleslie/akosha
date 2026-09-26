@@ -210,23 +210,16 @@ async def register_otel_query_group(app: FastMCP) -> None:
 def register_fitness_group(app: FastMCP) -> None:
     """Register FitnessAnalyzer tools (failure-rate / p99 latency signals).
 
-    Creates a standalone FitnessAnalyzer instance, populates it with
-    Bodai component endpoints from Dhara, starts its periodic poll loop,
-    and registers its tools. The Dhara-populate + poll-start is best-
-    effort: failures are logged (matches legacy ``register_all_tools``
-    behavior).
-
-    Critical W1.3 fix: ``_populate_component_endpoints_from_dhara`` MUST
-    run before ``register_fitness_tools``, otherwise the analyzer ships
-    with an empty target list and ``run_fitness_analysis`` silently
-    no-ops or returns empty results. The helper is imported from the
-    legacy ``akosha.mcp.tools.__init__`` so the W0 and legacy
-    registration paths share a single source of truth for fitness
-    bootstrap (no divergence).
+    Creates a standalone FitnessAnalyzer instance, starts its periodic
+    poll loop, and registers its tools. The analyzer now keeps signals
+    in memory only — the historical Dhara-populate step was removed
+    when Dhara was decommissioned, so the analyzer starts with an
+    empty target list and ``run_fitness_analysis`` will report empty
+    results until callers explicitly register components via
+    ``analyzer.add_component``.
     """
     import asyncio
 
-    from akosha.mcp.tools import _populate_component_endpoints_from_dhara
     from akosha.mcp.tools.fitness_tools import init_fitness_analyzer, register_fitness_tools
     from akosha.processing.fitness_analyzer import FitnessAnalyzer
 
@@ -238,8 +231,6 @@ def register_fitness_group(app: FastMCP) -> None:
         _fitness_loop_task = loop.create_task(analyzer.start())  # noqa: RUF006
     except RuntimeError:
         logger.debug("No running event loop; fitness analyzer poll loop not started")
-
-    _populate_component_endpoints_from_dhara(analyzer)
 
     register_fitness_tools(app)
     logger.info("Registered fitness analysis tools")

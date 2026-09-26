@@ -189,8 +189,8 @@ class TestPartialFailure:
         fn = app.registered["akosha_list_ecosystem_skills"]
         result = await fn()
 
-        # Healthy 4 servers each return 3 skills -> 12 entries.
-        assert len(result["data"]) == 12
+        # Healthy 3 servers each return 3 skills -> 9 entries (mahavishnu is down).
+        assert len(result["data"]) == 9
         # Mahavishnu surfaces in errors.
         assert "mahavishnu" in result["errors"]
         assert "mahavishnu" in result["per_server_latency_ms"]
@@ -206,7 +206,7 @@ class TestPartialFailure:
 
     async def _partial_doesnt_drop_async(self, tmp_path: Path) -> None:
         healthy = {"akosha", "mahavishnu"}
-        down = {"session-buddy", "dhara", "crackerjack"}
+        down = {"session-buddy", "crackerjack"}
         mock_client = _build_partial_post(healthy_servers=healthy, raised_servers=down)
         app = _DummyFastMCP()
         cache = EcosystemSkillsCache(path=tmp_path / "cache.json", ttl_seconds=60)
@@ -316,7 +316,7 @@ def test_partial_failure_does_not_skip_cache_writes(
 
 async def _cache_partial_failure_async(tmp_path: Path) -> None:
     healthy = {"akosha", "mahavishnu"}
-    down = {"session-buddy", "dhara", "crackerjack"}
+    down = {"session-buddy", "crackerjack"}
     mock_client = _build_partial_post(healthy_servers=healthy, raised_servers=down)
     app = _DummyFastMCP()
     cache = EcosystemSkillsCache(path=tmp_path / "cache.json", ttl_seconds=600)

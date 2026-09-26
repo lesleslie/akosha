@@ -623,7 +623,7 @@ class CrossRepoCapabilitySearchRequest(BaseModel):
     """Validation schema for ``cross_repo_capability_search`` MCP tool (Phase 1).
 
     The query supports any of the indexed Bodai components: ``mahavishnu``,
-    ``akosha``, ``session-buddy``, ``dhara``, ``crackerjack``, ``oneiric``,
+    ``akosha``, ``session-buddy``, ``crackerjack``, ``oneiric``,
     and named MCP servers (``*-mcp``). ``repo_filter`` narrows the search to
     a single component by its registered path or repo key.
     """

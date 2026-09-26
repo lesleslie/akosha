@@ -2,8 +2,11 @@ r"""A kosha -> bodai:events Redis Streams subscriber (push mode).
 
 Plan: docs/plans/2026-08-29-push-subscriber.md Phase 2.
 
-Replaces the 5-second Dhara poll loop in
-``WebSocketInvocationsSubscriber`` with a Redis Streams subscription.
+Push subscriber for Mahavishnu's websocket tool invocations. The
+historical Dhara-poll fallback (5-second interval poll of
+``websocket_tool_invocation/v1/*``) was removed when Dhara was
+decommissioned; this Redis Streams subscription is now the sole
+ingestion path.
 Mahavishnu's producer (commit 7b2c498c) ``xadd``\s envelopes onto the
 ``bodai:events`` stream; this subscriber consumes them, filters to
 ``topic == "websocket_tool_invocation"``, embeds each payload via the
@@ -21,7 +24,8 @@ Fail-soft contract:
 
 * Redis missing, ``redis.asyncio`` import failure, or stream unreachable
   -> subscriber stays non-running (``_running=False``); the orchestrator
-  (``WebSocketInvocationsSubscriber``) falls back to Dhara polling.
+  (``WebSocketInvocationsSubscriber``) logs the failure and stays
+  not-running until the next call to ``start()``.
 * Per-message decode / embed / insert failure -> log at WARNING, skip the
   message (no XACK on success-path insert only; we XACK after
   ``hot_store.insert`` returns, so a transient HotStore error surfaces
@@ -58,12 +62,11 @@ TOOL_INVOCATION_TOPIC: str = "websocket_tool_invocation"
 SUPPORTED_SCHEMA_VERSION: str = "1.0.0"
 
 #: Reserved ``conversation_id`` for the watermark row. Distinct from
-#: any real Dhara key (``websocket_tool_invocation/v1/*``) so search
+#: any real envelope key (``bodai:events`` stream IDs) so search
 #: queries can filter it out trivially.
 WATERMARK_CONVERSATION_ID: str = "__bodai_subscriber_watermark__"
 
-#: ``system_id`` used for both indexed rows and the watermark. Mirrors
-#: ``SYSTEM_ID_MAHAVISHNU`` in the polling subscriber.
+#: ``system_id`` used for both indexed rows and the watermark.
 SYSTEM_ID_MAHAVISHNU: str = "mahavishnu"
 
 #: Sentinel watermark row content (search-time filters exclude this).
@@ -80,8 +83,7 @@ def _create_redis_client(redis_url: str) -> Any | None:
     Mirrors the lazy-creation pattern in
     ``mahavishnu/core/events/bodai_subscriber.py:_create_redis_client``:
     when ``redis.asyncio`` is not installed, ``None`` signals the
-    caller to idle until cancellation so the orchestrator can fall back
-    to Dhara polling.
+    caller to idle until cancellation.
     """
     try:
         import redis.asyncio as aioredis  # type: ignore[import-not-found]
@@ -154,9 +156,9 @@ class BodaiToolInvocationSubscriber:
     def running(self) -> bool:
         """Whether the read loop is currently active.
 
-        Orchestrators read this to decide whether to skip the Dhara
+        Orchestrators read this to decide whether to start the read
         poll loop. ``False`` means the subscriber idled (redis missing
-        or unreachable) and the orchestrator should fall back.
+        or unreachable) and the orchestrator should skip ingestion.
         """
         return self._running
 
@@ -171,8 +173,8 @@ class BodaiToolInvocationSubscriber:
         No-op when already running or when ``hot_store is None``. When
         the redis client cannot be constructed (import failure or
         unreachable broker) the subscriber logs at WARNING and stays
-        non-running; the orchestrator's ``running`` check then falls
-        back to Dhara polling.
+        non-running; the orchestrator then surfaces a "no ingestion"
+        signal to callers.
         """
         if self._running:
             return

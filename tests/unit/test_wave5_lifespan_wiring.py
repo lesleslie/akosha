@@ -234,8 +234,6 @@ def lifespan_deps(monkeypatch: pytest.MonkeyPatch):
 
     # Shorten the kg_refresh interval so the test can verify cycles run.
     monkeypatch.setenv("AKOSHA_KG_REFRESH_SECONDS", "0.05")
-    # Force the lifespan to also skip Dhara registration noise.
-    monkeypatch.setenv("AKOSHA_SKIP_DHARA_REGISTRATION", "1")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("OTLP_ENDPOINT", "http://otel:4317")
 

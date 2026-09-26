@@ -24,7 +24,6 @@ Invoke this agent when the user asks:
 
 - "Find anything in session-buddy about worktree isolation."
 - "Search mahavishnu for past discussions of pool dispatch latency."
-- "What does dhara say about ACID transactions?"
 - "Search crackerjack for hook executor failures."
 
 The query is a natural-language question; the target system is
@@ -34,7 +33,6 @@ named or strongly implied. Your workflow:
    natural names to canonical IDs:
    - "session buddy" / "session-buddy" / "memory" → `session_buddy`
    - "mahavishnu" / "orchestrator" → `mahavishnu`
-   - "dhara" / "state store" / "registry" → `dhara`
    - "crackerjack" / "quality" / "linter" → `crackerjack`
    - "akosha" / "memory aggregator" → `akosha`
 2. Call `mcp__akosha__akosha_search_all_systems(query=<text>,

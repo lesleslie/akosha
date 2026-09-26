@@ -1,12 +1,14 @@
-"""Fitness analyzer — periodic background job that computes and persists routing fitness signals.
+"""Fitness analyzer — periodic background job that computes routing fitness signals.
 
 Polls each Bodai component's MCP endpoint (via CommonMCPClient) for local OTel
-traces, computes rolling failure_rate and p99 latency per (task_class, selector) pair,
-and writes fitness signals to Dhara at ``routing_fitness/{task_class}/{selector}``.
+traces and computes rolling failure_rate and p99 latency per
+(task_class, selector) pair.
 
-Bounded in-memory buffer (deque maxlen=1000) holds signals pending Dhara write.
-DLQ (dead-letter queue) after 3 consecutive write failures per signal.
-Circuit breaker protects Dhara write operations.
+Signals are returned in-memory (via :meth:`run_fitness_analysis`); the
+prior Dhara-backed persistence layer was removed when Dhara was
+decommissioned. Callers that need durable storage should subscribe to
+``run_fitness_analysis`` results or pipe the analyzer's output into
+their own storage layer.
 """
 
 from __future__ import annotations
@@ -14,12 +16,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import os
-import re
-from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from mcp_common.clients.common_mcp_client import (
     CommonMCPClient,
@@ -27,27 +26,9 @@ from mcp_common.clients.common_mcp_client import (
 
 from akosha.mcp.client import query_local_traces
 
-if TYPE_CHECKING:
-    from oneiric.core.resiliency import CircuitBreaker
-
 logger = logging.getLogger(__name__)
 
 _DEFAULT_POLL_INTERVAL_SECONDS = 60
-_MAX_BUFFER_SIZE = 1000
-_DLQ_FAILURE_THRESHOLD = 3
-_DHARA_DEFAULT_URL = (
-    "http://localhost:8683/mcp"  # Implements: REQ-005 (Bodai MCP transport unification)
-)
-_KEY_COMPONENT_RE = re.compile(r"^[a-zA-Z0-9_]{1,50}$")
-_INVALID_KEY_PLACEHOLDER = "unknown"
-
-
-def _sanitize_key_component(value: str) -> str:
-    """Sanitize a key path component to prevent path injection in Dhara keys."""
-    if _KEY_COMPONENT_RE.match(value):
-        return value
-    sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", value)[:50]
-    return sanitized or _INVALID_KEY_PLACEHOLDER
 
 
 @dataclass
@@ -63,43 +44,28 @@ class FitnessSignal:
     component_count: int = 0
 
 
-@dataclass
-class _BufferEntry:
-    """Entry in the bounded in-memory signal buffer."""
-
-    task_class: str
-    selector: str
-    signal: FitnessSignal
-    attempt: int = 0
-
-
 class FitnessAnalyzer:
     """Periodic fitness signal analyzer.
 
-    Periodically polls known Bodai component endpoints for traces,
-    computes aggregated fitness signals, and writes them to Dhara.
+    Periodically polls known Bodai component endpoints for traces and
+    computes aggregated fitness signals. Signals are kept in memory
+    only — the historical Dhara persistence layer was removed when
+    Dhara was decommissioned.
 
     Parameters:
         poll_interval_seconds: Interval between analysis runs (default 60 s)
-        dhara_url: Dhara MCP server URL for writing signals
         component_endpoints: List of (component_name, mcp_url) tuples to poll
-        circuit_breaker: CircuitBreaker for Dhara write protection
     """
 
     def __init__(
         self,
         poll_interval_seconds: int = _DEFAULT_POLL_INTERVAL_SECONDS,
-        dhara_url: str | None = None,
         component_endpoints: list[tuple[str, str]] | None = None,
-        circuit_breaker: CircuitBreaker | None = None,
     ) -> None:
         self._poll_interval = max(poll_interval_seconds, 1)
-        self._dhara_url = dhara_url or os.getenv("DHARA_MCP_URL", _DHARA_DEFAULT_URL)
         self._component_endpoints = component_endpoints or []
-        self._circuit_breaker = circuit_breaker
-
-        self._buffer: deque[_BufferEntry] = deque(maxlen=_MAX_BUFFER_SIZE)
-        self._dlq_failures: dict[str, int] = {}
+        # In-memory signal cache, keyed by ``task_class -> selector -> FitnessSignal``.
+        self._signals: dict[str, dict[str, FitnessSignal]] = {}
 
         self._running = False
         self._task: asyncio.Task[None] | None = None
@@ -186,80 +152,13 @@ class FitnessAnalyzer:
             component_count=len({t.get("component_name", "") for t in traces}),
         )
 
-    async def _write_to_dhara(self, key: str, value: dict[str, Any]) -> None:
-        """Write a fitness signal to Dhara via MCP ``put`` tool.
-
-        Reuses a per-call ``CommonMCPClient`` because writes are rare
-        (every 60 s) and short-lived; the cost of session establishment
-        is negligible relative to the upstream Dhara write.
-
-        Raises:
-            MCPClientHTTPError: Dhara returned 5xx — let the circuit
-                breaker / DLQ layer in :meth:`_flush_buffer` decide.
-            MCPClientTimeoutError: Per-call timeout fired.
-            MCPError: JSON-RPC error envelope from Dhara.
-        """
-        client = CommonMCPClient(base_url=self._dhara_url, timeout=10.0)
-        try:
-            await client.call_tool(
-                "put",
-                {"key": key, "value": value},
-                timeout=10.0,
-            )
-        finally:
-            await client.aclose()
-
-    async def _flush_buffer(self) -> None:
-        """Attempt to write all buffered signals to Dhara."""
-        if not self._buffer:
-            return
-
-        while self._buffer:
-            entry = self._buffer.popleft()
-            safe_task_class = _sanitize_key_component(entry.task_class)
-            safe_selector = _sanitize_key_component(entry.selector)
-            key = f"routing_fitness/{safe_task_class}/{safe_selector}"
-            value = {
-                "score": entry.signal.score,
-                "samples": entry.signal.samples,
-                "failure_rate": entry.signal.failure_rate,
-                "p99_latency_ms": entry.signal.p99_latency_ms,
-                "updated_at": entry.signal.updated_at,
-                "window_start": entry.signal.window_start,
-                "component_count": entry.signal.component_count,
-            }
-
-            try:
-                if self._circuit_breaker is not None:
-                    await self._circuit_breaker.call(
-                        lambda k=key, v=value: self._write_to_dhara(k, v)
-                    )  # type: ignore[arg-type]
-                else:
-                    await self._write_to_dhara(key, value)
-                self._dlq_failures.pop(key, None)
-            except Exception as exc:
-                dlq_count = self._dlq_failures.get(key, 0) + 1
-                self._dlq_failures[key] = dlq_count
-                if dlq_count >= _DLQ_FAILURE_THRESHOLD:
-                    logger.error(
-                        "DLQ: fitness signal for %s/%s dropped after %d failed writes",
-                        entry.task_class,
-                        entry.selector,
-                        dlq_count,
-                    )
-                    if key in self._dlq_failures:
-                        del self._dlq_failures[key]
-                else:
-                    self._buffer.append(entry)
-                logger.debug(
-                    "Failed to write fitness signal %s: %s (attempt %d)",
-                    key,
-                    exc,
-                    dlq_count,
-                )
-
     async def _analyze_and_persist(self) -> None:
-        """Run one analysis cycle: collect traces and write signals to Dhara."""
+        """Run one analysis cycle: collect traces and update the signal cache.
+
+        The historical Dhara write step was removed when Dhara was
+        decommissioned; signals are now stored in ``self._signals``
+        and returned in-memory via :meth:`run_fitness_analysis`.
+        """
         if not self._component_endpoints:
             logger.debug("FitnessAnalyzer: no component endpoints registered")
             return
@@ -285,12 +184,7 @@ class FitnessAnalyzer:
             logger.debug("FitnessAnalyzer: no traces collected in this cycle")
             return
 
-        for task_class, selector_signals in all_signals.items():
-            for selector, signal in selector_signals.items():
-                self._buffer.append(_BufferEntry(task_class, selector, signal))
-
-        if self._buffer:
-            await self._flush_buffer()
+        self._signals = all_signals
 
     async def _run_loop(self) -> None:
         """Main analysis loop — runs until stop() is called."""
@@ -330,8 +224,4 @@ class FitnessAnalyzer:
             Dict mapping task_class → selector → FitnessSignal
         """
         await self._analyze_and_persist()
-
-        signals: dict[str, dict[str, FitnessSignal]] = {}
-        for entry in self._buffer:
-            signals.setdefault(entry.task_class, {})[entry.selector] = entry.signal
-        return signals
+        return self._signals

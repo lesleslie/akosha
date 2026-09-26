@@ -45,7 +45,9 @@ def register_fitness_tools(app: Any) -> None:
 
         Polls all registered Bodai component endpoints for OTel traces,
         computes rolling fitness signals (failure_rate, p99 latency) per
-        (task_class, selector) pair, and writes results to Dhara.
+        (task_class, selector) pair. Signals are kept in memory on the
+        analyzer instance — the historical Dhara persistence layer was
+        removed when Dhara was decommissioned.
 
         This tool is used for on-demand analysis and testing of the Bodai
         feedback loop. Normally the FitnessAnalyzer runs as a background

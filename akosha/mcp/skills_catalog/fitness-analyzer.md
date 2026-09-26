@@ -1,6 +1,6 @@
 ---
 name: fitness-analyzer
-description: Use ONLY when the user explicitly types `/akosha:fitness-analyzer` or selects this Skill from the picker to trigger one cycle of the Bodai fitness analyzer. Do not auto-trigger. Routes through `mcp__akosha__akosha_run_fitness_analysis` to poll every Bodai component endpoint for OTel traces, compute rolling fitness signals (failure_rate, p99 latency) per (task_class, selector) pair, and persist results to Dhara. Useful when the user asks "is the routing layer healthy?", "which selectors are failing?", or wants to confirm a recent deploy did not regress pool performance.
+description: Use ONLY when the user explicitly types `/akosha:fitness-analyzer` or selects this Skill from the picker to trigger one cycle of the Bodai fitness analyzer. Do not auto-trigger. Routes through `mcp__akosha__akosha_run_fitness_analysis` to poll every Bodai component endpoint for OTel traces and compute rolling fitness signals (failure_rate, p99 latency) per (task_class, selector) pair. Signals are returned in the tool response and cached on the analyzer instance — the historical Dhara persistence layer was removed when Dhara was decommissioned. Useful when the user asks "is the routing layer healthy?", "which selectors are failing?", or wants to confirm a recent deploy did not regress pool performance.
 allowed-tools: mcp__akosha__akosha_run_fitness_analysis, mcp__akosha__akosha_get_fitness_analyzer_status, Read
 ---
 
@@ -11,8 +11,10 @@ allowed-tools: mcp__akosha__akosha_run_fitness_analysis, mcp__akosha__akosha_get
 This Skill is the right entry point when the user wants to know how
 the Mahavishnu routing layer is performing across the Bodai
 ecosystem. The analyzer polls every registered component endpoint for
-OTel traces, aggregates them by `(task_class, selector)` pair, and
-writes the results to Dhara as routing-fitness signals.
+OTel traces and aggregates them by `(task_class, selector)` pair.
+The historical Dhara persistence layer was removed when Dhara was
+decommissioned; signals are now returned in-memory by the analyzer
+and cached on the analyzer instance.
 
 Common cases:
 
@@ -65,8 +67,10 @@ exposes two MCP tools:
   per task class.
 - `total_signals`: total `(task_class, selector)` pairs written.
 
-For per-pair values (failure_rate, p99), the analyzer persists to
-Dhara; read them back via the Dhara OTel query layer.
+For per-pair values (failure_rate, p99), call
+`akosha_run_fitness_analysis` again — signals are returned in the
+tool response and cached on the analyzer instance rather than being
+persisted to a backing store.
 
 ## When to flag trouble
 

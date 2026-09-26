@@ -50,10 +50,6 @@ logger = logging.getLogger(__name__)
 APP_NAME: Final = "akosha-mcp"
 APP_VERSION: Final = "0.17.5"
 
-DHARA_DEFAULT_URL = (
-    "http://localhost:8683/mcp"  # Implements: REQ-005 (Bodai MCP transport unification)
-)
-
 
 # ---------------------------------------------------------------------------
 # mcp_common.health.aggregator shape shim
@@ -214,23 +210,6 @@ def _env_truthy(name: str) -> bool:
     return os.getenv(name, "").lower() in ("1", "true", "yes")
 
 
-def _get_mcp_url() -> str:
-    """Get Akosha's MCP server URL from environment or config.
-
-    Returns:
-        MCP server URL string (e.g., "http://localhost:8682/mcp")
-    """
-    # Check env var first
-    mcp_url = os.getenv("AKOSHA_MCP_URL", "")
-    if mcp_url:
-        return mcp_url
-
-    # Fall back to host + port from config
-    host = os.getenv("AKOSHA_HOST", "localhost")
-    mcp_port = int(os.getenv("AKOSHA_MCP_PORT", str(DEFAULT_MCP_PORT)))
-    return f"http://{host}:{mcp_port}/mcp"
-
-
 def _resolve_skills_signer_key_path() -> Path:
     """Resolve the persisted keypair path for the skills_signer.
 
@@ -246,132 +225,6 @@ def _resolve_skills_signer_key_path() -> Path:
     if env_path:
         return Path(env_path).expanduser()
     return Path.home() / ".akosha" / "state" / "skills_signer" / "private_key.pem"
-
-
-async def _register_to_dhara_once(dhara_url: str, key: str, mcp_url: str) -> str:
-    """Single attempt to write component_endpoint/{name} -> mcp_url to Dhara.
-
-    Returns:
-        ``"success"`` when Dhara accepted the put; ``"retry"`` for transient
-        errors (timeouts, connection refused) that the bounded-retry loop
-        in :func:`_register_component_to_dhara` should keep trying; or
-        ``"give_up"`` for non-transient errors (HTTP 5xx) where retrying
-        would just waste startup time.
-    """
-    from mcp_common.clients.common_mcp_client import (
-        CommonMCPClient,
-        MCPClientHTTPError,
-    )
-
-    client = CommonMCPClient(base_url=dhara_url, timeout=10.0)
-    try:
-        try:
-            await client.call_tool(
-                "put",
-                {"key": key, "value": mcp_url},
-                timeout=10.0,
-            )
-            return "success"
-        except MCPClientHTTPError:
-            # Dhara explicitly rejected the put (5xx). Retrying won't fix
-            # an API bug; bail so lifespan startup doesn't sit in a 31s
-            # backoff.
-            return "give_up"
-        except Exception:
-            # Transient (timeout, connect, parse) — Dhara might come up,
-            # the network might recover. Default to retry so we don't
-            # silently drop a fixable hiccup.
-            return "retry"
-    finally:
-        await client.aclose()
-
-
-# Module-level task reference so shutdown can cancel the heartbeat loop
-_heartbeat_task: asyncio.Task[None] | None = None
-
-
-async def _register_component_to_dhara(mcp_url: str) -> None:
-    """Register Akosha's MCP endpoint to Dhara with retry + periodic heartbeat.
-
-    Key: component_endpoint/akosha
-    Value: MCP server URL string
-
-    Phase 1 (startup): retries with exponential backoff (1s, 2s, 4s, 8s, 16s)
-    until registration succeeds or max retries are exhausted.
-    Phase 2 (heartbeat): re-registers every 5 minutes to keep the TTL fresh.
-    Akosha's own FitnessAnalyzer is the consumer of this key — it reads it on
-    startup and re-reads it periodically via _populate_component_endpoints_from_dhara.
-    """
-    import asyncio
-
-    # Test/opt-out escape hatch. The startup retry loop waits ~31s when Dhara
-    # is unreachable; without this, every lifespan entry in an offline test
-    # suite hangs for 31s. Setting ``AKOSHA_SKIP_DHARA_REGISTRATION=1``
-    # short-circuits both Phase 1 (retry) and Phase 2 (heartbeat).
-    if _env_truthy("AKOSHA_SKIP_DHARA_REGISTRATION"):
-        logger.debug("Phase 0: skipped via AKOSHA_SKIP_DHARA_REGISTRATION")
-        return
-
-    dhara_url = os.getenv("DHARA_MCP_URL", DHARA_DEFAULT_URL)
-    key = "component_endpoint/akosha"
-
-    # Phase 1: bounded exponential-backoff retry. The previous code used
-    # itertools.count() with a for/else — but itertools.count() is infinite,
-    # so the else branch was unreachable, and if Dhara was unreachable this
-    # loop blocked the lifespan startup forever. The bug was hidden because
-    # the lifespan didn't fire (private-attribute poke no-op'd in FastMCP
-    # 3.x); the public-API lifespan fix activates it. Bounding to
-    # MAX_STARTUP_ATTEMPTS gives ~31s of startup wait before falling through
-    # to the heartbeat (which retries every 5 minutes).
-    MAX_STARTUP_ATTEMPTS = 5
-    for attempt in range(MAX_STARTUP_ATTEMPTS):
-        outcome = await _register_to_dhara_once(dhara_url, key, mcp_url)
-        if outcome == "success":
-            logger.info(
-                "Phase 0: registered akosha endpoint to Dhara: %s -> %s",
-                key,
-                mcp_url,
-            )
-            break
-        if outcome == "give_up":
-            logger.warning(
-                "Phase 0: non-retryable registration failure for %s — skipping retries",
-                key,
-            )
-            break
-        wait = min(2**attempt, 32)
-        logger.debug(
-            "Phase 0: registration attempt %d failed, retrying in %ds",
-            attempt + 1,
-            wait,
-        )
-        await asyncio.sleep(wait)
-    else:
-        logger.warning(
-            "Phase 0: exhausted %d startup retries for %s — heartbeat will continue",
-            MAX_STARTUP_ATTEMPTS,
-            key,
-        )
-
-    # Phase 2: periodic heartbeat — cancelled on server shutdown via _heartbeat_task
-    async def heartbeat() -> None:
-        while True:
-            await asyncio.sleep(300)  # 5 minutes
-            outcome = await _register_to_dhara_once(dhara_url, key, mcp_url)
-            if outcome != "success":
-                logger.debug("Phase 0 heartbeat: failed to refresh %s", key)
-
-    # Guard against create_app() being called twice without an intervening
-    # shutdown (e.g. test fixture reuse, hot-reload). Without this, the prior
-    # task's reference is overwritten in the module-level global and the old
-    # task leaks, holding the previous dhara_url/key/mcp_url closure until
-    # the loop ends.
-    global _heartbeat_task
-    if _heartbeat_task is not None and not _heartbeat_task.done():
-        _heartbeat_task.cancel()
-        with suppress(asyncio.CancelledError, Exception):
-            await _heartbeat_task
-    _heartbeat_task = asyncio.create_task(heartbeat())
 
 
 def create_app(mode: Any | None = None) -> FastMCP:
@@ -437,11 +290,10 @@ def create_app(mode: Any | None = None) -> FastMCP:
         4. Initializes analytics service
         5. Initializes knowledge graph builder
         6. Registers all MCP tools (using the framework-passed `server` param)
-        7. Phase 0: registers MCP endpoint to Dhara
+        7. Initializes the skills-signer feed state (Phase 1.5+1)
 
         Shutdown sequence:
-        1. Cancels the heartbeat task created in Phase 0
-        2. Flushes OpenTelemetry telemetry
+        1. Flushes OpenTelemetry telemetry
         3. Logs shutdown completion
 
         Args:
@@ -733,10 +585,6 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 os.getenv("AKOSHA_KG_REFRESH_SECONDS", "60"),
             )
 
-        # Phase 0: register this component's MCP endpoint to Dhara
-        mcp_url = _get_mcp_url()
-        await _register_component_to_dhara(mcp_url)
-
         # ------------------------------------------------------------------
         # Phase 1.5 + Phase 1: load (or generate + persist) the signing
         # keypair and build the lifespan-owned SignerFeedState (which
@@ -747,9 +595,9 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # Without persistence, every restart produces a fresh
         # ``key_id`` and breaks all previously installed Skills (review
         # R2-H1). The parameterless init_signer_feed_state() helper
-        # matches the other 4 Bodai servers (mahavishnu, session-buddy,
-        # dhara, crackerjack) so Phase 2's installer and any future
-        # Phase 3+ caller can use one helper API across the ecosystem.
+        # matches the other Bodai servers so Phase 2's installer and any
+        # future Phase 3+ caller can use one helper API across the
+        # ecosystem.
         # ------------------------------------------------------------------
         from akosha.mcp.signer_feed import init_signer_feed_state
 
@@ -1090,17 +938,6 @@ def create_app(mode: Any | None = None) -> FastMCP:
             "cache_client": cache_client,
             "cold_storage": cold_storage,
         }
-
-        # Shutdown: cancel the heartbeat task created by
-        # _register_component_to_dhara. cancel() is fire-and-forget — must
-        # await to ensure the task has finished its cleanup (closing the
-        # httpx client) before the lifespan returns and uvicorn tears down.
-        global _heartbeat_task
-        if _heartbeat_task is not None and not _heartbeat_task.done():
-            _heartbeat_task.cancel()
-            with suppress(asyncio.CancelledError, Exception):
-                await _heartbeat_task
-            _heartbeat_task = None
 
         # Wave 5: cancel the kg_refresh task and stop the CodeGraphIngester
         # before the lifespan returns. Order matters: cancel kg_refresh

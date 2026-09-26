@@ -52,10 +52,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Hard-coded list of the 5 Bodai servers the federation tool fans out to.
+# Hard-coded list of the 4 Bodai servers the federation tool fans out to.
 # Ports match the canonical Bodai ecosystem portmap (Crackerjack 8676,
-# Session-Buddy 8678, Mahavishnu 8680, AkoSHA 8682, Dhara 8683 — akosha
-# self-fans to port 8682 below).
+# Session-Buddy 8678, Mahavishnu 8680, AkoSHA 8682 — akosha self-fans to
+# port 8682 below). The historical Dhara entry on port 8683 was removed
+# when Dhara was decommissioned.
 #
 # The MCP transport is streamable-http. We POST to ``/mcp`` for the JSON-
 # RPC handshake per the FastMCP wire spec.
@@ -108,12 +109,6 @@ FEDERATION_SERVERS: tuple[_FederationServer, ...] = (
         tool_name="session_buddy_list_skills",
         base_url=_env("SESSION_BUDDY_MCP_URL", "http://localhost:8678/mcp"),
         description="Builder (Memory) MCP — semantic search substrate",
-    ),
-    _FederationServer(
-        server_key="dhara",
-        tool_name="dhara_list_skills",
-        base_url=_env("DHARA_MCP_URL", "http://localhost:8683/mcp"),
-        description="Curator (State) — ACID object storage",
     ),
     _FederationServer(
         server_key="crackerjack",
@@ -413,12 +408,11 @@ def register_ecosystem_skills(
         """List skills across all 5 Bodai servers with partial-failure visibility.
 
         Fans out to ``mcp__<server>__list_skills`` on every configured
-        Bodai server (akosha, mahavishnu, session-buddy, dhara,
-        crackerjack). Each call has a 1-second budget; per-server
-        circuit breakers skip a server that has failed ≥3 times in the
-        last 30 seconds. Failures surface in the ``errors`` dict so the
-        caller can distinguish "server down" from "server returned
-        nothing".
+        Bodai server (akosha, mahavishnu, session-buddy, crackerjack).
+        Each call has a 1-second budget; per-server circuit breakers
+        skip a server that has failed ≥3 times in the last 30 seconds.
+        Failures surface in the ``errors`` dict so the caller can
+        distinguish "server down" from "server returned nothing".
 
         Args:
             query: optional natural-language filter; entries are ranked

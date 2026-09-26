@@ -6,9 +6,11 @@ natural-language queries against that index.
 
 Indexing strategy (Phase 1, lightweight):
 
-* Seed a static capability catalog covering the 6 core Bodai components
-  (mahavishnu, akosha, session-buddy, dhara, crackerjack, oneiric) with the
-  high-signal tools, adapters, and error-handling conventions per repo.
+* Seed a static capability catalog covering the 5 remaining Bodai
+  components (mahavishnu, akosha, session-buddy, crackerjack, oneiric)
+  with the high-signal tools, adapters, and error-handling conventions
+  per repo. The historical Dhara entries were removed when Dhara was
+  decommissioned.
 * Substring + token-overlap scoring keeps the tool usable without requiring the
   embedding service. The embedding service may be plugged in later for richer
   semantic matching (matches the pattern used by ``search_all_systems``).
@@ -50,7 +52,6 @@ BODAI_COMPONENT_KEYS: tuple[str, ...] = (
     "mahavishnu",
     "akosha",
     "session-buddy",
-    "dhara",
     "crackerjack",
     "oneiric",
 )
@@ -228,47 +229,12 @@ _CAPABILITY_CATALOG: tuple[dict[str, Any], ...] = (
         "doc_hint": "session_buddy.utils.error_management",
         "tags": ["error", "database", "session-buddy"],
     },
-    # ---- dhara ----
-    {
-        "repo": "dhara",
-        "kind": "tool",
-        "name": "put",
-        "summary": "Persist an object with ACID guarantees.",
-        "doc_hint": "dhara.api",
-        "tags": ["storage", "put", "dhara", "acid"],
-    },
-    {
-        "repo": "dhara",
-        "kind": "tool",
-        "name": "get",
-        "summary": "Fetch a persisted object by key.",
-        "doc_hint": "dhara.api",
-        "tags": ["storage", "get", "dhara"],
-    },
-    {
-        "repo": "dhara",
-        "kind": "tool",
-        "name": "list_adapters",
-        "summary": "List Oneiric adapters registered in Dhara.",
-        "doc_hint": "dhara.mcp.tools",
-        "tags": ["adapter", "dhara", "oneiric", "registry"],
-    },
-    {
-        "repo": "dhara",
-        "kind": "adapter",
-        "name": "SubstrateSchema",
-        "summary": "msgspec-backed substrate schema (D-OBJ-SCHEMA).",
-        "doc_hint": "dhara.schema._base",
-        "tags": ["schema", "substrate", "dhara", "msgspec"],
-    },
-    {
-        "repo": "dhara",
-        "kind": "error",
-        "name": "SchemaValidationError",
-        "summary": "Raised when a payload fails substrate schema validation.",
-        "doc_hint": "dhara.schema._base",
-        "tags": ["schema", "error", "dhara", "validation"],
-    },
+    # ---- dhara (decommissioned 2026-09-26) ----
+    # Dhara entries were removed from the catalog when Dhara was
+    # decommissioned (per user policy: "no core components or other
+    # repos should be importing from it"). The catalog now indexes only
+    # the five remaining Bodai components.
+
     # ---- crackerjack ----
     {
         "repo": "crackerjack",

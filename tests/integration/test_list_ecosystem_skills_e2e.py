@@ -9,8 +9,8 @@ Tests assert:
 
 * Tool is registered on a FastMCP app via ``register_ecosystem_skills``.
 * Tool name matches the picker-facing convention (``akosha_list_ecosystem_skills``).
-* Federation aggregates >=15 entries across the 5 mock servers (3 per
-  server — matches plan section 5 Phase 4 exit criteria).
+* Federation aggregates >=12 entries across the 4 mock servers (3 per
+  server — matches plan section 5 Phase 4 exit criteria, post-Dhara).
 * Response shape matches ``EcosystemSkillsResponse`` (data, errors,
   per_server_latency_ms, cache, pagination).
 * ``include_installed=False`` skips M-6 reconciliation.
@@ -157,7 +157,12 @@ class _DummyFastMCP:
 
 
 def _balanced_payloads() -> dict[str, list[dict[str, Any]]]:
-    """Return 3 skills per Bodai server (15 total — matches exit criteria)."""
+    """Return 3 skills per Bodai server (12 total after Dhara decommissioning).
+
+    The historical count was 15 when Dhara was indexed (5 servers × 3
+    skills). After Dhara was decommissioned, the federation fans out to
+    4 servers, so the aggregate count drops to 12.
+    """
     return {
         server.server_key: [
             _seed_metadata(server.server_key, f"{server.server_key}-skill-{i}")
@@ -196,12 +201,14 @@ class TestRegistration:
 
 
 class TestFederationAggregation:
-    def test_aggregates_15_skills_across_5_servers(
+    def test_aggregates_12_skills_across_4_servers(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Plan section 5 Phase 4 exit criteria: >=15 entries (3+ per component)."""
+        """Plan section 5 Phase 4 exit criteria: >=12 entries (3+ per
+        component) after Dhara was decommissioned from the federation.
+        """
         _mock_no_installed(monkeypatch)
         asyncio.run(self._aggregate_async(tmp_path))
 
@@ -225,8 +232,8 @@ class TestFederationAggregation:
 
         assert isinstance(result, dict)
         assert result["schema_version"] == 1
-        # First page is the first 20 (limit default), so 15 fits in one page.
-        assert len(result["data"]) == 15
+        # First page is the first 20 (limit default), so 12 fits in one page.
+        assert len(result["data"]) == 12
         assert result["errors"] == {}
         assert set(result["per_server_latency_ms"].keys()) == {
             srv.server_key for srv in FEDERATION_SERVERS
@@ -255,7 +262,9 @@ class TestPagination:
         asyncio.run(self._paginate_async(tmp_path))
 
     async def _paginate_async(self, tmp_path: Path) -> None:
-        # Generate 30 skills across the 5 servers (6 per server).
+        # Generate 24 skills across the 4 servers (6 per server).
+        # Federation was 5 servers (30 skills) before Dhara was
+        # decommissioned; now 4 servers (24 skills).
         payloads = {
             server.server_key: [
                 _seed_metadata(server.server_key, f"{server.server_key}-skill-{i}")
@@ -287,16 +296,17 @@ class TestPagination:
         assert page2["pagination"]["next_cursor"] is not None
 
         page3 = await fn(limit=10, cursor=page2["pagination"]["next_cursor"])
-        assert len(page3["data"]) == 10
+        # Last page has the remainder (24 - 20 = 4 entries).
+        assert len(page3["data"]) == 4
         assert page3["pagination"]["has_more"] is False
         assert page3["pagination"]["next_cursor"] is None
 
-        # Page 1 + page 2 + page 3 cover all 30 unique entries.
+        # Page 1 + page 2 + page 3 cover all 24 unique entries.
         seen: set[tuple[str, str]] = set()
         for page in (page1, page2, page3):
             for skill in page["data"]:
                 seen.add((skill["server"], skill["name"]))
-        assert len(seen) == 30
+        assert len(seen) == 24
 
 
 class TestCache:
@@ -383,6 +393,9 @@ class TestIncludeInstalled:
         assert len(without_installed["data"]) == 0
 
 
-def test_federation_server_count_is_5() -> None:
-    """The plan calls out exactly 5 Bodai servers; verify the constant matches."""
-    assert len(FEDERATION_SERVERS) == 5
+def test_federation_server_count_is_4() -> None:
+    """Federation fans out to 4 Bodai servers (mahavishnu, akosha,
+    session-buddy, crackerjack). The historical Dhara entry was
+    removed when Dhara was decommissioned on 2026-09-26.
+    """
+    assert len(FEDERATION_SERVERS) == 4

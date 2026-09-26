@@ -127,9 +127,9 @@ __all__ = [
 #
 # The lifespan populates this after constructing the SignerFeedState, so
 # Phase 1 ``list_skills`` / ``get_skill`` MCP tools can read the signer
-# without taking it as a function parameter. The other 4 Bodai servers
-# (mahavishnu / session-buddy / dhara / crackerjack) use the same module-
-# level pattern with their own state classes; Phase 2's installer reads
+# without taking it as a function parameter. The other Bodai servers
+# (mahavishnu / session-buddy / crackerjack) use the same module-level
+# pattern with their own state classes; Phase 2's installer reads
 # /health directly, not these helpers, so the API stays per-server.
 # ---------------------------------------------------------------------------
 
@@ -147,10 +147,10 @@ def init_signer_feed_state() -> SignerFeedState:
     within a single ``create_app()`` invocation; subsequent calls
     overwrite the singleton and bump the generation token.
 
-    Matches the parameterless signature used by the other 4 Bodai
-    servers (mahavishnu, session-buddy, dhara, crackerjack) so
-    Phase 2's installer code and any future Phase 3+ caller can use
-    one helper API across the ecosystem.
+    Matches the parameterless signature used by the other Bodai
+    servers (mahavishnu, session-buddy, crackerjack) so Phase 2's
+    installer code and any future Phase 3+ caller can use one helper
+    API across the ecosystem.
 
     Raises:
         OSError: when the persistence path cannot be created.
