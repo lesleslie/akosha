@@ -1009,11 +1009,20 @@ def create_app(mode: Any | None = None) -> FastMCP:
         """HTTP readiness check — 200 only when all data feeds are healthy."""
         from starlette.responses import JSONResponse
 
+        # Phase 4c: REQ-005 — every /health body includes the
+        # ``launcher`` field so incident responders can grep the
+        # canonical launcher version. Per cookbook Trap C, patch the
+        # existing handler (do NOT register a duplicate route).
+        import mcp_common
+
+        launcher_field = f"mcp_common.server.launcher@{mcp_common.__version__}"
+
         if _health_probe_fn is None:
             body = {
                 "status": "degraded",
                 "service": APP_NAME,
                 "version": APP_VERSION,
+                "launcher": launcher_field,
                 "checks": {
                     "probe": {
                         "ok": False,
@@ -1030,6 +1039,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 "status": "degraded",
                 "service": APP_NAME,
                 "version": APP_VERSION,
+                "launcher": launcher_field,
                 "checks": {"probe": {"ok": False, "error": str(exc)}},
             }
             return JSONResponse(body, status_code=503)
@@ -1061,6 +1071,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
             "status": worst_status if not infra_failure else "degraded",
             "service": APP_NAME,
             "version": APP_VERSION,
+            "launcher": launcher_field,
             "checks": checks,
         }
         return JSONResponse(body, status_code=200 if http_ok else 503)

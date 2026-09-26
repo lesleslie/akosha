@@ -376,8 +376,11 @@ def _start_server(
 ) -> None:
     """Start Akosha MCP server in the specified mode.
 
-    Launches the Akosha MCP server with FastMCP framework using
-    streamable-http transport for proper MCP protocol support.
+    Launches the Akosha MCP server via ``mcp_common.server.launcher.launch``
+    (Phase 4c of the 2026-09-26 MCP Launcher Standardization plan). The
+    launcher handles ``transport="http"`` + ``timeout_graceful_shutdown=30``
+    and loads ``~/.config/secrets.env`` into ``os.environ`` before booting
+    the lifespan.
 
     MODES:
         lite: Zero external dependencies, in-memory only
@@ -403,6 +406,10 @@ def _start_server(
         config: Path to custom configuration file
         verbose: Enable verbose logging
     """
+    import asyncio
+    import os
+    import signal
+
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
@@ -420,23 +427,40 @@ def _start_server(
     mode_instance = _init_mode(mode, config_dict)
     _configure_logging(verbose)
 
-    # Create and run the MCP server
-    from akosha.mcp import create_app
-
-    app_instance = create_app(mode=mode_instance)
-
     logger.info(f"✅ Akosha ready in {mode} mode")
     logger.info(f"   Mode: {mode_instance.mode_config.description}")
     logger.info(f"   External services required: {mode_instance.requires_external_services}")
 
-    # Override FastMCP's hardcoded 2s graceful-shutdown timeout so the
-    # lifespan teardown can complete cleanup without being cancelled.
-    app_instance.run(
-        transport="streamable-http",
-        host=host,
-        port=port,
-        path="/mcp",
-        uvicorn_config={"timeout_graceful_shutdown": 30},
+    # Trap G (cookbook gaps): vanilla FastMCP/uvicorn exits with
+    # ``returncode=-15`` on SIGTERM, not 0. Install an explicit handler
+    # so the launchd plist sees a clean exit code. ``os._exit`` is used
+    # over ``sys.exit`` so lifespan teardown cannot trap the signal.
+    def _handle_sigterm(signum: int, _frame: Any) -> None:
+        logger.info("Received SIGTERM, exiting cleanly (per launcher migration)")
+        os._exit(0)  # noqa: SLF001
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+
+    # Build the FastMCP server via the canonical launcher. The closure
+    # captures ``mode_instance`` from the enclosing scope per the
+    # variadic Callable contract (REQ-003 in the launcher cookbook).
+    from mcp_common.server import launch
+
+    def build_server() -> Any:
+        from akosha.mcp import create_app
+
+        return create_app(mode=mode_instance)
+
+    asyncio.run(
+        launch(
+            build_server=build_server,
+            component_name="akosha",
+            secrets_path=Path("~/.config/secrets.env"),
+            settings_path=None,  # akosha has no fixed settings.yaml
+            host=host,
+            port=port,
+            timeout_graceful_shutdown=30,
+        )
     )
 
 

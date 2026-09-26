@@ -259,7 +259,7 @@ class TestCLIIntegration:
     def test_start_server_success_with_config(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Start server should load config and run the app in the requested mode."""
+        """Start server should load config and call the mcp-common launcher."""
         config_path = tmp_path / "config.yaml"
         config_path.write_text("alpha: 1\n")
 
@@ -271,18 +271,22 @@ class TestCLIIntegration:
         monkeypatch.setattr("akosha.modes.get_mode", MagicMock(return_value=mode_instance))
         monkeypatch.setattr("akosha.mcp.create_app", MagicMock(return_value=app_instance))
 
+        async def fake_launch(**kwargs: Any) -> None:
+            # Verify the launcher was called with our closure + canonical kwargs.
+            assert kwargs["component_name"] == "akosha"
+            assert kwargs["host"] == "0.0.0.0"
+            assert kwargs["port"] == 9000
+            assert kwargs["timeout_graceful_shutdown"] == 30
+            # Call the build_server closure to prove it captures mode_instance.
+            assert kwargs["build_server"]() is app_instance
+
+        monkeypatch.setattr("mcp_common.server.launch", fake_launch)
+
         cli_module._start_server(
             host="0.0.0.0", port=9000, mode="standard", config=str(config_path)
         )
 
-        app_instance.run.assert_called_once()
-        run_kwargs = app_instance.run.call_args.kwargs
-        # Required kwargs are passed through; FastMCP may add its own
-        # (e.g. ``uvicorn_config``) — we assert presence, not exact set.
-        assert run_kwargs["transport"] == "streamable-http"
-        assert run_kwargs["host"] == "0.0.0.0"
-        assert run_kwargs["port"] == 9000
-        assert run_kwargs["path"] == "/mcp"
+        app_instance.run.assert_not_called()  # launcher owns run_async now
 
     def test_start_server_invalid_mode_exits(self) -> None:
         """Invalid modes should be rejected before any initialization."""
@@ -321,9 +325,14 @@ class TestCLIIntegration:
         monkeypatch.setattr("akosha.modes.get_mode", MagicMock(return_value=mode_instance))
         monkeypatch.setattr("akosha.mcp.create_app", MagicMock(return_value=app_instance))
 
+        async def fake_launch(**_kwargs: Any) -> None:
+            return None
+
+        monkeypatch.setattr("mcp_common.server.launch", fake_launch)
+
         cli_module._start_server(mode="lite", config=str(config_path))
 
-        app_instance.run.assert_called_once()
+        app_instance.run.assert_not_called()
         assert callable(app)
 
     def test_start_server_value_error_from_mode_factory(

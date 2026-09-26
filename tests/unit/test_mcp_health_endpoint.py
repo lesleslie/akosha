@@ -75,6 +75,11 @@ def test_health_returns_200_when_all_feeds_ok(
     assert body["status"] == "healthy"
     assert body["service"] == APP_NAME
     assert body["version"] == APP_VERSION
+    # Phase 4c (REQ-005): /health emits a "launcher" field naming the
+    # canonical mcp-common launcher version for incident triage.
+    import mcp_common
+
+    assert body["launcher"] == f"mcp_common.server.launcher@{mcp_common.__version__}"
     assert body["checks"]["hot_store"]["ok"] is True
     assert body["checks"]["embeddings"]["ok"] is True
     assert body["checks"]["cold_storage"]["ok"] is True
@@ -103,6 +108,12 @@ def test_health_returns_503_when_no_probe_registered(
     assert response.status_code == 503
     body = response.json()
     assert body["status"] == "degraded"
+    # Phase 4c (REQ-005): launcher field is also emitted on the
+    # degraded path so operators can grep which launcher version was
+    # running when boot failed to register a probe.
+    import mcp_common
+
+    assert body["launcher"] == f"mcp_common.server.launcher@{mcp_common.__version__}"
     assert body["checks"]["probe"]["ok"] is False
     assert "no health probe registered" in body["checks"]["probe"]["error"]
     assert get_health_probe() is None
