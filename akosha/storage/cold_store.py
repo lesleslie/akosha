@@ -43,6 +43,8 @@ class ColdStore:
         # S3 / R2
         region: str | None = None,
         endpoint_url: str | None = None,
+        access_key_id: str | None = None,
+        secret_access_key: str | None = None,
         # GCS
         project: str | None = None,
         credentials_file: Path | None = None,
@@ -64,6 +66,8 @@ class ColdStore:
                 ``~/.akosha/cold-store`` when unset.
             region: S3 region (``s3`` backend only).
             endpoint_url: S3 endpoint URL (use R2's endpoint for Cloudflare R2).
+            access_key_id: S3 access key ID (``s3`` only; required for Cloudflare R2).
+            secret_access_key: S3 secret access key (``s3`` only; required for Cloudflare R2).
             project: GCP project (``gcs`` backend only).
             credentials_file: GCP service-account JSON path (``gcs`` only).
             container: Azure Blob container name (``azure`` backend only).
@@ -76,6 +80,8 @@ class ColdStore:
         self._local_dir: Path = local_dir or Path.home() / ".akosha" / "cold-store"
         self._region = region
         self._endpoint_url = endpoint_url
+        self._access_key_id = access_key_id
+        self._secret_access_key = secret_access_key
         self._project = project
         self._credentials_file = credentials_file
         self._container = container
@@ -310,6 +316,8 @@ class ColdStore:
                 bucket=self.bucket,
                 region=self._region,
                 endpoint_url=self._endpoint_url,
+                access_key_id=self._access_key_id,
+                secret_access_key=self._secret_access_key,
             )
             adapter = S3StorageAdapter(settings=settings)
         elif self._storage_backend == "gcs":
