@@ -319,6 +319,7 @@ class ColdStore:
                 bucket=self.bucket,
                 project=self._project,
                 credentials_file=self._credentials_file,
+                endpoint_url=self._endpoint_url,
             )
             adapter = GCSStorageAdapter(settings=settings)
         elif self._storage_backend == "azure":
