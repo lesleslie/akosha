@@ -745,6 +745,34 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 ingester_running=(kg_running or otel_running),
             )
 
+            # REQ-TSQ-008 (docs/plans/2026-09-26-tool-surface-quality.md):
+            # dedicated ``mcp_tool_call`` feed so operators can distinguish a
+            # degraded tool-call trace feed from a healthy trace feed in
+            # general. ``local_traces_feed`` above aggregates ALL OTel traces
+            # generically; this feed filters by ``task_class == "mcp_tool_call"``
+            # so the four-signal HealthFeedState surface (entities_count,
+            # last_updated_timestamp, cycles_total, errors_total) reflects
+            # the tool-call subset specifically. Note: ``cycles_total`` and
+            # ``errors_total`` are currently the ingester-level counters (the
+            # OTel ingester doesn't yet split cycles by task_class); when that
+            # lands, replace with per-task_class values here.
+            mcp_tool_call_entities_count = 0
+            with suppress(Exception):
+                if isinstance(hot_store, HotStore):
+                    mcp_tool_call_entities_count = len(
+                        await hot_store.query_traces(
+                            task_class="mcp_tool_call", limit=1000
+                        )
+                    )
+            mcp_tool_call_state = HealthFeedState(
+                entities_count=mcp_tool_call_entities_count,
+                last_updated_timestamp=otel_last_poll,
+                cycles_total=otel_cycles,
+                errors_total=otel_errors,
+                last_error_at=otel_last_error,
+                ingester_running=otel_running,
+            )
+
             if signer_feed_state is not None:
                 manifest_dict = signer_feed_state.manifest.as_dict()
                 skills_signer_state = HealthFeedState(
@@ -778,6 +806,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
                     "code_graphs_feed": code_graphs_state,
                     "knowledge_graph_feed": knowledge_graph_state,
                     "local_traces_feed": local_traces_state,
+                    "mcp_tool_call_feed": mcp_tool_call_state,
                     "skills_signer": skills_signer_state,
                 },
                 halflife_seconds=halflife_seconds,

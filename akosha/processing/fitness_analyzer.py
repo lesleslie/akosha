@@ -163,7 +163,12 @@ class FitnessAnalyzer:
             logger.debug("FitnessAnalyzer: no component endpoints registered")
             return
 
-        task_classes = ["code_generation", "reasoning", "swarm", "quick", "documentation"]
+        # REQ-TSQ-003 (docs/plans/2026-09-26-tool-surface-quality.md):
+        # Append "mcp_tool_call" so Mahavishnu's tool-call enrichment layer
+        # produces analyzer-visible per-tool failure_rate + p99 signals.
+        # Paired-PR with the Mahavishnu commit that ships
+        # mahavishnu/mcp/tool_call_{enricher,middleware}.py.
+        task_classes = ["code_generation", "reasoning", "swarm", "quick", "documentation", "mcp_tool_call"]
         all_signals: dict[str, dict[str, FitnessSignal]] = {}
 
         for task_class in task_classes:
