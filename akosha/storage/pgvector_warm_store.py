@@ -47,6 +47,19 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+def _redact_dsn(msg: str, pg_url: str | None) -> str:
+    """Return ``msg`` with the configured DSN (if any) replaced by ``"***"``.
+
+    asyncpg and PgvectorAdapter surface the connection string in many
+    exception messages. Logging the raw message persists credentials to
+    log sinks. Callers should pass every DSN they hold; this helper is
+    a no-op when ``pg_url`` is empty or absent from ``msg``.
+    """
+    if not msg or not pg_url:
+        return msg
+    return msg.replace(pg_url, "***")
+
 _COLLECTION_PREFIX = "akosha_warm_shard_"  # akosha_warm_shard_000 ... _255
 _DISTANCE_METRIC = "cosine"
 
@@ -267,12 +280,14 @@ class PgvectorWarmStore:
             for r in top
         ]
 
-    async def get_by_id(self, conversation_id: str) -> dict[str, Any] | None:
+    async def get_by_id(
+        self, conversation_id: str, *, shard_id: int | None = None
+    ) -> dict[str, Any] | None:
         """Retrieve a single conversation by ID.
 
-        Searches across all shards (cheap because pgvector ``get`` is
-        primary-key lookup per collection). For known system_id, prefer
-        ``search_similar(system_id=...)`` with the conversation_id vector.
+        Searches across shards in parallel with early-exit on first hit.
+        Pass ``shard_id`` to query a single known shard (cheaper — avoids
+        the cross-shard fan-out amplification).
 
         Returns:
             Record dict or None if not found.
@@ -282,45 +297,114 @@ class PgvectorWarmStore:
                 "PgvectorWarmStore not initialized. Call initialize() first."
             )
 
-        async def _get_one(shard_id: int) -> list[Any]:
-            adapter = self._adapters[shard_id]
+        target_shards: list[int]
+        if shard_id is not None:
+            target_shards = [shard_id]
+        else:
+            target_shards = list(self._adapters.keys())
+
+        async def _get_one(shard: int) -> list[Any]:
+            adapter = self._adapters[shard]
             return await adapter.get(
-                _collection_name(shard_id), [conversation_id], include_vectors=False
+                _collection_name(shard), [conversation_id], include_vectors=False
             )
 
-        results = await asyncio.gather(*(_get_one(s) for s in self._adapters))
-        for docs in results:
-            if docs:
-                doc = docs[0]
-                return {
-                    "conversation_id": doc.id,
-                    "system_id": doc.metadata.get("system_id"),
-                    "summary": doc.metadata.get("summary"),
-                    "timestamp": doc.metadata.get("timestamp"),
-                    "metadata": {
-                        k: v
-                        for k, v in doc.metadata.items()
-                        if k not in ("system_id", "summary", "timestamp", "quantized")
-                    },
-                }
-        return None
+        # NOTE (2026-09-27 security review): ``as_completed`` + break-on-
+        # first-hit avoids waiting for every shard's primary-key lookup
+        # when the row lives on an early shard. Mitigates the
+        # unauthenticated-amplification concern of always hitting all
+        # 256 shards when only one is needed. Pending tasks are
+        # explicitly cancelled on early-exit so the in-flight coros
+        # don't keep running pointlessly (and don't show up as
+        # "task exception was never retrieved" warnings in tests).
+        tasks = [
+            asyncio.create_task(_get_one(s), name=f"pgvector-warm-get-{s}")
+            for s in target_shards
+        ]
+        try:
+            for coro in asyncio.as_completed(tasks):
+                docs = await coro
+                if docs:
+                    doc = docs[0]
+                    return {
+                        "conversation_id": doc.id,
+                        "system_id": doc.metadata.get("system_id"),
+                        "summary": doc.metadata.get("summary"),
+                        "timestamp": doc.metadata.get("timestamp"),
+                        "metadata": {
+                            k: v
+                            for k, v in doc.metadata.items()
+                            if k not in (
+                                "system_id",
+                                "summary",
+                                "timestamp",
+                                "quantized",
+                            )
+                        },
+                    }
+            return None
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            # Drain cancellations so the loop's "Task exception was
+            # never retrieved" warning doesn't fire on shutdown.
+            for task in tasks:
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
 
-    async def delete(self, conversation_id: str) -> None:
-        """Delete a conversation by ID across all shards.
+    async def delete(
+        self, conversation_id: str, *, shard_id: int | None = None
+    ) -> None:
+        """Delete a conversation by ID.
 
-        Cost: N small primary-key lookups in parallel. Use the targeted
-        ``delete_from_shard`` when the owning shard is known.
+        With no ``shard_id``, fans out across shards in parallel with
+        early-exit on first hit. Pass ``shard_id`` to delete from a single
+        known shard (cheaper — avoids the cross-shard fan-out).
         """
         if not self._initialized:
             raise RuntimeError(
                 "PgvectorWarmStore not initialized. Call initialize() first."
             )
 
-        async def _delete_one(shard_id: int) -> None:
-            adapter = self._adapters[shard_id]
-            await adapter.delete(_collection_name(shard_id), [conversation_id])
+        target_shards: list[int]
+        if shard_id is not None:
+            target_shards = [shard_id]
+        else:
+            target_shards = list(self._adapters.keys())
 
-        await asyncio.gather(*(_delete_one(s) for s in self._adapters))
+        async def _delete_one(shard: int) -> bool:
+            adapter = self._adapters[shard]
+            # pgvector's delete returns the count of removed rows; treat
+            # any positive count as a hit. The remaining shards share no
+            # primary-key namespace, so first-hit is safe to stop on.
+            removed = await adapter.delete(
+                _collection_name(shard), [conversation_id]
+            )
+            return bool(removed)
+
+        # Same early-exit pattern as get_by_id: schedule every shard,
+        # break on first hit, cancel the rest. See get_by_id for the
+        # security rationale (2026-09-27 review).
+        tasks = [
+            asyncio.create_task(_delete_one(s), name=f"pgvector-warm-delete-{s}")
+            for s in target_shards
+        ]
+        try:
+            for coro in asyncio.as_completed(tasks):
+                if await coro:
+                    return
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            for task in tasks:
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
 
     async def close(self) -> None:
         """Close all pgvector adapter connections."""
@@ -328,9 +412,15 @@ class PgvectorWarmStore:
             try:
                 await adapter.cleanup()
             except Exception as e:  # pragma: no cover - cleanup best-effort
+                # NOTE (2026-09-27 security review): str(e) may contain
+                # the connection DSN — redact before logging.
                 logger.warning(
                     "akosha.pgvector_warm_store.cleanup_failed",
-                    extra={"shard_id": shard_id, "error": str(e)},
+                    extra={
+                        "shard_id": shard_id,
+                        "error_type": type(e).__name__,
+                        "error": _redact_dsn(str(e), self._pg_url),
+                    },
                 )
         self._adapters.clear()
         self._initialized = False

@@ -19,6 +19,23 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+def _safe_exc_message(exc: BaseException, *dsns: str | None) -> str:
+    """Render an exception for logging with any DSNs redacted.
+
+    asyncpg, pydantic, and PgvectorAdapter all include the original
+    connection string in their exception messages. Persisting those to
+    log aggregators leaks credentials. This helper replaces every DSN
+    passed in with ``"***"`` before returning the rendered message —
+    callers should pass every DSN they hold (warm pg_url, env-derived
+    pg_url, etc.).
+    """
+    msg = str(exc) or repr(exc)
+    for dsn in dsns:
+        if dsn:
+            msg = msg.replace(dsn, "***")
+    return msg
+
 #: Default drain period in seconds when stopping the application.
 #: Production callers may tune via ``AKOSHA_STOP_DRAIN_TIMEOUT`` so unit
 #: tests can short-circuit the 30s wait-for-shutdown-event drain.
@@ -202,7 +219,12 @@ class AkoshaApplication:
                 hot_cfg["backend"],
             )
         except Exception as exc:
-            logger.warning("HotStore init failed (%s); search_all_systems will fall back", exc)
+            # NOTE (2026-09-27 security review): asyncpg exceptions may
+            # embed the connection DSN in str(exc) — redact before logging.
+            logger.warning(
+                "HotStore init failed (%s); search_all_systems will fall back",
+                _safe_exc_message(exc, hot_cfg.get("pg_url")),
+            )
             self.hot_store = None
 
         # Warm store for aged-vector queries. ``create_warm_store`` returns
@@ -226,7 +248,13 @@ class AkoshaApplication:
                 warm_cfg["backend"],
             )
         except Exception as exc:
-            logger.warning("WarmStore init failed (%s)", exc)
+            # NOTE (2026-09-27 security review): asyncpg / PgvectorAdapter
+            # exceptions may embed the connection DSN in str(exc) —
+            # redact before logging.
+            logger.warning(
+                "WarmStore init failed (%s)",
+                _safe_exc_message(exc, warm_cfg.get("pg_url")),
+            )
             self.warm_store = None
 
         # WebSocket invocations subscriber (BodaiToolInvocationSubscriber ->
@@ -589,7 +617,12 @@ class AkoshaApplication:
                 await self.warm_store.close()
                 logger.info("WarmStore closed")
             except Exception as exc:
-                logger.warning("WarmStore close failed: %s", exc)
+                # NOTE (2026-09-27 security review): redact DSN from
+                # the rendered exception before persisting to log sinks.
+                logger.warning(
+                    "WarmStore close failed: %s",
+                    _safe_exc_message(exc, getattr(self.warm_store, "_pg_url", None)),
+                )
             self.warm_store = None
 
         logger.info("✅ Akosha application shutdown complete")

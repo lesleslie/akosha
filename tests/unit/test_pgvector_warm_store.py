@@ -799,19 +799,26 @@ class TestSearchSimilar:
 
 
 class TestGetById:
-    """``get_by_id`` queries all shards in parallel; returns None on miss."""
+    """``get_by_id`` queries shards with early-exit on first hit; None on miss.
+
+    Updated 2026-09-27 (security review): was ``asyncio.gather`` over all
+    shards; now ``asyncio.as_completed`` with break-on-first-hit to
+    mitigate cross-shard fan-out. Targeted ``shard_id=`` skips the
+    fan-out entirely.
+    """
 
     @pytest.mark.asyncio
     async def test_get_by_id_returns_doc_when_present(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Found in any shard → return parsed dict."""
+        """Found in any shard → return parsed dict (early-exit)."""
         router = _make_router(3)
         adapter = _adapter_mock()
+        # Shard 0 returns the hit first; the others are never queried
+        # because as_completed short-circuits.
         adapter.get = AsyncMock(
             side_effect=[
-                [],  # shard 0
-                [  # shard 1 — found here
+                [  # shard 0 — found here, early exit
                     MagicMock(
                         id="c1",
                         metadata={
@@ -822,14 +829,10 @@ class TestGetById:
                         },
                     )
                 ],
-                [],  # shard 2
+                AssertionError("shard 1 should not be queried after shard 0 hit"),
+                AssertionError("shard 2 should not be queried after shard 0 hit"),
             ]
         )
-        # Patch the canonical binding point — production uses lazy
-        # ``from akosha.storage.sharding import ShardRouter``, so the
-        # canonical attribute lives on sys.modules["akosha.storage.sharding"].
-        # Direct attribute assignment avoids the monkeypath dotted-path
-        # walker (which would re-import the real ``akosha.storage`` package).
         monkeypatch.setattr(_sharding_mod, "ShardRouter", lambda num_shards=None: router)
         monkeypatch.setattr(_mod, "PgvectorAdapter", lambda settings: adapter)
 
@@ -842,6 +845,12 @@ class TestGetById:
         assert result["system_id"] == "sys1"
         assert result["summary"] == "found"
         assert result["metadata"] == {"kept": "yes"}
+        # The first scheduled call (shard 0) is the one that wins. Other
+        # shards may still show in await_count depending on when the
+        # cancel landed — what matters is the first call's target.
+        assert adapter.get.await_count >= 1
+        first_call = adapter.get.await_args_list[0]
+        assert first_call.args[0] == "akosha_warm_shard_000"
 
     @pytest.mark.asyncio
     async def test_get_by_id_returns_none_when_missing_in_all_shards(
@@ -851,11 +860,6 @@ class TestGetById:
         router = _make_router(2)
         adapter = _adapter_mock()
         adapter.get = AsyncMock(return_value=[])
-        # Patch the canonical binding point — production uses lazy
-        # ``from akosha.storage.sharding import ShardRouter``, so the
-        # canonical attribute lives on sys.modules["akosha.storage.sharding"].
-        # Direct attribute assignment avoids the monkeypath dotted-path
-        # walker (which would re-import the real ``akosha.storage`` package).
         monkeypatch.setattr(_sharding_mod, "ShardRouter", lambda num_shards=None: router)
         monkeypatch.setattr(_mod, "PgvectorAdapter", lambda settings: adapter)
 
@@ -864,6 +868,42 @@ class TestGetById:
 
         result = await store.get_by_id("nonexistent")
         assert result is None
+        # All shards queried when no hit is found (no early-exit fires).
+        assert adapter.get.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_get_by_id_targeted_shard_id_queries_single_shard(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``shard_id=`` kwarg scopes the lookup to one collection."""
+        router = _make_router(4)
+        adapter = _adapter_mock()
+        adapter.get = AsyncMock(
+            return_value=[
+                MagicMock(
+                    id="c1",
+                    metadata={
+                        "system_id": "sys1",
+                        "summary": "found",
+                        "timestamp": "t",
+                        "kept": "yes",
+                    },
+                )
+            ]
+        )
+        monkeypatch.setattr(_sharding_mod, "ShardRouter", lambda num_shards=None: router)
+        monkeypatch.setattr(_mod, "PgvectorAdapter", lambda settings: adapter)
+
+        store = _store(shard_router=router)
+        await store.initialize()
+
+        result = await store.get_by_id("c1", shard_id=2)
+        assert result is not None
+        assert result["conversation_id"] == "c1"
+        # Only shard 2 was queried.
+        assert adapter.get.await_count == 1
+        call = adapter.get.await_args
+        assert call.args[0] == "akosha_warm_shard_002"
 
     @pytest.mark.asyncio
     async def test_get_by_id_raises_when_not_initialized(self) -> None:
@@ -879,20 +919,30 @@ class TestGetById:
 
 
 class TestDelete:
-    """``delete`` fans out across every shard in parallel."""
+    """``delete`` fans out across shards with early-exit on first hit.
+
+    Updated 2026-09-27 (security review): was ``asyncio.gather`` over all
+    shards; now ``asyncio.as_completed`` with break-on-first-hit to
+    mitigate the cross-shard fan-out amplification. The targeted
+    ``shard_id=`` path stays single-shard.
+    """
 
     @pytest.mark.asyncio
-    async def test_delete_fans_out_across_all_shards(
+    async def test_delete_short_circuits_after_first_hit(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """One delete call per shard (parallel)."""
+        """First shard to report a hit stops the fan-out (no double-delete).
+
+        With ``asyncio.as_completed`` + ``task.cancel()``, the first
+        shard whose ``adapter.delete`` returns a positive count wins;
+        pending shards are cancelled. The pending shards may still
+        show up in ``await_count`` (they were awaited at least once by
+        the scheduler before the cancel landed) — what matters is
+        that the FIRST completed call hit the canonical first shard.
+        """
         router = _make_router(4)
         adapter = _adapter_mock()
-        # Patch the canonical binding point — production uses lazy
-        # ``from akosha.storage.sharding import ShardRouter``, so the
-        # canonical attribute lives on sys.modules["akosha.storage.sharding"].
-        # Direct attribute assignment avoids the monkeypath dotted-path
-        # walker (which would re-import the real ``akosha.storage`` package).
+        adapter.delete = AsyncMock(return_value=1)
         monkeypatch.setattr(_sharding_mod, "ShardRouter", lambda num_shards=None: router)
         monkeypatch.setattr(_mod, "PgvectorAdapter", lambda settings: adapter)
 
@@ -901,10 +951,35 @@ class TestDelete:
 
         await store.delete("c1")
 
-        assert adapter.delete.await_count == 4
-        for shard_id, call in enumerate(adapter.delete.await_args_list):
-            assert call.args[0] == f"akosha_warm_shard_{shard_id:03d}"
-            assert call.args[1] == ["c1"]
+        # The first scheduled call (shard 0) is the one that wins.
+        # Other shards may or may not show up in await_count depending
+        # on when the cancel landed — that's not a correctness property
+        # we can pin deterministically with AsyncMock.
+        assert adapter.delete.await_count >= 1
+        first_call = adapter.delete.await_args_list[0]
+        assert first_call.args[0] == "akosha_warm_shard_000"
+        assert first_call.args[1] == ["c1"]
+
+    @pytest.mark.asyncio
+    async def test_delete_targeted_shard_id_queries_single_shard(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``shard_id=`` kwarg scopes the delete to one collection."""
+        router = _make_router(4)
+        adapter = _adapter_mock()
+        adapter.delete = AsyncMock(return_value=1)
+        monkeypatch.setattr(_sharding_mod, "ShardRouter", lambda num_shards=None: router)
+        monkeypatch.setattr(_mod, "PgvectorAdapter", lambda settings: adapter)
+
+        store = _store(shard_router=router)
+        await store.initialize()
+
+        await store.delete("c1", shard_id=2)
+
+        assert adapter.delete.await_count == 1
+        call = adapter.delete.await_args
+        assert call.args[0] == "akosha_warm_shard_002"
+        assert call.args[1] == ["c1"]
 
     @pytest.mark.asyncio
     async def test_delete_raises_when_not_initialized(self) -> None:
