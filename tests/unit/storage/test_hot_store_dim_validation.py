@@ -1,12 +1,13 @@
-"""Tests for HotStore / PgvectorHotStore embedding-dim validation.
+"""Tests for HotStore embedding-dim validation.
 
 Plan: docs/plans/2026-08-29-embedding-dim-fix.md (Phase 2). Pins the
 fail-loud contract: schema dim equals ``embedding_dim``; insert() and
 search_similar() raise ``ValueError`` on dim mismatch.
 
-The pgvector cases live behind ``pytest.importorskip`` so the suite
-stays green on dev installs that lack the optional oneiric pgvector
-adapter; the DuckDB cases are the canonical coverage.
+The legacy ``TestPgvectorHotStoreConfiguredDim`` class was deleted
+2026-09-27 when pgvector migrated from the hot tier to the warm tier.
+Warm-tier pgvector dim-validation coverage now lives in
+``tests/unit/test_pgvector_warm_store.py``.
 """
 
 from __future__ import annotations
@@ -114,32 +115,3 @@ class TestHotStoreSearchRejectsMismatchedQueryDim:
         with pytest.raises(ValueError, match="query dim mismatch"):
             await hs.search_similar([0.1] * 768)
         await hs.close()
-
-
-class TestPgvectorHotStoreConfiguredDim:
-    """Pgvector variant mirrors HotStore's dim contract when deps are present.
-
-    Skipped when the oneiric pgvector adapter isn't installed; the
-    DuckDB cases above cover the same contract for environments without
-    the optional pgvector dependency group.
-    """
-
-    pytest.importorskip("oneiric.adapters.vector.pgvector", reason="pgvector adapter unavailable")
-
-    def test_pgvector_variant_uses_configured_dim(self) -> None:
-        """PgvectorHotStore captures the configured embedding dim."""
-        from akosha.storage.pgvector_hot_store import PgvectorHotStore
-
-        store = PgvectorHotStore(
-            pg_url="postgresql://localhost:5432/akosha",
-            embedding_dimension=768,
-        )
-        assert store._embedding_dimension == 768
-
-    def test_pgvector_variant_resolves_via_contract_when_unset(self) -> None:
-        """Default construction resolves via the dim contract (no service → 384)."""
-        from akosha.storage.pgvector_hot_store import PgvectorHotStore
-
-        store = PgvectorHotStore(pg_url="postgresql://localhost:5432/akosha")
-        # Without an embedding service this falls back to the 384 default.
-        assert store._embedding_dimension == 384

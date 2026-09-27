@@ -289,13 +289,17 @@ class TestReadHotStoreConfig:
     """Pin the branches of ``_read_hot_store_config``."""
 
     def test_missing_pyyaml_returns_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """No PyYAML → duckdb-memory in-memory defaults."""
+        """No PyYAML → duckdb-memory in-memory defaults.
+
+        NOTE (2026-09-27): ``pg_url`` removed from the hot-tier config when
+        pgvector migrated to the warm tier — assert it's NOT in the dict.
+        """
         monkeypatch.setitem(sys.modules, "yaml", None)
         cfg = AkoshaApplication._read_hot_store_config()
         assert cfg["backend"] == "duckdb-memory"
         assert cfg["database_path"] == ":memory:"
         assert cfg["enabled"] is True
-        assert cfg["pg_url"] == ""
+        assert "pg_url" not in cfg
 
     def test_missing_settings_file_returns_defaults(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -314,16 +318,15 @@ class TestReadHotStoreConfig:
         cfg = AkoshaApplication._read_hot_store_config()
         assert cfg["backend"] == "duckdb-memory"
 
-    def test_valid_yaml_pgvector(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        """A valid YAML with pgvector backend is parsed."""
+    def test_valid_yaml_duckdb_ssd(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """A valid YAML with duckdb-ssd backend is parsed (pgvector migrated to warm tier 2026-09-27)."""
         import pathlib
 
         settings_dir = tmp_path / "settings"
         settings_dir.mkdir()
         (settings_dir / "akosha.yaml").write_text(
-            "hot_store:\n  enabled: true\n  backend: pgvector\n"
-            "  pg_url: 'postgresql://localhost:5432/akosha'\n"
-            "  database_path: 'unused'\n"
+            "hot:\n  enabled: true\n  backend: duckdb-ssd\n"
+            "  database_path: '/tmp/akosha-hot.db'\n"
         )
         original_resolve = pathlib.Path.resolve
 
@@ -334,8 +337,11 @@ class TestReadHotStoreConfig:
 
         monkeypatch.setattr(pathlib.Path, "resolve", fake_resolve)
         cfg = AkoshaApplication._read_hot_store_config()
-        assert cfg["backend"] == "pgvector"
-        assert cfg["pg_url"] == "postgresql://localhost:5432/akosha"
+        assert cfg["backend"] == "duckdb-ssd"
+        assert cfg["database_path"] == "/tmp/akosha-hot.db"
+        # pg_url was removed from the hot tier config 2026-09-27 — assert
+        # it's not present (the new factory signature accepts no pg_url).
+        assert "pg_url" not in cfg
 
 
 # ---------------------------------------------------------------------------

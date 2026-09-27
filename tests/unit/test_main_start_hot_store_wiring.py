@@ -1,16 +1,19 @@
 """Test that ``AkoshaApplication.start()`` threads settings into ``create_hot_store``.
 
-Plan: docs/plans/2026-08-29-pgvector-default.md Phase 1.
+Pins the post-2026-09-27 wiring contract: ``_read_hot_store_config()``
+parses the ``hot`` block (or legacy ``hot_store`` alias) from
+``settings/akosha.yaml`` and ``start()`` forwards every key (``backend``,
+``database_path``, ``embedding_dim``) to the factory. The legacy ``pg_url``
+key and the ``backend="pgvector"`` option were removed when pgvector
+migrated to the warm tier.
 
-Pins the wiring contract: ``_read_hot_store_config()`` parses the
-``hot_store`` block from ``settings/akosha.yaml`` and ``start()``
-forwards every key (``backend``, ``pg_url``, ``database_path``) to
-the factory. This test never opens a Postgres connection — it patches
+This test never opens a Postgres connection — it patches
 ``create_hot_store`` so we only assert the call-site plumbing.
 """
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -24,28 +27,24 @@ pytestmark = pytest.mark.unit
 def test_main_start_threads_settings_into_create_hot_store(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``start()`` reads ``hot_store`` from the YAML config and threads it into ``create_hot_store``."""
+    """``start()`` reads ``hot`` from the YAML config and threads it into ``create_hot_store``."""
     captured: dict[str, object] = {}
 
     def fake_create_hot_store(
         *,
         backend: str = "duckdb-memory",
-        pg_url: str = "",
         embedding_dim=None,
         database_path: str = ":memory:",
     ) -> MagicMock:
         captured["backend"] = backend
-        captured["pg_url"] = pg_url
         captured["embedding_dim"] = embedding_dim
         captured["database_path"] = database_path
-        # Return a MagicMock shaped like HotStore so ``await store.initialize()`` is awaitable.
-        mock_store = MagicMock()
-        mock_store.initialize = MagicMock(return_value=mock_store.__await__() if False else None)
 
         # Use an async no-op so ``await self.hot_store.initialize()`` resolves.
         async def _noop_init() -> None:
             return None
 
+        mock_store = MagicMock()
         mock_store.initialize = _noop_init
         return mock_store
 
@@ -56,9 +55,8 @@ def test_main_start_threads_settings_into_create_hot_store(
         "akosha.main.AkoshaApplication._read_hot_store_config",
         lambda self: {
             "enabled": True,
-            "backend": "pgvector",
+            "backend": "duckdb-memory",
             "database_path": ":memory:",
-            "pg_url": "postgresql://akosha_test@localhost:5432/akosha",
         },
     )
 
@@ -82,34 +80,29 @@ def test_main_start_threads_settings_into_create_hot_store(
             # Re-bind to the patched factory for the duration of the test.
             app.hot_store = fake_create_hot_store(
                 backend=hot_cfg["backend"],
-                pg_url=hot_cfg["pg_url"],
                 database_path=hot_cfg["database_path"],
                 embedding_dim=resolved_dim,
             )
             await app.hot_store.initialize()
 
-        import asyncio
-
         asyncio.run(_exercise_hot_store_init())
 
     assert captured == {
-        "backend": "pgvector",
-        "pg_url": "postgresql://akosha_test@localhost:5432/akosha",
+        "backend": "duckdb-memory",
         "database_path": ":memory:",
         "embedding_dim": resolve_embedding_dim(get_embedding_service()),
     }
 
 
 def test_read_hot_store_config_returns_defaults_when_block_missing() -> None:
-    """Missing ``hot_store`` block → safe duckdb-memory defaults (no crash)."""
+    """Missing ``hot`` block → safe duckdb-memory defaults (no crash)."""
     cfg = AkoshaApplication._read_hot_store_config()
 
-    # Settings file exists but the block is absent in this repo's
-    # current YAML (other blocks are present); accept either default
-    # or an override if a future operator lands one.
+    # Settings file exists but the block may be absent in this repo's
+    # current YAML; accept either default or an override if a future
+    # operator lands one.
     assert "backend" in cfg
-    assert "pg_url" in cfg
     assert "database_path" in cfg
-    # Default must be the in-memory DuckDB path — never pgvector when
-    # the block is empty.
-    assert cfg["backend"] in {"duckdb-memory", "pgvector"}
+    # Default must be the in-memory DuckDB path — never pgvector
+    # (pgvector migrated to the warm tier 2026-09-27).
+    assert cfg["backend"] in {"duckdb-memory", "duckdb-ssd"}

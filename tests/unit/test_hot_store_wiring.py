@@ -135,18 +135,27 @@ class TestHotStoreSettings:
     SETTINGS_PATH = Path(__file__).resolve().parents[2] / "settings" / "akosha.yaml"
 
     def test_settings_hot_store_block_validates_against_pydantic_schema(self) -> None:
-        """``akosha.yaml`` must declare ``hot_store`` and ``websocket_invocations_subscriber`` blocks."""
+        """``akosha.yaml`` must declare ``hot`` and ``websocket_invocations_subscriber`` blocks.
+
+        NOTE (2026-09-27): the legacy ``hot_store`` block name was retired
+        when the orphan `hot_store:` block was removed (see the
+        ``# 2026-09-27 cleanup:`` comment in settings/akosha.yaml).
+        The factory reads ``hot`` now. ``pg_url`` and ``retention_minutes``
+        were also removed — pgvector migrated to the warm tier; retention
+        knobs belong at the consumer call site, not in the schema.
+        """
         assert self.SETTINGS_PATH.exists(), f"missing settings file: {self.SETTINGS_PATH}"
 
         with self.SETTINGS_PATH.open() as f:
             data = yaml.safe_load(f) or {}
 
-        hot_store = data.get("hot_store")
-        assert isinstance(hot_store, dict), "hot_store block missing from settings/akosha.yaml"
-        assert "enabled" in hot_store, "hot_store.enabled missing"
-        assert "database_path" in hot_store, "hot_store.database_path missing"
-        assert "retention_minutes" in hot_store, "hot_store.retention_minutes missing"
-        assert hot_store["enabled"] is True
+        hot = data.get("hot") or data.get("hot_store")
+        assert isinstance(hot, dict), "hot block missing from settings/akosha.yaml"
+        assert "backend" in hot, "hot.backend missing"
+        assert hot["backend"] in {"duckdb-memory", "duckdb-ssd"}, (
+            f"hot.backend must be a DuckDB tier (pgvector moved to warm 2026-09-27); got {hot['backend']!r}"
+        )
+        assert "pg_url" not in hot, "hot.pg_url must not be present (pgvector moved to warm 2026-09-27)"
 
         subscriber = data.get("websocket_invocations_subscriber")
         assert isinstance(subscriber, dict), (
