@@ -100,3 +100,46 @@ def test_cold_store_s3_branch_forwards_credentials() -> None:
     assert settings["region"] == "auto"
     assert settings["access_key_id"] == "AKIA_test"
     assert settings["secret_access_key"] == "secret_test"
+
+
+def test_standard_mode_cold_storage_forwards_s3_credentials() -> None:
+    """StandardMode.initialize_cold_storage() must read cold-tier config from
+    self.config (flat dict per BaseMode.__init__) and forward endpoint_url +
+    credentials + region into S3StorageSettings.
+    """
+    import asyncio
+    from unittest.mock import patch
+
+    from akosha.modes.standard import StandardMode
+
+    captured: list[dict] = []
+
+    class FakeS3StorageAdapter:
+        def __init__(self, settings: Any) -> None:
+            captured.append(settings.model_dump())
+
+    # Build the dict explicitly to mirror what load_config() would produce.
+    mode = StandardMode(
+        {
+            "cold_storage_enabled": True,
+            "cold_storage_backend": "s3",
+            "cold_bucket": "akosha-r2",
+            "cold_prefix": "conversations/",
+            "cold_format": "parquet",
+            "cold_region": "auto",
+            "cold_endpoint_url": "https://test.r2.cloudflarestorage.com",
+            "cold_access_key_id": "AKIA_test",
+            "cold_secret_access_key": "secret_test",
+        }
+    )
+
+    with patch("oneiric.adapters.storage.S3StorageAdapter", FakeS3StorageAdapter):
+        asyncio.run(mode.initialize_cold_storage())
+
+    assert len(captured) >= 1, "S3StorageAdapter was never constructed"
+    settings = captured[0]
+    assert settings["bucket"] == "akosha-r2"
+    assert settings["endpoint_url"] == "https://test.r2.cloudflarestorage.com"
+    assert settings["region"] == "auto"
+    assert settings["access_key_id"] == "AKIA_test"
+    assert settings["secret_access_key"] == "secret_test"

@@ -128,6 +128,10 @@ class StandardMode(BaseMode):
             elif backend == "s3":
                 settings = S3StorageSettings(
                     bucket=bucket,
+                    region=self.config.get("cold_region"),
+                    endpoint_url=self.config.get("cold_endpoint_url"),
+                    access_key_id=self.config.get("cold_access_key_id"),
+                    secret_access_key=self.config.get("cold_secret_access_key"),
                 )
                 storage = S3StorageAdapter(settings)
             else:
