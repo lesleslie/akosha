@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 role: canonical
 kind: plan
 date: 2026-09-27
