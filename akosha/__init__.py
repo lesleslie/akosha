@@ -12,7 +12,7 @@ deferred to first attribute access.
 
 from __future__ import annotations
 
-__version__ = "0.17.5"
+__version__ = "0.19.1"
 
 __all__ = ["__version__", "config"]
 

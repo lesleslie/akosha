@@ -47,7 +47,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 APP_NAME: Final = "akosha-mcp"
-APP_VERSION: Final = "0.17.5"
+APP_VERSION: Final = "0.19.1"
 
 
 # ---------------------------------------------------------------------------

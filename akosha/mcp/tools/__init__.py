@@ -40,7 +40,7 @@ from akosha.mcp.tools.skill_tools import register_skill_tools
 logger = logging.getLogger(__name__)
 
 SERVICE_NAME = "akosha"
-SERVICE_VERSION = "0.17.5"
+SERVICE_VERSION = "0.19.1"
 SERVICE_START_TIME = time.time()
 
 DEFAULT_DEPENDENCIES: dict[str, DependencyConfig] = {

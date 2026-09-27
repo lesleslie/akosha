@@ -2,7 +2,7 @@
 
 import typing as t
 
-__version__ = "0.17.5"
+__version__ = "0.19.1"
 
 from akosha.mcp.server import APP_NAME, APP_VERSION, create_app
 
