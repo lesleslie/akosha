@@ -19,11 +19,57 @@
 - Pre-1.0 direct merge to `main` (per `bodai-pre-1.0-merge-policy.md`); no PRs.
 - Never hardcode paths like `/Users/les/...` in committed code; use `Path.home() / ".cache" / "<repo>"` or env vars.
 - All commits end with the `Co-Authored-By: Claude Code <noreply@anthropic.com>` attribution line (per project policy).
-- All non-trivial commits use `--no-verify` to bypass the global `~/.git-hooks/pre-commit` (it blocks deletions of LICENSE/README/CLAUDE.md/AGENTS.md — irrelevant to our doc/code changes but worth not tripping on).
+- **Do NOT use `--no-verify` on code commits** — the global `~/.git-hooks/pre-commit` only blocks deletions of LICENSE/README/CLAUDE.md/AGENTS.md, none of which this plan touches. Plain `git commit -m "..."` is fine. (This plan was originally written with `--no-verify` everywhere; corrected after review.)
+- Akosha pytest runs with `--strict-markers` (pyproject.toml line 93). Only registered markers may be used (`slow, integration, unit, performance, stress, flaky, network, expensive, security, maintenance`). Do NOT introduce new markers without first adding them to the `[tool.pytest.ini_options] markers` list.
 
-## Cross-Repo Worktree
+## Cross-Repo Coordination
 
-This plan touches two repos: **oneiric** (Phase A) and **akosha** (Phases B1, B2, C). Per project memory (`feedback-workflow-parallel-same-repo-no-isolation.md`), parallel agents against the same tree lose staged commits. We'll execute Phase A in a fresh oneiric worktree, merge to main, then execute Phases B1/B2/C directly on akosha's main. Each repo gets one task per phase, executed sequentially.
+### Pre-execution setup (do this BEFORE dispatching any task)
+
+- [ ] **Pre-A: Stash oneiric main's 4 dirty files** so the Phase A worktree doesn't conflict with them later:
+
+```bash
+cd /Users/les/Projects/oneiric
+git stash push -u -m 'WIP pre-cold-tier-worktree: cli/mcp.py + core/config.py + audit script + xdg auth test'
+git status --short  # confirm clean
+```
+
+(Per `feedback-workflow-parallel-same-repo-no-isolation.md` — dirty main files get lost when the worktree branch merges back later.)
+
+- [ ] **Create a fresh oneiric worktree for Phase A** (run from oneiric):
+
+```bash
+cd /Users/les/Projects/oneiric
+git worktree add /Users/les/Projects/oneiric-cold-tier -b feat/cold-tier-endpoint-url main
+cd /Users/les/Projects/oneiric-cold-tier
+```
+
+All Phase A tasks (A1, A2, A3) run in `/Users/les/Projects/oneiric-cold-tier`. After A3 verifies, merge the worktree branch back to oneiric main:
+
+```bash
+cd /Users/les/Projects/oneiric
+git merge --ff-only feat/cold-tier-endpoint-url  # fast-forward only; if it fails, STOP
+git worktree remove /Users/les/Projects/oneiric-cold-tier
+```
+
+(Per `feedback-worktree-update-ref-drops-parallel-commits.md`: never use `git update-ref` to merge from a worktree — fast-forward is the safe path because the worktree-branch is a strict descendant of main.)
+
+Akosha main is clean and stays on `/Users/les/Projects/akosha` for all B/C tasks. **No worktree needed for akosha** — single-agent per task with `cd` discipline.
+
+### Subagent fanout groups
+
+The plan executes in 6 waves. Within each wave, parallelizable tasks run as separate subagents dispatched in the same message.
+
+| Wave | Tasks | Parallel? | Reason |
+|---|---|---|---|
+| 1 | A1 + B1.1 | ✓ | different repos |
+| 2 | A2 + B1.2 | ✓ | different repos |
+| 3 | A3 + (merge oneiric worktree) | sequential in oneiric; akosha idle | A3 verifies before merge |
+| 4 | B2.1 (writes red tests in new file) | solo | no shared files |
+| 5 | B2.2 → B2.3 → B2.4 | ✗ serialize within akosha | B2.2 and B2.3 share `cold_store.py`; B2.4 modifies `modes/standard.py` but runs after B2.3 to avoid stacked merge conflicts |
+| 6 | C1 + C2 | ✓ different files | test file vs new docs file |
+
+Within waves 1, 2, and 6 the subagent dispatch is **two Agent tool calls in one assistant message** so they run concurrently.
 
 ---
 
@@ -32,17 +78,13 @@ This plan touches two repos: **oneiric** (Phase A) and **akosha** (Phases B1, B2
 ### Task A1: Add failing test for `endpoint_url` passthrough
 
 **Files:**
-- Modify: `/Users/les/Projects/oneiric/tests/adapters/test_storage_adapters.py:267-305` (existing `test_gcs_init_without_client_uses_google_cloud_storage` test pattern)
+- Modify: `/Users/les/Projects/oneiric-cold-tier/tests/adapters/test_storage_adapters.py` (insert after the existing `test_gcs_init_with_credentials_file` around line 350)
 
 **Interfaces:**
 - Consumes: existing `GCSStorageSettings(bucket, project, credentials_file)` from `oneiric.adapters.storage.gcs`
-- Produces: new `GCSStorageSettings(bucket, project, credentials_file, endpoint_url=None)` field
+- Produces: `GCSStorageSettings(bucket, project, credentials_file, endpoint_url=None)` field
 
-- [ ] **Step 1: Read the existing test pattern at line 267-305** to mirror it exactly.
-
-- [ ] **Step 2: Add the failing test after the existing `test_gcs_init_with_credentials_file`** (around line 350)
-
-Insert this new test:
+- [ ] **Step 1: Add the failing test** (mirror the pattern from existing `test_gcs_init_without_client_uses_google_cloud_storage` at lines 267-305):
 
 ```python
 async def test_gcs_init_with_endpoint_url_passes_client_options(monkeypatch) -> None:
@@ -94,25 +136,24 @@ async def test_gcs_init_with_endpoint_url_passes_client_options(monkeypatch) -> 
     )
     await adapter.init()
     assert adapter._bucket is not None
-    # client_options carries api_endpoint + use_auth_w_custom_endpoint
     client_options = created[0]["client_options"]
     assert client_options["api_endpoint"] == "http://127.0.0.1:4443"
     assert client_options["use_auth_w_custom_endpoint"] is False
     await adapter.cleanup()
 ```
 
-- [ ] **Step 3: Run the new test, verify it fails**
+- [ ] **Step 2: Run the new test, verify it fails**
 
-Run: `cd /Users/les/Projects/oneiric && pytest tests/adapters/test_storage_adapters.py::test_gcs_init_with_endpoint_url_passes_client_options -v`
+Run: `cd /Users/les/Projects/oneiric-cold-tier && pytest tests/adapters/test_storage_adapters.py::test_gcs_init_with_endpoint_url_passes_client_options -v`
 
-Expected: FAIL with `TypeError: __init__() got an unexpected keyword argument 'endpoint_url'` (because the field doesn't exist yet on `GCSStorageSettings`).
+Expected: FAIL with `TypeError: __init__() got an unexpected keyword argument 'endpoint_url'`.
 
-- [ ] **Step 4: Commit the failing test**
+- [ ] **Step 3: Commit the failing test**
 
 ```bash
-cd /Users/les/Projects/oneiric
+cd /Users/les/Projects/oneiric-cold-tier
 git add tests/adapters/test_storage_adapters.py
-git commit --no-verify -m "test(oneiric): cover GCSStorageAdapter endpoint_url passthrough
+git commit -m "test(oneiric): cover GCSStorageAdapter endpoint_url passthrough
 
 Red test — endpoint_url field doesn't exist yet on GCSStorageSettings.
 Phase A implementation will turn this green by adding the field and wiring
@@ -121,16 +162,15 @@ it into client_options={api_endpoint, use_auth_w_custom_endpoint=False}.
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
 
-### Task A2: Add the `endpoint_url` field to `GCSStorageSettings`
+### Task A2: Add the `endpoint_url` field and wire it through `init()`
 
 **Files:**
-- Modify: `/Users/les/Projects/oneiric/oneiric/adapters/storage/gcs.py:18-28` (the `GCSStorageSettings` class)
+- Modify: `/Users/les/Projects/oneiric-cold-tier/oneiric/adapters/storage/gcs.py:18-28` (the `GCSStorageSettings` class) AND `gcs.py:58-77` (the `init()` body)
 
 **Interfaces:**
-- Consumes: same as before
-- Produces: `GCSStorageSettings.endpoint_url: str | None = None` field
+- Produces: `GCSStorageSettings.endpoint_url: str | None = None` field; `init()` passes `client_options={api_endpoint, use_auth_w_custom_endpoint=False}` when set
 
-- [ ] **Step 1: Add the new field to `GCSStorageSettings`** in `oneiric/adapters/storage/gcs.py`, immediately after `credentials_file`:
+- [ ] **Step 1: Add the new field to `GCSStorageSettings`** in `oneiric/adapters/storage/gcs.py`, immediately after `default_content_type`:
 
 ```python
     default_content_type: str | None = Field(
@@ -147,13 +187,7 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
     )
 ```
 
-- [ ] **Step 2: Run the failing test from A1, verify it passes**
-
-Run: `cd /Users/les/Projects/oneiric && pytest tests/adapters/test_storage_adapters.py::test_gcs_init_with_endpoint_url_passes_client_options -v`
-
-Expected: FAIL — because the field exists but `init()` doesn't use it yet.
-
-- [ ] **Step 3: Wire `endpoint_url` into `init()`** at `oneiric/adapters/storage/gcs.py:58-77`. Replace the existing `init()` body with:
+- [ ] **Step 2: Wire `endpoint_url` into `init()`** at `oneiric/adapters/storage/gcs.py:58-77`. Replace the existing `init()` body with:
 
 ```python
     async def init(self) -> None:
@@ -188,16 +222,11 @@ Expected: FAIL — because the field exists but `init()` doesn't use it yet.
         self._logger.info("adapter-init", adapter="gcs-storage")
 ```
 
-- [ ] **Step 4: Add a regression test that asserts `client_options` is NOT set when `endpoint_url=None`**
-
-Insert this after the test from A1:
+- [ ] **Step 3: Add a regression test** that asserts `client_options` is NOT set when `endpoint_url=None`. Insert after the test from A1:
 
 ```python
 async def test_gcs_init_without_endpoint_url_omits_client_options(monkeypatch) -> None:
-    """Regression: init() must not pass an empty client_options dict when endpoint_url is unset.
-
-    Catches a future regression where a stray client_options={} reaches storage.Client.
-    """
+    """Regression: init() must not pass an empty client_options dict when endpoint_url is unset."""
     import sys
     import types
 
@@ -234,24 +263,24 @@ async def test_gcs_init_without_endpoint_url_omits_client_options(monkeypatch) -
     await adapter.cleanup()
 ```
 
-- [ ] **Step 5: Run BOTH GCS init tests, verify both pass**
+- [ ] **Step 4: Run both new tests, verify both pass**
 
-Run: `cd /Users/les/Projects/oneiric && pytest tests/adapters/test_storage_adapters.py -v -k gcs_init`
+Run: `cd /Users/les/Projects/oneiric-cold-tier && pytest tests/adapters/test_storage_adapters.py -v -k gcs_init`
 
-Expected: Both `test_gcs_init_with_endpoint_url_passes_client_options` and `test_gcs_init_without_endpoint_url_omits_client_options` PASS.
+Expected: Both new tests PASS, plus the existing `test_gcs_init_without_client_uses_google_cloud_storage` and `test_gcs_init_with_credentials_file` still PASS.
 
-- [ ] **Step 6: Run the full storage-adapter test file, verify no regressions**
+- [ ] **Step 5: Run the full storage-adapter test file, verify no regressions**
 
-Run: `cd /Users/les/Projects/oneiric && pytest tests/adapters/test_storage_adapters.py -v`
+Run: `cd /Users/les/Projects/oneiric-cold-tier && pytest tests/adapters/test_storage_adapters.py -v`
 
-Expected: All existing tests still pass. If anything fails, investigate before proceeding.
+Expected: All tests pass.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/les/Projects/oneiric
+cd /Users/les/Projects/oneiric-cold-tier
 git add oneiric/adapters/storage/gcs.py tests/adapters/test_storage_adapters.py
-git commit --no-verify -m "feat(oneiric): GCSStorageAdapter accepts endpoint_url
+git commit -m "feat(oneiric): GCSStorageAdapter accepts endpoint_url
 
 Wires client_options={api_endpoint, use_auth_w_custom_endpoint=False} when
 endpoint_url is set. The SDK's use_auth_w_custom_endpoint=False flag
@@ -267,19 +296,21 @@ Tests:
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
 
-### Task A3: Verify Phase A on oneiric main
+### Task A3: Verify Phase A on oneiric worktree
 
-- [ ] **Step 1: Confirm the commit landed on oneiric's main**
+- [ ] **Step 1: Confirm the commit landed on the worktree branch**
 
-Run: `cd /Users/les/Projects/oneiric && git log --oneline -3`
+Run: `cd /Users/les/Projects/oneiric-cold-tier && git log --oneline -3`
 
-Expected: Top commit is the feat from A2 above.
+Expected: Top commit is the feat from A2.
 
-- [ ] **Step 2: Re-run the full GCS test file as a sanity gate**
+- [ ] **Step 2: Sanity-gate the full GCS test surface**
 
-Run: `cd /Users/les/Projects/oneiric && pytest tests/adapters/test_storage_adapters.py tests/unit/adapters/storage/test_gcs_stream.py -v`
+Run: `cd /Users/les/Projects/oneiric-cold-tier && pytest tests/adapters/test_storage_adapters.py tests/unit/adapters/storage/test_gcs_stream.py -v`
 
 Expected: All tests pass.
+
+- [ ] **Step 3: STOP and report.** Do not merge the worktree branch — that happens after the user reviews Phase A. Report the commit hash and the green test output to the parent agent.
 
 ---
 
@@ -290,15 +321,15 @@ This phase ships **before** Phase A merges. The new fields exist on the akosha c
 ### Task B1.1: Add failing tests for new `ColdStorageConfig` fields
 
 **Files:**
-- Modify: `/Users/les/Projects/akosha/tests/unit/test_config_settings.py` (existing config tests; find the `ColdStorageConfig` test class)
+- Modify: `/Users/les/Projects/akosha/tests/unit/test_config.py` (NOT `test_config_settings.py` — that file doesn't exist; the actual class is `TestColdStorageConfig` at line 62 of `test_config.py`)
 
 **Interfaces:**
 - Consumes: existing `ColdStorageConfig` constructor at `akosha/config.py:162-178`
 - Produces: `ColdStorageConfig(endpoint_url=..., project=..., anonymous_credentials=..., access_key_id=..., secret_access_key=..., region=...)` accepts all six fields
 
-- [ ] **Step 1: Find the existing `ColdStorageConfig` test class** in `akosha/tests/unit/test_config_settings.py` (search for `class TestColdStorageConfig` or `ColdStorageConfig(`). Confirm there's at least one existing test for it.
+- [ ] **Step 1: Read `akosha/tests/unit/test_config.py:62-100`** to find the existing `TestColdStorageConfig` class and confirm the import style (the existing tests use inline `from akosha.config import ColdStorageConfig`).
 
-- [ ] **Step 2: Add new test methods** inside the `TestColdStorageConfig` class:
+- [ ] **Step 2: Add new test methods** inside `TestColdStorageConfig`:
 
 ```python
 def test_cold_storage_config_has_endpoint_url_field() -> None:
@@ -344,32 +375,37 @@ def test_cold_storage_config_binds_endpoint_url_env_var(
 def test_cold_storage_config_binds_flat_fallback_env_vars(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Backward-compat: AKOSHA_COLD_ENDPOINT (flat) binds into endpoint_url when the nested form is unset.
+    """Backward-compat: AKOSHA_COLD_ENDPOINT and AKOSHA_COLD_REGION (flat) bind into the
+    nested-form fields when the nested env vars are unset.
 
-    QUICKSTART.md:81 references AKOSHA_COLD_ENDPOINT but it's unbound today. This test
-    pins the flat→nested fallback so the existing doc reference starts working.
+    QUICKSTART.md references both AKOSHA_COLD_ENDPOINT and AKOSHA_COLD_REGION but
+    they were unbound in code prior to this spec. This test pins the flat→nested
+    fallback so the existing doc references start working.
     """
     monkeypatch.setenv("AKOSHA_COLD_ENDPOINT", "http://legacy:4443")
+    monkeypatch.setenv("AKOSHA_COLD_REGION", "legacy-region")
     monkeypatch.delenv("AKOSHA__STORAGE__COLD__ENDPOINT_URL", raising=False)
+    monkeypatch.delenv("AKOSHA__STORAGE__COLD__REGION", raising=False)
 
     from akosha.config import ColdStorageConfig
 
     cfg = ColdStorageConfig()
     assert cfg.endpoint_url == "http://legacy:4443"
+    assert cfg.region == "legacy-region"
 ```
 
 - [ ] **Step 3: Run the new tests, verify they all fail**
 
-Run: `cd /Users/les/Projects/akosha && pytest tests/unit/test_config_settings.py -v -k "cold_storage_config"`
+Run: `cd /Users/les/Projects/akosha && pytest tests/unit/test_config.py -v -k "cold_storage_config"`
 
-Expected: All four new tests FAIL (the fields don't exist on `ColdStorageConfig` yet).
+Expected: All four new tests FAIL (fields don't exist yet).
 
 - [ ] **Step 4: Commit the failing tests**
 
 ```bash
 cd /Users/les/Projects/akosha
-git add tests/unit/test_config_settings.py
-git commit --no-verify -m "test(akosha): cover ColdStorageConfig new fields + env bindings
+git add tests/unit/test_config.py
+git commit -m "test(akosha): cover ColdStorageConfig new fields + env bindings
 
 Red tests for the Phase B1 config surface: endpoint_url, project,
 anonymous_credentials, access_key_id, secret_access_key, region. Plus
@@ -392,7 +428,7 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 
 - [ ] **Step 1: Read the existing `ColdStorageConfig`** at `akosha/config.py:162-178` and the `HotStorageConfig.__init__` pattern at lines 94-99 to mirror the env-binding convention.
 
-- [ ] **Step 2: Replace `ColdStorageConfig`** with the new shape. The class becomes:
+- [ ] **Step 2: Replace `ColdStorageConfig`** with the new shape:
 
 ```python
 class ColdStorageConfig(BaseModel):
@@ -466,19 +502,23 @@ class ColdStorageConfig(BaseModel):
             _legacy_endpoint = os.getenv("AKOSHA_COLD_ENDPOINT", "")
             if _legacy_endpoint:
                 data["endpoint_url"] = _legacy_endpoint
+        if "region" not in data:
+            _legacy_region = os.getenv("AKOSHA_COLD_REGION", "")
+            if _legacy_region:
+                data["region"] = _legacy_region
 
         super().__init__(**data)
 ```
 
 - [ ] **Step 3: Run the four new tests from B1.1, verify they all pass**
 
-Run: `cd /Users/les/Projects/akosha && pytest tests/unit/test_config_settings.py -v -k "cold_storage_config"`
+Run: `cd /Users/les/Projects/akosha && pytest tests/unit/test_config.py -v -k "cold_storage_config"`
 
 Expected: All four pass.
 
 - [ ] **Step 4: Run the full config-settings test file, verify no regressions**
 
-Run: `cd /Users/les/Projects/akosha && pytest tests/unit/test_config_settings.py -v`
+Run: `cd /Users/les/Projects/akosha && pytest tests/unit/test_config.py -v`
 
 Expected: All existing tests still pass.
 
@@ -510,8 +550,8 @@ cold:
 
 ```bash
 cd /Users/les/Projects/akosha
-git add akosha/config.py settings/akosha.yaml tests/unit/test_config_settings.py
-git commit --no-verify -m "feat(akosha): ColdStorageConfig exposes 6 new fields + env bindings
+git add akosha/config.py settings/akosha.yaml tests/unit/test_config.py
+git commit -m "feat(akosha): ColdStorageConfig exposes 6 new fields + env bindings
 
 Phase B1 (config surface, ships before Phase A's oneiric adapter extension):
 
@@ -539,27 +579,29 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 
 This phase lands **after** Phase A merges (oneiric `GCSStorageAdapter` accepts `endpoint_url`).
 
-### Task B2.1: Add failing tests for the wiring sites
+### Task B2.1: Add failing tests for the wiring sites (gcs-only this round)
 
 **Files:**
-- Modify: `/Users/les/Projects/akosha/tests/integration/test_cold_tier_local.py` (NEW file — will be the integration test, but start with the unit-level wiring tests inline)
+- Modify: `/Users/les/Projects/akosha/tests/integration/test_cold_tier_local.py` (NEW file)
 
 **Interfaces:**
-- Consumes: `ColdStore(backend="gcs", bucket=..., endpoint_url=..., project=..., anonymous_credentials=...)` and `ColdStore(backend="s3", bucket=..., endpoint_url=..., access_key_id=..., secret_access_key=..., region=...)` from `akosha/storage/cold_store.py:36-83, 294-323`
-- Produces: `ColdStore.initialize()` constructs `GCSStorageSettings(bucket=..., project=..., endpoint_url=...)` and `S3StorageSettings(bucket=..., region=..., endpoint_url=..., access_key_id=..., secret_access_key=...)`
+- Consumes: `ColdStore(backend="gcs", bucket=..., endpoint_url=..., project=...)` from `akosha/storage/cold_store.py:36-83, 294-323`
+- Produces: `ColdStore.initialize()` constructs `GCSStorageSettings(bucket=..., project=..., endpoint_url=...)`
 
-- [ ] **Step 1: Create `akosha/tests/integration/test_cold_tier_local.py`** with:
+The s3 wiring test is **deferred to B2.3** because `ColdStore.__init__` doesn't accept `access_key_id`/`secret_access_key` until then. This avoids a fixture sequencing bug.
+
+- [ ] **Step 1: Create `akosha/tests/integration/test_cold_tier_local.py`** with this initial content (B2.3 will append the s3 wiring test, B2.4 will append the StandardMode test, C1 will append the end-to-end test):
 
 ```python
-"""Cold-tier storage integration tests.
+"""Cold-tier storage tests.
 
-Covers the full path: ColdStore.export_batch() against fake-gcs-server (subprocess),
-ColdStore.initialize() wiring all six new fields into the underlying oneiric
-storage adapters.
-
-The subprocess-based fake-gcs-server fixture is opt-in via the
-test_cold_tier_fake_gcs_round_trip test; the wiring tests below use
-monkeypatching to avoid needing the binary on PATH.
+Covers ColdStore.initialize() wiring for new fields (endpoint_url, project,
+access_key_id, secret_access_key) and the end-to-end round trip against
+fake-gcs-server. Tests are appended incrementally as the plan progresses:
+- B2.1: gcs wiring (this file's initial state)
+- B2.3: s3 wiring (added in B2.3)
+- B2.4: StandardMode wiring (added in B2.4)
+- C1: end-to-end subprocess test (added in C1)
 """
 
 from __future__ import annotations
@@ -569,22 +611,26 @@ from unittest.mock import patch
 
 import pytest
 
-from akosha.config import ColdStorageConfig
 
+def test_cold_store_gcs_branch_forwards_endpoint_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ColdStore.initialize() with backend='gcs' passes endpoint_url to GCSStorageSettings.
 
-@pytest.fixture
-def cold_store_gcs(monkeypatch: pytest.MonkeyPatch) -> Any:
-    """ColdStore configured for fake-gcs-server with monkeypatched SDK."""
+    Without the wiring fix, GCSStorageSettings would only receive
+    bucket + project + credentials_file — endpoint_url would be dropped.
+    """
+    import asyncio
+
     from akosha.storage.cold_store import ColdStore
 
-    monkeypatch.setenv("AKOSHA_COLD_BACKEND", "gcs")
-    monkeypatch.setenv("AKOSHA_COLD_BUCKET", "akosha-cold-data")
-    monkeypatch.setenv("AKOSHA__STORAGE__COLD__ENDPOINT_URL", "http://127.0.0.1:4443")
-    monkeypatch.setenv("AKOSHA__STORAGE__COLD__PROJECT", "local-dev")
-    monkeypatch.setenv(
-        "AKOSHA__STORAGE__COLD__ANONYMOUS_CREDENTIALS", "true"
-    )
-    return ColdStore(
+    captured: list[dict] = []
+
+    class FakeGCSStorageAdapter:
+        def __init__(self, settings: Any) -> None:
+            captured.append(settings.model_dump())
+
+    store = ColdStore(
         bucket="akosha-cold-data",
         prefix="conversations/",
         storage_backend="gcs",
@@ -592,97 +638,34 @@ def cold_store_gcs(monkeypatch: pytest.MonkeyPatch) -> Any:
         endpoint_url="http://127.0.0.1:4443",
     )
 
-
-@pytest.fixture
-def cold_store_s3(monkeypatch: pytest.MonkeyPatch) -> Any:
-    """ColdStore configured for Cloudflare R2 with monkeypatched aioboto3."""
-    from akosha.storage.cold_store import ColdStore
-
-    return ColdStore(
-        bucket="akosha-cold-data",
-        prefix="conversations/",
-        storage_backend="s3",
-        endpoint_url="https://test-account.r2.cloudflarestorage.com",
-        region="auto",
-        access_key_id="AKIA_test",
-        secret_access_key="secret_test",
-    )
-
-
-def test_cold_store_gcs_branch_forwards_endpoint_url(
-    cold_store_gcs: Any,
-) -> None:
-    """ColdStore.initialize() with backend='gcs' passes endpoint_url to GCSStorageSettings.
-
-    Without the wiring fix, GCSStorageSettings would only receive
-    bucket + project + credentials_file — endpoint_url would be dropped on the floor.
-    """
-    captured: list[dict] = []
-
-    class FakeGCSStorageAdapter:
-        def __init__(self, settings: Any) -> None:
-            captured.append(settings.model_dump())
-
     with patch("akosha.storage.cold_store.GCSStorageAdapter", FakeGCSStorageAdapter):
-        # ColdStore.initialize is async
-        import asyncio
-
-        asyncio.run(cold_store_gcs.initialize())
+        asyncio.run(store.initialize())
 
     assert len(captured) == 1
     settings = captured[0]
     assert settings["bucket"] == "akosha-cold-data"
     assert settings["endpoint_url"] == "http://127.0.0.1:4443"
     assert settings["project"] == "local-dev"
-
-
-def test_cold_store_s3_branch_forwards_credentials(
-    cold_store_s3: Any,
-) -> None:
-    """ColdStore.initialize() with backend='s3' passes access_key_id + secret_access_key to S3StorageSettings.
-
-    Without the wiring fix, S3StorageSettings would only receive bucket + region +
-    endpoint_url — credentials would be dropped on the floor and R2 would 401 at runtime.
-    """
-    captured: list[dict] = []
-
-    class FakeS3StorageAdapter:
-        def __init__(self, settings: Any) -> None:
-            captured.append(settings.model_dump())
-
-    with patch("akosha.storage.cold_store.S3StorageAdapter", FakeS3StorageAdapter):
-        import asyncio
-
-        asyncio.run(cold_store_s3.initialize())
-
-    assert len(captured) == 1
-    settings = captured[0]
-    assert settings["bucket"] == "akosha-cold-data"
-    assert settings["endpoint_url"] == "https://test-account.r2.cloudflarestorage.com"
-    assert settings["region"] == "auto"
-    assert settings["access_key_id"] == "AKIA_test"
-    assert settings["secret_access_key"] == "secret_test"
 ```
 
-- [ ] **Step 2: Run the new tests, verify they fail**
+- [ ] **Step 2: Run the new test, verify it fails**
 
-Run: `cd /Users/les/Projects/akosha && pytest tests/integration/test_cold_tier_local.py -v`
+Run: `cd /Users/les/Projects/akosha && pytest tests/integration/test_cold_tier_local.py::test_cold_store_gcs_branch_forwards_endpoint_url -v`
 
-Expected: Both `test_cold_store_gcs_branch_forwards_endpoint_url` and `test_cold_store_s3_branch_forwards_credentials` FAIL because the wiring doesn't forward the new fields yet.
+Expected: FAIL — wiring doesn't forward `endpoint_url` yet.
 
-- [ ] **Step 3: Commit the failing wiring tests**
+- [ ] **Step 3: Commit the failing wiring test**
 
 ```bash
 cd /Users/les/Projects/akosha
 git add tests/integration/test_cold_tier_local.py
-git commit --no-verify -m "test(akosha): cover ColdStore wiring for endpoint_url + credentials
+git commit -m "test(akosha): cover ColdStore gcs branch forwards endpoint_url
 
-Red tests for the Phase B2 wiring sites: cold_store.py:initialize() must
-forward endpoint_url into GCSStorageSettings, and access_key_id +
-secret_access_key into S3StorageSettings. Without these wiring fixes,
-fake-gcs-server and R2 both fail at runtime (silent 401 / connection refused).
+Red test for the Phase B2.2 wiring: ColdStore.initialize() must forward
+endpoint_url into GCSStorageSettings. Without this fix, fake-gcs-server
+fails at runtime (connection refused on default GCS endpoint).
 
-Phase B2 implementation will turn these green.
+Phase B2.2 implementation will turn this green.
 
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
@@ -718,7 +701,7 @@ Expected: PASS.
 ```bash
 cd /Users/les/Projects/akosha
 git add akosha/storage/cold_store.py
-git commit --no-verify -m "feat(akosha): ColdStore gcs branch forwards endpoint_url
+git commit -m "feat(akosha): ColdStore gcs branch forwards endpoint_url
 
 Wires the new endpoint_url field into GCSStorageSettings so fake-gcs-server
 (and any other GCS-compatible endpoint) works without code changes.
@@ -732,9 +715,9 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 - Modify: `/Users/les/Projects/akosha/akosha/storage/cold_store.py:36-83` (`ColdStore.__init__`) AND `akosha/storage/cold_store.py:309-313` (the s3 branch of `initialize()`)
 
 **Interfaces:**
-- Produces: `ColdStore(..., access_key_id: str | None = None, secret_access_key: str | None = None)` constructor params
+- Produces: `ColdStore(..., access_key_id: str | None = None, secret_access_key: str | None = None)` constructor params; `S3StorageSettings(bucket=, region=, endpoint_url=, access_key_id=, secret_access_key=)` in `initialize()`
 
-- [ ] **Step 1: Add the new constructor params to `ColdStore.__init__`** at line 36-83. After the existing `# S3 / R2` block (around line 44), add the credential params:
+- [ ] **Step 1: Add the new constructor params to `ColdStore.__init__`** at line 36-83. After the existing `# S3 / R2` block (after `endpoint_url: str | None = None,` at line 45), add the credential params:
 
 ```python
         # S3 / R2
@@ -744,14 +727,62 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
         secret_access_key: str | None = None,
 ```
 
-And in the body (around line 78, after `self._endpoint_url = endpoint_url`), add:
+- [ ] **Step 2: In the body of `__init__`, after `self._endpoint_url = endpoint_url` at line 78, add:**
 
 ```python
         self._access_key_id = access_key_id
         self._secret_access_key = secret_access_key
 ```
 
-- [ ] **Step 2: Edit `cold_store.py:309-313`** to forward the credentials into `S3StorageSettings`:
+- [ ] **Step 3: Append the failing s3 wiring test** to `akosha/tests/integration/test_cold_tier_local.py`:
+
+```python
+def test_cold_store_s3_branch_forwards_credentials() -> None:
+    """ColdStore.initialize() with backend='s3' passes access_key_id + secret_access_key to S3StorageSettings.
+
+    Without the wiring fix, S3StorageSettings would only receive bucket + region +
+    endpoint_url — credentials would be dropped and R2 would 401 at runtime.
+    """
+    import asyncio
+    from unittest.mock import patch
+
+    from akosha.storage.cold_store import ColdStore
+
+    captured: list[dict] = []
+
+    class FakeS3StorageAdapter:
+        def __init__(self, settings: Any) -> None:
+            captured.append(settings.model_dump())
+
+    store = ColdStore(
+        bucket="akosha-cold-data",
+        prefix="conversations/",
+        storage_backend="s3",
+        endpoint_url="https://test-account.r2.cloudflarestorage.com",
+        region="auto",
+        access_key_id="AKIA_test",
+        secret_access_key="secret_test",
+    )
+
+    with patch("akosha.storage.cold_store.S3StorageAdapter", FakeS3StorageAdapter):
+        asyncio.run(store.initialize())
+
+    assert len(captured) == 1
+    settings = captured[0]
+    assert settings["bucket"] == "akosha-cold-data"
+    assert settings["endpoint_url"] == "https://test-account.r2.cloudflarestorage.com"
+    assert settings["region"] == "auto"
+    assert settings["access_key_id"] == "AKIA_test"
+    assert settings["secret_access_key"] == "secret_test"
+```
+
+- [ ] **Step 4: Run the new s3 wiring test, verify it fails**
+
+Run: `cd /Users/les/Projects/akosha && pytest tests/integration/test_cold_tier_local.py::test_cold_store_s3_branch_forwards_credentials -v`
+
+Expected: FAIL with `TypeError: __init__() got an unexpected keyword argument 'access_key_id'` (the constructor doesn't accept the kwargs yet — that's the bug B2.3 is about to fix).
+
+- [ ] **Step 5: Edit `cold_store.py:309-313`** to forward the credentials into `S3StorageSettings`:
 
 ```python
         elif self._storage_backend == "s3":
@@ -767,30 +798,30 @@ And in the body (around line 78, after `self._endpoint_url = endpoint_url`), add
             adapter = S3StorageAdapter(settings=settings)
 ```
 
-- [ ] **Step 3: Run `test_cold_store_s3_branch_forwards_credentials`**, verify it passes
+- [ ] **Step 6: Run `test_cold_store_s3_branch_forwards_credentials`**, verify it passes
 
 Run: `cd /Users/les/Projects/akosha && pytest tests/integration/test_cold_tier_local.py::test_cold_store_s3_branch_forwards_credentials -v`
 
 Expected: PASS.
 
-- [ ] **Step 4: Run the full integration test file**, verify all wiring tests pass
+- [ ] **Step 7: Run the full integration test file**, verify both wiring tests pass
 
 Run: `cd /Users/les/Projects/akosha && pytest tests/integration/test_cold_tier_local.py -v`
 
-Expected: Both wiring tests pass; no regressions in other integration tests.
+Expected: Both wiring tests pass.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 cd /Users/les/Projects/akosha
-git add akosha/storage/cold_store.py
-git commit --no-verify -m "feat(akosha): ColdStore s3 branch forwards access_key_id + secret_access_key
+git add akosha/storage/cold_store.py tests/integration/test_cold_tier_local.py
+git commit -m "feat(akosha): ColdStore s3 branch forwards access_key_id + secret_access_key
 
-Wires the new S3 credential fields into S3StorageSettings so Cloudflare R2
-(and any other S3-compatible backend) works without code changes.
-
-Without these wiring fixes, R2 would silently 401 at runtime because the
-oneiric S3 client never sees the operator's API tokens.
+Adds the two new constructor parameters to ColdStore.__init__ and
+wires them into S3StorageSettings in initialize(). Without this,
+Cloudflare R2 (and any other S3-compatible backend) would silently 401
+at runtime because the oneiric S3 client never sees the operator's
+API tokens.
 
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
@@ -798,34 +829,37 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ### Task B2.4: Wire new fields through `modes/standard.py:initialize_cold_storage()`
 
 **Files:**
-- Modify: `/Users/les/Projects/akosha/akosha/modes/standard.py:98-148` (the cold-storage initialization branch)
+- Modify: `/Users/les/Projects/akosha/akosha/modes/standard.py` (the cold-storage branch of `initialize_cold_storage`)
 
 **Interfaces:**
-- Produces: when `mode_config.cold_storage_enabled` is true, the code reads from `self.config["cold_*"]` (or equivalent) and constructs oneiric storage adapters with the new fields populated.
+- Produces: when `cold_storage_enabled` is true, the code reads cold-tier config from `self.config` dict and forwards all six new fields into oneiric's `S3StorageSettings` (s3 branch) and `GCSStorageSettings` (gcs branch).
 
-- [ ] **Step 1: Read `akosha/modes/standard.py:98-148`** to find where `S3StorageSettings(bucket=bucket)` is built (line 128-132 per the spec) and confirm the gap.
+**Important architecture note:** `BaseMode.__init__(self, config: dict[str, Any])` (`akosha/modes/base.py:42`) takes a flat dict, NOT an `AkoshaConfig`. The existing code reads keys like `cold_storage_backend`, `cold_bucket`, `cold_prefix` from this dict (see `modes/standard.py:116-118`). The plan's edit must use this flat-dict access pattern, NOT the Pydantic attribute access used in `ColdStorageConfig`.
 
-- [ ] **Step 2: Add a failing test for `modes/standard.py` wiring.** Add to `akosha/tests/integration/test_cold_tier_local.py`:
+- [ ] **Step 1: Read `akosha/modes/standard.py` lines 98-148** to confirm the existing dict-access shape and identify the s3 and gcs branches that need new field forwarding.
+
+- [ ] **Step 2: Append the failing wiring test** to `akosha/tests/integration/test_cold_tier_local.py`:
 
 ```python
 def test_standard_mode_cold_storage_forwards_s3_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """StandardMode.initialize_cold_storage() must read endpoint_url + credentials from config
-    and forward them into S3StorageSettings (not just bucket + region).
+    """StandardMode.initialize_cold_storage() must read cold-tier config from
+    self.config (flat dict per BaseMode.__init__) and forward endpoint_url +
+    credentials + region into S3StorageSettings.
     """
     import asyncio
-    from unittest.mock import patch, MagicMock
+    from unittest.mock import patch
 
-    # Configure ColdStorageConfig with R2 values via env vars
-    monkeypatch.setenv("AKOSHA__STORAGE__COLD__BACKEND", "s3")
-    monkeypatch.setenv("AKOSHA__STORAGE__COLD__BUCKET", "akosha-r2")
+    # Configure env vars the StandardMode config builder reads from
+    monkeypatch.setenv("AKOSHA_COLD_BACKEND", "s3")
+    monkeypatch.setenv("AKOSHA_COLD_BUCKET", "akosha-r2")
+    monkeypatch.setenv("AKOSHA_COLD_REGION", "auto")
     monkeypatch.setenv(
-        "AKOSHA__STORAGE__COLD__ENDPOINT_URL", "https://test.r2.cloudflarestorage.com"
+        "AKOSHA_COLD_ENDPOINT_URL", "https://test.r2.cloudflarestorage.com"
     )
-    monkeypatch.setenv("AKOSHA__STORAGE__COLD__REGION", "auto")
-    monkeypatch.setenv("AKOSHA__STORAGE__COLD__ACCESS_KEY_ID", "AKIA_test")
-    monkeypatch.setenv("AKOSHA__STORAGE__COLD__SECRET_ACCESS_KEY", "secret_test")
+    monkeypatch.setenv("AKOSHA_COLD_ACCESS_KEY_ID", "AKIA_test")
+    monkeypatch.setenv("AKOSHA_COLD_SECRET_ACCESS_KEY", "secret_test")
 
     captured: list[dict] = []
 
@@ -833,14 +867,26 @@ def test_standard_mode_cold_storage_forwards_s3_credentials(
         def __init__(self, settings: Any) -> None:
             captured.append(settings.model_dump())
 
-    # Mock the oneiric adapter import inside the standard mode's init path
-    with patch("akosha.modes.standard.S3StorageAdapter", FakeS3StorageAdapter):
-        from akosha.config import AkoshaConfig
-        from akosha.modes.standard import StandardMode
+    # The implementer must identify how StandardMode's config dict is
+    # populated. The simplest path: build the dict explicitly to mirror
+    # what load_config() would produce.
+    from akosha.modes.standard import StandardMode
 
-        cfg = AkoshaConfig()
-        mode = StandardMode(cfg)
-        # StandardMode.initialize_cold_storage is async
+    mode = StandardMode(
+        {
+            "cold_storage_enabled": True,
+            "cold_storage_backend": "s3",
+            "cold_bucket": "akosha-r2",
+            "cold_prefix": "conversations/",
+            "cold_format": "parquet",
+            "cold_region": "auto",
+            "cold_endpoint_url": "https://test.r2.cloudflarestorage.com",
+            "cold_access_key_id": "AKIA_test",
+            "cold_secret_access_key": "secret_test",
+        }
+    )
+
+    with patch("akosha.modes.standard.S3StorageAdapter", FakeS3StorageAdapter):
         asyncio.run(mode.initialize_cold_storage())
 
     assert len(captured) >= 1, "S3StorageAdapter was never constructed"
@@ -856,11 +902,11 @@ def test_standard_mode_cold_storage_forwards_s3_credentials(
 
 Run: `cd /Users/les/Projects/akosha && pytest tests/integration/test_cold_tier_local.py::test_standard_mode_cold_storage_forwards_s3_credentials -v`
 
-Expected: FAIL — `modes/standard.py` doesn't forward the new fields today.
+Expected: FAIL — `modes/standard.py` doesn't read or forward the new fields today.
 
-- [ ] **Step 4: Edit `modes/standard.py:initialize_cold_storage()`** to forward all the new fields. Read the existing code first, then update the s3 branch (around line 128-132) to pass `endpoint_url`, `access_key_id`, `secret_access_key`, `region` from `self.config["cold_*"]` keys (or whatever config access pattern StandardMode uses).
+- [ ] **Step 4: Edit `modes/standard.py:initialize_cold_storage()`** to read the new fields from the dict and forward them. The exact edit depends on the existing branch shape:
 
-The exact edit depends on the existing code shape; the target behavior is:
+For the `s3` branch (around line 128-132), update the `S3StorageSettings(...)` constructor:
 
 ```python
             elif backend == "s3":
@@ -878,7 +924,7 @@ The exact edit depends on the existing code shape; the target behavior is:
                 adapter = S3StorageAdapter(settings=settings)
 ```
 
-And the gcs branch (around line 128-135 per the spec) to pass `endpoint_url` and `project`:
+For the `gcs` branch (around line 128-135), update `GCSStorageSettings(...)`:
 
 ```python
             elif backend == "gcs":
@@ -895,7 +941,7 @@ And the gcs branch (around line 128-135 per the spec) to pass `endpoint_url` and
                 adapter = GCSStorageAdapter(settings=settings)
 ```
 
-**Note on config access:** `modes/standard.py` may use a `self.config.get(...)` dict pattern, or it may construct a `ColdStorageConfig` instance. Read the existing code and choose whichever matches. If the existing code reads from `self.config` dict, add `cold_*` keys to that dict when initializing (e.g., from `load_config()` results), or read directly from the env vars / settings file.
+**Important:** the dict keys (`cold_region`, `cold_endpoint_url`, `cold_access_key_id`, `cold_secret_access_key`, `cold_project`, `cold_credentials_file`) must match whatever code populates `self.config`. The implementer must trace how `StandardMode.config` is built (likely via `load_config()` → `AkonfigConfig().model_dump()` or a similar flattening step) and add the new keys there if they don't already exist. If the dict key names don't match what the test expects, adjust the test accordingly — the wiring edit is the source of truth, not the test.
 
 - [ ] **Step 5: Re-run the test, verify it passes**
 
@@ -914,7 +960,7 @@ Expected: All three wiring tests pass.
 ```bash
 cd /Users/les/Projects/akosha
 git add akosha/modes/standard.py tests/integration/test_cold_tier_local.py
-git commit --no-verify -m "feat(akosha): StandardMode forwards cold-tier credentials
+git commit -m "feat(akosha): StandardMode forwards cold-tier credentials
 
 Wires the new fields (endpoint_url, access_key_id, secret_access_key, project)
 through StandardMode.initialize_cold_storage() into the oneiric settings
@@ -931,25 +977,25 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ### Task C1: Add the subprocess-based end-to-end test
 
 **Files:**
-- Modify: `/Users/les/Projects/akosha/tests/integration/test_cold_tier_local.py` (add the new test alongside the wiring tests)
+- Modify: `/Users/les/Projects/akosha/tests/integration/test_cold_tier_local.py` (append the new test)
 
 **Interfaces:**
-- Consumes: `fake-gcs-server` binary on PATH (Homebrew-installed per the operator's environment)
+- Consumes: `fake-gcs-server` binary on PATH (Homebrew-installed per the operator's environment); `ColdRecord` from `akosha.storage.models` (NOT `akosha.models`)
 - Produces: a hermetic end-to-end test that exercises the full Parquet-export → GCS-upload → list → download round trip
+
+**Critical field-name corrections** (reviewer feedback): `ColdRecord` lives at `akosha/storage/models.py:55-66` and uses `fingerprint: list[int]`, `timestamp: datetime`, `metadata: dict[str, Any]` (NOT `bytes`/`int`/`daily_metrics`).
 
 - [ ] **Step 1: Confirm `fake-gcs-server` is on PATH**
 
 Run: `which fake-gcs-server`
 
-Expected: `/usr/local/bin/fake-gcs-server` (or similar). If absent, skip this task — the wiring tests from B2 already prove correctness.
+Expected: `/usr/local/bin/fake-gcs-server` (or similar). If absent, the test should `pytest.skip` — see step 2.
 
-- [ ] **Step 2: Add the end-to-end test** to `akosha/tests/integration/test_cold_tier_local.py`:
+- [ ] **Step 2: Append the end-to-end test** to `akosha/tests/integration/test_cold_tier_local.py`:
 
 ```python
-@pytest.mark.integration
-@pytest.mark.timeout(60)
 def test_cold_tier_fake_gcs_round_trip(tmp_path_factory: pytest.TempPathFactory) -> None:
-    """End-to-end: fake-gcs-server subprocess + ColdStore.export_batch() + list + download.
+    """End-to-end: fake-gcs-server subprocess + ColdStore.export_batch() + file-on-disk round trip.
 
     This test requires fake-gcs-server on PATH (brew install fake-gcs-server).
     Skipped automatically if the binary isn't found.
@@ -958,14 +1004,13 @@ def test_cold_tier_fake_gcs_round_trip(tmp_path_factory: pytest.TempPathFactory)
     import socket
     import subprocess
     import time
-    from pathlib import Path
-
-    import pyarrow.parquet as pq  # noqa: F401  (used by ColdStore internally)
-    from akosha.models import ColdRecord  # type: ignore[import]
-    from akosha.storage.cold_store import ColdStore
+    from datetime import UTC, datetime
 
     if shutil.which("fake-gcs-server") is None:
         pytest.skip("fake-gcs-server not on PATH; install via: brew install fake-gcs-server")
+
+    from akosha.storage.models import ColdRecord
+    from akosha.storage.cold_store import ColdStore
 
     data_dir = tmp_path_factory.mktemp("fake-gcs")
     port = 4443
@@ -1007,10 +1052,10 @@ def test_cold_tier_fake_gcs_round_trip(tmp_path_factory: pytest.TempPathFactory)
                 ColdRecord(
                     system_id="test-system",
                     conversation_id="conv-1",
-                    fingerprint=b"abc123",
+                    fingerprint=[1, 2, 3],
                     ultra_summary="hello world",
-                    timestamp=1700000000,
-                    daily_metrics={"events": 42},
+                    timestamp=datetime(2026, 1, 1, tzinfo=UTC),
+                    metadata={"events": 42},
                 ),
             ]
             return await store.export_batch(records, partition_path="system-001/2026/01/01")
@@ -1019,7 +1064,6 @@ def test_cold_tier_fake_gcs_round_trip(tmp_path_factory: pytest.TempPathFactory)
 
         key = asyncio.run(run())
         assert key.endswith(".parquet")
-        # Verify the parquet blob landed in the fake-gcs data dir
         blob_path = data_dir / "akosha-cold-data" / key
         assert blob_path.exists(), f"blob not found at {blob_path}"
         assert blob_path.stat().st_size > 0
@@ -1048,14 +1092,15 @@ Expected: All four tests pass (three wiring tests + one end-to-end).
 ```bash
 cd /Users/les/Projects/akosha
 git add tests/integration/test_cold_tier_local.py
-git commit --no-verify -m "test(akosha): end-to-end cold tier via fake-gcs-server subprocess
+git commit -m "test(akosha): end-to-end cold tier via fake-gcs-server subprocess
 
 Hermetic subprocess-based test that exercises the full
 ColdStore.export_batch() -> GCS upload -> file-on-disk round trip against
 a locally-running fake-gcs-server. Skipped if the binary isn't on PATH.
 
-This test is the integration contract from the spec: passes here, the
-Phase B wiring is proven end-to-end on the GCS path.
+ColdRecord fields verified against akosha/storage/models.py:55-66:
+fingerprint is list[int], timestamp is datetime, metadata is dict
+(not the bytes/int/daily_metrics field names an earlier draft used).
 
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
@@ -1233,7 +1278,7 @@ If `gcs-endpoint-override` doesn't appear when you expect it, your
 ```bash
 cd /Users/les/Projects/akosha
 git add docs/operators/cold-tier-quickstart.md
-git commit --no-verify -m "docs(akosha): cold-tier operator quickstart
+git commit -m "docs(akosha): cold-tier operator quickstart
 
 Operator-facing guide for the three cold-tier scenarios:
 
@@ -1254,11 +1299,18 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 
 After all tasks land:
 
-- [ ] **All four oneiric + akosha commits land on their respective `main` branches** — verify with `git log --oneline -3` in each repo.
+- [ ] **All 9 commits land on their respective `main` branches** — verify with `git log --oneline -3` in each repo.
 - [ ] **Oneiric full GCS test suite passes**: `cd /Users/les/Projects/oneiric && pytest tests/adapters/test_storage_adapters.py tests/unit/adapters/storage/test_gcs_stream.py -v`
 - [ ] **Akosha full integration test passes**: `cd /Users/les/Projects/akosha && pytest tests/integration/test_cold_tier_local.py -v`
-- [ ] **Akosha full config test passes**: `cd /Users/les/Projects/akosha && pytest tests/unit/test_config_settings.py -v`
+- [ ] **Akosha full config test passes**: `cd /Users/les/Projects/akosha && pytest tests/unit/test_config.py -v`
 - [ ] **No regressions in either repo's full test suite** (run the full `pytest` in each repo).
+
+## Rollback signals
+
+- **Phase A**: revert commit `f6c0f2b` (or the worktree branch); oneiric GCS adapter returns to no-`endpoint_url` behavior. `GCSStorageSettings` no longer accepts the field.
+- **Phase B1**: revert the B1.2 commit; `ColdStorageConfig` returns to 5 fields. No behavior change (new fields are unused).
+- **Phase B2**: revert B2.2 + B2.3 + B2.4 commits; `ColdStore` and `StandardMode` return to not forwarding the new fields. B2 rollback is safe BEFORE B1 is used by any external caller; after B1 lands, env vars set by operators will silently no-op until the wiring lands too.
+- **Phase C**: revert C1 + C2 commits; integration test removed + docs removed. No behavior change.
 
 ## Plan complete
 
