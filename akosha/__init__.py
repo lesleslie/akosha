@@ -8,11 +8,38 @@ extension module gets loaded twice through different paths.
 
 Public access via ``akosha.config`` continues to work; the lookup is
 deferred to first attribute access.
+
+``__version__`` is derived from the installed distribution metadata via
+:func:`importlib.metadata.version` so :file:`pyproject.toml` is the
+single source of truth for the version string. Editable installs without
+a built ``.dist-info`` fall back to ``"0+unknown"`` (PEP 440 local-version
+label) so the import never crashes.
 """
 
 from __future__ import annotations
 
-__version__ = "0.19.1"
+from importlib import metadata as _metadata
+
+# PEP 440 local-version label; sentinel for "metadata not found" rather
+# than a real release version. Distinct enough that downstream consumers
+# can ``assert __version__ != '0+unknown'`` as a "was this installed
+# properly" signal.
+_VERSION_FALLBACK = "0+unknown"
+
+
+def _resolve_version() -> str:
+    """Return the distribution version, falling back to a sentinel.
+
+    Wrapped in a function (not inline at module scope) so tests can
+    monkeypatch the lookup without having to reload the package.
+    """
+    try:
+        return _metadata.version("akosha")
+    except _metadata.PackageNotFoundError:
+        return _VERSION_FALLBACK
+
+
+__version__ = _resolve_version()
 
 __all__ = ["__version__", "config"]
 

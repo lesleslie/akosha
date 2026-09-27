@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, Final, TypedDict, cast
 
 from fastmcp import FastMCP
 
+from akosha import __version__
 from akosha.storage.hot_store import HotStore
 
 if TYPE_CHECKING:
@@ -47,7 +48,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 APP_NAME: Final = "akosha-mcp"
-APP_VERSION: Final = "0.19.1"
+APP_VERSION: Final[str] = __version__
 
 
 # ---------------------------------------------------------------------------

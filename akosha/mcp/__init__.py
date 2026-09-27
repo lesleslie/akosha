@@ -2,7 +2,11 @@
 
 import typing as t
 
-__version__ = "0.19.1"
+# Re-export the package's runtime-resolved version so MCP-protocol
+# handshakes report the same value as ``akosha.__version__``. The
+# single source of truth is :file:`pyproject.toml` via
+# :func:`importlib.metadata.version`.
+from akosha import __version__  # noqa: F401  (re-export)
 
 from akosha.mcp.server import APP_NAME, APP_VERSION, create_app
 

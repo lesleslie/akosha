@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 from mcp_common.health import DependencyConfig, register_health_tools
 from mcp_common.tools import ToolProfile  # runtime: used in discover_tools hint
 
+from akosha import __version__
 from akosha.mcp.tools.agents_tools import register_agents_tools  # Phase 3
 from akosha.mcp.tools.akosha_tools import (  # noqa: F401
     register_akosha_tools,
@@ -40,7 +41,7 @@ from akosha.mcp.tools.skill_tools import register_skill_tools
 logger = logging.getLogger(__name__)
 
 SERVICE_NAME = "akosha"
-SERVICE_VERSION = "0.19.1"
+SERVICE_VERSION = __version__
 SERVICE_START_TIME = time.time()
 
 DEFAULT_DEPENDENCIES: dict[str, DependencyConfig] = {
