@@ -104,10 +104,14 @@ def _has_assertion_or_raises(func: ast.FunctionDef) -> bool:
         and not (
             isinstance(s, ast.Expr)
             and (
-                (
-                    isinstance(s.value, ast.Constant)
-                    and s.value.value is None
-                )
+                # Expr(Constant) covers docstrings (``"""..."""``) AND
+                # bare ``None`` statements; only the latter would matter
+                # to the call-detection check, but both are trivially
+                # not-test-doing at the body level. Excluding them
+                # lets the call-only pattern recognize ``asyncio.run(
+                # self._helper(...))`` wrappers whose body has a
+                # docstring plus two Expr(Call) statements.
+                isinstance(s.value, ast.Constant)
                 or isinstance(s.value, ast.Name)
             )
         )
