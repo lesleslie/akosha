@@ -22,6 +22,17 @@ warm:
   num_partitions: 256
   pg_url: ""            # required when warm.backend="pgvector"; e.g. postgresql://user@host:5432/akosha
 
+# Cold storage — committed default is "local" (works with zero dependencies).
+# To opt in to fake-gcs-server in dev: set cold.backend=gcs +
+# cold.endpoint_url=http://127.0.0.1:4443 in settings/local.yaml.
+# To opt in to Cloudflare R2 in prod: set cold.backend=s3 + R2 credentials
+# (see docs/operators/cold-tier-quickstart.md for the full walkthrough).
+# New fields exposed in ColdStorageConfig (Phase B1):
+#   cold.endpoint_url — override API endpoint (fake-gcs / R2)
+#   cold.project — GCP project ID (gcs backend only)
+#   cold.anonymous_credentials — use anonymous GCS creds (fake-gcs only)
+#   cold.access_key_id / cold.secret_access_key — S3 credentials (R2 etc.)
+#   cold.region — S3 region ('auto' for R2)
 cold:
   backend: local
   bucket: akosha-cold-data

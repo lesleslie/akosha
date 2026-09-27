@@ -163,18 +163,79 @@ class ColdStorageConfig(BaseModel):
     """Cold storage configuration.
 
     Attributes:
-        backend: Storage backend type (local, s3, azure, gcs)
+        backend: Storage backend type (local, s3, gcs, azure)
         bucket: Bucket name for cloud storage
         prefix: Prefix for objects in bucket
         format: File format (parquet)
-        region: Cloud region
+        region: Cloud region (S3/R2: 'auto' for R2)
+        endpoint_url: Override the API endpoint (fake-gcs-server in dev, R2 in prod)
+        project: GCP project ID (gcs backend only; ignored on s3)
+        anonymous_credentials: Use anonymous GCS credentials (fake-gcs-server only)
+        access_key_id: S3 access key ID (Cloudflare R2 etc.)
+        secret_access_key: S3 secret access key
+
+    Configuration can be set via:
+    1. settings/akosha.yaml under cold
+    2. settings/local.yaml (gitignored)
+    3. Environment variables (nested form, preferred):
+       AKOSHA__STORAGE__COLD__ENDPOINT_URL,
+       AKOSHA__STORAGE__COLD__PROJECT,
+       AKOSHA__STORAGE__COLD__ANONYMOUS_CREDENTIALS,
+       AKOSHA__STORAGE__COLD__ACCESS_KEY_ID,
+       AKOSHA__STORAGE__COLD__SECRET_ACCESS_KEY,
+       AKOSHA__STORAGE__COLD__REGION
+    4. Environment variables (flat legacy form, fallback):
+       AKOSHA_COLD_ENDPOINT, AKOSHA_COLD_REGION
     """
 
     backend: str = Field(default_factory=lambda: os.getenv("AKOSHA_COLD_BACKEND", "local"))
     bucket: str = Field(default_factory=lambda: os.getenv("AKOSHA_COLD_BUCKET", "akosha-cold-data"))
     prefix: str = "conversations/"
     format: str = "parquet"
-    region: str = Field(default_factory=lambda: os.getenv("AKOSHA_COLD_REGION", "us-west-2"))
+    region: str | None = Field(
+        default_factory=lambda: os.getenv("AKOSHA_COLD_REGION", "us-west-2")
+    )
+    endpoint_url: str | None = None
+    project: str | None = None
+    anonymous_credentials: bool = False
+    access_key_id: str | None = None
+    secret_access_key: str | None = None
+
+    def __init__(self, **data: Any) -> None:
+        # Honor nested env vars (preferred). Only fill fields not already
+        # explicitly passed via ``data``.
+        _env_endpoint_url = os.getenv("AKOSHA__STORAGE__COLD__ENDPOINT_URL", "")
+        _env_project = os.getenv("AKOSHA__STORAGE__COLD__PROJECT", "")
+        _env_anon = os.getenv("AKOSHA__STORAGE__COLD__ANONYMOUS_CREDENTIALS", "")
+        _env_access_key = os.getenv("AKOSHA__STORAGE__COLD__ACCESS_KEY_ID", "")
+        _env_secret_key = os.getenv("AKOSHA__STORAGE__COLD__SECRET_ACCESS_KEY", "")
+        _env_region = os.getenv("AKOSHA__STORAGE__COLD__REGION", "")
+        if _env_endpoint_url and "endpoint_url" not in data:
+            data["endpoint_url"] = _env_endpoint_url
+        if _env_project and "project" not in data:
+            data["project"] = _env_project
+        if _env_anon and "anonymous_credentials" not in data:
+            data["anonymous_credentials"] = _env_anon.lower() in ("true", "1", "yes")
+        if _env_access_key and "access_key_id" not in data:
+            data["access_key_id"] = _env_access_key
+        if _env_secret_key and "secret_access_key" not in data:
+            data["secret_access_key"] = _env_secret_key
+        if _env_region and "region" not in data:
+            data["region"] = _env_region
+
+        # Flat legacy env vars (fallback only when nested form unset).
+        # Matches the AKOSHA_COLD_* convention used in QUICKSTART.md and
+        # older settings/local.yaml files.
+        if "endpoint_url" not in data:
+            _legacy_endpoint = os.getenv("AKOSHA_COLD_ENDPOINT", "")
+            if _legacy_endpoint:
+                data["endpoint_url"] = _legacy_endpoint
+        if "region" not in data:
+            _legacy_region = os.getenv("AKOSHA_COLD_REGION", "")
+            if _legacy_region:
+                data["region"] = _legacy_region
+
+        super().__init__(**data)
 
 
 class CacheConfig(BaseModel):
