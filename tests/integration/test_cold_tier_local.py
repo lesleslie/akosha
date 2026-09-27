@@ -143,3 +143,99 @@ def test_standard_mode_cold_storage_forwards_s3_credentials() -> None:
     assert settings["region"] == "auto"
     assert settings["access_key_id"] == "AKIA_test"
     assert settings["secret_access_key"] == "secret_test"
+
+
+def test_cold_tier_fake_gcs_round_trip(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """End-to-end: fake-gcs-server subprocess + ColdStore.export_batch() + file-on-disk round trip.
+
+    This test requires fake-gcs-server on PATH (brew install fake-gcs-server).
+    Skipped automatically if the binary isn't found.
+    """
+    import shutil
+    import socket
+    import subprocess
+    import time
+    from datetime import UTC, datetime
+
+    if shutil.which("fake-gcs-server") is None:
+        pytest.skip("fake-gcs-server not on PATH; install via: brew install fake-gcs-server")
+
+    # Pick a free port so concurrent test runs don't collide and an orphan
+    # fake-gcs-server from a previous session doesn't intercept our requests.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+
+    if shutil.which("fake-gcs-server") is None:
+        pytest.skip("fake-gcs-server not on PATH; install via: brew install fake-gcs-server")
+
+    from akosha.storage.models import ColdRecord
+    from akosha.storage.cold_store import ColdStore
+
+    data_dir = tmp_path_factory.mktemp("fake-gcs")
+
+    proc = subprocess.Popen(
+        [
+            "fake-gcs-server",
+            "-filesystem-root", str(data_dir),
+            "-port", str(port),
+            "-host", "127.0.0.1",
+            "-public-host", f"127.0.0.1:{port}",
+            "-location", "US-CENTRAL1",
+            "-scheme", "http",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    def port_open(host: str, port: int, timeout: float = 10.0) -> bool:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                if s.connect_ex((host, port)) == 0:
+                    return True
+            time.sleep(0.1)
+        return False
+
+    try:
+        assert port_open("127.0.0.1", port), "fake-gcs-server did not start within 10s"
+
+        # fake-gcs-server (unlike real GCS) exposes buckets as filesystem dirs.
+        # Pre-create the bucket directory so the SDK's first upload finds a
+        # valid bucket. (Real GCS auto-creates with project-permission; fake-gcs
+        # does not.)
+        (data_dir / "akosha-cold-data").mkdir(parents=True, exist_ok=True)
+
+        async def run() -> str:
+            store = ColdStore(
+                bucket="akosha-cold-data",
+                prefix="conversations/",
+                storage_backend="gcs",
+                project="local-dev",
+                endpoint_url=f"http://127.0.0.1:{port}",
+            )
+            records = [
+                ColdRecord(
+                    system_id="test-system",
+                    conversation_id="conv-1",
+                    fingerprint=[1, 2, 3],
+                    ultra_summary="hello world",
+                    timestamp=datetime(2026, 1, 1, tzinfo=UTC),
+                    metadata={"events": 42},
+                ),
+            ]
+            return await store.export_batch(records, partition_path="system-001/2026/01/01")
+
+        import asyncio
+
+        key = asyncio.run(run())
+        assert key.endswith(".parquet")
+        blob_path = data_dir / "akosha-cold-data" / key
+        assert blob_path.exists(), f"blob not found at {blob_path}"
+        assert blob_path.stat().st_size > 0
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()

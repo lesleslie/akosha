@@ -155,7 +155,7 @@ class ColdStore:
             "fingerprint": [],
             "ultra_summary": [],
             "timestamp": [],
-            "daily_metrics": [],
+            "metadata": [],
         }
 
         for record in records:
@@ -165,17 +165,17 @@ class ColdStore:
             data["ultra_summary"].append(record.ultra_summary)
             data["timestamp"].append(record.timestamp)
             # Serialize dict to JSON string for Parquet storage
-            data["daily_metrics"].append(json.dumps(record.daily_metrics))
+            data["metadata"].append(json.dumps(record.metadata))
 
-        # Define schema with proper types
+        # Define schema with proper types — match akosha.storage.models.ColdRecord.
         schema = pa.schema(
             [
                 ("system_id", pa.string()),
                 ("conversation_id", pa.string()),
-                ("fingerprint", pa.binary()),
+                ("fingerprint", pa.list_(pa.int32())),
                 ("ultra_summary", pa.string()),
                 ("timestamp", pa.timestamp("ns")),
-                ("daily_metrics", pa.string()),  # JSON as string for compatibility
+                ("metadata", pa.string()),  # JSON as string for compatibility
             ]
         )
 
