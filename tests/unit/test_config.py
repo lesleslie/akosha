@@ -80,6 +80,68 @@ class TestColdStorageConfig:
         assert cfg.backend == "s3"
         assert cfg.bucket == "my-bucket"
 
+    def test_cold_storage_config_has_endpoint_url_field(self) -> None:
+        """ColdStorageConfig exposes endpoint_url for fake-gcs-server / R2."""
+        from akosha.config import ColdStorageConfig
+
+        cfg = ColdStorageConfig(endpoint_url="http://127.0.0.1:4443")
+        assert cfg.endpoint_url == "http://127.0.0.1:4443"
+
+    def test_cold_storage_config_has_s3_credential_fields(self) -> None:
+        """ColdStorageConfig exposes access_key_id + secret_access_key for S3 backends."""
+        from akosha.config import ColdStorageConfig
+
+        cfg = ColdStorageConfig(
+            access_key_id="AKIA_test",
+            secret_access_key="secret_test",
+            region="auto",
+        )
+        assert cfg.access_key_id == "AKIA_test"
+        assert cfg.secret_access_key == "secret_test"
+        assert cfg.region == "auto"
+
+    @patch.dict(
+        os.environ,
+        {
+            "AKOSHA__STORAGE__COLD__ENDPOINT_URL": "http://emulator:4443",
+            "AKOSHA__STORAGE__COLD__ACCESS_KEY_ID": "env_key",
+            "AKOSHA__STORAGE__COLD__SECRET_ACCESS_KEY": "env_secret",
+            "AKOSHA__STORAGE__COLD__REGION": "auto",
+        },
+        clear=False,
+    )
+    def test_cold_storage_config_binds_endpoint_url_env_var(self) -> None:
+        """AKOSHA__STORAGE__COLD__ENDPOINT_URL binds into ColdStorageConfig.endpoint_url."""
+        from akosha.config import ColdStorageConfig
+
+        cfg = ColdStorageConfig()
+        assert cfg.endpoint_url == "http://emulator:4443"
+        assert cfg.access_key_id == "env_key"
+        assert cfg.secret_access_key == "env_secret"
+        assert cfg.region == "auto"
+
+    @patch.dict(
+        os.environ,
+        {
+            "AKOSHA_COLD_ENDPOINT": "http://legacy:4443",
+            "AKOSHA_COLD_REGION": "legacy-region",
+        },
+        clear=False,
+    )
+    def test_cold_storage_config_binds_flat_fallback_env_vars(self) -> None:
+        """Backward-compat: AKOSHA_COLD_ENDPOINT and AKOSHA_COLD_REGION (flat) bind into the
+        nested-form fields when the nested env vars are unset.
+
+        QUICKSTART.md references both AKOSHA_COLD_ENDPOINT and AKOSHA_COLD_REGION but
+        they were unbound in code prior to this spec. This test pins the flat->nested
+        fallback so the existing doc references start working.
+        """
+        from akosha.config import ColdStorageConfig
+
+        cfg = ColdStorageConfig()
+        assert cfg.endpoint_url == "http://legacy:4443"
+        assert cfg.region == "legacy-region"
+
 
 class TestCacheConfig:
     """Test CacheConfig model."""
