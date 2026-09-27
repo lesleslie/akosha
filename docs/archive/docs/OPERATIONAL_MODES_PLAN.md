@@ -230,6 +230,14 @@ class StandardMode(BaseMode):
 
 ### Phase 2: Create Configuration Files (1 day)
 
+<!-- 2026-09-27: ``config/lite.yaml`` and ``config/standard.yaml`` were deleted
+     in favor of Oneiric layered-config (settings/akosha.yaml + AKOSHA_* env
+     vars). This archived plan describes the v1 design that pre-dated Oneiric;
+     it is preserved for historical reference only. Do NOT recreate the preset
+     files — the loader silently drops every key under the legacy ``storage.*``
+     / ``cache.*`` / ``api.*`` / ``processing.*`` / ``monitoring.*`` /
+     ``security.*`` / ``logging.*`` namespaces (see akosha/config.py:442-448). -->
+
 #### 2.1 Create `config/lite.yaml`
 
 ```yaml

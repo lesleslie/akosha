@@ -8,39 +8,26 @@ This guide provides step-by-step instructions for implementing the warm tier sto
 
 ## Phase 1: Update Configuration (5 minutes)
 
+> **Updated 2026-09-27** — The legacy preset files (`config/lite.yaml`,
+> `config/standard.yaml`) were deleted. Akosha reads a single layered
+> config at `settings/akosha.yaml`. For dev-only overrides, edit
+> `settings/local.yaml` (gitignored) or set env vars
+> (`AKOSHA__STORAGE__WARM__PATH`, `AKOSHA_MODE`, etc.).
+
 ### 1.1 Update Config Files
 
-**Edit `config/lite.yaml`**:
+**Edit `settings/local.yaml` for dev** (gitignored):
 
 ```yaml
-storage:
-  hot:
-    backend: duckdb-memory
-    path: ":memory:"
-    write_ahead_log: true
-    wal_path: "~/.akosha/dev/wal"  # Updated
-
-  warm:
-    backend: duckdb-ssd
-    path: "~/.akosha/dev/warm"  # Updated - uses home directory
-    num_partitions: 64  # Reduced for dev
+mode: lite
+warm:
+  backend: duckdb-ssd
+  path: "~/.akosha/dev/warm"  # Updated - uses home directory
+  num_partitions: 64  # Reduced for dev
 ```
 
-**Edit `config/standard.yaml`**:
-
-```yaml
-storage:
-  hot:
-    backend: duckdb-memory
-    path: ":memory:"
-    write_ahead_log: true
-    wal_path: "/data/akosha/wal"  # Updated
-
-  warm:
-    backend: duckdb-ssd
-    path: "/data/akosha/prod/warm"  # Updated - production path
-    num_partitions: 256
-```
+**Edit `settings/akosha.yaml` for prod** (committed; see file's existing
+`warm:` block — the `path: null` default is resolved by `StoragePathResolver`):
 
 ### 1.2 Verify .gitignore
 
@@ -381,8 +368,8 @@ This quick start guide covers:
 
 **Files modified**:
 
-- `/Users/les/Projects/akosha/config/lite.yaml`
-- `/Users/les/Projects/akosha/config/standard.yaml`
+- `/Users/les/Projects/akosha/settings/akosha.yaml`
+- `/Users/les/Projects/akosha/settings/local.yaml` (gitignored)
 - `/Users/les/Projects/akosha/akosha/config.py`
 
 **Files created**:

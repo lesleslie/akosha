@@ -148,7 +148,7 @@ config = AkoshaConfig()
 **Acceptance Criteria**:
 
 - [ ] Configuration loads from environment variables
-- [ ] YAML file support (via `config/akosha.yaml`)
+- [x] YAML file support (via `settings/akosha.yaml` — was `config/akosha.yaml`, deleted 2026-09-27)
 - [ ] Type validation with Pydantic
 - [ ] Default values for all settings
 

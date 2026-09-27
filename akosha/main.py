@@ -9,12 +9,13 @@ import signal
 import sys
 from typing import TYPE_CHECKING, Any
 
-from akosha.storage import create_hot_store
+from akosha.storage import create_hot_store, create_warm_store
 from akosha.storage.hot_store import HotStore
 from akosha.storage.warm_store import WarmStore
 
 if TYPE_CHECKING:
-    from akosha.storage.pgvector_hot_store import PgvectorHotStore
+    from akosha.storage.pgvector_hot_store import PgvectorHotStore  # noqa: F401  # legacy import surface
+    from akosha.storage.pgvector_warm_store import PgvectorWarmStore
 
 logger = logging.getLogger(__name__)
 
@@ -123,9 +124,14 @@ class AkoshaApplication:
         # Populated by ``start()``; closed by ``stop()``. None when init fails
         # or when the feature is disabled in settings (graceful no-op).
         # Type is the full union returned by ``create_hot_store`` —
-        # ``HotStore | PgvectorHotStore | None`` — because the pgvector
-        # backend shares the interface but is not a ``HotStore`` subclass.
-        self.hot_store: HotStore | PgvectorHotStore | None = None
+        # ``HotStore | None`` — pgvector was removed from the hot tier
+        # 2026-09-27 (the in-memory DuckDB store is the only hot backend).
+        self.hot_store: HotStore | None = None
+        # WarmStore for aged-vector queries. Populated by ``start()``;
+        # closed by ``stop()``. None when init fails or the feature is
+        # disabled in settings. Type is the union of DuckDB ``WarmStore``
+        # and ``PgvectorWarmStore`` (added 2026-09-27 for warm-tier pgvector).
+        self.warm_store: WarmStore | PgvectorWarmStore | None = None
         # WebSocket invocations subscriber (push-mode BodaiToolInvocationSubscriber
         # -> HotStore). Wired in Sub-plan B; the attribute lives here so the
         # start/stop lifecycle is consistent.
@@ -153,11 +159,13 @@ class AkoshaApplication:
         self._wire_eventbridge_publisher()
 
         # Hot store for websocket invocation search (Phase 2 Item B).
-        # ``create_hot_store`` returns HotStore (DuckDB in-memory by default)
-        # or PgvectorHotStore when AKOSHA__STORAGE__HOT__BACKEND=pgvector
-        # is set. Graceful no-op when init fails or when the feature is
-        # disabled in settings — search_all_systems will fall back to an
-        # informational "no rows indexed yet" response.
+        # ``create_hot_store`` returns HotStore (DuckDB in-memory by default;
+        # ``duckdb-ssd`` is the other valid value). The pgvector backend
+        # was removed from the hot tier 2026-09-27 — pgvector is now a
+        # warm-tier-only backend via ``create_warm_store(backend="pgvector")``.
+        # Graceful no-op when init fails or when the feature is disabled in
+        # settings — search_all_systems will fall back to an informational
+        # "no rows indexed yet" response.
         #
         # HotStore schema dim is baked into CREATE TABLE at __init__ time,
         # so the embedding backend must initialise first; otherwise the
@@ -178,9 +186,8 @@ class AkoshaApplication:
         try:
             resolved_dim = resolve_embedding_dim(get_embedding_service())
             hot_cfg = self._read_hot_store_config()
-            hot_store: HotStore | PgvectorHotStore | None = create_hot_store(
+            hot_store: HotStore | None = create_hot_store(
                 backend=hot_cfg["backend"],
-                pg_url=hot_cfg["pg_url"],
                 database_path=hot_cfg["database_path"],
                 embedding_dim=resolved_dim,
             )
@@ -197,6 +204,30 @@ class AkoshaApplication:
         except Exception as exc:
             logger.warning("HotStore init failed (%s); search_all_systems will fall back", exc)
             self.hot_store = None
+
+        # Warm store for aged-vector queries. ``create_warm_store`` returns
+        # ``WarmStore`` (DuckDB on-disk) by default, or ``PgvectorWarmStore``
+        # when warm.backend="pgvector". pgvector is the new warm-tier
+        # backend (one collection per ShardRouter shard); see
+        # ``akosha/storage/pgvector_warm_store.py``.
+        try:
+            warm_cfg = self._read_warm_store_config()
+            warm_store: WarmStore | PgvectorWarmStore | None = create_warm_store(
+                backend=warm_cfg["backend"],
+                pg_url=warm_cfg["pg_url"],
+                database_path=warm_cfg["db_path"],
+            )
+            if warm_store is not None:
+                await warm_store.initialize()
+            self.warm_store = warm_store
+            logger.info(
+                "WarmStore initialized (%s, backend=%s)",
+                type(warm_store).__name__ if warm_store else "disabled",
+                warm_cfg["backend"],
+            )
+        except Exception as exc:
+            logger.warning("WarmStore init failed (%s)", exc)
+            self.warm_store = None
 
         # WebSocket invocations subscriber (BodaiToolInvocationSubscriber ->
         # HotStore via Redis Streams push). Sub-plan B reads
@@ -380,18 +411,21 @@ class AkoshaApplication:
 
     @staticmethod
     def _read_hot_store_config() -> dict[str, Any]:
-        """Read the ``hot_store`` block from settings.
-
-        Plan: docs/plans/2026-08-29-pgvector-default.md Phase 1.
+        """Read the ``hot`` block from settings.
 
         Mirrors the ``_read_subscriber_config`` and
         ``_read_bodai_subscriber_config`` patterns: parse the YAML file
         from ``<repo>/settings/akosha.yaml`` and return safe defaults
         when the block is missing or the file is unreachable. Returns
         only the keys ``create_hot_store`` cares about — ``backend``,
-        ``pg_url``, ``database_path``. Embedding dimension is resolved
-        separately by :func:`akosha.processing.embedding_dim.resolve_embedding_dim`
+        ``database_path``. Embedding dimension is resolved separately by
+        :func:`akosha.processing.embedding_dim.resolve_embedding_dim`
         because it depends on the active embedding service at runtime.
+
+        NOTE (2026-09-27 audit): ``pg_url`` removed from the hot block
+        because pgvector migrated to the warm tier. ``hot_store`` (the
+        legacy section name) still works as an alias for ``hot`` for
+        backward compatibility — see ``_legacy_hot_block``.
         """
         from pathlib import Path
 
@@ -399,7 +433,6 @@ class AkoshaApplication:
             "enabled": True,
             "backend": "duckdb-memory",
             "database_path": ":memory:",
-            "pg_url": "",
         }
         try:
             import yaml
@@ -421,12 +454,55 @@ class AkoshaApplication:
                 exc,
             )
             return defaults
-        hot = cfg.get("hot_store") or {}
+        hot = cfg.get("hot") or cfg.get("hot_store") or {}
         return {
             "enabled": bool(hot.get("enabled", defaults["enabled"])),
             "backend": str(hot.get("backend", defaults["backend"])),
             "database_path": str(hot.get("database_path", defaults["database_path"])),
-            "pg_url": str(hot.get("pg_url", defaults["pg_url"])),
+        }
+
+    @staticmethod
+    def _read_warm_store_config() -> dict[str, Any]:
+        """Read the ``warm`` block from settings.
+
+        Returns only the keys ``create_warm_store`` cares about — ``backend``,
+        ``pg_url``, ``db_path``. The pgvector path is the new
+        warm-tier backend (replaces the legacy hot-tier pgvector backend
+        removed 2026-09-27).
+        """
+        from pathlib import Path
+
+        defaults: dict[str, Any] = {
+            "backend": "duckdb-ssd",
+            "pg_url": "",
+            "db_path": None,
+        }
+        try:
+            import yaml
+        except ImportError:
+            logger.warning("PyYAML unavailable; warm_store defaults to duckdb-ssd")
+            return defaults
+
+        akosha_root = Path(__file__).resolve().parents[2]
+        settings_path = akosha_root / "settings" / "akosha.yaml"
+        if not settings_path.exists():
+            return defaults
+        try:
+            with settings_path.open() as handle:
+                cfg = yaml.safe_load(handle) or {}
+        except (OSError, yaml.YAMLError) as exc:
+            logger.warning(
+                "Could not read %s (%s); warm_store defaults to duckdb-ssd",
+                settings_path,
+                exc,
+            )
+            return defaults
+        warm = cfg.get("warm") or {}
+        db_path_raw = warm.get("path", defaults["db_path"])
+        return {
+            "backend": str(warm.get("backend", defaults["backend"])),
+            "pg_url": str(warm.get("pg_url", defaults["pg_url"])),
+            "db_path": Path(db_path_raw) if db_path_raw else None,
         }
 
     def _wire_eventbridge_publisher(self) -> None:
@@ -506,6 +582,15 @@ class AkoshaApplication:
             except Exception as exc:
                 logger.warning("HotStore close failed: %s", exc)
             self.hot_store = None
+
+        # Close WarmStore (added 2026-09-27 with pgvector warm-tier migration).
+        if self.warm_store is not None:
+            try:
+                await self.warm_store.close()
+                logger.info("WarmStore closed")
+            except Exception as exc:
+                logger.warning("WarmStore close failed: %s", exc)
+            self.warm_store = None
 
         logger.info("✅ Akosha application shutdown complete")
 

@@ -58,22 +58,29 @@ class HotStorageConfig(BaseModel):
     """Hot storage configuration.
 
     Attributes:
-        backend: Storage backend type (duckdb-memory, duckdb-ssd, pgvector)
+        backend: Storage backend type (duckdb-memory or duckdb-ssd)
         path: Path to hot storage (usually ":memory:" for in-memory)
-        pg_url: PostgreSQL connection string for pgvector backend
         write_ahead_log: Enable write-ahead logging
         wal_path: Path to WAL directory
 
     Configuration can be set via:
-    1. settings/akosha.yaml under storage.hot
+    1. settings/akosha.yaml under hot
     2. settings/local.yaml
-    3. Environment variables: AKOSHA__STORAGE__HOT__BACKEND, AKOSHA__STORAGE__HOT__PG_URL
+    3. Environment variable: AKOSHA__STORAGE__HOT__BACKEND
+
+    NOTE (2026-09-27 audit): ``pgvector`` was a valid hot backend; it was
+    removed because pgvector is now a warm-tier-only backend. The DuckDB
+    in-memory store is the only hot-tier implementation; the pg_url field
+    and AKOSHA__STORAGE__HOT__PG_URL env var were removed in the same pass.
+    Migrate any ``backend=pgvector`` hot-tier configs to warm-tier:
+    ``AKOSHA__STORAGE__WARM__BACKEND=pgvector`` and
+    ``AKOSHA__STORAGE__WARM__PG_URL=<your_dsn>``.
     """
 
     backend: str = Field(
         default="duckdb-memory",
         description=(
-            "Storage backend: 'duckdb-memory', 'duckdb-ssd', or 'pgvector'. "
+            "Storage backend: 'duckdb-memory' or 'duckdb-ssd'. "
             "Set via AKOSHA__STORAGE__HOT__BACKEND"
         ),
     )
@@ -81,24 +88,14 @@ class HotStorageConfig(BaseModel):
         default=":memory:",
         description="DuckDB database path for OTel ingester (':memory:' for in-memory)",
     )
-    pg_url: str = Field(
-        default="",
-        description=(
-            "PostgreSQL connection string for pgvector-backed hot storage. "
-            "Required when backend='pgvector'. Set via AKOSHA__STORAGE__HOT__PG_URL"
-        ),
-    )
     write_ahead_log: bool = Field(default=True)
     wal_path: Path | None = None  # Will be resolved by model_validator
 
     def __init__(self, **data: Any) -> None:
-        # Phase 1.1c: Honor AKOSHA__STORAGE__HOT__BACKEND and AKOSHA__STORAGE__HOT__PG_URL
+        # Honor AKOSHA__STORAGE__HOT__BACKEND
         _env_backend = os.getenv("AKOSHA__STORAGE__HOT__BACKEND", "")
-        _env_pg_url = os.getenv("AKOSHA__STORAGE__HOT__PG_URL", "")
         if _env_backend and "backend" not in data:
             data["backend"] = _env_backend
-        if _env_pg_url and "pg_url" not in data:
-            data["pg_url"] = _env_pg_url
         super().__init__(**data)
 
     @model_validator(mode="after")
@@ -114,14 +111,44 @@ class WarmStorageConfig(BaseModel):
     """Warm storage configuration.
 
     Attributes:
-        backend: Storage backend type (duckdb-ssd, duckdb-hdd)
+        backend: Storage backend type (duckdb-ssd, duckdb-hdd, pgvector)
         path: Path to warm storage directory
+        pg_url: PostgreSQL connection string for pgvector backend
         num_partitions: Number of shards for distributed queries
+
+    Configuration can be set via:
+    1. settings/akosha.yaml under warm
+    2. settings/local.yaml
+    3. Environment variables: AKOSHA__STORAGE__WARM__BACKEND, AKOSHA__STORAGE__WARM__PG_URL
     """
 
-    backend: str = "duckdb-ssd"
+    backend: str = Field(
+        default="duckdb-ssd",
+        description=(
+            "Storage backend: 'duckdb-ssd', 'duckdb-hdd', or 'pgvector'. "
+            "pgvector is preferred for read-heavy vector similarity workloads. "
+            "Set via AKOSHA__STORAGE__WARM__BACKEND"
+        ),
+    )
     path: Path | None = None  # Will be resolved by model_validator
+    pg_url: str = Field(
+        default="",
+        description=(
+            "PostgreSQL connection string for pgvector-backed warm storage. "
+            "Required when backend='pgvector'. Set via AKOSHA__STORAGE__WARM__PG_URL"
+        ),
+    )
     num_partitions: int = 256
+
+    def __init__(self, **data: Any) -> None:
+        # Honor AKOSHA__STORAGE__WARM__BACKEND and AKOSHA__STORAGE__WARM__PG_URL
+        _env_backend = os.getenv("AKOSHA__STORAGE__WARM__BACKEND", "")
+        _env_pg_url = os.getenv("AKOSHA__STORAGE__WARM__PG_URL", "")
+        if _env_backend and "backend" not in data:
+            data["backend"] = _env_backend
+        if _env_pg_url and "pg_url" not in data:
+            data["pg_url"] = _env_pg_url
+        super().__init__(**data)
 
     @model_validator(mode="after")
     def resolve_paths(self) -> WarmStorageConfig:

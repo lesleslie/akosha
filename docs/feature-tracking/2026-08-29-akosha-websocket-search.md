@@ -254,8 +254,10 @@ hot_store:
 or
 
 ```bash
-export AKOSHA__STORAGE__HOT__BACKEND=pgvector
-export AKOSHA__STORAGE__HOT__PG_URL="postgresql://akosha@localhost:5432/akosha"
+# 2026-09-27: pgvector migrated from hot tier to warm tier.
+# Use the warm-tier env vars instead:
+export AKOSHA__STORAGE__WARM__BACKEND=pgvector
+export AKOSHA__STORAGE__WARM__PG_URL="postgresql://akosha@localhost:5432/akosha"
 ```
 
 The factory's `pg_url` env-var fallback is preserved for Phase 2

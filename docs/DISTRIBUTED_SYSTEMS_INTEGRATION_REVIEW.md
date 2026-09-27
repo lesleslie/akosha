@@ -295,6 +295,8 @@ Akosha has **no documented alert** for ingestion backlog:
 
 ```python
 # config/akosha.yaml
+# 2026-09-27: this file was deleted; ingestion workers now live at the root
+# of settings/akosha.yaml (e.g. `ingestion_workers: 3`) — see akosha/config.py.
 ingestion:
   workers: 3
   poll_interval_seconds: 30
@@ -1094,11 +1096,10 @@ aws s3 ls s3://akosha-cold --summarize
 **Improvement needed**:
 1. **Write-ahead log** for hot store (mentioned in config but not implemented):
    ```python
-   # config/akosha.yaml
-   storage:
-     hot:
-       write_ahead_log: true
-       wal_path: "/data/akosha/wal"
+   # settings/akosha.yaml (was config/akosha.yaml — deleted 2026-09-27)
+   hot:
+     write_ahead_log: true
+     wal_path: "/data/akosha/wal"
 
    # Should implement:
    class HotStore:

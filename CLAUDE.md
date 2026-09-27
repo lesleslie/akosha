@@ -215,9 +215,11 @@ Akosha requires configuration for:
 
 **Configuration Files:**
 
-- `config/akosha.yaml` - Main configuration
-- `config/akosha_storage.yaml` - Storage backend configuration
-- `config/akosha_secrets.yaml` - Secrets (not in git)
+> **Updated 2026-09-27** — Akosha's layered config lives in
+> `settings/akosha.yaml` (canonical) + `settings/local.yaml` (gitignored).
+> The legacy preset files `config/akosha.yaml`, `config/akosha_storage.yaml`,
+> `config/akosha_secrets.yaml` do NOT exist; the `config/` directory was
+> deleted. See `akosha/config.py:get_config()` for the actual loader.
 
 ## Development Guidelines
 

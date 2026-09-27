@@ -91,7 +91,7 @@ sequenceDiagram
 
 #### Hot Tier (0-7 days)
 
-**Technology**: DuckDB in-memory (development) **OR** `PgvectorHotStore` (production, gated by `AKOSHA__STORAGE__HOT__BACKEND`). Redis cache. See `akosha/storage/hot_store.py` for current tier-class deprecation note.
+**Technology**: DuckDB in-memory (development) **OR** DuckDB on-disk (production, ``backend: duckdb-ssd``). pgvector was removed from the hot tier 2026-09-27 and is now a warm-tier-only backend (see the [Warm Tier](#warm-tier-7-90-days) section below). Redis cache. See ``akosha/storage/hot_store.py`` for the current tier-class deprecation note.
 
 **Purpose**: Real-time search, recent analytics
 
@@ -490,8 +490,9 @@ graph TB
 
 ```bash
 # Storage (resolved via StoragePathResolver; see akosha/storage/path_resolver.py)
-AKOSHA__STORAGE__HOT__BACKEND=duckdb-memory  # or duckdb-ssd | pgvector
-AKOSHA__STORAGE__HOT__PG_URL=postgresql://...  # only when backend=pgvector
+AKOSHA__STORAGE__HOT__BACKEND=duckdb-memory  # hot: duckdb-memory | duckdb-ssd (pgvector moved to warm 2026-09-27)
+AKOSHA__STORAGE__WARM__BACKEND=duckdb-ssd   # warm: duckdb-ssd | duckdb-hdd | pgvector
+AKOSHA__STORAGE__WARM__PG_URL=postgresql://...  # only when warm.backend=pgvector
 AKOSHA__STORAGE__COLD__BUCKET=akosha-cold-data
 AKOSHA__STORAGE__COLD__REGION=us-west-2
 AKOSHA__STORAGE__COLD__FORMAT=parquet

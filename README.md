@@ -178,8 +178,12 @@ AKOSHA_MCP_PORT=8682
 AKOSHA_INGESTION_WORKERS=3
 
 # Nested hot-store override
-AKOSHA__STORAGE__HOT__BACKEND=pgvector
-AKOSHA__STORAGE__HOT__PG_URL=postgresql://user@localhost:5432/akosha
+AKOSHA__STORAGE__WARM__BACKEND=pgvector
+AKOSHA__STORAGE__WARM__PG_URL=postgresql://user@localhost:5432/akosha
+
+# NOTE 2026-09-27: pgvector migrated from hot tier to warm tier.
+# The hot tier accepts only DuckDB backends (duckdb-memory | duckdb-ssd).
+# pgvector is now warm-only — set the env vars on the warm block, not hot.
 ```
 
 ______________________________________________________________________

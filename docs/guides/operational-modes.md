@@ -37,22 +37,23 @@ Akosha supports two operational modes to balance ease of development with produc
 ```bash
 # Start in lite mode (default)
 akosha start --mode=lite
-
-# Or use the shortcut script
-./scripts/dev-start.sh lite
 ```
 
 ### Configuration
 
-Lite mode uses `config/lite.yaml`:
+> **Updated 2026-09-27** — Akosha now reads a single layered-config file
+> (`settings/akosha.yaml`). The legacy preset files `config/lite.yaml` and
+> `config/standard.yaml` were deleted; do not recreate them. The "mode"
+> key is still honored — set `mode: lite` in `settings/local.yaml` (or via
+> `AKOSHA_MODE=lite` env var) and override only the fields you need:
 
 ```yaml
+# settings/local.yaml (gitignored, dev overrides only)
 mode: lite
 cache:
   backend: memory
-storage:
-  cold:
-    enabled: false
+cold:
+  enabled: false
 ```
 
 ### Use Cases
@@ -89,31 +90,31 @@ storage:
 docker run -d -p 6379:6379 --name redis redis:alpine
 
 # 2. Configure cloud storage (optional)
-export AWS_S3_BUCKET=akosha-cold-data
-export AWS_S3_REGION=us-west-2
+export AKOSHA_COLD_BACKEND=s3
+export AKOSHA_COLD_BUCKET=akosha-cold-data
+export AKOSHA_COLD_REGION=us-west-2
 
 # 3. Start Akosha in standard mode
 akosha start --mode=standard
-
-# Or use the shortcut script
-./scripts/dev-start.sh standard
 ```
 
 ### Configuration
 
-Standard mode uses `config/standard.yaml`:
+> **Updated 2026-09-27** — `config/standard.yaml` was deleted; settings live in
+> `settings/akosha.yaml` (canonical) and `settings/local.yaml` (gitignored
+> overrides). For a production override, edit `settings/local.yaml`:
 
 ```yaml
+# settings/local.yaml
 mode: standard
 cache:
   backend: redis
   host: localhost
   port: 6379
-storage:
-  cold:
-    enabled: true
-    backend: s3
-    bucket: akosha-cold-data
+cold:
+  enabled: true
+  backend: s3
+  bucket: akosha-cold-data
 ```
 
 ### Use Cases

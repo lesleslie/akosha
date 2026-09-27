@@ -120,18 +120,15 @@ git commit -m "chore: update data storage paths"
 
 ## Configuration Files
 
-Configuration files now use `null` for paths, which are resolved automatically by `StoragePathResolver`:
+> 2026-09-27: `config/lite.yaml` and `config/standard.yaml` were deleted.
+> All warm/cold path resolution now happens at the root level of
+> `settings/akosha.yaml` (canonical) + `settings/local.yaml` (gitignored).
+> `StoragePathResolver` still drives the path resolution.
 
 ```yaml
-# config/lite.yaml
-storage:
-  warm:
-    path: null  # Resolved to ~/.local/share/akosha/warm
-
-# config/standard.yaml
-storage:
-  warm:
-    path: null  # Resolved to /data/akosha/warm (in containers)
+# settings/akosha.yaml
+warm:
+  path: null  # Resolved to ~/.local/share/akosha/warm (lite) or /data/akosha/warm (containers)
 ```
 
 ## Docker/Production Usage
@@ -237,8 +234,8 @@ export AKOSHA_WARM_PATH=./data/warm
 - ✅ `akosha/storage/path_resolver.py` - New (environment-aware path resolution)
 - ✅ `akosha/config.py` - Updated (uses StoragePathResolver)
 - ✅ `akosha/storage/__init__.py` - Updated (exports path resolver)
-- ✅ `config/lite.yaml` - Updated (paths resolved dynamically)
-- ✅ `config/standard.yaml` - Updated (paths resolved dynamically)
+- ✅ `config/lite.yaml` - DELETED 2026-09-27 (migrated to settings/akosha.yaml + Oneiric layered-config)
+- ✅ `config/standard.yaml` - DELETED 2026-09-27 (same)
 - ✅ `akosha/cli/commands/migrate.py` - Migration CLI commands
 
 ## Compatibility Notes

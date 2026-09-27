@@ -34,11 +34,11 @@ ______________________________________________________________________
 **Implementation**:
 
 ```yaml
-# config/lite.yaml (development)
-storage:
-  warm:
-    backend: duckdb-ssd
-    path: "~/.akosha/dev/warm"  # Expanded to user home
+# settings/akosha.yaml (development)
+# 2026-09-27: config/lite.yaml was deleted; this snippet is illustrative only.
+warm:
+  backend: duckdb-ssd
+  path: "~/.akosha/dev/warm"  # Expanded to user home
 ```
 
 ```python
@@ -80,11 +80,11 @@ def get_warm_path(config_path: str) -> Path:
 - Separate from production data
 
 ```yaml
-# config/staging.yaml
-storage:
-  warm:
-    backend: duckdb-ssd
-    path: "/data/akosha/staging/warm"
+# settings/akosha.yaml (staging override via env or settings/local.yaml)
+# 2026-09-27: config/staging.yaml never existed in the Oneiric-migrated layout.
+warm:
+  backend: duckdb-ssd
+  path: "/data/akosha/staging/warm"
 ```
 
 ### Production Environment
@@ -100,11 +100,11 @@ storage:
 - Easy backup/snapshot
 
 ```yaml
-# config/production.yaml
-storage:
-  warm:
-    backend: duckdb-ssd
-    path: "/data/akosha/prod/warm"
+# settings/akosha.yaml (production override via settings/local.yaml)
+# 2026-09-27: config/production.yaml never existed in the Oneiric-migrated layout.
+warm:
+  backend: duckdb-ssd
+  path: "/data/akosha/prod/warm"
 ```
 
 ______________________________________________________________________
@@ -544,7 +544,7 @@ from typing import Any
 class StorageConfig:
     """Storage configuration with environment variable override."""
 
-    def __init__(self, config_path: str = "config/standard.yaml"):
+    def __init__(self, config_path: str = "settings/akosha.yaml"):  # 2026-09-27: was config/standard.yaml (deleted)
         """Initialize storage configuration.
 
         Priority:
@@ -590,10 +590,12 @@ class StorageConfig:
 
 | Environment | Config File | Env Override | Final Path |
 |-------------|-------------|--------------|------------|
-| **Local Dev** | `config/lite.yaml` | none | `~/.akosha/dev/warm` |
-| **Docker Dev** | `config/lite.yaml` | `AKOSHA_WARM_PATH=/data/akosha/dev/warm` | `/data/akosha/dev/warm` |
-| **Staging** | `config/staging.yaml` | none | `/data/akosha/staging/warm` |
-| **Production** | `config/production.yaml` | `AKOSHA_WARM_PATH=/data/akosha/prod/warm` | `/data/akosha/prod/warm` |
+| **Local Dev** | `settings/local.yaml` | none | `~/.akosha/dev/warm` |
+| **Docker Dev** | `settings/local.yaml` | `AKOSHA_WARM_PATH=/data/akosha/dev/warm` | `/data/akosha/dev/warm` |
+| **Staging** | `settings/local.yaml` | `AKOSHA_WARM_PATH=/data/akosha/staging/warm` | `/data/akosha/staging/warm` |
+| **Production** | `settings/akosha.yaml` | `AKOSHA_WARM_PATH=/data/akosha/prod/warm` | `/data/akosha/prod/warm` |
+
+> 2026-09-27: previous row references to `config/lite.yaml`, `config/standard.yaml`, `config/staging.yaml`, `config/production.yaml` were all to files that never existed in the Oneiric-migrated layout (or were deleted 2026-09-27). Use `settings/akosha.yaml` (canonical) + `settings/local.yaml` (gitignored) instead.
 
 ### Kubernetes ConfigMap
 
@@ -772,8 +774,9 @@ jobs:
 set -euo pipefail
 
 # Ensure warm storage path is configured correctly
-if grep -q 'path: "\./data/warm"' config/*.yaml; then
-  echo "ERROR: Relative path ./data/warm found in config"
+# 2026-09-27: scan settings/*.yaml instead of the deleted config/*.yaml.
+if grep -q 'path: "\./data/warm"' settings/*.yaml; then
+  echo "ERROR: Relative path ./data/warm found in settings/"
   echo "Use AKOSHA_WARM_PATH environment variable instead"
   exit 1
 fi
@@ -1549,7 +1552,11 @@ metadata:
 
 ### Phase 1: Development Environment (Week 1)
 
-- [ ] Update `config/lite.yaml` with `~/.akosha/dev/warm` path
+> 2026-09-27: "Update `config/lite.yaml`" is no longer applicable — that file
+> was deleted. Override `warm:` fields in `settings/local.yaml` (gitignored)
+> or via `AKOSHA__STORAGE__WARM__PATH` / `AKOSHA_MODE` env vars instead.
+
+- [ ] Override `warm:` path in `settings/local.yaml` to `~/.akosha/dev/warm`
 - [ ] Implement path resolution with environment variable override
 - [ ] Update `.gitignore` to exclude `data/` directory
 - [ ] Add migration script for existing `./data/warm` users
@@ -1860,54 +1867,34 @@ ______________________________________________________________________
 ### Complete Production Config
 
 ```yaml
-# config/production.yaml
+# settings/akosha.yaml (canonical production defaults)
+# 2026-09-27: example uses the Oneiric-migrated flat-key layout. The legacy
+# config/production.yaml file never existed in this layout — fields like
+# ``monitoring.*``, ``logging.*``, and the warm-tier ``checkpoint_interval_*``
+# are not bound in akosha/config.py and would be silently dropped.
 mode: standard
 
-storage:
-  hot:
-    backend: duckdb-memory
-    path: ":memory:"
-    write_ahead_log: true
-    wal_path: "/data/akosha/hot/wal"
+hot:
+  backend: duckdb-memory
+  path: ":memory:"
+  write_ahead_log: true
 
-  warm:
-    backend: duckdb-ssd
-    path: "/data/akosha/warm"
-    num_partitions: 256
+warm:
+  backend: duckdb-ssd
+  num_partitions: 256
 
-    # Performance tuning
-    checkpoint_interval_minutes: 15
-    max_memory_gb: 2
-    threads: 4
-
-    # Compression
-    compression_codec: "ZSTD"
-    compression_level: 9
-
-  cold:
-    enabled: true
-    backend: "s3"
-    bucket: "akosha-cold-prod"
-    prefix: "conversations/"
-    region: "us-west-2"
+cold:
+  enabled: true
+  backend: "s3"
+  bucket: "akosha-cold-prod"
+  prefix: "conversations/"
+  region: "us-west-2"
 
 cache:
   backend: redis
   host: "${AKOSHA_REDIS_HOST}"
   port: 6379
   db: 0
-
-monitoring:
-  metrics_enabled: true
-  prometheus_port: 9090
-
-  # Disk usage alerts
-  disk_usage_warning_percent: 75
-  disk_usage_critical_percent: 90
-
-logging:
-  level: "INFO"
-  format: "json"
 ```
 
 ### Environment Variables Reference

@@ -104,6 +104,10 @@ under `/Users/les/Projects/akosha/`. Akosha v0.15.1 is the Bodai ecosystem's
   `akosha/config.py:50-53` docstring stating canonical is 8682
 - **`ARCHITECTURE.md:515-517` + `akosha/CLAUDE.md:218-220`** reference
   `config/akosha.yaml` / `akosha_storage.yaml` / `akosha_secrets.yaml` — none exist
+  <!-- 2026-09-27: `config/akosha.yaml` (and the sibling `config/lite.yaml`,
+       `config/standard.yaml`, `config/README.md`) were deleted. The
+       `akosha/CLAUDE.md` Configuration Files section now points at
+       `settings/akosha.yaml` instead. -->
 - **14 env vars in `DEPLOYMENT_GUIDE.md:240-264`** (`AKOSHA_HOT_PATH`,
   `AKOSHA_MAX_CONCURRENT_INGESTS`, `AKOSHA_L1_CACHE_SIZE`, etc.) — none bound
   in `akosha/config.py`

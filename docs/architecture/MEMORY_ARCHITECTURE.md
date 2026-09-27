@@ -43,8 +43,8 @@ profile.
 
 | Tier | Engine | Retention | Vector format | What it holds | Owner |
 |------|--------|-----------|---------------|---------------|-------|
-| **Hot** (`HotStore`) | DuckDB in-memory (`:memory:`) **or** pgvector via `PgvectorHotStore` when `AKOSHA__STORAGE__HOT__BACKEND=pgvector` | ~7 days (age cutoff default in `AgingService.migrate_hot_to_warm`) | `FLOAT[384]` with HNSW index (`m=16, ef_construction=200`) | Full content + raw embedding + code graphs | `akosha/storage/hot_store.py`, `akosha/storage/pgvector_hot_store.py` |
-| **Warm** (`WarmStore`) | DuckDB on-disk at `${AKOSHA_DATA_PATH}/warm/warm.db` (resolved by `StoragePathResolver`) | 7–90 days | `INT8[384]` (75% size reduction) + 3-sentence extractive summary | Compressed embeddings + summaries | `akosha/storage/warm_store.py` |
+| **Hot** (`HotStore`) | DuckDB in-memory (`:memory:`) **or** DuckDB on-disk (`backend: duckdb-ssd`). pgvector migrated to the warm tier 2026-09-27 — see `akosha/AKOSHA_ARCHITECTURE_AUDIT_2026-09-09.md` and `akosha/storage/pgvector_warm_store.py`. | ~7 days (age cutoff default in `AgingService.migrate_hot_to_warm`) | `FLOAT[384]` (no HNSW — hot tier is write-heavy, not search-heavy) | Full content + raw embedding + code graphs | `akosha/storage/hot_store.py` |
+| **Warm** (`WarmStore` / `PgvectorWarmStore`) | DuckDB on-disk at `${AKOSHA_DATA_PATH}/warm/warm.db` (resolved by `StoragePathResolver`) **or** pgvector (one collection per `ShardRouter` shard) when `AKOSHA__STORAGE__WARM__BACKEND=pgvector` | 7–90 days | DuckDB: `INT8[384]` (75% size reduction) + 3-sentence extractive summary. pgvector: `FLOAT[384]` (lossy INT8 round-trip via `metadata.quantized=true`) + summary | Compressed embeddings + summaries | `akosha/storage/warm_store.py`, `akosha/storage/pgvector_warm_store.py` |
 | **Cold** (`ColdStore`) | Parquet (snappy) → S3/R2 via Oneiric adapter (TODO; current code logs and unlinks) | 90+ days | MinHash fingerprint + single-sentence summary | Archived parquet batches | `akosha/storage/cold_store.py` |
 | **Code graphs** | DuckDB table inside `HotStore` (`code_graphs`) | Refreshed per commit | JSON graph blob | Per-repo AST snapshots | `HotStore.initialize_code_graphs_table` / `store_code_graph` |
 | **Analytics buffer** (`FitnessAnalyzer`) | Bounded in-process `deque(maxlen=1000)` | Until flushed | n/a | Per-(task_class, selector) `FitnessSignal` ready to write to Dhara | `akosha/processing/fitness_analyzer.py` |
@@ -52,11 +52,18 @@ profile.
 
 The `HotStore` is created via the `create_hot_store()` factory in
 `akosha/storage/__init__.py`, which reads
-`AKOSHA__STORAGE__HOT__BACKEND` (`duckdb-memory` / `duckdb-ssd` /
-`pgvector`) and `AKOSHA__STORAGE__HOT__PG_URL`. Both backends expose the
-same interface (`initialize`, `insert`, `search_similar`, `query_traces`,
-`store_code_graph`, `get_code_graph`, `list_code_graphs`), so the rest
-of Akosha does not branch on backend.
+`AKOSHA__STORAGE__HOT__BACKEND` (`duckdb-memory` or `duckdb-ssd` —
+pgvector was removed 2026-09-27 and is now warm-tier-only). Both DuckDB
+backends expose the same interface (`initialize`, `insert`,
+`search_similar`, `query_traces`, `store_code_graph`, `get_code_graph`,
+`list_code_graphs`), so the rest of Akosha does not branch on backend.
+
+The warm tier is created via `create_warm_store()`, which reads
+`AKOSHA__STORAGE__WARM__BACKEND` (`duckdb-ssd` / `duckdb-hdd` /
+`pgvector`) and `AKOSHA__STORAGE__WARM__PG_URL`. The pgvector path
+(`PgvectorWarmStore`) shards collections via the existing
+`ShardRouter` (256 shards by default) — see
+`akosha/storage/pgvector_warm_store.py`.
 
 ### Schema map
 
@@ -781,9 +788,9 @@ storage:
 ```
 
 ```bash
-# Force pgvector backend in production
-export AKOSHA__STORAGE__HOT__BACKEND=pgvector
-export AKOSHA__STORAGE__HOT__PG_URL=postgresql://akosha:***@localhost:5432/akosha
+# Force pgvector backend in production (warm tier — pgvector migrated from hot 2026-09-27)
+export AKOSHA__STORAGE__WARM__BACKEND=pgvector
+export AKOSHA__STORAGE__WARM__PG_URL=postgresql://akosha:***@localhost:5432/akosha
 
 # Embedding model — currently hard-coded; override requires editing
 # akosha/processing/embeddings.py:38 ("all-MiniLM-L6-v2" default).
@@ -813,7 +820,7 @@ export AKOSHA__STORAGE__HOT__PG_URL=postgresql://akosha:***@localhost:5432/akosh
 ### Failure modes
 
 - **Hot store `:memory:` lost on restart**: `IngestionWorker` rebuilds it on next poll; expect ~1-2 minute cold-start.
-- **`pgvector` connection lost**: `PgvectorHotStore` raises `RuntimeError` on every operation; `create_hot_store()` factory does not fall back to DuckDB automatically — operators must restart the MCP server with `AKOSHA__STORAGE__HOT__BACKEND=duckdb-memory`.
+- **`pgvector` (warm tier) connection lost**: `PgvectorWarmStore` raises `RuntimeError` on every operation; `create_warm_store()` factory does not fall back to DuckDB automatically — operators must restart the MCP server with `AKOSHA__STORAGE__WARM__BACKEND=duckdb-ssd`. (pgvector migrated from the hot tier 2026-09-27.)
 - **Embedding model load fails**: `EmbeddingService.is_available()` returns False; downstream `mode` flag is `"fallback"`. `search_all_systems` will still return the mock result (see Contract 5.2).
 - **FitnessAnalyzer Dhara write fails**: DLQ after 3 attempts; signal is dropped, ERROR log emitted. Circuit breaker (if provided) protects downstream.
 - **Phase 0 Dhara write fails**: bounded exponential backoff (5 attempts, ~31s); heartbeat retries every 5 minutes. Akosha still starts up — `FitnessAnalyzer` simply cannot discover it.
