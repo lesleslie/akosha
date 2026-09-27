@@ -154,21 +154,27 @@ async def test_initialize_logs_conversation_index_failures(
     """Hot-store initialization should log and continue when conversation indexes fail.
 
     Post-Phase 5 follow-up: the conversations-table index DDL + log
-    messages moved to substrate (oneiric DuckdbHotStore). Uses
-    FakeInitConnection (raises on the substrate's index CREATE) +
-    caplog (which captures rendered messages at the handler level,
-    unlike ``logger.warning`` monkeypatch which captures the format
-    string).
+    messages live in the substrate (``oneiric.adapters.vector.duckdb_hot_store``),
+    not in akosha. ``HotStore.initialize`` inherits the substrate path;
+    patching the substrate's ``duckdb.connect`` exercises the failure
+    path end-to-end (fake-connection raises on each CREATE INDEX; the
+    substrate catches + logs).
+
+    The earlier version patched ``akosha.storage.hot_store.duckdb.connect``,
+    but akosha's hot_store module imports ``duckdb`` only under
+    ``TYPE_CHECKING`` (no runtime attribute), so the patch target never
+    resolved. The correct substrate-side patch is documented here.
     """
     import logging
 
     store = HotStore()
     fake_conn = FakeInitConnection()
     monkeypatch.setattr(
-        "akosha.storage.hot_store.duckdb.connect", lambda *_args, **_kwargs: fake_conn
+        "oneiric.adapters.vector.duckdb_hot_store.duckdb.connect",
+        lambda *_args, **_kwargs: fake_conn,
     )
 
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.WARNING, logger="oneiric.adapters.vector.duckdb_hot_store"):
         await store.initialize()
 
     messages = [r.getMessage() for r in caplog.records]
