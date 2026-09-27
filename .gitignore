@@ -162,6 +162,19 @@ tests/archived/
 
 # XDG - State directories
 .claude/
+# Shared team content (whitelisted — decisions, agents, workflows, skills).
+# Directory entries MUST come before the `**` recursive entries so git's
+# pattern matching re-includes the directory before evaluating the recursive
+# pattern. Pattern matches mahavishnu's allowlist style. Per
+# oneiric/docs/adr/0001-deployability-discipline.md.
+!.claude/decisions/
+!.claude/decisions/**
+!.claude/agents/
+!.claude/agents/**
+!.claude/workflows/
+!.claude/workflows/**
+!.claude/skills/
+!.claude/skills/**
 .session-buddy/
 .crackerjack/
 
