@@ -881,6 +881,21 @@ def create_app(mode: Any | None = None) -> FastMCP:
             )
             checks["local_traces_feed"] = lt_dict
 
+            # REQ-TSQ-008 (docs/plans/2026-09-26-tool-surface-quality.md):
+            # expose the mcp_tool_call sub-feed as its own per-feed dict so
+            # operators can distinguish a degraded tool-call trace feed from
+            # a healthy trace feed in general (the aggregator's worst-case
+            # 503 contract uses this; the per-feed dict carries the four
+            # mandatory signals: entities_count, last_updated_timestamp,
+            # cycles_total, errors_total). ``source`` documents the filter
+            # so operators can reproduce the count via mcp__akosha__query_local_traces.
+            mt_dict = _feed_dict("mcp_tool_call_feed", mcp_tool_call_state)
+            mt_dict["source"] = (
+                "hot_store.query_traces(task_class='mcp_tool_call', limit=1000)"
+            )
+            mt_dict["otel_ingester_running"] = otel_running
+            checks["mcp_tool_call_feed"] = mt_dict
+
             # Phase 1.5: keep the legacy manifest fields on the wire so
             # tooling that already parses key_count / pubkeys keeps working.
             ss_dict = _feed_dict("skills_signer", skills_signer_state)
@@ -940,6 +955,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
                     "code_graphs_feed",
                     "knowledge_graph_feed",
                     "local_traces_feed",
+                    "mcp_tool_call_feed",
                     "skills_signer",
                 )
             )

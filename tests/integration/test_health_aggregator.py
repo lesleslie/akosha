@@ -471,3 +471,213 @@ def test_akosha_health_code_graphs_warming_up_after_first_cycle(
     assert "warming_up_empty_feed" in feed["reason_codes"]
     # The DEGRADED HNSW reason should NOT surface once cycles_total > 0.
     assert "feed_never_populated" not in feed["reason_codes"]
+
+
+# ---------------------------------------------------------------------------
+# REQ-TSQ-008 (docs/plans/2026-09-26-tool-surface-quality.md) — mcp_tool_call
+# sub-feed wire-out. The aggregator considers the feed for top-level 503,
+# but operators also need per-feed visibility on the wire (entities_count,
+# last_updated_timestamp, cycles_total, errors_total) to distinguish a
+# degraded tool-call trace feed from healthy traces in general.
+# ---------------------------------------------------------------------------
+
+
+def test_akosha_health_mcp_tool_call_feed_wire_out(
+    http_client: TestClient,
+) -> None:
+    """``mcp_tool_call_feed`` per-feed dict populates the response body.
+
+    The production probe at ``akosha/mcp/server.py:882-888`` writes
+    ``checks["mcp_tool_call_feed"]`` with the four mandatory signals.
+    This test pins the END-TO-END contract: a probe emitting the
+    mcp_tool_call feed shape must produce a response body that exposes
+    the per-feed dict with all four mandatory fields.
+    """
+    import time
+
+    async def probe() -> dict[str, dict[str, Any]]:
+        mcp_tool_call_state = HealthFeedState(
+            entities_count=5,
+            last_updated_timestamp=time.time(),
+            cycles_total=10,
+            errors_total=0,
+            last_error_at=None,
+            ingester_running=True,
+        )
+        local_traces_state = HealthFeedState(
+            entities_count=100,
+            last_updated_timestamp=time.time(),
+            cycles_total=10,
+            errors_total=0,
+            last_error_at=None,
+            ingester_running=True,
+        )
+        snap = aggregate_feed_states(
+            {
+                "mcp_tool_call_feed": mcp_tool_call_state,
+                "local_traces_feed": local_traces_state,
+            }
+        )
+
+        def _feed_dict(name: str, state: HealthFeedState) -> dict[str, Any]:
+            verdict = snap["checks"][name]
+            return {
+                "ok": verdict["healthy"],
+                "status": verdict["status"].value,
+                "reason_codes": [c.value for c in verdict["reason_codes"]],
+                "feed_entities_count": state.entities_count,
+                "feed_last_updated_timestamp": state.last_updated_timestamp,
+                "cycles_total": state.cycles_total,
+                "errors_total": state.errors_total,
+            }
+
+        checks: dict[str, dict[str, Any]] = {}
+        checks["mcp_tool_call_feed"] = _feed_dict("mcp_tool_call_feed", mcp_tool_call_state)
+        checks["mcp_tool_call_feed"]["source"] = (
+            "hot_store.query_traces(task_class='mcp_tool_call', limit=1000)"
+        )
+        checks["mcp_tool_call_feed"]["otel_ingester_running"] = True
+        checks["local_traces_feed"] = _feed_dict("local_traces_feed", local_traces_state)
+
+        # Infrastructure checks (no-ops for this test).
+        checks["hot_store"] = {"ok": True}
+        checks["embeddings"] = {"ok": True}
+        checks["cold_storage"] = {"ok": True}
+
+        all_data_feeds_ok = all(
+            snap["checks"][name]["healthy"]
+            for name in (
+                "mcp_tool_call_feed",
+                "local_traces_feed",
+            )
+        )
+        checks["_aggregate"] = {
+            "status": snap["status"].value,
+            "reason_codes": [c.value for c in snap["reason_codes"]],
+            "data_feeds_ok": all_data_feeds_ok,
+            "halflife_seconds": 300,
+        }
+        return checks
+
+    set_health_probe(probe)
+
+    response = http_client.get("/health")
+    body = response.json()
+
+    # The route handler exposes mcp_tool_call_feed in the wire-out checks
+    # with all four mandatory signals plus the production shape extras.
+    feed = body["checks"]["mcp_tool_call_feed"]
+    assert "feed_entities_count" in feed, feed
+    assert "feed_last_updated_timestamp" in feed, feed
+    assert "cycles_total" in feed, feed
+    assert "errors_total" in feed, feed
+    assert "status" in feed, feed
+    assert "reason_codes" in feed, feed
+    assert "ok" in feed, feed
+    # Production probe adds these extras (source for repro, ingester visibility).
+    assert "source" in feed, feed
+    assert "otel_ingester_running" in feed, feed
+    # Five mcp_tool_call traces, all healthy.
+    assert feed["feed_entities_count"] == 5
+    assert feed["status"] == "healthy"
+    assert feed["ok"] is True
+
+    # Both feeds are healthy → data_feeds_ok rollup is True.
+    assert body["checks"]["_aggregate"]["data_feeds_ok"] is True
+
+
+def test_akosha_health_mcp_tool_call_feed_degraded_drives_503(
+    http_client: TestClient,
+) -> None:
+    """A degraded ``mcp_tool_call_feed`` flips the top-level verdict to 503.
+
+    Pin the worst-case rollup: when ``mcp_tool_call_feed`` carries a
+    recent error (inside the halflife window) and all other feeds are
+    healthy, the aggregate is DEGRADED and /health returns 503 so
+    operators see the regression immediately. The mcp_tool_call feed's
+    per-feed dict is also visible in the body so operators can see
+    WHICH feed is degraded.
+    """
+    import time
+
+    async def probe() -> dict[str, dict[str, Any]]:
+        mcp_tool_call_state = HealthFeedState(
+            entities_count=5,
+            last_updated_timestamp=time.time(),
+            cycles_total=10,
+            errors_total=1,
+            last_error_at=time.time() - 5.0,  # inside 300s halflife
+            ingester_running=True,
+        )
+        local_traces_state = HealthFeedState(
+            entities_count=100,
+            last_updated_timestamp=time.time(),
+            cycles_total=10,
+            errors_total=0,
+            last_error_at=None,
+            ingester_running=True,
+        )
+        snap = aggregate_feed_states(
+            {
+                "mcp_tool_call_feed": mcp_tool_call_state,
+                "local_traces_feed": local_traces_state,
+            }
+        )
+
+        def _feed_dict(name: str, state: HealthFeedState) -> dict[str, Any]:
+            verdict = snap["checks"][name]
+            return {
+                "ok": verdict["healthy"],
+                "status": verdict["status"].value,
+                "reason_codes": [c.value for c in verdict["reason_codes"]],
+                "feed_entities_count": state.entities_count,
+                "feed_last_updated_timestamp": state.last_updated_timestamp,
+                "cycles_total": state.cycles_total,
+                "errors_total": state.errors_total,
+            }
+
+        checks: dict[str, dict[str, Any]] = {}
+        checks["mcp_tool_call_feed"] = _feed_dict("mcp_tool_call_feed", mcp_tool_call_state)
+        checks["mcp_tool_call_feed"]["source"] = (
+            "hot_store.query_traces(task_class='mcp_tool_call', limit=1000)"
+        )
+        checks["mcp_tool_call_feed"]["otel_ingester_running"] = True
+        checks["local_traces_feed"] = _feed_dict("local_traces_feed", local_traces_state)
+
+        checks["hot_store"] = {"ok": True}
+        checks["embeddings"] = {"ok": True}
+        checks["cold_storage"] = {"ok": True}
+
+        all_data_feeds_ok = all(
+            snap["checks"][name]["healthy"]
+            for name in (
+                "mcp_tool_call_feed",
+                "local_traces_feed",
+            )
+        )
+        checks["_aggregate"] = {
+            "status": snap["status"].value,
+            "reason_codes": [c.value for c in snap["reason_codes"]],
+            "data_feeds_ok": all_data_feeds_ok,
+            "halflife_seconds": 300,
+        }
+        return checks
+
+    set_health_probe(probe)
+
+    response = http_client.get("/health")
+    body = response.json()
+
+    # 503 because mcp_tool_call_feed is degraded.
+    assert response.status_code == 503
+    assert body["checks"]["_aggregate"]["status"] == "degraded"
+    assert body["checks"]["_aggregate"]["data_feeds_ok"] is False
+
+    # mcp_tool_call_feed surfaces its degraded status with the right reason code.
+    feed = body["checks"]["mcp_tool_call_feed"]
+    assert feed["status"] == "degraded"
+    assert feed["ok"] is False
+    assert "error_within_halflife" in feed["reason_codes"]
+
+    # local_traces_feed is still healthy.
+    assert body["checks"]["local_traces_feed"]["status"] == "healthy"
