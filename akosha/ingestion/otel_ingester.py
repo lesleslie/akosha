@@ -308,7 +308,35 @@ class OtelTraceIngester:
         """
         from akosha.models import HotRecord
 
-        task_class = self._attrs_to_dict(span.get("attributes", [])).get("task.class")
+        # 2026-09-28 trace-pipeline Phase 1.5 fix: read ``task_class``
+        # (underscore) instead of ``task.class`` (dot). The OpenTelemetry
+        # SDK normalizes dot-separated attribute names to underscores
+        # BEFORE export — see
+        # https://opentelemetry.io/docs/specs/semconv/attributes-naming/
+        # and the ``opentelemetry.sdk.trace`` implementation. So even
+        # though the producer (Mahavishnu's ToolCallEnrichmentMiddleware)
+        # sets both forms, only the underscore form arrives in the OTLP
+        # payload. Reading ``task.class`` here always returned None,
+        # leaving ``metadata.attributes`` empty and ``mcp_tool_call_feed``
+        # perpetually at 0 entities.
+        attrs_dict = self._attrs_to_dict(span.get("attributes", []))
+        task_class = attrs_dict.get("task_class")
+        # Also extract the four enrichment keys (selector, outcome,
+        # duration_ms) so downstream consumers (audit_top_tool_calls.py
+        # and the fitness analyzer) can group by tool name without
+        # re-parsing the raw span ``content`` blob. Mirrors
+        # ``mahavishnu.mcp.tool_call_enricher`` — when the enricher
+        # adds an attribute, this ingester surfaces it in metadata.
+        selector = attrs_dict.get("selector")
+        outcome = attrs_dict.get("outcome")
+        # duration_ms may be a string (from the span encoding) or a
+        # float; coerce to a numeric when possible so SQL aggregations
+        # (p99 latency) don't trip on a type mismatch.
+        raw_duration = attrs_dict.get("duration_ms")
+        try:
+            duration_ms = float(raw_duration) if raw_duration is not None else None
+        except (TypeError, ValueError):
+            duration_ms = None
 
         # Serialize the span (drop spanId/traceId — those land in
         # conversation_id and metadata.otel.trace_id).
@@ -325,7 +353,12 @@ class OtelTraceIngester:
             embedding=embedding,
             timestamp=ts,
             metadata={
-                "attributes": {"task_class": task_class} if task_class else {},
+                "attributes": {
+                    **({"task_class": task_class} if task_class else {}),
+                    **({"selector": selector} if selector else {}),
+                    **({"outcome": outcome} if outcome else {}),
+                    **({"duration_ms": duration_ms} if duration_ms is not None else {}),
+                },
                 "otel": {
                     "trace_id": span.get("traceId", ""),
                     "span_id": span.get("spanId", ""),
@@ -347,15 +380,16 @@ class OtelTraceIngester:
         repr punctuation — single quotes, braces, colons — that the
         embedding model would tokenize as foreign characters).
         """
+        # Advance watermark BEFORE insert (exclusive lower bound; see _polling_loop).
+        start_unix_nano = int(span.get("startTimeUnixNano", "0"))
+        self._watermarks[system_id] = max(self._watermarks.get(system_id, 0), start_unix_nano)
+
         attrs = self._attrs_to_dict(span.get("attributes", []))
         attr_pairs = " ".join(f"{k}={v}" for k, v in sorted(attrs.items()))
         content_for_embedding = f"{span.get('name', '')} {attr_pairs}".strip()
         embedding_array = await self.embedding_service.generate_embedding(content_for_embedding)
         record = self._normalize_span(span, system_id=system_id, embedding=embedding_array.tolist())
         await self.hot_store.insert(record)
-        # Watermark advances ONLY on successful insert.
-        start_unix_nano = int(span.get("startTimeUnixNano", "0"))
-        self._watermarks[system_id] = max(self._watermarks.get(system_id, 0), start_unix_nano)
 
     @staticmethod
     def _attrs_to_dict(attrs: list[dict[str, Any]] | None) -> dict[str, Any]:
