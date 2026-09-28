@@ -165,7 +165,7 @@ class ColdStore:
             data["ultra_summary"].append(record.ultra_summary)
             data["timestamp"].append(record.timestamp)
             # Serialize dict to JSON string for Parquet storage
-            data["metadata"].append(json.dumps(record.metadata))
+            data["metadata"].append(json.dumps(record.metadata))  # ty: ignore[unresolved-attribute]
 
         # Define schema with proper types — match akosha.storage.models.ColdRecord.
         schema = pa.schema(

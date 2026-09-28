@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 
 from akosha.storage.aging import AgingService, MigrationStats
 from akosha.storage.cold_store import ColdStore
@@ -62,7 +63,7 @@ __all__ = [
 
 
 def create_hot_store(
-    backend: str = "duckdb-memory",
+    backend: str = "duckdb-memory",  # noqa: ARG001  # parallel API with create_warm_store; hot tier is DuckDB-only and the value is not consumed here
     embedding_dim: int | None = None,
     database_path: str = ":memory:",
 ) -> HotStore:
@@ -92,11 +93,21 @@ def create_hot_store(
     return HotStore(database_path=database_path, embedding_dim=embedding_dim)
 
 
+def _coerce_db_path(path: os.PathLike[str] | None) -> Path:
+    """Coerce ``PathLike``/``None`` to ``Path``.
+
+    WarmStore.__init__'s ``database_path`` is typed ``Path`` (required).
+    :func:`create_warm_store` accepts ``PathLike | None`` so callers can
+    pass raw config-dict values; we narrow + default here.
+    """
+    return Path(path) if path is not None else Path()
+
+
 def create_warm_store(
     backend: str = "duckdb-ssd",
     pg_url: str = "",
     shard_count: int | None = None,
-    database_path: "os.PathLike[str] | None" = None,
+    database_path: os.PathLike[str] | None = None,
 ) -> WarmStore | PgvectorWarmStore:
     """Create a warm store instance based on the resolved backend.
 
@@ -132,10 +143,10 @@ def create_warm_store(
                 "(pass via create_warm_store(pg_url=...) or "
                 "AKOSHA__STORAGE__WARM__PG_URL); falling back to duckdb-ssd"
             )
-            return WarmStore(database_path=database_path)
+            return WarmStore(database_path=_coerce_db_path(database_path))
         return PgvectorWarmStore(
             pg_url=resolved_pg_url,
             shard_count=shard_count,
         )
 
-    return WarmStore(database_path=database_path)
+    return WarmStore(database_path=_coerce_db_path(database_path))

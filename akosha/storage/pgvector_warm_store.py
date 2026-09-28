@@ -28,7 +28,9 @@ stored as ``metadata.quantized=true`` and converted to float on insert
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+from itertools import chain
 from typing import TYPE_CHECKING, Any
 
 from oneiric.adapters.vector.pgvector import PgvectorAdapter, PgvectorSettings
@@ -59,6 +61,7 @@ def _redact_dsn(msg: str, pg_url: str | None) -> str:
     if not msg or not pg_url:
         return msg
     return msg.replace(pg_url, "***")
+
 
 _COLLECTION_PREFIX = "akosha_warm_shard_"  # akosha_warm_shard_000 ... _255
 _DISTANCE_METRIC = "cosine"
@@ -122,7 +125,7 @@ class PgvectorWarmStore:
         self._initialized = False
 
     @staticmethod
-    def _build_default_router(num_shards: int | None) -> "ShardRouter":
+    def _build_default_router(num_shards: int | None) -> ShardRouter:
         """Build a ShardRouter from ``akosha.config.config.shard_count`` (lazy).
 
         Defers the ``akosha.storage.sharding`` import until the first
@@ -169,9 +172,7 @@ class PgvectorWarmStore:
             RuntimeError: If ``initialize()`` has not been called.
         """
         if not self._initialized:
-            raise RuntimeError(
-                "PgvectorWarmStore not initialized. Call initialize() first."
-            )
+            raise RuntimeError("PgvectorWarmStore not initialized. Call initialize() first.")
 
         actual_dim = len(record.embedding)
         if actual_dim != self._embedding_dimension:
@@ -194,7 +195,7 @@ class PgvectorWarmStore:
         # INT8 quantized values are stored as metadata.quantized=true and
         # converted to float[] on insert. The lossy round-trip is by design
         # (matches the existing DuckDB warm-store INT8 storage contract).
-        embedding_floats = [int(v) / 127.0 for v in record.embedding]
+        embedding_floats = [v / 127.0 for v in record.embedding]
 
         doc = VectorDocument(
             id=record.conversation_id,
@@ -235,9 +236,7 @@ class PgvectorWarmStore:
             List of matching records as dicts sorted by similarity.
         """
         if not self._initialized:
-            raise RuntimeError(
-                "PgvectorWarmStore not initialized. Call initialize() first."
-            )
+            raise RuntimeError("PgvectorWarmStore not initialized. Call initialize() first.")
 
         target_shards = self._shard_router.get_target_shards(system_id)
         filter_expr = {"system_id": system_id} if system_id else None
@@ -252,10 +251,8 @@ class PgvectorWarmStore:
                 include_vectors=False,
             )
 
-        shard_results = await asyncio.gather(
-            *(_search_one(s) for s in target_shards)
-        )
-        flat = [r for sub in shard_results for r in sub]
+        shard_results = await asyncio.gather(*(_search_one(s) for s in target_shards))
+        flat = list(chain.from_iterable(shard_results))
 
         if threshold is not None:
             max_distance = 1.0 - threshold
@@ -293,15 +290,9 @@ class PgvectorWarmStore:
             Record dict or None if not found.
         """
         if not self._initialized:
-            raise RuntimeError(
-                "PgvectorWarmStore not initialized. Call initialize() first."
-            )
+            raise RuntimeError("PgvectorWarmStore not initialized. Call initialize() first.")
 
-        target_shards: list[int]
-        if shard_id is not None:
-            target_shards = [shard_id]
-        else:
-            target_shards = list(self._adapters.keys())
+        target_shards = [shard_id] if shard_id is not None else list(self._adapters.keys())
 
         async def _get_one(shard: int) -> list[Any]:
             adapter = self._adapters[shard]
@@ -318,8 +309,7 @@ class PgvectorWarmStore:
         # don't keep running pointlessly (and don't show up as
         # "task exception was never retrieved" warnings in tests).
         tasks = [
-            asyncio.create_task(_get_one(s), name=f"pgvector-warm-get-{s}")
-            for s in target_shards
+            asyncio.create_task(_get_one(s), name=f"pgvector-warm-get-{s}") for s in target_shards
         ]
         try:
             for coro in asyncio.as_completed(tasks):
@@ -334,7 +324,8 @@ class PgvectorWarmStore:
                         "metadata": {
                             k: v
                             for k, v in doc.metadata.items()
-                            if k not in (
+                            if k
+                            not in (
                                 "system_id",
                                 "summary",
                                 "timestamp",
@@ -350,14 +341,10 @@ class PgvectorWarmStore:
             # Drain cancellations so the loop's "Task exception was
             # never retrieved" warning doesn't fire on shutdown.
             for task in tasks:
-                try:
+                with contextlib.suppress(asyncio.CancelledError, Exception):
                     await task
-                except (asyncio.CancelledError, Exception):
-                    pass
 
-    async def delete(
-        self, conversation_id: str, *, shard_id: int | None = None
-    ) -> None:
+    async def delete(self, conversation_id: str, *, shard_id: int | None = None) -> None:
         """Delete a conversation by ID.
 
         With no ``shard_id``, fans out across shards in parallel with
@@ -365,24 +352,16 @@ class PgvectorWarmStore:
         known shard (cheaper — avoids the cross-shard fan-out).
         """
         if not self._initialized:
-            raise RuntimeError(
-                "PgvectorWarmStore not initialized. Call initialize() first."
-            )
+            raise RuntimeError("PgvectorWarmStore not initialized. Call initialize() first.")
 
-        target_shards: list[int]
-        if shard_id is not None:
-            target_shards = [shard_id]
-        else:
-            target_shards = list(self._adapters.keys())
+        target_shards = [shard_id] if shard_id is not None else list(self._adapters.keys())
 
         async def _delete_one(shard: int) -> bool:
             adapter = self._adapters[shard]
             # pgvector's delete returns the count of removed rows; treat
             # any positive count as a hit. The remaining shards share no
             # primary-key namespace, so first-hit is safe to stop on.
-            removed = await adapter.delete(
-                _collection_name(shard), [conversation_id]
-            )
+            removed = await adapter.delete(_collection_name(shard), [conversation_id])
             return bool(removed)
 
         # Same early-exit pattern as get_by_id: schedule every shard,
@@ -401,10 +380,8 @@ class PgvectorWarmStore:
                 if not task.done():
                     task.cancel()
             for task in tasks:
-                try:
+                with contextlib.suppress(asyncio.CancelledError, Exception):
                     await task
-                except (asyncio.CancelledError, Exception):
-                    pass
 
     async def close(self) -> None:
         """Close all pgvector adapter connections."""

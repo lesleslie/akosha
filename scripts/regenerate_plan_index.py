@@ -327,17 +327,31 @@ Last regenerated: {generated_at}.
 
 def _entry_link(rel: str, store: str) -> str:
     """POSIX link to the file from the index's home at docs/plans/.
-    Files outside docs/plans/ need an explicit relative prefix."""
+
+    The index lives at ``docs/plans/PLAN_INDEX.md``. Path arithmetic by
+    directory prefix:
+
+    - ``docs/plans/...`` → same directory as the index → drop prefix.
+    - ``docs/...`` (not ``docs/plans/``) → sibling of ``docs/plans/`` →
+      ``../`` then descend into the rest of the path (e.g. ``docs/superpowers/...``
+      becomes ``../superpowers/...``).
+    - ``.claude/...`` → repository-rooted → ``../../`` then descend.
+    - Anything else → repository-rooted → ``../../`` then descend.
+
+    The previous implementation used a depth counter that built ``prefix +
+    rel``, which doubled the ``docs/`` segment for siblings and short by one
+    ``../`` for the repo-rooted ``.claude/`` case. This direct
+    path-segment arithmetic avoids that mistake.
+    """
     if rel.startswith("docs/plans/"):
-        depth = 1  # file lives in same directory as the index
+        target = rel[len("docs/plans/"):]
     elif rel.startswith("docs/"):
-        depth = 2  # up one (docs/), then down into the actual path
+        target = "../" + rel[len("docs/"):]
     elif rel.startswith(".claude/"):
-        depth = 2  # up one to repo root, then into .claude/
+        target = "../../" + rel
     else:
-        depth = 2
-    prefix = "../" * (depth - 1)
-    return f"[`{rel}`]({prefix}{rel})"
+        target = "../../" + rel
+    return f"[`{rel}`]({target})"
 
 
 def _render_store_table(store: str, entries: list[Entry]) -> str:
