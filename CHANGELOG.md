@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] - 2026-09-28
+
+### Added
+
+- akosha: ColdStorageConfig exposes 6 new fields + env bindings
+- akosha: ColdStore gcs branch forwards endpoint_url
+- akosha: ColdStore s3 branch forwards access_key_id + secret_access_key
+- akosha: End-to-end cold tier via fake-gcs-server subprocess + Parquet schema fix
+- akosha: Introduce CacheManager over MemoryCacheAdapter
+- akosha: Migrate pgvector from hot tier to warm tier
+- akosha: Single-source-of-truth version stamps via importlib.metadata
+- akosha: StandardMode forwards cold-tier credentials
+- akosha: Wire mcp_tool_call feed into /health aggregator (Phase 1 Task 1.5)
+
+### Fixed
+
+- akosha: Expose mcp_tool_call_feed per-feed dict in /health wire-out
+- akosha: Patch substrate duckdb.connect for index-failure test
+- akosha: Redact pgvector DSNs from logs, short-circuit shard fan-out
+- scripts: Audit_empty_tests docstring filter missed string-Constant body
+
+### Documentation
+
+- akosha: Cold-tier operator quickstart
+- akosha: Plan — cold-tier fake-gcs + R2 implementation
+- akosha: Plan — fold 3-agent review feedback into cold-tier plan
+- akosha: Plan — pyproject as single-source-of-truth for version strings
+- akosha: Promote version SSO plan to active + regenerate PLAN_INDEX
+- akosha: Spec — cold tier defaults to fake-gcs-server, R2 for local XDG
+- akosha: Spec — incorporate 3-agent review feedback
+
+### Testing
+
+- Admin-granted Akosha read of sb.* reflections works
+- akosha: Cover ColdStorageConfig new fields + env bindings
+- akosha: Cover ColdStore gcs branch forwards endpoint_url
+- akosha: Rewrite pgvector test suite for warm-tier contract
+
+### Internal
+
+- akosha: Add Oneiric config-schema wiring audit script
+- akosha: Register pytest req marker for Traceable Spec ID
+- akosha: Sync version stamps to pyproject (0.17.5 → 0.19.1)
+
 ## [0.19.1] - 2026-09-27
 
 ### Documentation
