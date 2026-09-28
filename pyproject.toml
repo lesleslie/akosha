@@ -108,6 +108,7 @@ markers = [
     "expensive: marks tests that are expensive to run (compute/time)",
     "security: marks tests that verify security properties",
     "maintenance: marks tests for maintenance tasks",
+    "req: Traceable spec REQ ID (D2 wire-up discipline; see crackerjack-compliant-code skill)",
 ]
 
 [tool.coverage.run]
