@@ -401,6 +401,21 @@ def create_app(mode: Any | None = None) -> FastMCP:
             REGISTRATION_MAP,
         )
 
+        # ------------------------------------------------------------------
+        # Wave 5: publish the lifespan-owned HotStore BEFORE the tool
+        # wrappers register so they reuse this instance instead of producing
+        # a fresh in-memory DuckDB database per call. Without this ordering
+        # (set_shared_hot_store AFTER _apply_tool_profile), the tool
+        # wrappers fall through to per-call construction in
+        # ``_try_create_hot_store()`` and see an empty database — the
+        # OtelTraceIngester and CodeGraphIngester write to THIS instance
+        # while ``akosha_query_local_traces`` / ``list_ingested_code_graphs``
+        # read from a DIFFERENT empty instance. Symptom surfaced during the
+        # trace-pipeline Phase 1.5 fix: ``local_traces_feed`` (kg_refresh)
+        # showed 27 entities but the same-query MCP tool returned 0.
+        # ------------------------------------------------------------------
+        set_shared_hot_store(hot_store)
+
         await _apply_tool_profile(
             server,
             profile_env_var="AKOSHA_TOOL_PROFILE",
@@ -412,16 +427,6 @@ def create_app(mode: Any | None = None) -> FastMCP:
             discovery_fn=None,
             yaml_loader=None,
         )
-
-        # ------------------------------------------------------------------
-        # Wave 5: publish the lifespan-owned HotStore so the per-group
-        # tool wrappers (which each call ``create_hot_store()`` themselves)
-        # reuse this instance instead of producing a fresh in-memory DuckDB
-        # database per call. Without this, data written by the CodeGraphIngester
-        # below is invisible to ``list_ingested_code_graphs`` /
-        # ``get_graph_statistics`` / ``query_local_traces``.
-        # ------------------------------------------------------------------
-        set_shared_hot_store(hot_store)
 
         # ------------------------------------------------------------------
         # Wave 5: publish the lifespan-owned KnowledgeGraphBuilder so the
