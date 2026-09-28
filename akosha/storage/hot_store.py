@@ -98,7 +98,15 @@ class HotStore(DuckdbHotStore):
         # Resolve AkoSHA's smarter embedding dim before delegating so
         # the schema dim matches the active backend.
         if embedding_dim is None:
-            embedding_dim = resolve_embedding_dim()
+            # 2026-09-28: explicitly pass the live embedding service so
+            # ``resolve_embedding_dim`` returns the post-init dim (768
+            # for Ollama nomic-embed-text). Without the explicit arg,
+            # the resolver falls back to ``DEFAULT_DIMENSION = 384`` and
+            # the schema is locked to the wrong size, breaking
+            # OtelTraceIngester.insert with "embedding dim mismatch".
+            from akosha.processing.embeddings import get_embedding_service
+
+            embedding_dim = resolve_embedding_dim(get_embedding_service())
         super().__init__(
             database_path=database_path,
             embedding_dim=embedding_dim,
