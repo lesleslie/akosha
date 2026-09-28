@@ -1,0 +1,268 @@
+# ============================================================================
+# CI / GitHub Actions
+# ============================================================================
+# Akosha CI is intentionally disabled (see lesleslie/akosha#workflows).
+# Gitignoring the directory keeps any future workflow file out of version
+# control until the team re-enables CI by design.
+.github/workflows/
+
+# ============================================================================
+# Python - Generated Files
+# ============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ============================================================================
+# Python - C Extensions
+# ============================================================================
+*.pyc
+*.pyo
+
+# ============================================================================
+# Python - Distribution / Packaging
+# ============================================================================
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+*.egg-info
+installed.cfg
+*.egg
+MANIFEST
+*.spec
+*.whl
+
+# ============================================================================
+# Python - Unit Test / Coverage Reports
+# ============================================================================
+htmlcov/
+tox/
+.nox/
+coverage
+coverage.py
+coverage.*
+nosetests.xml
+coverage.xml
+coverage.json
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# ============================================================================
+# Translations
+# ============================================================================
+*.mo
+*.pot
+
+# ============================================================================
+# Python - Environments
+# ============================================================================
+.env
+.venv
+venv/
+env/
+venv/
+ENV/
+ENV/
+env.bak/
+venv.bak/
+
+# ============================================================================
+# Python - Type Checking & Linting
+# ============================================================================
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+.pyre/
+.pytype/
+.pytype/
+
+# ============================================================================
+# Python - Package Management
+# ============================================================================
+.pdm-python/
+.pdm.toml
+.pyscn/
+.uv/
+.uv-cache/
+
+# ============================================================================
+# IDEs
+# ============================================================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ============================================================================
+# Logs
+# ============================================================================
+*.log
+logs/
+
+# ============================================================================
+# OS
+# ============================================================================
+.DS_Store
+Thumbs.db
+
+# ============================================================================
+# Local Configuration
+# ============================================================================
+settings/local.yaml
+settings/repos.yaml
+settings/ecosystem.yaml
+.envrc.local
+
+# ============================================================================
+# Sensitive Configuration Files
+# ============================================================================
+config.yaml
+oneiric.yaml
+
+# ============================================================================
+# Crackerjack
+# ============================================================================
+.crackerjack/
+
+# ============================================================================
+# Archived Files
+# ============================================================================
+.archive/
+tests/archived/
+
+# ============================================================================
+# Project-Specific
+# ============================================================================
+# Archived test/debug scripts
+tests/archived/
+
+# XDG - Cache directories
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.oneiric_cache/
+.complexipy_cache/
+.cache/
+.lycheecache
+.lycheecache/
+
+# XDG - State directories
+.claude/
+# Shared team content (whitelisted — decisions, agents, workflows, skills).
+# Directory entries MUST come before the `**` recursive entries so git's
+# pattern matching re-includes the directory before evaluating the recursive
+# pattern. Pattern matches mahavishnu's allowlist style. Per
+# oneiric/docs/adr/0001-deployability-discipline.md.
+!.claude/decisions/
+!.claude/decisions/**
+!.claude/agents/
+!.claude/agents/**
+!.claude/workflows/
+!.claude/workflows/**
+!.claude/skills/
+!.claude/skills/**
+.session-buddy/
+.crackerjack/
+
+# Git Worktrees
+.worktrees/
+
+# XDG - DELETE candidates
+.obsidian/
+
+.archives/
+.backup/
+.backups/
+
+.coverage
+.coverage*
+
+# Backup Files (added by gitignore audit)
+# ============================================================================
+*.backup
+*.bak
+*.backup.json
+
+# ============================================================================
+# Node.js - Wave-11 mermaid CI guard
+# ============================================================================
+# jsdom is the dev dep for the wave-11 mermaid CI guard (see
+# akosha/tools/mermaid_validator/validate_mermaid.mjs). The package.json
+# + package-lock.json ARE committed; only the resolved artifacts are
+# excluded.
+node_modules/
+# Allow the empty placeholder so a fresh clone gets a usable `npm install`.
+!node_modules/.gitkeep
+
+
+# Archived test artifacts - emit to /tmp instead of git
+docs/archive/test-artifacts/
+# Belt-and-suspenders: any coverage*.json dump regardless of location
+coverage*.json
+
+# ============================================================================
+# Bodai-wide gitignore patterns (added 2026-09-07; cross-repo cleanup sweep)
+# ============================================================================
+# Editor / pre-edit backups (foo.py.backup, foo.py.backup.json)
+*.backup
+*.backup.*
+*.bak
+*.tmpl
+# XDG mistake dirs (env var expansion failed; literal names)
+~
+[{]HOME[}]
+[{]XDG_DATA_HOME:-$HOME
+# pytest-benchmark autosave cache (sibling of the tracked `benchmarks/` test suite)
+.benchmarks/
+# Vitest config timestamp cache
+vitest.config.js.timestamp-*.mjs
+# Playwright output cruft
+playwright-junit.xml
+playwright-report/
+playwright-results.json
+test-results/
+
+
+# >>> bodai-shared-gitignore >>>
+# Source of truth: crackerjack/templates/GITIGNORE_BODAI.md
+# Enforced by: crackerjack check `gitignore-conformance`
+# Fleet list: /Users/les/Projects/mahavishnu/BODAI_REPO_REGISTRY.md
+# Do NOT remove the marker line above — `crackerjack gitignore sync` uses it
+# to detect already-applied state.
+
+# Editor / pre-edit backups (foo.py.backup, foo.py.backup.json)
+*.backup
+*.backup.*
+*.bak
+*.tmpl
+# XDG mistake dirs (env var expansion failed; literal names)
+# Note: both `{` and `}` are escaped (`{` -> `[{]`, `}` -> `[}]`)
+# because gitignore parsers interpret `${...}` as a brace-expansion
+# alternate group; escaping only the open brace leaves a stray `}`.
+~
+[{]HOME[}]
+[{]XDG_DATA_HOME:-$HOME[}]
+# pytest-benchmark autosave cache (sibling of the tracked `benchmarks/` test suite)
+.benchmarks/
+# Vitest config timestamp cache
+vitest.config.js.timestamp-*.mjs
+# Playwright output cruft
+playwright-junit.xml
+playwright-report/
+playwright-results.json
+test-results/
+# <<< bodai-shared-gitignore <<<
