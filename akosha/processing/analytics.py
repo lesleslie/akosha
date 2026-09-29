@@ -12,10 +12,16 @@ anomaly, and correlation analysis for in-process time-series caches.
 
 from __future__ import annotations
 
+import contextlib
+import json
 import logging
+import os
+import sqlite3
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -24,6 +30,20 @@ import numpy.typing as npt
 from akosha.observability import add_span_attributes, record_counter, record_histogram, traced
 
 logger = logging.getLogger(__name__)
+
+
+_DEFAULT_DB_PATH = "~/.akosha/state/metrics.db"
+_SQLITE_SCHEMA = (
+    "CREATE TABLE IF NOT EXISTS metric_points ("
+    "    metric_name TEXT NOT NULL,"
+    "    timestamp REAL NOT NULL,"
+    "    value REAL NOT NULL,"
+    "    system_id TEXT,"
+    "    metadata_json TEXT,"
+    "    PRIMARY KEY (metric_name, timestamp, system_id)"
+    ")"
+)
+_SQLITE_INDEX = "CREATE INDEX IF NOT EXISTS idx_metric_name ON metric_points(metric_name)"
 
 
 @dataclass
@@ -81,10 +101,156 @@ class TimeSeriesAnalytics:
     - Pattern discovery
     """
 
-    def __init__(self) -> None:
-        """Initialize analytics service."""
+    def __init__(self, db_path: str | None = None) -> None:
+        """Initialize analytics service.
+
+        Args:
+            db_path: Optional SQLite database path. When ``None`` the path
+                comes from the ``AKOSHA_METRICS_DB_PATH`` environment
+                variable (falling back to ``~/.akosha/state/metrics.db``).
+                The parent directory is created on init. SQLite persistence
+                is the durable backing for ``_metrics_cache``; cache is
+                still kept in memory as an L1 read cache.
+
+                Connection-open failures (disk full, permissions, etc.)
+                are soft-failed: the in-memory cache still works, just
+                without durable backing. This matches the write-through
+                cache-first design.
+        """
         self._metrics_cache: dict[str, list[DataPoint]] = defaultdict(list)
-        logger.info("Time-series analytics service initialized")
+        resolved_path = (
+            db_path
+            if db_path is not None
+            else os.environ.get("AKOSHA_METRICS_DB_PATH", _DEFAULT_DB_PATH)
+        )
+        self._db_path: str = str(Path(resolved_path).expanduser())
+        Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
+        self._conn: sqlite3.Connection | None = None
+        self._initialized: bool = False
+        self._open_sqlite()
+        logger.info(
+            "Time-series analytics service initialized (db_path=%s, "
+            "sqlite=%s)",
+            self._db_path,
+            "open" if self._conn is not None else "unavailable",
+        )
+
+    def _open_sqlite(self) -> None:
+        """Open the SQLite connection and create schema. Soft-fails on
+        any sqlite3 error so the in-memory cache remains usable.
+        """
+        try:
+            self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
+            self._conn.execute(_SQLITE_SCHEMA)
+            self._conn.execute(_SQLITE_INDEX)
+            self._conn.commit()
+        except sqlite3.Error as exc:
+            record_counter("analytics.metrics.sqlite_open_failures", 1)
+            logger.warning(
+                "SQLite open failed for %s: %s; continuing in in-memory only mode",
+                self._db_path,
+                exc,
+            )
+            if self._conn is not None:
+                with contextlib.suppress(sqlite3.Error):
+                    self._conn.close()
+            self._conn = None
+
+    async def initialize(self) -> None:
+        """Load any existing SQLite rows back into ``_metrics_cache`` if the
+        cache is empty (handles restart-survival).
+
+        Idempotent: a second call short-circuits when the cache is already
+        populated so it never duplicates rows. Safe to call when SQLite
+        was unavailable in ``__init__`` — it becomes a no-op.
+        """
+        if self._initialized:
+            return
+        if self._metrics_cache:
+            # A warm cache (e.g. test fixture or pre-loaded state) wins
+            # over the SQLite load — preserve the in-memory state.
+            self._initialized = True
+            return
+        if self._conn is None:
+            self._initialized = True
+            return
+
+        cursor = self._conn.execute(
+            "SELECT metric_name, timestamp, value, system_id, metadata_json "
+            "FROM metric_points ORDER BY metric_name, timestamp"
+        )
+        loaded = 0
+        for metric_name, ts, value, system_id, metadata_json in cursor.fetchall():
+            metadata: dict[str, Any] = {}
+            if metadata_json:
+                try:
+                    metadata = json.loads(metadata_json)
+                except json.JSONDecodeError:
+                    metadata = {}
+            point = DataPoint(
+                timestamp=datetime.fromtimestamp(ts, tz=UTC),
+                value=value,
+                system_id=system_id or "",
+                metadata=metadata,
+            )
+            self._metrics_cache[metric_name].append(point)
+            loaded += 1
+
+        self._initialized = True
+        record_counter("analytics.metrics.loaded", loaded)
+        logger.info(
+            "Loaded %d metric points from %s on startup",
+            loaded,
+            self._db_path,
+        )
+
+    async def aclose(self) -> None:
+        """Close the SQLite connection. Safe to call before ``initialize()``
+        and safe to call repeatedly.
+        """
+        if self._conn is not None:
+            try:
+                self._conn.close()
+            except sqlite3.Error as exc:
+                logger.warning("Error closing analytics SQLite connection: %s", exc)
+            self._conn = None
+        self._initialized = False
+
+    def _persist_point(self, point: DataPoint, metric_name: str) -> None:
+        """Write a data point to SQLite. Soft-fails: any sqlite3 error is
+        logged + recorded as a counter, never raised. The in-memory cache
+        has already accepted the point; persistent loss is logged but not
+        surfaced to the caller (write-through cache-first design).
+        """
+        if self._conn is None:
+            return
+        start = time.monotonic()
+        try:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO metric_points "
+                "(metric_name, timestamp, value, system_id, metadata_json) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    metric_name,
+                    point.timestamp.timestamp(),
+                    point.value,
+                    point.system_id,
+                    json.dumps(point.metadata) if point.metadata else None,
+                ),
+            )
+            self._conn.commit()
+            record_histogram(
+                "analytics.metrics.sqlite_write_ms",
+                (time.monotonic() - start) * 1000.0,
+            )
+        except sqlite3.Error as exc:
+            record_counter("analytics.metrics.sqlite_write_failures", 1)
+            logger.warning(
+                "SQLite write failed for metric %s at %s: %s",
+                metric_name,
+                point.timestamp.isoformat(),
+                exc,
+            )
 
     @traced("analytics_add_metric")
     async def add_metric(
@@ -123,6 +289,9 @@ class TimeSeriesAnalytics:
         )
 
         self._metrics_cache[metric_name].append(point)
+
+        # Write-through to SQLite. Soft-fails inside _persist_point.
+        self._persist_point(point, metric_name)
 
         record_counter("analytics.metrics.added", 1, {"metric_name": metric_name})
         record_histogram("analytics.metric.value", value, {"metric_name": metric_name})

@@ -368,6 +368,9 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # In lite mode, skip analytics services
         if not is_lite_mode:
             analytics_service = TimeSeriesAnalytics()
+            # REQ-MS-002: repopulate the in-memory cache from the SQLite
+            # backing so eval-metric history survives Akosha restarts.
+            await analytics_service.initialize()
             logger.info("Time-series analytics service initialized")
         else:
             analytics_service = None
@@ -1016,6 +1019,16 @@ def create_app(mode: Any | None = None) -> FastMCP:
             except Exception as exc:
                 logger.warning("OtelTraceIngester stop failed: %s", exc)
             _otel_trace_ingester = None
+
+        # REQ-MS-002: close the analytics SQLite connection so the
+        # write-through cache's durable backing flushes cleanly. Order
+        # matters only relative to the telemetry shutdown below — the
+        # SQLite write is synchronous so no data is in flight.
+        if analytics_service is not None:
+            try:
+                await analytics_service.aclose()
+            except Exception as exc:
+                logger.warning("TimeSeriesAnalytics aclose failed: %s", exc)
 
         # Reset the per-feed cycle/error counters so the next create_app()
         # call starts from zero. Without this, the probe would carry stale
