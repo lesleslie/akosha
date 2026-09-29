@@ -733,9 +733,7 @@ class AddEvalMetricRequest(BaseModel):
         ...,
         min_length=1,
         max_length=200,
-        description=(
-            "Eval metric name in the form 'eval_pass_rate:<adapter>:<fixture>'."
-        ),
+        description=("Eval metric name in the form 'eval_pass_rate:<adapter>:<fixture>'."),
     )
     value: float = Field(
         ...,
@@ -755,24 +753,17 @@ class AddEvalMetricRequest(BaseModel):
 
 __all__ = [
     "AddEvalMetricRequest",
-    "is_eval_metric_name",
     "AnalyzeTrendsRequest",
     "CorrelateSystemsRequest",
-    # Phase 1 cross-repo capability search
     "CrossRepoCapabilitySearchRequest",
     "DetectAnomaliesRequest",
     "FindPathRequest",
     "GenerateBatchEmbeddingsRequest",
-    # Embedding tools
     "GenerateEmbeddingRequest",
-    # Analytics tools
     "GetSystemMetricsRequest",
-    # Graph tools
     "QueryKnowledgeGraphRequest",
-    # Search tools
     "SearchAllSystemsRequest",
-    # Exceptions
     "ValidationError",
-    # Validation utilities
+    "is_eval_metric_name",
     "validate_request",
 ]
