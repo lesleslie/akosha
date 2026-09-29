@@ -76,6 +76,16 @@ class OtelTraceIngester:
         # time-bounded decay predicate can escalate DEGRADED for fresh errors
         # without operator intervention.
         self._last_error_at: float | None = None
+        # Phase 2 (REQ-FEED-002/003): per-task-class cycle/error counters
+        # so ``/health`` mcp_tool_call_feed (and any other future
+        # task-class-specific feed) can read cycle counts attributable to
+        # its own stream instead of borrowing the ingester-level totals.
+        # Counters increment ONCE per poll cycle for each DISTINCT task_class
+        # observed in that cycle (cycle counter, NOT row count) — so a
+        # cycle that processed 50 mcp_tool_call spans still bumps the
+        # ``mcp_tool_call`` cycle counter by 1.
+        self._per_task_class_cycles: dict[str, int] = {}
+        self._per_task_class_errors: dict[str, int] = {}
 
     async def start(self) -> None:
         """Start the OTel trace ingestion worker."""
@@ -153,18 +163,42 @@ class OtelTraceIngester:
                 if self._watermarks:
                     since_unix_nano = max(self._watermarks.values())
                 spans_by_system = await self._fetch_spans(since_unix_nano=since_unix_nano)
+                # Phase 2 (REQ-FEED-002/003): track per-task-class cycle
+                # attribution. Pre-extract task_class from the span so the
+                # success/failure paths can attribute counts to the right
+                # feed even when _ingest_span raises. ``_attrs_to_dict`` is
+                # cheap (O(n) over a small attribute list); the duplicate
+                # call inside _ingest_span is acceptable for now.
+                task_classes_seen: set[str] = set()
                 for system_id, span in spans_by_system:
+                    attrs = self._attrs_to_dict(span.get("attributes", []))
+                    task_class = attrs.get("task_class")
                     try:
                         await self._ingest_span(span, system_id=system_id)
+                        if isinstance(task_class, str) and task_class:
+                            task_classes_seen.add(task_class)
                     except asyncio.CancelledError:
                         raise
                     except Exception as e:
                         self._errors_total += 1
                         self._last_error_at = time.time()
+                        if isinstance(task_class, str) and task_class:
+                            self._per_task_class_errors[task_class] = (
+                                self._per_task_class_errors.get(task_class, 0) + 1
+                            )
                         logger.exception(
                             f"OTel span ingestion failed for "
                             f"span_id={span.get('spanId', 'unknown')}: {e}"
                         )
+                # Bump per-task-class cycle counters ONCE per cycle for
+                # each distinct task_class observed. Row count is irrelevant
+                # to the cycle semantics — operators want to know "did the
+                # mcp_tool_call feed run in this cycle?", not "how many
+                # mcp_tool_call rows did it see?".
+                for tc in task_classes_seen:
+                    self._per_task_class_cycles[tc] = (
+                        self._per_task_class_cycles.get(tc, 0) + 1
+                    )
                 self._last_poll_at = time.time()
                 # Wait before next poll
                 await asyncio.sleep(self.poll_interval_seconds)
@@ -442,3 +476,63 @@ class OtelTraceIngester:
     def _now_unix_nano() -> int:
         """Current wall-clock time in unix nanoseconds (OTLP convention)."""
         return time.time_ns()
+
+    def get_cycles_for_task_class(self, task_class: str) -> int:
+        """Return the per-task-class cycle counter.
+
+        REQ-FEED-002: each task_class has its own ``cycles_total`` that
+        counts poll cycles during which at least one span of that
+        task_class was observed. ``0`` when the task_class has not been
+        seen yet (or the ingester is not running). The /health
+        ``mcp_tool_call_feed`` reads this for its ``cycles_total`` so
+        the feed surfaces its own activity instead of borrowing the
+        ingester-level ``_cycles_total`` counter (which counts all
+        cycles regardless of task_class).
+        """
+        return self._per_task_class_cycles.get(task_class, 0)
+
+    def get_errors_for_task_class(self, task_class: str) -> int:
+        """Return the per-task-class error counter.
+
+        REQ-FEED-002: errors observed during ingest of spans whose
+        ``task_class`` attribute matches ``task_class``. ``0`` when
+        the task_class has not been seen yet (or no errors). The
+        /health ``mcp_tool_call_feed`` reads this for its
+        ``errors_total`` so the feed surfaces per-stream failures
+        rather than the ingester-level ``_errors_total``.
+        """
+        return self._per_task_class_errors.get(task_class, 0)
+
+    def _record_poll_cycle_observations(
+        self, spans_seen: list[dict[str, Any]]
+    ) -> None:
+        """Bump the per-task-class cycle counter for each distinct task_class.
+
+        Unit-test seam — also invoked by ``_polling_loop`` after a real
+        cycle completes. Increments ONCE per distinct task_class seen,
+        matching the production semantics (cycle counter, not row count).
+        Spans without a ``task_class`` attribute are skipped so we don't
+        pollute the counter map with an "unknown" feed.
+        """
+        task_classes_seen: set[str] = set()
+        for span in spans_seen:
+            attrs = self._attrs_to_dict(span.get("attributes", []))
+            tc = attrs.get("task_class")
+            if isinstance(tc, str) and tc:
+                task_classes_seen.add(tc)
+        for tc in task_classes_seen:
+            self._per_task_class_cycles[tc] = self._per_task_class_cycles.get(tc, 0) + 1
+
+    def _record_poll_cycle_errors(self, span: dict[str, Any]) -> None:
+        """Bump the per-task-class error counter for one failed span.
+
+        Unit-test seam — also invoked by ``_polling_loop`` on the
+        per-row failure path. Reads ``task_class`` from the span
+        attributes; if absent the failure is unattributed and we
+        skip the per-task-class bump (the ingester-level
+        ``_errors_total`` is incremented separately by the caller).
+        """
+        attrs = self._attrs_to_dict(span.get("attributes", []))
+        tc = attrs.get("task_class")
+        if isinstance(tc, str) and tc:
+            self._per_task_class_errors[tc] = self._per_task_class_errors.get(tc, 0) + 1
