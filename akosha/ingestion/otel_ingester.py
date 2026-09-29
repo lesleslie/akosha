@@ -196,9 +196,7 @@ class OtelTraceIngester:
                 # mcp_tool_call feed run in this cycle?", not "how many
                 # mcp_tool_call rows did it see?".
                 for tc in task_classes_seen:
-                    self._per_task_class_cycles[tc] = (
-                        self._per_task_class_cycles.get(tc, 0) + 1
-                    )
+                    self._per_task_class_cycles[tc] = self._per_task_class_cycles.get(tc, 0) + 1
                 self._last_poll_at = time.time()
                 # Wait before next poll
                 await asyncio.sleep(self.poll_interval_seconds)
@@ -369,7 +367,7 @@ class OtelTraceIngester:
         raw_duration = attrs_dict.get("duration_ms")
         try:
             duration_ms = float(raw_duration) if raw_duration is not None else None
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             duration_ms = None
 
         # Serialize the span (drop spanId/traceId — those land in
@@ -503,9 +501,7 @@ class OtelTraceIngester:
         """
         return self._per_task_class_errors.get(task_class, 0)
 
-    def _record_poll_cycle_observations(
-        self, spans_seen: list[dict[str, Any]]
-    ) -> None:
+    def _record_poll_cycle_observations(self, spans_seen: list[dict[str, Any]]) -> None:
         """Bump the per-task-class cycle counter for each distinct task_class.
 
         Unit-test seam — also invoked by ``_polling_loop`` after a real
@@ -533,6 +529,5 @@ class OtelTraceIngester:
         ``_errors_total`` is incremented separately by the caller).
         """
         attrs = self._attrs_to_dict(span.get("attributes", []))
-        tc = attrs.get("task_class")
-        if isinstance(tc, str) and tc:
+        if isinstance(tc := attrs.get("task_class"), str) and tc:
             self._per_task_class_errors[tc] = self._per_task_class_errors.get(tc, 0) + 1

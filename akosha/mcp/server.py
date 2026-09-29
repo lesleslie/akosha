@@ -25,6 +25,7 @@ from fastmcp import FastMCP
 
 from akosha import __version__
 from akosha.storage.hot_store import HotStore
+from akosha.storage.warm_store import WarmStore
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Awaitable, Callable
@@ -331,8 +332,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # the declarations here is the cleanest fix; adding more
         # ``global`` lines mid-function only hides the real ordering
         # problem.
-        global _kg_refresh_cycles, _kg_refresh_errors, _kg_refresh_last_error_at
-        global _aging_cycles, _aging_errors, _aging_last_run_at
+        global _kg_refresh_cycles, _kg_refresh_errors, _kg_refresh_last_error_at, _aging_cycles, _aging_errors, _aging_last_run_at
 
         logger.info(f"{APP_NAME} v{APP_VERSION} starting up")
 
@@ -556,7 +556,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # ``AKOSHA_SKIP_KG_REFRESH=1``.
         # ------------------------------------------------------------------
         # ``_kg_refresh_*`` declared ``global`` at the top of this
-        # function; we do not re-declare them here.
+        # function; we do not redeclare them here.
 
         async def _kg_refresh_loop() -> None:
             global _kg_refresh_cycles, _kg_refresh_errors, _kg_refresh_last_error_at
@@ -640,19 +640,21 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # NB: ``_aging_cycles`` / ``_aging_errors`` / ``_aging_last_run_at``
         # are declared ``global`` at the top of this function. Python's
         # scope rules forbid a second ``global`` declaration after any
-        # assignment in the same function body, so we cannot re-declare
+        # assignment in the same function body, so we cannot redeclare
         # them here even though it's the natural place.
         if not _env_truthy("AKOSHA_SKIP_AGING"):
             try:
                 from akosha.storage import create_warm_store
                 from akosha.storage.aging import AgingService
 
-                aging_warm_store = create_warm_store(backend="duckdb-ssd")
+                # DuckDB-ssd backend always returns WarmStore; cast the
+                # ``create_warm_store`` union to narrow the type for ty.
+                aging_warm_store = cast(WarmStore, create_warm_store(backend="duckdb-ssd"))
                 await aging_warm_store.initialize()
-                aging_service = AgingService(
-                    hot_store=hot_store, warm_store=aging_warm_store
+                aging_service = AgingService(hot_store=hot_store, warm_store=aging_warm_store)
+                logger.info(
+                    "AgingService initialized (warm_store=%s)", type(aging_warm_store).__name__
                 )
-                logger.info("AgingService initialized (warm_store=%s)", type(aging_warm_store).__name__)
             except Exception as exc:
                 logger.warning(
                     "AgingService init failed (%s); mcp_tool_call feed "
@@ -724,7 +726,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 cutoff_days = 7
             # ``_aging_cycles`` / ``_aging_errors`` / ``_aging_last_run_at``
             # are declared ``global`` at the top of this function; we
-            # cannot re-declare them here (Python forbids a second
+            # cannot redeclare them here (Python forbids a second
             # ``global`` declaration after assignments in the same
             # function body).
             try:
@@ -919,9 +921,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
             with suppress(Exception):
                 if isinstance(hot_store, HotStore):
                     mcp_tool_call_entities_count = len(
-                        await hot_store.query_traces(
-                            task_class="mcp_tool_call", limit=1000
-                        )
+                        await hot_store.query_traces(task_class="mcp_tool_call", limit=1000)
                     )
             mcp_tool_call_cycles = (
                 _otel_trace_ingester.get_cycles_for_task_class("mcp_tool_call")
@@ -972,9 +972,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # produce?" — the pre-warm hook bumps ``cycles_total`` to
             # 1 within 60s of boot so /health is not stuck in
             # ``warming_up`` longer than the launchd wrapper tolerates.
-            aging_running = bool(
-                _aging_task is not None and not _aging_task.done()
-            )
+            aging_running = bool(_aging_task is not None and not _aging_task.done())
             aging_state = HealthFeedState(
                 entities_count=mcp_tool_call_entities_count,
                 last_updated_timestamp=_aging_last_run_at,
@@ -1082,9 +1080,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # cycles_total, errors_total). ``source`` documents the filter
             # so operators can reproduce the count via mcp__akosha__query_local_traces.
             mt_dict = _feed_dict("mcp_tool_call_feed", mcp_tool_call_state)
-            mt_dict["source"] = (
-                "hot_store.query_traces(task_class='mcp_tool_call', limit=1000)"
-            )
+            mt_dict["source"] = "hot_store.query_traces(task_class='mcp_tool_call', limit=1000)"
             mt_dict["otel_ingester_running"] = otel_running
             checks["mcp_tool_call_feed"] = mt_dict
 
@@ -1242,7 +1238,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # call starts from zero. Without this, the probe would carry stale
         # cycle counts across lifespans in tests. ``_kg_refresh_*`` and
         # ``_aging_*`` are declared ``global`` at the top of this function
-        # so we do not re-declare them here.
+        # so we do not redeclare them here.
         _kg_refresh_cycles = 0
         _kg_refresh_errors = 0
         _kg_refresh_last_error_at = None
