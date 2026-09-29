@@ -15,15 +15,11 @@ topic: cold-store-wiring
 
 ## What
 
-`ColdStore.initialize()` with `backend='gcs'` does not forward
-`endpoint_url` to `GCSStorageSettings`. The test
 `tests/integration/test_cold_tier_local.py::test_cold_store_gcs_branch_forwards_endpoint_url`
-fails with `KeyError: 'endpoint_url'`.
-
-The test asserts the contract that any caller passing `endpoint_url`
-(e.g. for fake-gcs-server during local dev, or for GCS-compatible
-endpoints) gets it propagated to the storage adapter. The production
-code drops it on the floor.
+fails with `KeyError: 'endpoint_url'`. The test asserts that
+`GCSStorageSettings` constructed by `ColdStore.initialize(backend='gcs')`
+includes the `endpoint_url` field, so fake-gcs-server (and other
+GCS-compatible endpoints) can be used.
 
 ## Failing test (verbatim, as of 2026-09-28)
 
@@ -35,68 +31,107 @@ E   KeyError: 'endpoint_url'
 FAILED tests/integration/test_cold_tier_local.py::test_cold_store_gcs_branch_forwards_endpoint_url
 ```
 
-The test was added in commit `f187f557 test(session-buddy): GCSStorageOneiric round-trip via fake-gcs-server` (2026-09, on the parallel session-buddy repo) and the akosha equivalent is the
-same class of wiring gap surfaced in `feedback-cli-flag-consumer-wiring.md`.
+## Root cause (DIAGNOSED 2026-09-28, supersedes initial analysis)
 
-## Root cause
-
-`akosha/storage/cold_store.py` GCS branch in `initialize()` constructs
-`GCSStorageSettings` without `endpoint_url`. The constructor accepts
-`endpoint_url` (per the test fixture at line 47) and stores it on
-`self`, but never passes it to the settings object.
-
-By contrast, the `s3` branch DOES forward `endpoint_url` (verified by
-the sibling `test_cold_store_s3_branch_forwards_credentials` test, which
-passes). The asymmetry is a wiring-bug smell, not a design intent.
-
-## Fix
-
-In `akosha/storage/cold_store.py::initialize()`, GCS branch:
+The akosha wiring in `akosha/storage/cold_store.py:330` is **already correct**:
 
 ```python
-if self.storage_backend == "gcs":
+elif self._storage_backend == "gcs":
+    ...
     settings = GCSStorageSettings(
         bucket=self.bucket,
-        project=self.project,
-        endpoint_url=self.endpoint_url,   # ← add this line
-        credentials_file=self.credentials_file,
+        project=self._project,
+        credentials_file=self._credentials_file,
+        endpoint_url=self._endpoint_url,   # <-- already passed
     )
 ```
 
-Then re-run the test. Expected: passes.
+The reason the test still fails is that the **installed** oneiric in
+akosha's venv (`/Users/les/Projects/akosha/.venv/lib/python3.14/site-packages/oneiric`,
+version 0.23.0) does NOT have an `endpoint_url` field on
+`GCSStorageSettings`. Pydantic silently drops the parameter at
+construction time, so `settings.model_dump()` returns a dict that lacks
+`endpoint_url`.
+
+The **local** oneiric source at `/Users/les/Projects/oneiric` (version 0.26.0)
+DOES have `endpoint_url` — it was added in commit
+`d809cad feat(oneiric): GCSStorageAdapter accepts endpoint_url`
+(which is between 0.23.0 and 0.26.0).
+
+Verified directly:
+
+```python
+# In akosha venv (oneiric 0.23.0)
+>>> from oneiric.adapters.storage.gcs import GCSStorageSettings
+>>> s = GCSStorageSettings(bucket='x', endpoint_url='http://127.0.0.1:4443')
+>>> s.model_dump()
+{'bucket': 'x', 'project': None, 'credentials_file': None,
+ 'default_content_type': 'application/octet-stream'}
+# ^ no 'endpoint_url' key — silently dropped
+```
+
+The fix is therefore NOT in akosha's cold_store.py — it's a **oneiric
+version bump** for the akosha venv. The wiring in cold_store.py was
+written against the post-`d809cad` oneiric API; akosha's pinned
+dependency just doesn't include that release yet.
+
+## Fix
+
+1. Bump `oneiric` in `akosha/pyproject.toml` to a version that
+   includes commit `d809cad` (≥ 0.24.0 by my best guess — verify
+   by checking the version that contains `d809cad`).
+
+   **Per `feedback-mcp-common-version-bump-is-user.md`: the user
+   does version bumps. This ticket is filed here; the version bump
+   is a user-action, not a Claude-action.**
+
+2. Re-sync akosha's venv: `uv pip install -e .` (or `uv sync`).
+
+3. Re-run the test:
+   ```
+   .venv/bin/python -m pytest tests/integration/test_cold_tier_local.py::test_cold_store_gcs_branch_forwards_endpoint_url -x
+   ```
+   Expected: PASSES.
 
 ## Why this ticket exists (unrelated to current session)
 
 This failure was first surfaced during the 2026-09-28 tool-surface-quality
 session while running the akosha test suite. It is **independent of the
 ingestion / cache / lifecycle work** that session shipped. Filing as a
-separate ticket so the fix can be prioritized and PR'd on its own
-schedule without blocking any other workstream.
+separate ticket so the version bump can be prioritized and PR'd on its
+own schedule without blocking any other workstream.
 
 ## Impact
 
-- **No production data path broken** — the GCS branch is not the default
-  cold storage backend in production; local-dev is the use case.
+- **No production data path broken** — the GCS branch is not the
+  default cold storage backend in production; local-dev is the use case.
 - **No follow-on plan blocked** — the cold-tier fake-gcs integration
-  (`docs/superpowers/plans/2026-09-27-cold-tier-fake-gcs-impl.md`) cannot
-  land its end-to-end test (`test_cold_tier_fake_gcs_round_trip`) until
-  this fix ships, because the wiring foundation is broken.
-- **Test is correctly written** — the production code is wrong, not the
-  test. Per `feedback-no-backwards-compat-pre-1.0.md`, the fix is
-  forward (add the wiring), not backward (revert the test).
+  (`docs/superpowers/plans/2026-09-27-cold-tier-fake-gcs-impl.md`)
+  cannot land its end-to-end test
+  (`test_cold_tier_fake_gcs_round_trip`) until this version bump ships.
+- **Test is correctly written** — the production code is correct
+  (verified by inspection), the dependency is stale. Per
+  `feedback-no-backwards-compat-pre-1.0.md`, the fix is forward (bump
+  the dep), not backward (revert the test).
 
 ## Acceptance criteria
 
+- [ ] `oneiric >= 0.24.0` (or version containing `d809cad`) declared
+      in `akosha/pyproject.toml`.
 - [ ] `pytest tests/integration/test_cold_tier_local.py::test_cold_store_gcs_branch_forwards_endpoint_url` passes.
-- [ ] `pytest tests/integration/test_cold_tier_local.py` full file passes (the sibling S3 + StandardMode tests should still be green).
+- [ ] `pytest tests/integration/test_cold_tier_local.py` full file
+      passes (sibling S3 + StandardMode tests still green).
 - [ ] No regressions in the rest of the akosha suite (`pytest tests/`).
-- [ ] The change is atomic: one hunk, one commit, single-line fix is fine.
 
 ## Notes
 
+- The S3 branch has the SAME shape of test
+  (`test_cold_store_s3_branch_forwards_credentials`) and it passes —
+  the S3 `endpoint_url` field is in oneiric 0.23.0, the GCS one isn't.
 - This ticket was created in a session whose primary focus was the
   tool-surface-quality plan (mahavishnu) — it's filed here on akosha
   because the failing code lives in akosha.
-- The S3 branch has the SAME shape of test
-  (`test_cold_store_s3_branch_forwards_credentials`) and it passes;
-  the fix is symmetric to the S3 branch's existing pattern.
+- Initial diagnosis (2026-09-28 first pass) said "one-line fix in
+  cold_store.py". That diagnosis was wrong — the wiring was already
+  present. The corrected diagnosis (above) is a oneiric version bump,
+  not a code change.
