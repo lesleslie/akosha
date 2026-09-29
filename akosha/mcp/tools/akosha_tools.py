@@ -25,7 +25,9 @@ if TYPE_CHECKING:
     from akosha.processing.embeddings import EmbeddingService
     from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
 
+from akosha.observability import record_counter
 from akosha.mcp.validation import (
+    AddEvalMetricRequest,
     AnalyzeTrendsRequest,
     CorrelateSystemsRequest,
     DetectAnomaliesRequest,
@@ -35,6 +37,7 @@ from akosha.mcp.validation import (
     GetSystemMetricsRequest,
     QueryKnowledgeGraphRequest,
     SearchAllSystemsRequest,
+    is_eval_metric_name,
     validate_request,
 )
 from akosha.security import require_auth
@@ -456,6 +459,7 @@ def register_analytics_tools(
         - analyze_trends: Analyze trends for a metric over time (single linear slope)
         - detect_anomalies: Detect statistical anomalies in metrics
         - correlate_systems: Analyze correlations between systems
+        - add_eval_metric: Post a per-(adapter, fixture) eval pass rate
     """
     logger = logging.getLogger(__name__)
 
@@ -841,6 +845,104 @@ def register_analytics_tools(
                 correlation.time_range[0].isoformat(),
                 correlation.time_range[1].isoformat(),
             ),
+        }
+
+    @registry.register(
+        ToolMetadata(
+            name="akosha_add_eval_metric",
+            description=(
+                "Write a per-(adapter, fixture) eval pass rate to the analytics "
+                "service. Eval metrics must match the suffixed convention "
+                "'eval_pass_rate:<adapter>:<fixture>'. After posting, the "
+                "metric is queryable via akosha_analyze_trends and "
+                "akosha_get_system_metrics. Persistence is added in Phase 2 "
+                "of the eval-metric-sink plan; until then metrics live in "
+                "the in-memory cache for the Akosha process lifetime."
+            ),
+            category=ToolCategory.ANALYTICS,
+            examples=[
+                {
+                    "metric_name": "eval_pass_rate:prefect:code_review_py_typo",
+                    "value": 0.85,
+                    "system_id": "mahavishnu-ci",
+                    "description": "Record a Prefect eval fixture pass rate.",
+                }
+            ],
+        )
+    )
+    @require_auth
+    async def add_eval_metric(
+        metric_name: str,
+        value: float,
+        system_id: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Post a per-(adapter, fixture) eval pass rate to the analytics cache.
+
+        Per REQ-MS-001 + REQ-MS-003 + REQ-MS-006: the write-side entry
+        point for the Mahavishnu eval pipeline. The metric_name must
+        match the suffixed eval convention; system-metric-shaped names
+        (no `:` separator) are rejected at the MCP boundary so eval
+        metrics cannot collide with system metrics in the suffixed-key
+        cache.
+
+        Args:
+            metric_name: Form 'eval_pass_rate:<adapter>:<fixture>'.
+            value: Pass rate as a fraction in [0.0, 1.0].
+            system_id: Originating runner identifier (e.g. 'mahavishnu-ci').
+            metadata: Optional metadata preserved through the round-trip.
+
+        Returns:
+            dict[str, Any]: ack with ``{"success": True, "metric_name": ...,
+            "system_id": ...}``.
+
+        Raises:
+            ValidationError: If the metric_name fails the suffixed
+                convention, or any other input fails the schema.
+        """
+        params = validate_request(
+            AddEvalMetricRequest,
+            metric_name=metric_name,
+            value=value,
+            system_id=system_id,
+            metadata=metadata,
+        )
+
+        # Belt-and-braces: schema regex already enforces
+        # ``^[a-zA-Z0-9_:-]+$``; the strict suffixed check below is
+        # the REQ-MS-006 guard that prevents eval-metric-shaped names
+        # from masquerading as system metrics.
+        if not is_eval_metric_name(params.metric_name):
+            from akosha.mcp.validation import ValidationError
+
+            raise ValidationError(
+                "metric_name must match 'eval_pass_rate:<adapter>:<fixture>'",
+                {"metric_name": params.metric_name},
+            )
+
+        if not (0.0 <= params.value <= 1.0):
+            from akosha.mcp.validation import ValidationError
+
+            raise ValidationError(
+                "value must be a fraction in [0.0, 1.0]",
+                {"value": params.value},
+            )
+
+        await analytics_service.add_metric(
+            metric_name=params.metric_name,
+            value=params.value,
+            system_id=params.system_id,
+            metadata=params.metadata,
+        )
+
+        record_counter(
+            "akosha.eval_metrics.added", 1, {"metric_name": params.metric_name}
+        )
+
+        return {
+            "success": True,
+            "metric_name": params.metric_name,
+            "system_id": params.system_id,
         }
 
     # The historical ``analyze_changepoints`` tool (pytrendy-backed

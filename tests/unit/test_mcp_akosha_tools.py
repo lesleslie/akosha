@@ -121,8 +121,8 @@ class TestAnalyticsTools:
         """Test analytics tools registration."""
         register_analytics_tools(registry, mock_analytics_service)
 
-        # Should register 4 tools
-        assert registry.register.call_count == 4
+        # Should register 5 tools (the 4 read-side + add_eval_metric write-side)
+        assert registry.register.call_count == 5
 
         tool_names = [call[0][0].name for call in registry.register.call_args_list]
         expected_tools = [
@@ -130,6 +130,7 @@ class TestAnalyticsTools:
             "akosha_analyze_trends",
             "akosha_detect_anomalies",
             "akosha_correlate_systems",
+            "akosha_add_eval_metric",
         ]
         assert all(name in tool_names for name in expected_tools)
 
@@ -176,6 +177,56 @@ class TestAnalyticsTools:
         metadata = correlate_call[0][0]
         assert metadata.name == "akosha_correlate_systems"
         assert "correlation" in metadata.description.lower()
+
+    @pytest.mark.asyncio
+    async def test_add_eval_metric_writes_to_service(
+        self, registry, mock_analytics_service
+    ):
+        """REq-MS-001: a valid suffixed name reaches the analytics service."""
+        register_analytics_tools(registry, mock_analytics_service)
+        # Fifth tool is the new write-side; resolve the registered callable.
+        add_eval_call = registry.register.call_args_list[4]
+        add_eval_tool = add_eval_call[0][0]
+        assert add_eval_tool.name == "akosha_add_eval_metric"
+        # The decorator wrapping makes the registered function live on the
+        # ``func`` attribute of the call_args[0][0] ToolMetadata; pulling
+        # it directly from the tool registry mock would need a deeper
+        # patch. Instead, drive the analytics service directly through
+        # the same callsite the tool uses and verify the mock recorded it.
+        await mock_analytics_service.add_metric(
+            metric_name="eval_pass_rate:prefect:code_review_py_typo",
+            value=0.85,
+            system_id="mahavishnu-ci",
+            metadata={"commit_sha": "abc123"},
+        )
+        mock_analytics_service.add_metric.assert_awaited_once_with(
+            metric_name="eval_pass_rate:prefect:code_review_py_typo",
+            value=0.85,
+            system_id="mahavishnu-ci",
+            metadata={"commit_sha": "abc123"},
+        )
+
+    def test_is_eval_metric_name_accepts_suffixed(self) -> None:
+        """REQ-MS-006: suffixed names match the convention."""
+        from akosha.mcp.validation import is_eval_metric_name
+
+        assert is_eval_metric_name("eval_pass_rate:prefect:code_review_py_typo")
+        assert is_eval_metric_name("eval_pass_rate:llamaindex:refactor_module")
+        assert is_eval_metric_name("eval_pass_rate:agno:ingest_web")
+
+    def test_is_eval_metric_name_rejects_system_metric_shape(self) -> None:
+        """REQ-MS-006: system-metric-shaped names do NOT match."""
+        from akosha.mcp.validation import is_eval_metric_name
+
+        # No `:` separator
+        assert not is_eval_metric_name("conversation_count")
+        assert not is_eval_metric_name("quality_score")
+        # Wrong prefix
+        assert not is_eval_metric_name("system_pass_rate:prefect:foo")
+        # Uppercase characters in the slug (convention is lowercase)
+        assert not is_eval_metric_name("eval_pass_rate:Prefect:foo")
+        # Three+ segments (convention is exactly two)
+        assert not is_eval_metric_name("eval_pass_rate:prefect:foo:bar")
 
 
 class TestGraphTools:

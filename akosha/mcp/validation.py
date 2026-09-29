@@ -701,7 +701,61 @@ def validate_request(schema: type[T], **kwargs: Any) -> T:  # noqa: UP047  # typ
         ) from e
 
 
+# Req: REQ-MS-001 + REQ-MS-003 + REQ-MS-006 (eval-metric-sink plan)
+# Suffixed metric_name convention: "eval_pass_rate:<adapter>:<fixture>".
+# System-metric-shaped names (no `:` separator) cannot be eval metrics, and
+# eval-shaped names cannot be system metrics — the guard prevents accidental
+# collisions in the suffixed-key cache.
+EVAL_METRIC_NAME_REGEX = re.compile(r"^eval_pass_rate:[a-z0-9_]+:[a-z0-9_]+$")
+
+
+def is_eval_metric_name(name: str) -> bool:
+    """Return True iff ``name`` matches the suffixed eval-metric convention.
+
+    Per REQ-MS-006: a guard that prevents eval metrics from colliding with
+    system metrics. The convention is ``eval_pass_rate:<adapter>:<fixture>``,
+    where ``<adapter>`` and ``<fixture>`` are lowercase snake_case.
+    """
+    return bool(EVAL_METRIC_NAME_REGEX.match(name))
+
+
+class AddEvalMetricRequest(BaseModel):
+    """Validation schema for the add_eval_metric write-side MCP tool.
+
+    Per REQ-MS-001 + REQ-MS-006: write-side entry point for Mahavishnu
+    eval fixtures to post per-(adapter, fixture) pass rates. The
+    metric_name must match the suffixed eval convention; the system_id
+    is the originating fixture runner; metadata is preserved through the
+    round-trip.
+    """
+
+    metric_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        description=(
+            "Eval metric name in the form 'eval_pass_rate:<adapter>:<fixture>'."
+        ),
+    )
+    value: float = Field(
+        ...,
+        description="Pass rate as a fraction in [0.0, 1.0].",
+    )
+    system_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Originating fixture runner identifier (e.g. 'mahavishnu-ci').",
+    )
+    metadata: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional metadata preserved through the round-trip.",
+    )
+
+
 __all__ = [
+    "AddEvalMetricRequest",
+    "is_eval_metric_name",
     "AnalyzeTrendsRequest",
     "CorrelateSystemsRequest",
     # Phase 1 cross-repo capability search
