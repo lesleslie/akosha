@@ -160,6 +160,16 @@ _kg_refresh_errors: int = 0
 # decay predicate. Updated alongside every ``_kg_refresh_errors += 1`` so
 # a fresh producer failure flips the aggregate to DEGRADED.
 _kg_refresh_last_error_at: float | None = None
+# Phase 2 (REQ-FEED-002): AgingService cron lifecycle. ``_aging_task``
+# is the lifespan-owned background coroutine that periodically migrates
+# aged records from HotStore to WarmStore so the mcp_tool_call feed
+# doesn't grow the hot tier without bound. The module-level cycle/
+# error/last_run_at counters mirror the kg_refresh pattern so the
+# /health ``aging_feed`` can surface them via HealthFeedState.
+_aging_task: asyncio.Task[None] | None = None
+_aging_cycles: int = 0
+_aging_errors: int = 0
+_aging_last_run_at: float | None = None
 
 
 def set_shared_hot_store(store: Any) -> None:
@@ -309,6 +319,21 @@ def create_app(mode: Any | None = None) -> FastMCP:
         Raises:
             RuntimeError: If authentication configuration is invalid.
         """
+        # Phase 5 (REQ-FEED-002): global declarations MUST come BEFORE
+        # any other code in this function that references these names,
+        # including the nested ``_kg_refresh_loop``, ``_aging_loop``,
+        # and ``_default_health_probe`` definitions. Python's scope
+        # rules require a ``global`` declaration to appear before any
+        # assignment to that name in the enclosing function — even an
+        # assignment in a nested function body that doesn't rebind
+        # the name in the outer scope triggers the parser's
+        # "assigned to before global declaration" SyntaxError. Hoisting
+        # the declarations here is the cleanest fix; adding more
+        # ``global`` lines mid-function only hides the real ordering
+        # problem.
+        global _kg_refresh_cycles, _kg_refresh_errors, _kg_refresh_last_error_at
+        global _aging_cycles, _aging_errors, _aging_last_run_at
+
         logger.info(f"{APP_NAME} v{APP_VERSION} starting up")
 
         # Validate authentication configuration
@@ -527,6 +552,8 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # ``conversation`` records. opt-out via
         # ``AKOSHA_SKIP_KG_REFRESH=1``.
         # ------------------------------------------------------------------
+        # ``_kg_refresh_*`` declared ``global`` at the top of this
+        # function; we do not re-declare them here.
 
         async def _kg_refresh_loop() -> None:
             global _kg_refresh_cycles, _kg_refresh_errors, _kg_refresh_last_error_at
@@ -589,6 +616,128 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 "kg_refresh task started (Wave 5, interval=%ss)",
                 os.getenv("AKOSHA_KG_REFRESH_SECONDS", "60"),
             )
+
+        # ------------------------------------------------------------------
+        # Phase 2 (REQ-FEED-002/003/004): AgingService cron + pre-warm hook.
+        # One background task (analogous to ``_kg_refresh_loop``) ticks
+        # every ``AKOSHA_AGING_INTERVAL_SECONDS`` (default 3600s) and
+        # migrates records older than ``AKOSHA_AGING_CUTOFF_DAYS``
+        # (default 7) for the ``mcp_tool_call`` task_class only — the
+        # conversation stream keeps its manual-opt-in retention
+        # (REQ-FEED-001). Opt-out via ``AKOSHA_SKIP_AGING=1``.
+        #
+        # The AgingService needs a warm_store destination. The lifespan
+        # doesn't currently publish one (the kg_refresh / OTel pipelines
+        # write to hot_store only), so we instantiate a fresh warm_store
+        # via ``create_warm_store`` here. On failure we fall back to
+        # skip-aging rather than crash the lifespan — the warm tier is
+        # optional in the same sense cold_storage is.
+        # ------------------------------------------------------------------
+        aging_service: Any | None = None
+        # NB: ``_aging_cycles`` / ``_aging_errors`` / ``_aging_last_run_at``
+        # are declared ``global`` at the top of this function. Python's
+        # scope rules forbid a second ``global`` declaration after any
+        # assignment in the same function body, so we cannot re-declare
+        # them here even though it's the natural place.
+        if not _env_truthy("AKOSHA_SKIP_AGING"):
+            try:
+                from akosha.storage import create_warm_store
+                from akosha.storage.aging import AgingService
+
+                aging_warm_store = create_warm_store(backend="duckdb-ssd")
+                await aging_warm_store.initialize()
+                aging_service = AgingService(
+                    hot_store=hot_store, warm_store=aging_warm_store
+                )
+                logger.info("AgingService initialized (warm_store=%s)", type(aging_warm_store).__name__)
+            except Exception as exc:
+                logger.warning(
+                    "AgingService init failed (%s); mcp_tool_call feed "
+                    "retention will not run until the next lifespan restart",
+                    exc,
+                )
+                aging_service = None
+
+        async def _aging_loop() -> None:
+            global _aging_cycles, _aging_errors, _aging_last_run_at
+            if aging_service is None:  # type guard for the type checker
+                return
+            try:
+                interval = float(os.getenv("AKOSHA_AGING_INTERVAL_SECONDS", "3600"))
+            except ValueError:
+                interval = 3600.0
+            try:
+                cutoff_days = int(os.getenv("AKOSHA_AGING_CUTOFF_DAYS", "7"))
+            except ValueError:
+                cutoff_days = 7
+            while True:
+                try:
+                    await asyncio.sleep(interval)
+                    _aging_cycles += 1
+                    stats = await aging_service.migrate_hot_to_warm(
+                        cutoff_days=cutoff_days, task_class="mcp_tool_call"
+                    )
+                    _aging_last_run_at = time.time()
+                    logger.info(
+                        "aging cycle=%d cutoff=%dd records_migrated=%d errors=%d",
+                        _aging_cycles,
+                        cutoff_days,
+                        stats.records_migrated,
+                        stats.errors,
+                    )
+                except asyncio.CancelledError:
+                    logger.info(
+                        "aging loop cancelled after %d cycles (%d errors)",
+                        _aging_cycles,
+                        _aging_errors,
+                    )
+                    break
+                except Exception as exc:
+                    _aging_errors += 1
+                    _aging_last_run_at = time.time()
+                    logger.warning("aging loop iteration failed (%s); will retry", exc)
+
+        if not _env_truthy("AKOSHA_SKIP_AGING") and aging_service is not None:
+            global _aging_task
+            _aging_task = asyncio.create_task(_aging_loop(), name="akosha.aging")
+            logger.info(
+                "aging task started (Phase 2 REQ-FEED-002, interval=%ss, cutoff=%dd)",
+                os.getenv("AKOSHA_AGING_INTERVAL_SECONDS", "3600"),
+                os.getenv("AKOSHA_AGING_CUTOFF_DAYS", "7"),
+            )
+            # Pre-warm (REQ-FEED-004): run one migration cycle synchronously
+            # before yielding so /health shows ``aging_feed.cycles_total >= 1``
+            # within 60s of Akosha boot, regardless of the cron interval.
+            # Without this the aggregator's warming_up predicate stays true
+            # for up to ``AKOSHA_AGING_INTERVAL_SECONDS`` after boot,
+            # which the launchd wrapper's 60s healthcheck window can't tolerate.
+            # Use the lifespan-bound hot_store (NOT a fresh one) so the
+            # pre-warm runs against the same DB the rest of the lifespan
+            # uses — a fresh instance would see an empty table and the
+            # pre-warm would no-op.
+            try:
+                cutoff_days = int(os.getenv("AKOSHA_AGING_CUTOFF_DAYS", "7"))
+            except ValueError:
+                cutoff_days = 7
+            # ``_aging_cycles`` / ``_aging_errors`` / ``_aging_last_run_at``
+            # are declared ``global`` at the top of this function; we
+            # cannot re-declare them here (Python forbids a second
+            # ``global`` declaration after assignments in the same
+            # function body).
+            try:
+                stats = await aging_service.migrate_hot_to_warm(
+                    cutoff_days=cutoff_days, task_class="mcp_tool_call"
+                )
+                _aging_cycles += 1
+                _aging_last_run_at = time.time()
+                logger.info(
+                    "aging pre-warm cycle=1 cutoff=%dd records_migrated=%d",
+                    cutoff_days,
+                    stats.records_migrated,
+                )
+            except Exception as exc:
+                _aging_errors += 1
+                logger.warning("aging pre-warm failed (%s)", exc)
 
         # ------------------------------------------------------------------
         # Phase 1.5 + Phase 1: load (or generate + persist) the signing
@@ -757,10 +906,12 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # generically; this feed filters by ``task_class == "mcp_tool_call"``
             # so the four-signal HealthFeedState surface (entities_count,
             # last_updated_timestamp, cycles_total, errors_total) reflects
-            # the tool-call subset specifically. Note: ``cycles_total`` and
-            # ``errors_total`` are currently the ingester-level counters (the
-            # OTel ingester doesn't yet split cycles by task_class); when that
-            # lands, replace with per-task_class values here.
+            # the tool-call subset specifically. REQ-FEED-002 (Phase 2):
+            # ``cycles_total`` and ``errors_total`` are now read from the
+            # ingester's per-task-class accessors so a healthy
+            # mcp_tool_call stream isn't masked by a noisy
+            # ``conversation`` stream (the two share one ingester-level
+            # counter, which used to roll both into this feed's cycles).
             mcp_tool_call_entities_count = 0
             with suppress(Exception):
                 if isinstance(hot_store, HotStore):
@@ -769,11 +920,21 @@ def create_app(mode: Any | None = None) -> FastMCP:
                             task_class="mcp_tool_call", limit=1000
                         )
                     )
+            mcp_tool_call_cycles = (
+                _otel_trace_ingester.get_cycles_for_task_class("mcp_tool_call")
+                if _otel_trace_ingester is not None
+                else 0
+            )
+            mcp_tool_call_errors = (
+                _otel_trace_ingester.get_errors_for_task_class("mcp_tool_call")
+                if _otel_trace_ingester is not None
+                else 0
+            )
             mcp_tool_call_state = HealthFeedState(
                 entities_count=mcp_tool_call_entities_count,
                 last_updated_timestamp=otel_last_poll,
-                cycles_total=otel_cycles,
-                errors_total=otel_errors,
+                cycles_total=mcp_tool_call_cycles,
+                errors_total=mcp_tool_call_errors,
                 last_error_at=otel_last_error,
                 ingester_running=otel_running,
             )
@@ -798,6 +959,28 @@ def create_app(mode: Any | None = None) -> FastMCP:
                     ingester_running=False,
                 )
 
+            # Phase 2 (REQ-FEED-003): the AgingService cron migrates
+            # records from hot to warm; the feed's ``entities_count`` is
+            # the count of mcp_tool_call rows still in the hot store
+            # (aging itself doesn't grow the count — it migrates rows
+            # OUT of hot_store and INTO warm_store). The cycle counter
+            # is the meaningful signal here: operators want to know
+            # "did the aging cron run?", not "how many rows did it
+            # produce?" — the pre-warm hook bumps ``cycles_total`` to
+            # 1 within 60s of boot so /health is not stuck in
+            # ``warming_up`` longer than the launchd wrapper tolerates.
+            aging_running = bool(
+                _aging_task is not None and not _aging_task.done()
+            )
+            aging_state = HealthFeedState(
+                entities_count=mcp_tool_call_entities_count,
+                last_updated_timestamp=_aging_last_run_at,
+                cycles_total=_aging_cycles,
+                errors_total=_aging_errors,
+                last_error_at=None,
+                ingester_running=aging_running,
+            )
+
             # Aggregate via mcp-common's canonical aggregator. The
             # halflife is operator-tunable via HEALTH_FEED_HALFLIFE_SECONDS;
             # the Phase 4 spec default is 300s.
@@ -812,6 +995,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
                     "knowledge_graph_feed": knowledge_graph_state,
                     "local_traces_feed": local_traces_state,
                     "mcp_tool_call_feed": mcp_tool_call_state,
+                    "aging_feed": aging_state,
                     "skills_signer": skills_signer_state,
                 },
                 halflife_seconds=halflife_seconds,
@@ -901,6 +1085,21 @@ def create_app(mode: Any | None = None) -> FastMCP:
             mt_dict["otel_ingester_running"] = otel_running
             checks["mcp_tool_call_feed"] = mt_dict
 
+            # Phase 2 (REQ-FEED-003): the aging cron runs over the same
+            # mcp_tool_call rows (it doesn't grow a new collection). The
+            # cycle counter and the aging_task boolean are the load-bearing
+            # signals — ``entities_count`` mirrors the mcp_tool_call count
+            # so operators don't see a confusing "aging processed 0 rows"
+            # while the upstream trace feed is healthy.
+            ag_dict = _feed_dict("aging_feed", aging_state)
+            ag_dict["source"] = (
+                "AgingService.migrate_hot_to_warm(task_class='mcp_tool_call') "
+                "interval=AKOSHA_AGING_INTERVAL_SECONDS "
+                "cutoff=AKOSHA_AGING_CUTOFF_DAYS"
+            )
+            ag_dict["aging_task_running"] = aging_running
+            checks["aging_feed"] = ag_dict
+
             # Phase 1.5: keep the legacy manifest fields on the wire so
             # tooling that already parses key_count / pubkeys keeps working.
             ss_dict = _feed_dict("skills_signer", skills_signer_state)
@@ -961,6 +1160,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
                     "knowledge_graph_feed",
                     "local_traces_feed",
                     "mcp_tool_call_feed",
+                    "aging_feed",
                     "skills_signer",
                 )
             )
@@ -1017,12 +1217,26 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 logger.warning("OtelTraceIngester stop failed: %s", exc)
             _otel_trace_ingester = None
 
+        # Phase 2 (REQ-FEED-002): cancel the aging cron before clearing
+        # state so the task gets a clean CancelledError instead of being
+        # garbage-collected mid-await. Mirror the kg_refresh shutdown.
+        if _aging_task is not None and not _aging_task.done():
+            _aging_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await _aging_task
+            _aging_task = None
+
         # Reset the per-feed cycle/error counters so the next create_app()
         # call starts from zero. Without this, the probe would carry stale
-        # cycle counts across lifespans in tests.
-        global _kg_refresh_cycles, _kg_refresh_errors
+        # cycle counts across lifespans in tests. ``_kg_refresh_*`` and
+        # ``_aging_*`` are declared ``global`` at the top of this function
+        # so we do not re-declare them here.
         _kg_refresh_cycles = 0
         _kg_refresh_errors = 0
+        _kg_refresh_last_error_at = None
+        _aging_cycles = 0
+        _aging_errors = 0
+        _aging_last_run_at = None
 
         clear_shared_services()
 
