@@ -344,8 +344,10 @@ class TestIntegration:
 
         register_akosha_tools(registry, mock_embedding, mock_analytics, mock_graph)
 
-        # Should register 10 tools total (2 + 1 + 4 + 3)
-        assert registry.register.call_count == 10
+        # Should register 11 tools total (2 + 1 + 5 + 3). The 5 analytics
+        # tools include `akosha_add_eval_metric` (Phase 1 REQ-MS-001
+        # landed in commit f09035f) on top of the original 4 read-side tools.
+        assert registry.register.call_count == 11
 
         # Verify all expected tool names are present
         tool_names = [call[0][0].name for call in registry.register.call_args_list]
@@ -357,6 +359,7 @@ class TestIntegration:
             "akosha_analyze_trends",
             "akosha_detect_anomalies",
             "akosha_correlate_systems",
+            "akosha_add_eval_metric",
             "akosha_query_knowledge_graph",
             "akosha_find_path",
             "akosha_get_graph_statistics",
