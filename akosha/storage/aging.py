@@ -43,7 +43,11 @@ class AgingService:
         self.warm_store = warm_store
         logger.info("Aging service initialized")
 
-    async def migrate_hot_to_warm(self, cutoff_days: int = 7) -> MigrationStats:
+    async def migrate_hot_to_warm(
+        self,
+        cutoff_days: int = 7,
+        task_class: str | None = None,
+    ) -> MigrationStats:
         """Migrate records from hot to warm tier.
 
         For records older than cutoff_days:
@@ -54,7 +58,11 @@ class AgingService:
             5. Delete from hot store
 
         Args:
-            cutoff_days: Migrate records older than this many days
+            cutoff_days: Migrate records older than this many days.
+            task_class: Optional filter on the metadata JSON ``task_class``
+                field (REQ-FEED-001). When set, only rows whose
+                ``metadata->>'task_class'`` matches are migrated; when
+                ``None``, the migration is unfiltered (backward-compatible).
 
         Returns:
             Migration statistics
@@ -63,10 +71,17 @@ class AgingService:
         stats = MigrationStats(start_time=start_time)
         cutoff_date = datetime.now(UTC) - timedelta(days=cutoff_days)
 
-        logger.info(f"Starting hot->warm migration for records older than {cutoff_date}")
+        scope = (
+            f"task_class={task_class} " if task_class else "all-task_classes "
+        )
+        logger.info(
+            f"Starting hot->warm migration for {scope}records older than {cutoff_date}"
+        )
 
         # Get records to migrate
-        records_to_migrate = await self._get_eligible_records(cutoff_date)
+        records_to_migrate = await self._get_eligible_records(
+            cutoff_date, task_class=task_class
+        )
         total_records = len(records_to_migrate)
 
         if total_records == 0:
@@ -245,11 +260,18 @@ class AgingService:
 
         return stats
 
-    async def _get_eligible_records(self, cutoff_date: datetime) -> list[dict[str, Any]]:
+    async def _get_eligible_records(
+        self,
+        cutoff_date: datetime,
+        task_class: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Get records older than cutoff date from hot store.
 
         Args:
-            cutoff_date: Cutoff datetime for migration eligibility
+            cutoff_date: Cutoff datetime for migration eligibility.
+            task_class: Optional ``metadata->>'task_class'`` JSON-path
+                filter (REQ-FEED-001). When ``None``, no filter is
+                applied (backward-compatible).
 
         Returns:
             List of hot records ready for migration
@@ -257,23 +279,42 @@ class AgingService:
         if not self.hot_store.conn:
             raise RuntimeError("Hot store not initialized")
 
-        # Query records older than cutoff date
-        result = self.hot_store.conn.execute(
+        # Query records older than cutoff date. When task_class is
+        # supplied, narrow to the metadata JSON path so the conversation
+        # and mcp_tool_call streams can be aged at different rates.
+        if task_class:
+            sql = """
+                SELECT
+                    system_id,
+                    conversation_id,
+                    content,
+                    embedding,
+                    timestamp,
+                    metadata,
+                    content_hash
+                FROM conversations
+                WHERE timestamp < ?
+                  AND metadata->>'task_class' = ?
+                ORDER BY timestamp ASC
             """
-            SELECT
-                system_id,
-                conversation_id,
-                content,
-                embedding,
-                timestamp,
-                metadata,
-                content_hash
-            FROM conversations
-            WHERE timestamp < ?
-            ORDER BY timestamp ASC
-        """,
-            [cutoff_date],
-        ).fetchall()
+            params: list[Any] = [cutoff_date, task_class]
+        else:
+            sql = """
+                SELECT
+                    system_id,
+                    conversation_id,
+                    content,
+                    embedding,
+                    timestamp,
+                    metadata,
+                    content_hash
+                FROM conversations
+                WHERE timestamp < ?
+                ORDER BY timestamp ASC
+            """
+            params = [cutoff_date]
+
+        result = self.hot_store.conn.execute(sql, params).fetchall()
 
         return [
             {

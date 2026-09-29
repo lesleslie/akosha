@@ -214,3 +214,35 @@ class TestAgingService:
         assert len(conv_ids) == 5
         assert "conv-0" in conv_ids
         assert "conv-4" in conv_ids
+
+    @pytest.mark.asyncio
+    async def test_migrate_filters_by_task_class(self, aging_service: AgingService) -> None:
+        """REQ-FEED-001: AgingService can scope migration to a specific task_class.
+
+        mcp_tool_call traces live in the conversations table alongside
+        conversation data; without a task_class filter, aging would
+        migrate them together with conversations. The filter lets
+        operators age the two streams at different rates.
+        """
+        # Spy on the SQL the aging service composes. We do not assert
+        # the result shape (mocked batch migration) — only that the
+        # JSON-path filter is appended to the SELECT.
+        await aging_service.migrate_hot_to_warm(cutoff_days=7, task_class="mcp_tool_call")
+
+        # The first execute() call is the eligible-records SELECT.
+        first_call = aging_service.hot_store.conn.execute.call_args_list[0]
+        sql = first_call[0][0]
+        params = first_call[0][1]
+        assert "metadata->>'task_class' = ?" in sql
+        assert "mcp_tool_call" in params
+
+    @pytest.mark.asyncio
+    async def test_migrate_without_task_class_skips_filter(
+        self, aging_service: AgingService
+    ) -> None:
+        """No task_class arg means no JSON-path filter (backward-compatible)."""
+        await aging_service.migrate_hot_to_warm(cutoff_days=7)
+
+        first_call = aging_service.hot_store.conn.execute.call_args_list[0]
+        sql = first_call[0][0]
+        assert "task_class" not in sql
