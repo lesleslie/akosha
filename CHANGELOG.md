@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - 2026-09-29
+
+### Added
+
+- akosha: Add_eval_metric write-side MCP tool (Phase 1 REQ-MS-001/003/006)
+- akosha: AgingService task_class filter for mcp_tool_call retention (REQ-FEED-001)
+- akosha: Mcp_tool_call feed lifecycle Phase 2 (cron + pre-warm)
+- akosha: TimeSeriesAnalytics SQLite persistence (REQ-MS-002/004/005)
+- Dry_run parameter for akosha_query_local_traces
+
+### Fixed
+
+- akosha: Pass live embedding service to resolve_embedding_dim
+- akosha: Publish shared hot_store BEFORE tool profile application
+- akosha: Read task_class (underscore) and extract selector/outcome/duration_ms
+- akosha: Resolve ty + refurb errors (3 sites)
+- akosha: Sort __all__ in validation.py (RUF022)
+- Test_register_all_tools: 10 -> 11 + add akosha_add_eval_metric
+
+### Documentation
+
+- akosha: Ticket — ColdStore GCS branch missing endpoint_url wiring
+- akosha: Ticket — correct root cause to oneiric version bump
+
+### Internal
+
+- akosha: Bump uv.lock to reflect embedding service deps
+
 ## [0.21.0] - 2026-09-28
 
 ### Fixed
