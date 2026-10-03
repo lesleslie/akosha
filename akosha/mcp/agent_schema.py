@@ -1,6 +1,6 @@
 """Agent metadata schema (Phase 3 of bodai-skill-agent-distribution plan).
 
-Per docs/superpowers/plans/2026-09-14-dhara-mcp-decomposition-implementation.md
+Per docs/plans/2026-09-14-dhara-mcp-decomposition-implementation.md
 Phase 10 task 4, the canonical agent schema now lives in
 ``mcp_common.canonical_schemas.agent``. This module is a thin re-export
 shim that preserves the legacy ``AgentMetadata`` class name + the

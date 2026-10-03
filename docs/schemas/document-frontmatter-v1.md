@@ -6,11 +6,11 @@ ______________________________________________________________________
 
 **Date:** 2026-07-16
 **Status:** accepted <!-- legacy status — see YAML frontmatter -->
-**Source plan:** `2026-07-16-plan-lifecycle-unification.md` (in `mahavishnu/docs/superpowers/plans/` — the originating repo; this schema is a Crackerjack wrapper around that plan's validator)
+**Source plan:** `2026-07-16-plan-lifecycle-unification.md` (in `mahavishnu/docs/plans/` — the originating repo; this schema is a Crackerjack wrapper around that plan's validator)
 
 ## Goal
 
-This schema unifies the eight ad-hoc status conventions currently scattered across Mahavishnu's six documentation stores — `.claude/decisions/`, `docs/followups/`, `docs/adr/`, `docs/superpowers/specs/`, `docs/superpowers/plans/`, and `docs/plans/` — into a single YAML frontmatter contract. After migration, agents greping for `status:` reach one source of truth, `PLAN_INDEX.md` is regenerated mechanically, and `superseded_by` / `blocks_on` are machine-readable rather than buried in prose. The contract covers 178 in-scope files and is intentionally small: eight keys plus a two-enum vocabulary.
+This schema unifies the eight ad-hoc status conventions currently scattered across Mahavishnu's six documentation stores — `.claude/decisions/`, `docs/followups/`, `docs/adr/`, `docs/specs/`, `docs/plans/`, and `docs/plans/` — into a single YAML frontmatter contract. After migration, agents greping for `status:` reach one source of truth, `PLAN_INDEX.md` is regenerated mechanically, and `superseded_by` / `blocks_on` are machine-readable rather than buried in prose. The contract covers 178 in-scope files and is intentionally small: eight keys plus a two-enum vocabulary.
 
 ## Vocabulary — Lifecycle
 
@@ -34,7 +34,7 @@ Five values, applied to the `role` field. A file carries exactly one role. Role 
 
 ## Full Schema
 
-Applied to `docs/adr/`, `docs/plans/`, `docs/superpowers/specs/`, `docs/superpowers/plans/`, and `docs/followups/`.
+Applied to `docs/adr/`, `docs/plans/`, `docs/specs/`, `docs/plans/`, and `docs/followups/`.
 
 ```yaml
 status: active
@@ -121,7 +121,7 @@ uv run python scripts/regenerate_plan_index.py --json-summary # emit per-store c
 
 Discovery rules (mirrors the validator's exclusion list):
 
-- Default stores: `docs/adr/`, `docs/plans/`, `docs/superpowers/specs/`, `docs/superpowers/plans/`, `.claude/decisions/`, `docs/followups/`.
+- Default stores: `docs/adr/`, `docs/plans/`, `docs/specs/`, `docs/plans/`, `.claude/decisions/`, `docs/followups/`.
 - Always excluded: `docs/plans/PLAN_INDEX.md` (self-skip), `docs/plans/drafts/`, any `*.archive*` or `*.backup*` subdirectory or suffix.
 - Output is rendered with a fixed frontmatter block, the Status Legend, an Authority Matrix, a Review Entry Points block, one registry table per store (sorted by `date` DESC), and a Lifecycle × Role distribution table at the bottom.
 - Files without valid frontmatter are silently skipped — they are the validator's job, not the indexer's.
@@ -138,7 +138,7 @@ Two open questions were resolved before migration began. Both are binding for Ph
 ## Cross-References
 
 - [`docs/schemas/topic-vocabulary-v1.md`](./topic-vocabulary-v1.md) — controlled topic list (seed + amendment rule).
-- `2026-07-16-plan-lifecycle-unification.md` (in `mahavishnu/docs/superpowers/plans/`) — the source plan defining the migration phases and integration contract.
+- `2026-07-16-plan-lifecycle-unification.md` (in `mahavishnu/docs/plans/`) — the source plan defining the migration phases and integration contract.
 - [`docs/plans/PLAN_INDEX.md`](../plans/PLAN_INDEX.md) — the index regenerated from frontmatter in Phase P6.
 - `.claude/decisions/README.md` (in `mahavishnu/.claude/decisions/`) — the decision index; Status column re-derived from per-decision frontmatter in Phase P5. (Akosha has no `.claude/decisions/` directory of its own; the schema is vendored from mahavishnu.)
 
@@ -159,5 +159,5 @@ source of truth in this repo; Crackerjack imports it via
 `mahavishnu.scripts.validate_document_frontmatter`.
 
 See the design doc
-`docs/superpowers/specs/2026-07-16-frontmatter-validator-wiring-design.md`
+`docs/specs/2026-07-16-frontmatter-validator-wiring-design.md`
 for full integration details.

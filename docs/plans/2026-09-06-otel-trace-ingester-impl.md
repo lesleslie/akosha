@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.14, asyncio, `httpx2` (the project's standard; matches `CodeGraphIngester`), `EmbeddingService` from `akosha.processing.embeddings`, `HotStore.insert` from `akosha.storage.hot_store`, `HotRecord` from `akosha.storage.models`. DuckDB-backed `HotStore` (in-memory by default).
 
-**Spec:** `/Users/les/Projects/akosha/docs/superpowers/specs/2026-09-06-otel-trace-ingester-design.md`
+**Spec:** `/Users/les/Projects/akosha/docs/specs/2026-09-06-otel-trace-ingester-design.md`
 
 ## Global Constraints
 

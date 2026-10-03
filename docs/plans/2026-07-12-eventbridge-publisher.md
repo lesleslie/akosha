@@ -12,7 +12,7 @@ ______________________________________________________________________
 
 **Tech Stack:** Python 3.13, `oneiric>=0.13.0` (already a dep — `pyproject.toml:16`), `oneiric.runtime.events.EventEnvelope` (msgspec), `pytest`, `pytest-asyncio`. No new dependencies required.
 
-**Mirror reference:** `mahavishnu/core/events/mahavishnu_publisher.py` and `tests/unit/test_mahavishnu_publisher.py` (read both before starting). Crackerjack's plan at `crackerjack/docs/superpowers/plans/2026-07-12-eventbridge-publisher.md` is a parallel implementation — review for naming consistency before starting.
+**Mirror reference:** `mahavishnu/core/events/mahavishnu_publisher.py` and `tests/unit/test_mahavishnu_publisher.py` (read both before starting). Crackerjack's plan at `crackerjack/docs/plans/2026-07-12-eventbridge-publisher.md` is a parallel implementation — review for naming consistency before starting.
 
 ## Global Constraints
 
@@ -1774,5 +1774,5 @@ ______________________________________________________________________
 - `oneiric.runtime.events.EventEnvelope` / `create_event_envelope` — canonical envelope (msgspec.Struct, three fields: `topic`, `payload`, `headers`)
 - `.claude/decisions/bodai-observability-pattern.md` (in mahavishnu repo) — the convergence rule this publisher implements
 - `docs/plans/2026-07-11-phase-6-bodai-observability.md` (in mahavishnu repo) — Phase 6 close-out context
-- `crackerjack/docs/superpowers/plans/2026-07-12-eventbridge-publisher.md` — parallel implementation; review for naming consistency before starting
+- `crackerjack/docs/plans/2026-07-12-eventbridge-publisher.md` — parallel implementation; review for naming consistency before starting
 - `akosha/alerting/__init__.py` — Akosha's existing webhook publisher template (singleton + `to_dict` + `httpx` pattern; mirrored here but for EventBridge instead of webhooks)

@@ -8,7 +8,7 @@ Layout detected (Step 1):
   - docs/runbooks/*.md (7 files)
   - docs/reference/service-dependencies.md (1 file)
   - docs/guides/operational-modes.md (1 file)
-  - docs/superpowers/plans/2026-07-12-eventbridge-publisher.md (1 file)
+  - docs/plans/2026-07-12-eventbridge-publisher.md (1 file)
   - docs/schemas/{document-frontmatter,topic-vocabulary}-v1.md (2 files; canonical schema)
 
 Schema files get a fixed assignment (status: active, role: canonical, topic: lifecycle).
@@ -84,7 +84,7 @@ ASSIGNMENTS: dict[str, tuple[str, str, str]] = {
     # Sub-stores
     "docs/guides/operational-modes.md": ("active", "canonical", "lifecycle"),
     "docs/reference/service-dependencies.md": ("active", "canonical", "architecture"),
-    "docs/superpowers/plans/2026-07-12-eventbridge-publisher.md": ("draft", "implementation", "observability"),
+    "docs/plans/2026-07-12-eventbridge-publisher.md": ("draft", "implementation", "observability"),
 }
 
 

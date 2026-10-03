@@ -7,7 +7,7 @@ topic: otel-tempo-hook
 superseded_by: null
 related_decisions:
   - mahavishnu/.claude/decisions/wire-up-contract.md
-  - akosha/docs/superpowers/plans/2026-09-09-akosha-otel-feed-recovery.md
+  - akosha/docs/plans/2026-09-09-akosha-otel-feed-recovery.md
 audited_by: []
 ---
 

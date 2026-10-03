@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.14, asyncio, `starlette` (already in the venv for FastMCP), `uvicorn` (already in pyproject's `dev` group), `pytest_asyncio` (already in use).
 
-**Spec:** `/Users/les/Projects/akosha/docs/superpowers/specs/2026-09-06-live-mcp-smoke-test-design.md`
+**Spec:** `/Users/les/Projects/akosha/docs/specs/2026-09-06-live-mcp-smoke-test-design.md`
 
 ## Scope Notes
 

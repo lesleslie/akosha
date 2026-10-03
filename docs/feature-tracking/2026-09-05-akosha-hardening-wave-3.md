@@ -69,7 +69,7 @@ require live postgres/redis infrastructure or full
 
 ## Plan
 
-`/Users/les/Projects/akosha/docs/superpowers/plans/2026-09-05-akosha-hardening-impl.md`
+`/Users/les/Projects/akosha/docs/plans/2026-09-05-akosha-hardening-impl.md`
 (Task 3.1–3.4; Wave 3 of 5)
 
 ## Test coverage

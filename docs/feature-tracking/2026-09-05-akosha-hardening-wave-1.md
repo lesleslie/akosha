@@ -78,11 +78,11 @@ OTel, and code-index feeds.
 
 ## Plan
 
-`/Users/les/Projects/akosha/docs/superpowers/plans/2026-09-05-akosha-hardening-impl.md`
+`/Users/les/Projects/akosha/docs/plans/2026-09-05-akosha-hardening-impl.md`
 (5-wave plan, 33 tasks; Wave 1 = Tasks 1.1-1.6)
 
 Spec:
-`/Users/les/Projects/akosha/docs/superpowers/specs/2026-09-05-akosha-hardening-design.md`
+`/Users/les/Projects/akosha/docs/specs/2026-09-05-akosha-hardening-design.md`
 
 Cross-component discipline:
 `/Users/les/Projects/mahavishnu/.claude/decisions/mcp-backend-wiring-discipline.md`

@@ -10,7 +10,7 @@ replaces: null
 related_decisions:
   - mahavishnu/.claude/decisions/wire-up-contract.md
   - mahavishnu/.claude/decisions/mcp-backend-wiring-discipline.md
-  - akosha/docs/superpowers/plans/2026-09-06-otel-trace-ingester-impl.md
+  - akosha/docs/plans/2026-09-06-otel-trace-ingester-impl.md
 audited_by:
   - audit-2026-09-09-otel-correctness
   - audit-2026-09-09-bodai-policy
@@ -278,7 +278,7 @@ The plan is "done enough" when: `/health` returns HTTP 200 with `"status":"ok"` 
 
 ## Execution Handoff
 
-Plan complete and saved to `docs/superpowers/plans/2026-09-09-akosha-otel-feed-recovery.md`. Two execution options:
+Plan complete and saved to `docs/plans/2026-09-09-akosha-otel-feed-recovery.md`. Two execution options:
 
 1. **Subagent-Driven (recommended)** — I dispatch a fresh subagent per phase, review between phases, fast iteration.
 2. **Inline Execution** — Execute phases in this session using `executing-plans`, batch execution with checkpoints.

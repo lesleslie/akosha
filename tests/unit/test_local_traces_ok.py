@@ -1,6 +1,6 @@
 """Tests for the OTel feed-recovery behaviour pinned via custom-probe swap.
 
-Plan: ``docs/superpowers/plans/2026-09-09-akosha-otel-feed-recovery.md``
+Plan: ``docs/plans/2026-09-09-akosha-otel-feed-recovery.md``
 Phase 3 (lines 145-170) — REQ-005 + REQ-007.
 
 REQ-005: the formula must tolerate a running-but-empty OTel producer

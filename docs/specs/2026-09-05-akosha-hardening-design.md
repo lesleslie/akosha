@@ -286,7 +286,7 @@ Of the last 100 commits, ~50% are "feature was incomplete when merged" fixes —
 ### Tracking and metadata
 
 - `docs/feature-tracking/2026-09-05-akosha-hardening.md` (built/wired/adopted lifecycle).
-- `docs/superpowers/plans/2026-09-05-akosha-hardening-impl.md` (created by writing-plans skill after this spec is approved).
+- `docs/plans/2026-09-05-akosha-hardening-impl.md` (created by writing-plans skill after this spec is approved).
 
 ## 7. Validation Matrix
 

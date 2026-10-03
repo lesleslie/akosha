@@ -81,7 +81,7 @@ quantization (H3).
 
 ## Plan
 
-`/Users/les/Projects/akosha/docs/superpowers/plans/2026-09-05-akosha-hardening-impl.md`
+`/Users/les/Projects/akosha/docs/plans/2026-09-05-akosha-hardening-impl.md`
 (Task 2.1–2.4; Wave 2 of 5)
 
 ## Test coverage

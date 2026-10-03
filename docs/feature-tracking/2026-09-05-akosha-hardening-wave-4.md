@@ -72,7 +72,7 @@ Wave 4 closes that with two pieces:
 
 ## Plan
 
-`/Users/les/Projects/akosha/docs/superpowers/plans/2026-09-05-akosha-hardening-impl.md`
+`/Users/les/Projects/akosha/docs/plans/2026-09-05-akosha-hardening-impl.md`
 (Task 4.1–4.4; Wave 4 of 5)
 
 ## Test coverage

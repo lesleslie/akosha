@@ -106,7 +106,7 @@ own schedule without blocking any other workstream.
 - **No production data path broken** — the GCS branch is not the
   default cold storage backend in production; local-dev is the use case.
 - **No follow-on plan blocked** — the cold-tier fake-gcs integration
-  (`docs/superpowers/plans/2026-09-27-cold-tier-fake-gcs-impl.md`)
+  (`docs/plans/2026-09-27-cold-tier-fake-gcs-impl.md`)
   cannot land its end-to-end test
   (`test_cold_tier_fake_gcs_round_trip`) until this version bump ships.
 - **Test is correctly written** — the production code is correct

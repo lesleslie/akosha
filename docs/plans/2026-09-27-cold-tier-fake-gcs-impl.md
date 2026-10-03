@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.14, oneiric (storage adapters), google-cloud-storage SDK, aioboto3 (via oneiric `S3StorageAdapter`), pyarrow (Parquet), Pydantic v2, pytest.
 
-**Spec:** `akosha/docs/superpowers/specs/2026-09-27-cold-tier-fake-gcs-design.md` (commits `e9acd5a`, `8cebdd7`)
+**Spec:** `akosha/docs/specs/2026-09-27-cold-tier-fake-gcs-design.md` (commits `e9acd5a`, `8cebdd7`)
 
 ## Global Constraints
 
@@ -1314,4 +1314,4 @@ After all tasks land:
 
 ## Plan complete
 
-All 9 tasks across 4 phases. Spec: `akosha/docs/superpowers/specs/2026-09-27-cold-tier-fake-gcs-design.md` (commits `e9acd5a`, `8cebdd7`).
+All 9 tasks across 4 phases. Spec: `akosha/docs/specs/2026-09-27-cold-tier-fake-gcs-design.md` (commits `e9acd5a`, `8cebdd7`).

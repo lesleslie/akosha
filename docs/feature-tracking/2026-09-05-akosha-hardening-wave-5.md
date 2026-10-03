@@ -63,7 +63,7 @@ pre-Wave-5 behaviour for tests bypassing the full lifespan).
 
 ## Plan
 
-``/Users/les/Projects/akosha/docs/superpowers/plans/2026-09-05-akosha-hardening-impl.md``
+``/Users/les/Projects/akosha/docs/plans/2026-09-05-akosha-hardening-impl.md``
 (Tasks 5.1–5.5; Wave 5 of 5)
 
 ## Test coverage

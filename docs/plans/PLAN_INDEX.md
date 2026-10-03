@@ -50,7 +50,7 @@ and reproduced here for index readability.
 | Bodai-wide observability surface | `docs/plans/2026-07-11-phase-6-bodai-observability.md` |
 | Repo-local decisions index | `.claude/decisions/README.md` |
 | Follow-up tracker index | `docs/followups/README.md` |
-| Source plan defining this index | `docs/superpowers/plans/2026-07-16-plan-lifecycle-unification.md` |
+| Source plan defining this index | `docs/plans/2026-07-16-plan-lifecycle-unification.md` |
 
 ## Review Entry Points
 
@@ -89,19 +89,19 @@ One table per store. Entries are sorted by `date` DESC, with ties broken by path
 |---|---|---|---|---|---|
 | [`docs/plans/2026-09-27-pyproject-single-source-of-truth.md`](2026-09-27-pyproject-single-source-of-truth.md) | 2026-09-27 | `active` | `canonical` | `version-source-of-truth` | Pyproject as Single Source of Truth for Version Strings |
 
-### Superpowers Specs (`docs/superpowers/specs/`)
+### Superpowers Specs (`docs/specs/`)
 
 | Path | Date | Status | Role | Topic | Title |
 |---|---|---|---|---|---|
-| [`docs/superpowers/specs/2026-09-27-cold-tier-fake-gcs-design.md`](../superpowers/specs/2026-09-27-cold-tier-fake-gcs-design.md) | 2026-09-27 | `active` | `implementation` | `cold-tier-fake-gcs` | Cold Tier: fake-gcs-server default + Cloudflare R2 for local XDG |
-| [`docs/superpowers/specs/2026-09-05-akosha-hardening-design.md`](../superpowers/specs/2026-09-05-akosha-hardening-design.md) | 2026-09-05 | `complete` | `implementation` | `convergence-control-plane` | Akosha Comprehensive Hardening — Design Spec |
+| [`docs/specs/2026-09-27-cold-tier-fake-gcs-design.md`](../superpowers/specs/2026-09-27-cold-tier-fake-gcs-design.md) | 2026-09-27 | `active` | `implementation` | `cold-tier-fake-gcs` | Cold Tier: fake-gcs-server default + Cloudflare R2 for local XDG |
+| [`docs/specs/2026-09-05-akosha-hardening-design.md`](../superpowers/specs/2026-09-05-akosha-hardening-design.md) | 2026-09-05 | `complete` | `implementation` | `convergence-control-plane` | Akosha Comprehensive Hardening — Design Spec |
 
-### Superpowers Plans (`docs/superpowers/plans/`)
+### Superpowers Plans (`docs/plans/`)
 
 | Path | Date | Status | Role | Topic | Title |
 |---|---|---|---|---|---|
-| [`docs/superpowers/plans/2026-09-09-akosha-otel-feed-recovery.md`](../superpowers/plans/2026-09-09-akosha-otel-feed-recovery.md) | 2026-09-09 | `draft` | `implementation` | `akosha-otel-feed-recovery` | Akosha OTel Feed Recovery Plan |
-| [`docs/superpowers/plans/2026-09-05-akosha-hardening-impl.md`](../superpowers/plans/2026-09-05-akosha-hardening-impl.md) | 2026-09-05 | `draft` | `implementation` | `convergence-control-plane` | Akosha Comprehensive Hardening Implementation Plan |
+| [`docs/plans/2026-09-09-akosha-otel-feed-recovery.md`](../superpowers/plans/2026-09-09-akosha-otel-feed-recovery.md) | 2026-09-09 | `draft` | `implementation` | `akosha-otel-feed-recovery` | Akosha OTel Feed Recovery Plan |
+| [`docs/plans/2026-09-05-akosha-hardening-impl.md`](../superpowers/plans/2026-09-05-akosha-hardening-impl.md) | 2026-09-05 | `draft` | `implementation` | `convergence-control-plane` | Akosha Comprehensive Hardening Implementation Plan |
 
 ### Repo-local Decisions (`.claude/decisions/`)
 

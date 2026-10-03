@@ -5,7 +5,7 @@ date: 2026-09-05
 last_reviewed: 2026-09-05
 superseded_by: null
 blocks_on:
-  - docs/superpowers/specs/2026-09-05-akosha-hardening-design.md
+  - docs/specs/2026-09-05-akosha-hardening-design.md
 topic: convergence-control-plane
 ---
 
@@ -19,7 +19,7 @@ topic: convergence-control-plane
 
 **Tech Stack:** Python 3.14 (project target), `pytest`, `pytest-asyncio` (asyncio_mode = "auto" per `pyproject.toml:78`), `coverage.py` (branch coverage enabled), `datasketch>=0.6.0` (new for MinHash dedup), `aiohttp>=3.12.14` (new — currently undeclared), `oneiric>=0.20` (existing, used for storage adapter), `crackerjack` (project quality gate).
 
-**Spec:** `/Users/les/Projects/akosha/docs/superpowers/specs/2026-09-05-akosha-hardening-design.md` — read it alongside this plan; the plan argues from the spec.
+**Spec:** `/Users/les/Projects/akosha/docs/specs/2026-09-05-akosha-hardening-design.md` — read it alongside this plan; the plan argues from the spec.
 
 ## Global Constraints
 
@@ -1829,12 +1829,12 @@ Run from another shell: `mcp__akosha__get_graph_statistics`, `mcp__akosha__query
 
 - [ ] **Step 3: Document findings in `## Appendix A` of the spec**
 
-Open `/Users/les/Projects/akosha/docs/superpowers/specs/2026-09-05-akosha-hardening-design.md` and replace the `## Appendix A` placeholder with the actual investigation report.
+Open `/Users/les/Projects/akosha/docs/specs/2026-09-05-akosha-hardening-design.md` and replace the `## Appendix A` placeholder with the actual investigation report.
 
 - [ ] **Step 4: Commit investigation report**
 
 ```bash
-cd /Users/les/Projects/akosha && git -c user.email='les@wedgwoodwebworks.com' -c user.name='les' add docs/superpowers/specs/2026-09-05-akosha-hardening-design.md
+cd /Users/les/Projects/akosha && git -c user.email='les@wedgwoodwebworks.com' -c user.name='les' add docs/specs/2026-09-05-akosha-hardening-design.md
 git -c user.email='les@wedgwoodwebworks.com' -c user.name='les' commit -m "docs(akosha): populate Wave-5 investigation report in spec appendix A"
 ```
 
@@ -1973,7 +1973,7 @@ In `pyproject.toml` and `akosha/__init__.py:__version__`. Run `uv lock`.
 
 - [ ] **Step 3: Update spec status to `complete`**
 
-In `/Users/les/Projects/akosha/docs/superpowers/specs/2026-09-05-akosha-hardening-design.md`, change `status: draft` to `status: complete`.
+In `/Users/les/Projects/akosha/docs/specs/2026-09-05-akosha-hardening-design.md`, change `status: draft` to `status: complete`.
 
 - [ ] **Step 4: Update `docs/feature-tracking/2026-09-05-akosha-hardening.md`**
 
@@ -1998,7 +1998,7 @@ Update frontmatter `built:` and `adopted:` dates.
 - [ ] **Step 5: Commit wave 5**
 
 ```bash
-cd /Users/les/Projects/akosha && git -c user.email='les@wedgwoodwebworks.com' -c user.name='les' add docs/feature-tracking/2026-09-05-akosha-hardening.md docs/superpowers/specs/2026-09-05-akosha-hardening-design.md pyproject.toml akosha/__init__.py uv.lock
+cd /Users/les/Projects/akosha && git -c user.email='les@wedgwoodwebworks.com' -c user.name='les' add docs/feature-tracking/2026-09-05-akosha-hardening.md docs/specs/2026-09-05-akosha-hardening-design.md pyproject.toml akosha/__init__.py uv.lock
 git -c user.email='les@wedgwoodwebworks.com' -c user.name='les' commit -m "feat(akosha): wave-5 done — bump to 0.15.0 + live MCP backend wired
 
 Spec marked complete. All 5 waves shipped to local main.
