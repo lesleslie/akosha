@@ -130,7 +130,7 @@ wheels = [
 
 [[package]]
 name = "akosha"
-version = "0.22.0"
+version = "0.22.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -2694,7 +2694,7 @@ wheels = [
 
 [[package]]
 name = "oneiric"
-version = "0.23.0"
+version = "0.26.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiobreaker" },
@@ -2704,6 +2704,7 @@ dependencies = [
     { name = "google-cloud-secret-manager" },
     { name = "google-cloud-storage" },
     { name = "ipython" },
+    { name = "mcp-common" },
     { name = "msgspec" },
     { name = "networkx" },
     { name = "numpy" },
@@ -2715,9 +2716,9 @@ dependencies = [
     { name = "typer" },
     { name = "watchfiles" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f3/39/d61b5e1f59b45b54b3347c76cd1a48b2ec48ee050f0a78027c88be63fff5/oneiric-0.23.0.tar.gz", hash = "sha256:5951a2fab15e562941a02a549517a59e381fed739ba7a6d75be514eaf1bc18df", size = 1958007, upload-time = "2026-09-21T15:38:25.034Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ef/17/47649d0e836813f8dce1e3e830bd155161b7a09d59d61bd15a79d459027e/oneiric-0.26.4.tar.gz", hash = "sha256:eba6436385b01690f28d1c679bbb16aa39250c48a61653353b51baeb028f2b92", size = 1760770, upload-time = "2026-10-04T01:04:34.033Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/40/a4/78bfd07399249e5452050f5437916215ebc3705c1554c7a3951ab8b5c66f/oneiric-0.23.0-py3-none-any.whl", hash = "sha256:3e9af7948770713174f7fa17a845ca2c15451fbcc72f2fd535bed6e781ea0ba5", size = 427855, upload-time = "2026-09-21T15:38:23.564Z" },
+    { url = "https://files.pythonhosted.org/packages/05/cc/18a0d7b58afa861ad1640ddf2322d0bdc866c6009d0c173944aa968b41c1/oneiric-0.26.4-py3-none-any.whl", hash = "sha256:f3ee784f9cd413477f5cfa072b085ae8794b5cdc0b07ef5b45618cfcad2557c3", size = 434357, upload-time = "2026-10-04T01:04:32.211Z" },
 ]
 
 [[package]]
