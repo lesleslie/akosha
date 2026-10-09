@@ -202,7 +202,12 @@ def register_code_graph_analysis_tools(
                 matching_files = []
 
                 # Search in nodes for the function
-                for node in graph_data.get("nodes", {}).values():
+                nodes_obj = graph_data.get("nodes")
+                for node in (
+                    nodes_obj.values()
+                    if isinstance(nodes_obj, dict)
+                    else (nodes_obj or [])
+                ):
                     if isinstance(node, dict):
                         node_name = node.get("name", "")
                         if function_name.lower() in node_name.lower():
@@ -277,19 +282,30 @@ async def _compute_graph_similarity(
     Returns:
         Similarity score between 0 and 1.
     """
-    # Extract node types
-    nodes1 = graph1.get("nodes", {})
-    nodes2 = graph2.get("nodes", {})
+    # Extract node types. Use the shape-guard pattern from the other 6 fixed
+    # sites: the session-buddy code-graph indexer may return ``nodes`` as a
+    # dict, a list, or absent. Iterating ``(nodes or [])`` when not a dict
+    # keeps the handler crash-free for every indexer shape.
+    nodes1_obj = graph1.get("nodes", {})
+    nodes2_obj = graph2.get("nodes", {})
 
     # Count node types
     types1: dict[str, int] = {}
-    for node in nodes1.values():
+    for node in (
+        nodes1_obj.values()
+        if isinstance(nodes1_obj, dict)
+        else (nodes1_obj or [])
+    ):
         if isinstance(node, dict):
             node_type = node.get("type", "unknown")
             types1[node_type] = types1.get(node_type, 0) + 1
 
     types2: dict[str, int] = {}
-    for node in nodes2.values():
+    for node in (
+        nodes2_obj.values()
+        if isinstance(nodes2_obj, dict)
+        else (nodes2_obj or [])
+    ):
         if isinstance(node, dict):
             node_type = node.get("type", "unknown")
             types2[node_type] = types2.get(node_type, 0) + 1

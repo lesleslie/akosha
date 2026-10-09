@@ -388,7 +388,12 @@ def register_pycharm_tools(
                         graph_summary["commit_hash"],
                     )
                     if graph and "graph_data" in graph:
-                        for node in graph["graph_data"].get("nodes", {}).values():
+                        nodes_obj = graph["graph_data"].get("nodes")
+                        for node in (
+                            nodes_obj.values()
+                            if isinstance(nodes_obj, dict)
+                            else (nodes_obj or [])
+                        ):
                             if isinstance(node, dict):
                                 source = node.get("source", "")
                                 if source and re.search(pattern, source):
@@ -486,7 +491,12 @@ def register_pycharm_tools(
 
                     # Extract problems from code graph if available
                     graph_data = graph.get("graph_data", {})
-                    for node in graph_data.get("nodes", {}).values():
+                    nodes_obj = graph_data.get("nodes")
+                    for node in (
+                        nodes_obj.values()
+                        if isinstance(nodes_obj, dict)
+                        else (nodes_obj or [])
+                    ):
                         if isinstance(node, dict):
                             node_problems = node.get("problems", [])
                             for prob in node_problems:
@@ -583,7 +593,12 @@ def register_pycharm_tools(
                     graph_data = graph.get("graph_data", {})
                     matching_files = []
 
-                    for node in graph_data.get("nodes", {}).values():
+                    nodes_obj = graph_data.get("nodes")
+                    for node in (
+                        nodes_obj.values()
+                        if isinstance(nodes_obj, dict)
+                        else (nodes_obj or [])
+                    ):
                         if isinstance(node, dict):
                             node_name = node.get("name", "")
                             node_type = node.get("type", "")
@@ -710,7 +725,12 @@ def register_pycharm_tools(
                         imports = set()
                         usages = set()
 
-                        for node in graph_data.get("nodes", {}).values():
+                        nodes_obj = graph_data.get("nodes")
+                        for node in (
+                            nodes_obj.values()
+                            if isinstance(nodes_obj, dict)
+                            else (nodes_obj or [])
+                        ):
                             if isinstance(node, dict):
                                 node_type = node.get("type", "")
                                 node_name = node.get("name", "")
@@ -759,7 +779,12 @@ def register_pycharm_tools(
                         # Find common import patterns
                         import_counts: dict[str, int] = {}
 
-                        for node in graph_data.get("nodes", {}).values():
+                        nodes_obj = graph_data.get("nodes")
+                        for node in (
+                            nodes_obj.values()
+                            if isinstance(nodes_obj, dict)
+                            else (nodes_obj or [])
+                        ):
                             if isinstance(node, dict) and node.get("type") == "import":
                                 imp = node.get("name", "")
                                 import_counts[imp] = import_counts.get(imp, 0) + 1
