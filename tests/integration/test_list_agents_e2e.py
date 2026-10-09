@@ -1,4 +1,4 @@
-"""End-to-end test: akosha_list_agents returns non-empty catalog with non-empty ``system_prompt``.
+"""End-to-end test: list_agents returns non-empty catalog with non-empty ``system_prompt``.
 
 Per plan §5 Phase 3 task #2 and the Phase 3 exit criteria:
 
@@ -6,7 +6,7 @@ Per plan §5 Phase 3 task #2 and the Phase 3 exit criteria:
 > ``system_prompt`` field.
 
 This test seeds a stand-in MCP server shim, registers
-``akosha_list_agents`` against it via ``register_agents_tools``, and
+``list_agents`` against it via ``register_agents_tools``, and
 invokes the inner function so the assertion path mirrors what
 production dispatchers do. We also assert the
 ``AKOSHA_MANDATORY_GROUPS`` invariant — agents must be reachable at
@@ -57,8 +57,8 @@ def app() -> _ToolRegistry:
 @pytest.mark.asyncio
 async def test_list_agents_returns_non_empty_list(app: _ToolRegistry) -> None:
     """Exit criterion: ``list_agents()`` returns ≥1 entry."""
-    fn = app.get("akosha_list_agents")
-    assert fn is not None, "akosha_list_agents was not registered"
+    fn = app.get("list_agents")
+    assert fn is not None, "list_agents was not registered"
 
     result = await fn()
 
@@ -69,7 +69,7 @@ async def test_list_agents_returns_non_empty_list(app: _ToolRegistry) -> None:
 @pytest.mark.asyncio
 async def test_list_agents_returns_three_entries(app: _ToolRegistry) -> None:
     """Three starter agents are expected: akosha-specialist, search-agent, pattern-agent."""
-    fn = app.get("akosha_list_agents")
+    fn = app.get("list_agents")
     result = await fn()
 
     assert len(result) == 3
@@ -84,7 +84,7 @@ async def test_list_agents_entries_have_non_empty_system_prompt(app: _ToolRegist
     The body is the FULL system prompt — Claude Code reads it directly.
     Without this, the installer would ship non-functional agents.
     """
-    fn = app.get("akosha_list_agents")
+    fn = app.get("list_agents")
     result = await fn()
 
     for entry in result:
@@ -102,7 +102,7 @@ async def test_list_agents_entries_have_non_empty_system_prompt(app: _ToolRegist
 @pytest.mark.asyncio
 async def test_list_agents_entries_have_required_fields(app: _ToolRegistry) -> None:
     """Each entry must carry the canonical Phase 3 metadata fields."""
-    fn = app.get("akosha_list_agents")
+    fn = app.get("list_agents")
     result = await fn()
 
     required_fields = {
@@ -128,7 +128,7 @@ async def test_list_agents_entries_have_required_fields(app: _ToolRegistry) -> N
 @pytest.mark.asyncio
 async def test_list_agents_id_format(app: _ToolRegistry) -> None:
     """``id`` must be ``{server_key}:{name}:{version}``."""
-    fn = app.get("akosha_list_agents")
+    fn = app.get("list_agents")
     result = await fn()
 
     for entry in result:
@@ -141,7 +141,7 @@ async def test_list_agents_names_allowlist_compliant(app: _ToolRegistry) -> None
     import re
 
     pattern = re.compile(r"^[a-z0-9][a-z0-9._-]{0,62}$")
-    fn = app.get("akosha_list_agents")
+    fn = app.get("list_agents")
     result = await fn()
 
     for entry in result:

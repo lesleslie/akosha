@@ -136,7 +136,7 @@ def register_agents_tools_group(app: FastMCP) -> None:
     return informative error envelopes if the signer has not been
     initialized yet (pre-lifespan / lite mode).
 
-    **B-6 critical contract**: the ``akosha_get_agent`` tool returns
+    **B-6 critical contract**: the ``get_agent`` tool returns
     ``body == system_prompt``. Without this, the installer would ship
     non-functional agents. The end-to-end test
     ``tests/integration/test_get_agent_e2e.py`` asserts this invariant.
@@ -148,7 +148,7 @@ def register_agents_tools_group(app: FastMCP) -> None:
 
 
 def register_ecosystem_skills_group(app: FastMCP) -> None:
-    """Register Phase 4 federation tool ``akosha_list_ecosystem_skills``.
+    """Register Phase 4 federation tool ``list_ecosystem_skills``.
 
     Aggregates ``mcp__<server>__list_skills`` responses from all 5 Bodai
     servers with a 1-second per-server timeout, per-server circuit

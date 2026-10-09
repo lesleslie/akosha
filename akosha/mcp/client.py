@@ -77,7 +77,7 @@ async def query_local_traces(
         ``docs/plans/2026-09-14-common-mcp-client-transport-unification.md``.
     """
     result = await client.call_tool(
-        "akosha_query_local_traces",
+        "query_local_traces",
         {
             "task_class": task_class,
             "time_range_minutes": time_range_minutes,

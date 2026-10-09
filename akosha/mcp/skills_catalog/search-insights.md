@@ -1,7 +1,7 @@
 ---
 name: search-insights
-description: Use ONLY when the user explicitly types `/akosha:search-insights` or selects this Skill from the picker to run hybrid semantic + lexical search across the indexed Bodai memory corpus. Do not auto-trigger. Routes through `mcp__akosha__akosha_search_all_systems` to find semantically similar reflections across all ingested systems. Useful for questions like "what did we do last time X happened?", "find past conversations about Y", or "what does the corpus say about Z?"
-allowed-tools: mcp__akosha__akosha_search_all_systems, Read, Bash(echo:*)
+description: Use ONLY when the user explicitly types `/akosha:search-insights` or selects this Skill from the picker to run hybrid semantic + lexical search across the indexed Bodai memory corpus. Do not auto-trigger. Routes through `mcp__akosha__search_all_systems` to find semantically similar reflections across all ingested systems. Useful for questions like "what did we do last time X happened?", "find past conversations about Y", or "what does the corpus say about Z?"
+allowed-tools: mcp__akosha__search_all_systems, Read, Bash(echo:*)
 ---
 
 # search-insights
@@ -20,7 +20,7 @@ across all systems ingested by Akosha's HotStore. Common cases:
 The query is a natural-language question. The Skill will:
 
 1. Take the user's query verbatim.
-2. Call `mcp__akosha__akosha_search_all_systems` with `query=<the text>`,
+2. Call `mcp__akosha__search_all_systems` with `query=<the text>`,
    `limit=10`, `threshold=0.7`.
 3. Read back the top results.
 4. Synthesize an answer with citations to the source
@@ -28,7 +28,7 @@ The query is a natural-language question. The Skill will:
 
 ## What the tool does
 
-`mcp__akosha__akosha_search_all_systems` performs **hybrid semantic +
+`mcp__akosha__search_all_systems` performs **hybrid semantic +
 lexical** retrieval:
 
 - **Semantic**: encodes the query with the local all-MiniLM-L6-v2
@@ -43,9 +43,9 @@ The query MUST be 1-500 characters. Empty queries are rejected.
 ## When NOT to use
 
 - For raw keyword search across one specific system, prefer
-  `mcp__akosha__akosha_query_knowledge_graph` (entity-keyed) instead.
-- For OTel trace queries, use `mcp__akosha__akosha_query_local_traces`.
-- For code-pattern search, use `mcp__akosha__akosha_search_code_patterns`.
+  `mcp__akosha__query_knowledge_graph` (entity-keyed) instead.
+- For OTel trace queries, use `mcp__akosha__query_local_traces`.
+- For code-pattern search, use `mcp__akosha__search_code_patterns`.
 
 ## Failure modes and how to handle them
 
@@ -54,8 +54,8 @@ The query MUST be 1-500 characters. Empty queries are rejected.
   content.
 - **Embedding service down**: same fallback row. Surface the
   degraded mode.
-- **Rate limited / auth failed**: `PermissionError` raised; surface
-  the error verbatim.
+- **Rate limited / auth failed**: `PermissionError` raised; surface the
+  error verbatim.
 
 ## Example flow
 
@@ -64,7 +64,7 @@ User: "What did we do last time crackerjack broke on httpx2 migration?"
 Skill action:
 
 ```python
-result = await mcp__akosha__akosha_search_all_systems(
+result = await mcp__akosha__search_all_systems(
     query="crackerjack httpx2 migration regression",
     limit=10,
     threshold=0.7,

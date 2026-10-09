@@ -147,11 +147,11 @@ def _make_registry() -> tuple[_DummyFastMCP, FastMCPToolRegistry]:
 class TestRegisterCrossRepoTools:
     def test_tool_is_registered(self) -> None:
         app, _registry = _make_registry()
-        assert "akosha_cross_repo_capability_search" in app.registered
+        assert "cross_repo_capability_search" in app.registered
 
     def test_tool_is_coroutine(self) -> None:
         _app, _registry = _make_registry()
-        fn = _app.registered["akosha_cross_repo_capability_search"]
+        fn = _app.registered["cross_repo_capability_search"]
         import inspect
 
         assert inspect.iscoroutinefunction(fn)
@@ -161,7 +161,7 @@ class TestCrossRepoCapabilitySearchInvocation:
     @pytest.mark.asyncio
     async def test_basic_shape(self) -> None:
         _app, _registry = _make_registry()
-        fn = _app.registered["akosha_cross_repo_capability_search"]
+        fn = _app.registered["cross_repo_capability_search"]
         result = await fn("code-review adapters")
         assert isinstance(result, dict)
         assert result["query"] == "code-review adapters"
@@ -173,7 +173,7 @@ class TestCrossRepoCapabilitySearchInvocation:
     @pytest.mark.asyncio
     async def test_query_returns_code_review_related(self) -> None:
         _app, _registry = _make_registry()
-        fn = _app.registered["akosha_cross_repo_capability_search"]
+        fn = _app.registered["cross_repo_capability_search"]
         result = await fn("adapter", limit=20, min_score=0.3)
         # We seeded review-related entries; the result must contain at least
         # one capability.
@@ -185,7 +185,7 @@ class TestCrossRepoCapabilitySearchInvocation:
     @pytest.mark.asyncio
     async def test_repo_filter_narrows_repos_scanned(self) -> None:
         _app, _registry = _make_registry()
-        fn = _app.registered["akosha_cross_repo_capability_search"]
+        fn = _app.registered["cross_repo_capability_search"]
         result = await fn(
             "search",
             repo_filter="mahavishnu",
@@ -198,7 +198,7 @@ class TestCrossRepoCapabilitySearchInvocation:
     @pytest.mark.asyncio
     async def test_kind_filter_narrows(self) -> None:
         _app, _registry = _make_registry()
-        fn = _app.registered["akosha_cross_repo_capability_search"]
+        fn = _app.registered["cross_repo_capability_search"]
         result = await fn("schema", kind_filter="error", limit=50, min_score=0.1)
         assert all(r["kind"] == "error" for r in result["results"])
 
@@ -206,7 +206,7 @@ class TestCrossRepoCapabilitySearchInvocation:
     async def test_returns_at_least_3_components_for_crash_recovery(self) -> None:
         """Plan exit-criteria gate: error-handling must span 3+ components."""
         _app, _registry = _make_registry()
-        fn = _app.registered["akosha_cross_repo_capability_search"]
+        fn = _app.registered["cross_repo_capability_search"]
         # ``error`` token directly matches every ``kind="error"`` capability
         # and several tag entries (PoolUnavailableError, HotStoreUnavailable,
         # etc.). Low threshold to keep the test stable.
@@ -220,7 +220,7 @@ class TestCrossRepoCapabilitySearchInvocation:
     @pytest.mark.asyncio
     async def test_min_score_threshold_drops_low_results(self) -> None:
         _app, _registry = _make_registry()
-        fn = _app.registered["akosha_cross_repo_capability_search"]
+        fn = _app.registered["cross_repo_capability_search"]
         high = await fn("code-review adapters", limit=20, min_score=0.0)
         low = await fn("code-review adapters", limit=20, min_score=0.99)
         assert low["total_results"] <= high["total_results"]
@@ -228,7 +228,7 @@ class TestCrossRepoCapabilitySearchInvocation:
     @pytest.mark.asyncio
     async def test_each_result_has_required_fields(self) -> None:
         _app, _registry = _make_registry()
-        fn = _app.registered["akosha_cross_repo_capability_search"]
+        fn = _app.registered["cross_repo_capability_search"]
         result = await fn("adapter", limit=20, min_score=0.0)
         for r in result["results"]:
             assert {"repo", "kind", "name", "summary", "doc_hint", "score"} <= set(r)
@@ -238,7 +238,7 @@ class TestCrossRepoCapabilitySearchInvocation:
     @pytest.mark.asyncio
     async def test_limit_caps_results(self) -> None:
         _app, _registry = _make_registry()
-        fn = _app.registered["akosha_cross_repo_capability_search"]
+        fn = _app.registered["cross_repo_capability_search"]
         result = await fn("a", limit=2, min_score=0.0)
         assert result["total_results"] <= 2
 
@@ -252,28 +252,28 @@ class TestCrossRepoCapabilitySearchValidation:
     @pytest.mark.asyncio
     async def test_empty_query_rejected(self) -> None:
         _app, _registry = _make_registry()
-        fn = _app.registered["akosha_cross_repo_capability_search"]
+        fn = _app.registered["cross_repo_capability_search"]
         with pytest.raises(Exception):  # Pydantic ValidationError
             await fn("")
 
     @pytest.mark.asyncio
     async def test_repo_filter_invalid_chars_rejected(self) -> None:
         _app, _registry = _make_registry()
-        fn = _app.registered["akosha_cross_repo_capability_search"]
+        fn = _app.registered["cross_repo_capability_search"]
         with pytest.raises(Exception):
             await fn("foo", repo_filter="bad;rm -rf /")
 
     @pytest.mark.asyncio
     async def test_limit_too_high_rejected(self) -> None:
         _app, _registry = _make_registry()
-        fn = _app.registered["akosha_cross_repo_capability_search"]
+        fn = _app.registered["cross_repo_capability_search"]
         with pytest.raises(Exception):
             await fn("foo", limit=9999)
 
     @pytest.mark.asyncio
     async def test_min_score_out_of_range_rejected(self) -> None:
         _app, _registry = _make_registry()
-        fn = _app.registered["akosha_cross_repo_capability_search"]
+        fn = _app.registered["cross_repo_capability_search"]
         with pytest.raises(Exception):
             await fn("foo", min_score=1.5)
 
@@ -296,7 +296,7 @@ def test_cross_repo_group_registers_tool() -> None:
 
     app = _DummyFastMCP()
     register_cross_repo_group(app)  # type: ignore[arg-type]
-    assert "akosha_cross_repo_capability_search" in app.registered
+    assert "cross_repo_capability_search" in app.registered
 
 
 def test_registration_map_includes_cross_repo() -> None:

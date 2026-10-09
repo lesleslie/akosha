@@ -4,7 +4,7 @@ description: >-
   Use this agent when the user asks a focused semantic-search question
   across a single ingested system (e.g. "find anything in session-buddy
   about migration"). Routes through
-  mcp__akosha__akosha_search_all_systems with a system_id filter.
+  mcp__akosha__search_all_systems with a system_id filter.
   Narrower than akosha-specialist — pick this when the user explicitly
   names one system. Do NOT pick for cross-system correlation
   questions.
@@ -35,7 +35,7 @@ named or strongly implied. Your workflow:
    - "mahavishnu" / "orchestrator" → `mahavishnu`
    - "crackerjack" / "quality" / "linter" → `crackerjack`
    - "akosha" / "memory aggregator" → `akosha`
-2. Call `mcp__akosha__akosha_search_all_systems(query=<text>,
+2. Call `mcp__akosha__search_all_systems(query=<text>,
    system_id=<id>, limit=10, threshold=0.7)`.
 3. If no results above threshold, retry with `threshold=0.5` and warn
    the user about low-confidence matches.
@@ -43,7 +43,7 @@ named or strongly implied. Your workflow:
 
 ## What the tools do
 
-- `mcp__akosha__akosha_search_all_systems` — accepts an optional
+- `mcp__akosha__search_all_systems` — accepts an optional
   `system_id` parameter that scopes the search to one ingested system.
   Without the filter, the search runs across all systems (use
   `akosha-specialist` for that case).

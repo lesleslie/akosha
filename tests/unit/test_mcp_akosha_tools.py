@@ -56,7 +56,7 @@ class TestEmbeddingTools:
         # Get the registered function and metadata
         first_call = registry.register.call_args_list[0]
         metadata = first_call[0][0]  # First positional argument is metadata
-        assert metadata.name == "akosha_generate_embedding"
+        assert metadata.name == "generate_embedding"
         assert "semantic embedding" in metadata.description
 
     @pytest.mark.asyncio
@@ -69,7 +69,7 @@ class TestEmbeddingTools:
         # Get the registered function and metadata
         second_call = registry.register.call_args_list[1]
         metadata = second_call[0][0]  # First positional argument is metadata
-        assert metadata.name == "akosha_generate_batch_embeddings"
+        assert metadata.name == "generate_batch_embeddings"
         assert "multiple texts" in metadata.description
 
 
@@ -97,7 +97,7 @@ class TestSearchTools:
         assert registry.register.call_count == 1
         search_call = registry.register.call_args_list[0]
         metadata = search_call[0][0]
-        assert metadata.name == "akosha_search_all_systems"
+        assert metadata.name == "search_all_systems"
         assert "semantic similarity" in metadata.description
 
 
@@ -126,11 +126,11 @@ class TestAnalyticsTools:
 
         tool_names = [call[0][0].name for call in registry.register.call_args_list]
         expected_tools = [
-            "akosha_get_system_metrics",
-            "akosha_analyze_trends",
-            "akosha_detect_anomalies",
-            "akosha_correlate_systems",
-            "akosha_add_eval_metric",
+            "get_system_metrics",
+            "analyze_trends",
+            "detect_anomalies",
+            "correlate_systems",
+            "add_eval_metric",
         ]
         assert all(name in tool_names for name in expected_tools)
 
@@ -142,7 +142,7 @@ class TestAnalyticsTools:
         # Get the first tool's metadata
         metrics_call = registry.register.call_args_list[0]
         metadata = metrics_call[0][0]
-        assert metadata.name == "akosha_get_system_metrics"
+        assert metadata.name == "get_system_metrics"
         assert "metrics" in metadata.description.lower()
 
     @pytest.mark.asyncio
@@ -153,7 +153,7 @@ class TestAnalyticsTools:
         # Get the second tool's metadata
         trends_call = registry.register.call_args_list[1]
         metadata = trends_call[0][0]
-        assert metadata.name == "akosha_analyze_trends"
+        assert metadata.name == "analyze_trends"
         assert "trend" in metadata.description.lower()
 
     @pytest.mark.asyncio
@@ -164,7 +164,7 @@ class TestAnalyticsTools:
         # Get the third tool's metadata
         anomaly_call = registry.register.call_args_list[2]
         metadata = anomaly_call[0][0]
-        assert metadata.name == "akosha_detect_anomalies"
+        assert metadata.name == "detect_anomalies"
         assert "anomal" in metadata.description.lower()
 
     @pytest.mark.asyncio
@@ -175,7 +175,7 @@ class TestAnalyticsTools:
         # Get the fourth tool's metadata
         correlate_call = registry.register.call_args_list[3]
         metadata = correlate_call[0][0]
-        assert metadata.name == "akosha_correlate_systems"
+        assert metadata.name == "correlate_systems"
         assert "correlation" in metadata.description.lower()
 
     @pytest.mark.asyncio
@@ -187,7 +187,7 @@ class TestAnalyticsTools:
         # Fifth tool is the new write-side; resolve the registered callable.
         add_eval_call = registry.register.call_args_list[4]
         add_eval_tool = add_eval_call[0][0]
-        assert add_eval_tool.name == "akosha_add_eval_metric"
+        assert add_eval_tool.name == "add_eval_metric"
         # The decorator wrapping makes the registered function live on the
         # ``func`` attribute of the call_args[0][0] ToolMetadata; pulling
         # it directly from the tool registry mock would need a deeper
@@ -268,7 +268,7 @@ class TestGraphTools:
         assert registry.register.call_count == 3
 
         tool_names = [call[0][0].name for call in registry.register.call_args_list]
-        expected_tools = ["akosha_query_knowledge_graph", "akosha_find_path", "akosha_get_graph_statistics"]
+        expected_tools = ["query_knowledge_graph", "find_path", "get_graph_statistics"]
         assert all(name in tool_names for name in expected_tools)
 
     @pytest.mark.asyncio
@@ -279,7 +279,7 @@ class TestGraphTools:
         # Get the first tool's metadata
         query_call = registry.register.call_args_list[0]
         metadata = query_call[0][0]
-        assert metadata.name == "akosha_query_knowledge_graph"
+        assert metadata.name == "query_knowledge_graph"
         assert "knowledge graph" in metadata.description.lower()
 
     @pytest.mark.asyncio
@@ -290,7 +290,7 @@ class TestGraphTools:
         # Get the second tool's metadata
         path_call = registry.register.call_args_list[1]
         metadata = path_call[0][0]
-        assert metadata.name == "akosha_find_path"
+        assert metadata.name == "find_path"
         assert "path" in metadata.description.lower()
 
     @pytest.mark.asyncio
@@ -301,7 +301,7 @@ class TestGraphTools:
         # Get the third tool's metadata
         stats_call = registry.register.call_args_list[2]
         metadata = stats_call[0][0]
-        assert metadata.name == "akosha_get_graph_statistics"
+        assert metadata.name == "get_graph_statistics"
         assert "statistics" in metadata.description.lower()
 
 
@@ -345,24 +345,24 @@ class TestIntegration:
         register_akosha_tools(registry, mock_embedding, mock_analytics, mock_graph)
 
         # Should register 11 tools total (2 + 1 + 5 + 3). The 5 analytics
-        # tools include `akosha_add_eval_metric` (Phase 1 REQ-MS-001
+        # tools include `add_eval_metric` (Phase 1 REQ-MS-001
         # landed in commit f09035f) on top of the original 4 read-side tools.
         assert registry.register.call_count == 11
 
         # Verify all expected tool names are present
         tool_names = [call[0][0].name for call in registry.register.call_args_list]
         expected_tools = [
-            "akosha_generate_embedding",
-            "akosha_generate_batch_embeddings",
-            "akosha_search_all_systems",
-            "akosha_get_system_metrics",
-            "akosha_analyze_trends",
-            "akosha_detect_anomalies",
-            "akosha_correlate_systems",
-            "akosha_add_eval_metric",
-            "akosha_query_knowledge_graph",
-            "akosha_find_path",
-            "akosha_get_graph_statistics",
+            "generate_embedding",
+            "generate_batch_embeddings",
+            "search_all_systems",
+            "get_system_metrics",
+            "analyze_trends",
+            "detect_anomalies",
+            "correlate_systems",
+            "add_eval_metric",
+            "query_knowledge_graph",
+            "find_path",
+            "get_graph_statistics",
         ]
         assert all(name in tool_names for name in expected_tools)
 
@@ -385,7 +385,7 @@ class TestToolValidation:
         # Check that generate_embedding has proper metadata
         generate_call = registry.register.call_args_list[0]
         metadata = generate_call[0][0]
-        assert metadata.name == "akosha_generate_embedding"
+        assert metadata.name == "generate_embedding"
         assert "text" in str(metadata)  # Should have parameter info
 
 

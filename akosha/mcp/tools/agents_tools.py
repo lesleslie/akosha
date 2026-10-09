@@ -1,7 +1,7 @@
 """Phase 3 server-published agents tools (Phase 3 of bodai-skill-agent-distribution).
 
-Exposes the ``mcp__akosha__akosha_list_agents`` and
-``mcp__akosha__akosha_get_agent`` tools that advertise the
+Exposes the ``mcp__akosha__list_agents`` and
+``mcp__akosha__get_agent`` tools that advertise the
 server-defined specialist agents to Phase 3's installer and the
 Claude Code picker. Agents live as markdown bodies under
 ``akosha/mcp/tools/agents/<name>.md``; this module reads them at
@@ -102,23 +102,23 @@ _STATIC_AGENTS: list[dict[str, Any]] = [
             "Use proactively for cross-system intelligence questions: "
             "semantic search across the indexed Bodai corpus, anomaly "
             "detection, knowledge-graph correlation. Routes through "
-            "mcp__akosha__akosha_search_all_systems, "
-            "mcp__akosha__akosha_detect_anomalies, "
-            "mcp__akosha__akosha_correlate_systems, and "
-            "mcp__akosha__akosha_query_knowledge_graph."
+            "mcp__akosha__search_all_systems, "
+            "mcp__akosha__detect_anomalies, "
+            "mcp__akosha__correlate_systems, and "
+            "mcp__akosha__query_knowledge_graph."
         ),
         "model": "opus",
         "tools": [
-            "mcp__akosha__akosha_search_all_systems",
-            "mcp__akosha__akosha_detect_anomalies",
-            "mcp__akosha__akosha_analyze_trends",
-            "mcp__akosha__akosha_correlate_systems",
-            "mcp__akosha__akosha_query_knowledge_graph",
+            "mcp__akosha__search_all_systems",
+            "mcp__akosha__detect_anomalies",
+            "mcp__akosha__analyze_trends",
+            "mcp__akosha__correlate_systems",
+            "mcp__akosha__query_knowledge_graph",
             "Read",
         ],
         "tool_refs": [
-            "mcp__akosha__akosha_search_all_systems",
-            "mcp__akosha__akosha_detect_anomalies",
+            "mcp__akosha__search_all_systems",
+            "mcp__akosha__detect_anomalies",
         ],
         "dependencies": [],
         "category": "memory-aggregation",
@@ -136,16 +136,16 @@ _STATIC_AGENTS: list[dict[str, Any]] = [
             "Use this agent for focused semantic search across ONE "
             'named Bodai system (e.g. "find anything in session-buddy '
             'about migration"). Narrower than akosha-specialist — '
-            "routes through mcp__akosha__akosha_search_all_systems "
+            "routes through mcp__akosha__search_all_systems "
             "with a system_id filter."
         ),
         "model": "sonnet",
         "tools": [
-            "mcp__akosha__akosha_search_all_systems",
+            "mcp__akosha__search_all_systems",
             "Read",
         ],
         "tool_refs": [
-            "mcp__akosha__akosha_search_all_systems",
+            "mcp__akosha__search_all_systems",
         ],
         "dependencies": ["akosha-specialist"],
         "category": "memory-aggregation",
@@ -162,22 +162,22 @@ _STATIC_AGENTS: list[dict[str, Any]] = [
         "description": (
             "Use this agent for recurring-pattern and trending-anomaly "
             "questions across the Bodai component fleet. Routes through "
-            "mcp__akosha__akosha_detect_anomalies, "
-            "mcp__akosha__akosha_analyze_trends, and "
-            "mcp__akosha__akosha_correlate_systems."
+            "mcp__akosha__detect_anomalies, "
+            "mcp__akosha__analyze_trends, and "
+            "mcp__akosha__correlate_systems."
         ),
         "model": "opus",
         "tools": [
-            "mcp__akosha__akosha_detect_anomalies",
-            "mcp__akosha__akosha_analyze_trends",
-            "mcp__akosha__akosha_correlate_systems",
-            "mcp__akosha__akosha_run_fitness_analysis",
+            "mcp__akosha__detect_anomalies",
+            "mcp__akosha__analyze_trends",
+            "mcp__akosha__correlate_systems",
+            "mcp__akosha__run_fitness_analysis",
             "Read",
         ],
         "tool_refs": [
-            "mcp__akosha__akosha_detect_anomalies",
-            "mcp__akosha__akosha_analyze_trends",
-            "mcp__akosha__akosha_correlate_systems",
+            "mcp__akosha__detect_anomalies",
+            "mcp__akosha__analyze_trends",
+            "mcp__akosha__correlate_systems",
         ],
         "dependencies": ["akosha-specialist"],
         "category": "analytics",
@@ -322,7 +322,7 @@ def register_agents_tools(app: FastMCP) -> None:
     explicitly.
     """
 
-    @app.tool(name="akosha_list_agents")
+    @app.tool(name="list_agents")
     async def akosha_list_agents() -> list[dict[str, Any]]:
         """Return metadata for agents this server publishes.
 
@@ -359,7 +359,7 @@ def register_agents_tools(app: FastMCP) -> None:
             out.append(metadata.model_dump(mode="json"))
         return out
 
-    @app.tool(name="akosha_get_agent")
+    @app.tool(name="get_agent")
     async def akosha_get_agent(name: str) -> dict[str, Any]:
         """Return the signed metadata + body for one agent.
 

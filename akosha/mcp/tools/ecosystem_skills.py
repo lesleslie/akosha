@@ -94,7 +94,7 @@ def _env(name: str, default: str) -> str:
 FEDERATION_SERVERS: tuple[_FederationServer, ...] = (
     _FederationServer(
         server_key="akosha",
-        tool_name="akosha_list_skills",
+        tool_name="list_skills",
         base_url=_env("AKOSHA_MCP_URL", "http://localhost:8682/mcp"),
         description="Universal Memory Aggregation System",
     ),
@@ -398,7 +398,7 @@ def register_ecosystem_skills(
     )
     client_factory = http_client_factory
 
-    @app.tool(name="akosha_list_ecosystem_skills")
+    @app.tool(name="list_ecosystem_skills")
     async def akosha_list_ecosystem_skills(
         query: str | None = None,
         limit: int = DEFAULT_PAGE_LIMIT,

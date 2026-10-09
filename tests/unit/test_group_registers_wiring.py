@@ -82,7 +82,7 @@ async def test_register_akosha_group_wires_embedding_service(
 
     # The hardcoded ``None`` regression made every tool group skip registration.
     # After the fix, embedding tools must appear in the registry.
-    assert "akosha_generate_embedding" in app.registered, (
+    assert "generate_embedding" in app.registered, (
         "register_akosha_group hardcoded embedding_service=None; "
         "embedding tools were silently skipped at startup."
     )
@@ -116,10 +116,10 @@ async def test_register_akosha_group_wires_analytics_and_graph(
 
     # detect_anomalies comes from register_analytics_tools; query_knowledge_graph
     # comes from register_graph_tools. Both should be present when services wire.
-    assert "akosha_detect_anomalies" in app.registered, (
+    assert "detect_anomalies" in app.registered, (
         "analytics tools skipped — analytics_service never reached register_akosha_tools"
     )
-    assert "akosha_query_knowledge_graph" in app.registered, (
+    assert "query_knowledge_graph" in app.registered, (
         "graph tools skipped — graph_builder never reached register_akosha_tools"
     )
 

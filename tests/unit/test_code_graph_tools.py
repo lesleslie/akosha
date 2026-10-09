@@ -186,9 +186,9 @@ class TestRegisterCodeGraphAnalysisTools:
         with patch("akosha.mcp.tools.tool_registry.FastMCPToolRegistry", type(mock_registry)):
             mock_registry.app = mock_mcp
             register_code_graph_analysis_tools(mock_registry, MagicMock())
-            assert "akosha_list_ingested_code_graphs" in registered
-            assert "akosha_get_code_graph_details" in registered
-            assert "akosha_find_similar_repositories" in registered
+            assert "list_ingested_code_graphs" in registered
+            assert "get_code_graph_details" in registered
+            assert "find_similar_repositories" in registered
 
 
 class TestCodeGraphToolsRuntime:
@@ -262,10 +262,10 @@ class TestCodeGraphToolsRuntime:
 
         register_code_graph_analysis_tools(registry, hot_store)
 
-        list_code_graphs = app.tools["akosha_list_ingested_code_graphs"]
-        details = app.tools["akosha_get_code_graph_details"]
-        similar = app.tools["akosha_find_similar_repositories"]
-        usage = app.tools["akosha_get_cross_repo_function_usage"]
+        list_code_graphs = app.tools["list_ingested_code_graphs"]
+        details = app.tools["get_code_graph_details"]
+        similar = app.tools["find_similar_repositories"]
+        usage = app.tools["get_cross_repo_function_usage"]
 
         listed = await list_code_graphs()
         assert listed["status"] == "success"

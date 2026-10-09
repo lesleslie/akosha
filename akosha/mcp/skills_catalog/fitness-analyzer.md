@@ -1,7 +1,7 @@
 ---
 name: fitness-analyzer
-description: Use ONLY when the user explicitly types `/akosha:fitness-analyzer` or selects this Skill from the picker to trigger one cycle of the Bodai fitness analyzer. Do not auto-trigger. Routes through `mcp__akosha__akosha_run_fitness_analysis` to poll every Bodai component endpoint for OTel traces and compute rolling fitness signals (failure_rate, p99 latency) per (task_class, selector) pair. Signals are returned in the tool response and cached on the analyzer instance — the historical Dhara persistence layer was removed when Dhara was decommissioned. Useful when the user asks "is the routing layer healthy?", "which selectors are failing?", or wants to confirm a recent deploy did not regress pool performance.
-allowed-tools: mcp__akosha__akosha_run_fitness_analysis, mcp__akosha__akosha_get_fitness_analyzer_status, Read
+description: Use ONLY when the user explicitly types `/akosha:fitness-analyzer` or selects this Skill from the picker to trigger one cycle of the Bodai fitness analyzer. Do not auto-trigger. Routes through `mcp__akosha__run_fitness_analysis` to poll every Bodai component endpoint for OTel traces and compute rolling fitness signals (failure_rate, p99 latency) per (task_class, selector) pair. Signals are returned in the tool response and cached on the analyzer instance — the historical Dhara persistence layer was removed when Dhara was decommissioned. Useful when the user asks "is the routing layer healthy?", "which selectors are failing?", or wants to confirm a recent deploy did not regress pool performance.
+allowed-tools: mcp__akosha__run_fitness_analysis, mcp__akosha__get_fitness_analyzer_status, Read
 ---
 
 # fitness-analyzer
@@ -42,10 +42,10 @@ The analyzer runs as a 60-second background task by default
 configured inside `akosha.processing.fitness_analyzer`). The Skill
 exposes two MCP tools:
 
-- `mcp__akosha__akosha_run_fitness_analysis` — manually trigger one
+- `mcp__akosha__run_fitness_analysis` — manually trigger one
   cycle. Returns counts immediately; doesn't wait for the background
   poll.
-- `mcp__akosha__akosha_get_fitness_analyzer_status` — surface the
+- `mcp__akosha__get_fitness_analyzer_status` — surface the
   current analyzer state: `running`, `component_endpoints`,
   `poll_interval_seconds`.
 
@@ -68,7 +68,7 @@ exposes two MCP tools:
 - `total_signals`: total `(task_class, selector)` pairs written.
 
 For per-pair values (failure_rate, p99), call
-`akosha_run_fitness_analysis` again — signals are returned in the
+`run_fitness_analysis` again — signals are returned in the
 tool response and cached on the analyzer instance rather than being
 persisted to a backing store.
 
@@ -89,11 +89,11 @@ User: "Is routing healthy right now?"
 Skill action:
 
 ```python
-status = await mcp__akosha__akosha_get_fitness_analyzer_status()
+status = await mcp__akosha__get_fitness_analyzer_status()
 if not status["running"]:
     return "FitnessAnalyzer is not running; cannot report."
 
-result = await mcp__akosha__akosha_run_fitness_analysis()
+result = await mcp__akosha__run_fitness_analysis()
 ```
 
 Synthesize: total signal count, per-task-class breakdown, and any

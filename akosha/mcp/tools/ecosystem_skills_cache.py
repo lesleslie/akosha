@@ -74,7 +74,7 @@ def _ttl_seconds() -> int:
 
 
 class EcosystemSkillsCache:
-    """File-based response cache for :func:`akosha_list_ecosystem_skills`.
+    """File-based response cache for :func:`list_ecosystem_skills`.
 
     The cache stores the full federation response keyed by
     ``(server_versions_signature, query_signature)``. Per-server

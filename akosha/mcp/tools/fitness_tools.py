@@ -39,7 +39,7 @@ def register_fitness_tools(app: Any) -> None:
         app: FastMCP application
     """
 
-    @app.tool(name="akosha_run_fitness_analysis")
+    @app.tool(name="run_fitness_analysis")
     async def run_fitness_analysis() -> dict[str, Any]:
         """Manually trigger one fitness analysis cycle.
 
@@ -95,7 +95,7 @@ def register_fitness_tools(app: Any) -> None:
                 "error": str(exc),
             }
 
-    @app.tool(name="akosha_get_fitness_analyzer_status")
+    @app.tool(name="get_fitness_analyzer_status")
     async def get_fitness_analyzer_status() -> dict[str, Any]:
         """Get the current status of the fitness analyzer.
 

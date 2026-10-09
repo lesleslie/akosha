@@ -1,4 +1,4 @@
-"""End-to-end test: akosha_get_agent returns ``body = system_prompt`` (B-6 critical).
+"""End-to-end test: get_agent returns ``body = system_prompt`` (B-6 critical).
 
 Per plan §11 B-6, this is the **critical fix** that distinguishes a
 working agent installer from one that ships non-functional agents.
@@ -10,7 +10,7 @@ real instructions and the picker would launch a broken agent.
 The test:
 
 1. Seeds a stand-in MCP server shim.
-2. Registers ``akosha_get_agent`` against it via ``register_agents_tools``.
+2. Registers ``get_agent`` against it via ``register_agents_tools``.
 3. Stubs the lifespan-owned :class:`SkillsSigner` (so signing can run
    without a persisted keypair).
 4. Invokes the inner function and asserts:
@@ -146,7 +146,7 @@ async def test_get_agent_akosha_specialist_body_equals_system_prompt(
 ) -> None:
     """B-6 critical: ``response.body == metadata.system_prompt`` byte-for-byte."""
     app, _ = app_with_signer
-    fn = app.get("akosha_get_agent")
+    fn = app.get("get_agent")
 
     result = await fn(name="akosha-specialist")
 
@@ -170,7 +170,7 @@ async def test_get_agent_body_equals_system_prompt_for_every_agent(
 ) -> None:
     """B-6 invariant holds for ALL 3 starter agents."""
     app, _ = app_with_signer
-    fn = app.get("akosha_get_agent")
+    fn = app.get("get_agent")
 
     result = await fn(name=agent_name)
 
@@ -189,7 +189,7 @@ async def test_get_agent_content_hash_matches_body_bytes(
 ) -> None:
     """Exit criterion: ``content_hash == sha256(body)``."""
     app, _ = app_with_signer
-    fn = app.get("akosha_get_agent")
+    fn = app.get("get_agent")
 
     result = await fn(name="akosha-specialist")
 
@@ -214,7 +214,7 @@ async def test_get_agent_returns_signed_metadata(
 ) -> None:
     """After signing, ``signature`` and ``server_pubkey_id`` are populated."""
     app, state = app_with_signer
-    fn = app.get("akosha_get_agent")
+    fn = app.get("get_agent")
 
     result = await fn(name="akosha-specialist")
 
@@ -234,7 +234,7 @@ async def test_get_agent_bumps_feed_cycle_counter(
 ) -> None:
     """B-7: every successful tool call bumps ``cycles_total``."""
     app, state = app_with_signer
-    fn = app.get("akosha_get_agent")
+    fn = app.get("get_agent")
 
     before = state.cycles_total
     await fn(name="akosha-specialist")
@@ -248,7 +248,7 @@ async def test_get_agent_returns_full_metadata_fields(
 ) -> None:
     """Metadata carries all the Phase 3 schema fields."""
     app, _ = app_with_signer
-    fn = app.get("akosha_get_agent")
+    fn = app.get("get_agent")
 
     result = await fn(name="akosha-specialist")
 
@@ -284,7 +284,7 @@ async def test_get_agent_body_is_substantial(
 ) -> None:
     """B-6 quality bar: bodies carry real, non-trivial content (≥200 chars)."""
     app, _ = app_with_signer
-    fn = app.get("akosha_get_agent")
+    fn = app.get("get_agent")
 
     for agent_name in ("akosha-specialist", "search-agent", "pattern-agent"):
         result = await fn(name=agent_name)
@@ -307,7 +307,7 @@ async def test_get_agent_rejects_forbidden_name_path_traversal(
 ) -> None:
     """B-4: forbidden ``name`` shapes return an error envelope, not raise."""
     app, _ = app_with_signer
-    fn = app.get("akosha_get_agent")
+    fn = app.get("get_agent")
 
     for bad_name in ("../../etc/passwd", "FOO", "foo/bar", ".hidden", "a..b"):
         result = await fn(name=bad_name)
@@ -321,7 +321,7 @@ async def test_get_agent_returns_error_when_signer_not_initialized(
     app_without_signer: _ToolRegistry,
 ) -> None:
     """Pre-lifespan / lite mode: error envelope, not raise."""
-    fn = app_without_signer.get("akosha_get_agent")
+    fn = app_without_signer.get("get_agent")
 
     result = await fn(name="akosha-specialist")
 
@@ -335,7 +335,7 @@ async def test_get_agent_returns_error_for_unknown_name(
 ) -> None:
     """Unknown name (but B-4-allowlisted) returns an error envelope."""
     app, _ = app_with_signer
-    fn = app.get("akosha_get_agent")
+    fn = app.get("get_agent")
 
     result = await fn(name="nonexistent-agent")
 

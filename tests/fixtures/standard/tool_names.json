@@ -1,11 +1,11 @@
 [
-  "akosha_get_skill",
-  "akosha_list_skills",
   "discover_tools",
   "get_liveness",
   "get_readiness",
+  "get_skill",
   "health_check_all",
   "health_check_service",
+  "list_skills",
   "wait_for_all_dependencies",
   "wait_for_dependency"
 ]

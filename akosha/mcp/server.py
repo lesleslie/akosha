@@ -437,7 +437,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # wrappers fall through to per-call construction in
         # ``_try_create_hot_store()`` and see an empty database — the
         # OtelTraceIngester and CodeGraphIngester write to THIS instance
-        # while ``akosha_query_local_traces`` / ``list_ingested_code_graphs``
+        # while ``query_local_traces`` / ``list_ingested_code_graphs``
         # read from a DIFFERENT empty instance. Symptom surfaced during the
         # trace-pipeline Phase 1.5 fix: ``local_traces_feed`` (kg_refresh)
         # showed 27 entities but the same-query MCP tool returned 0.

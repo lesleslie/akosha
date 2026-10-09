@@ -1,7 +1,7 @@
 ---
 name: detect-anomalies
-description: Use ONLY when the user explicitly types `/akosha:detect-anomalies` or selects this Skill from the picker to surface statistical anomalies in a tracked metric. Do not auto-trigger. Routes through `mcp__akosha__akosha_detect_anomalies` and explains Z-score interpretation, threshold tuning, and the difference between "noise" and "structural break." Useful when the user reports a sudden spike, a sudden drop, or wants to confirm whether a recent value is genuinely anomalous.
-allowed-tools: mcp__akosha__akosha_detect_anomalies, Read
+description: Use ONLY when the user explicitly types `/akosha:detect-anomalies` or selects this Skill from the picker to surface statistical anomalies in a tracked metric. Do not auto-trigger. Routes through `mcp__akosha__detect_anomalies` and explains Z-score interpretation, threshold tuning, and the difference between "noise" and "structural break." Useful when the user reports a sudden spike, a sudden drop, or wants to confirm whether a recent value is genuinely anomalous.
+allowed-tools: mcp__akosha__detect_anomalies, Read
 ---
 
 # detect-anomalies
@@ -15,12 +15,12 @@ wants to know which data points deviate from baseline. Common cases:
 - "Are there any anomalous p99 latency readings in the last week?"
 - "Find anomalous events around 2026-09-08."
 
-The Skill drives `mcp__akosha__akosha_detect_anomalies` with sensible
+The Skill drives `mcp__akosha__detect_anomalies` with sensible
 defaults and walks the user through interpretation.
 
 ## The Z-score model
 
-`akosha_detect_anomalies` uses Z-score anomaly detection:
+`detect_anomalies` uses Z-score anomaly detection:
 
 - Compute `mean` and `stdev` over the time window.
 - For each data point, compute `z = (value - mean) / stdev`.
@@ -69,9 +69,9 @@ The tool returns:
 ## When NOT to use
 
 - For changepoint / structural break detection (segment-level
-  transitions), use `mcp__akosha__akosha_analyze_changepoints` instead.
+  transitions), use `mcp__akosha__analyze_changepoints` instead.
 - For trend direction only (no anomaly scoring), use
-  `mcp__akosha__akosha_analyze_trends`.
+  `mcp__akosha__analyze_trends`.
 
 ## Example flow
 
@@ -80,7 +80,7 @@ User: "Did error rate spike yesterday?"
 Skill action:
 
 ```python
-result = await mcp__akosha__akosha_detect_anomalies(
+result = await mcp__akosha__detect_anomalies(
     metric_name="error_rate",
     time_window_days=2,
     threshold_std=3.0,

@@ -30,31 +30,31 @@ _DOC_TOOLS: set[str] = {
     "health_check_all",
     "wait_for_dependency",
     "wait_for_all_dependencies",
-    "akosha_generate_embedding",
-    "akosha_generate_batch_embeddings",
-    "akosha_search_all_systems",
-    "akosha_detect_anomalies",
-    "akosha_analyze_trends",
-    "akosha_correlate_systems",
-    "akosha_query_knowledge_graph",
-    "akosha_get_system_metrics",
-    "akosha_store_memory",
-    "akosha_batch_store_memories",
-    "akosha_search_code_patterns",
-    "akosha_get_code_problems",
-    "akosha_find_function_usage",
-    "akosha_analyze_imports",
-    "akosha_pycharm_health",
-    "akosha_query_local_traces",
-    "akosha_run_fitness_analysis",
-    "akosha_get_fitness_analyzer_status",
-    "akosha_publish_to_eventbridge",
-    "akosha_cross_repo_capability_search",
-    "akosha_list_skills",
-    "akosha_get_skill",
-    "akosha_list_agents",
-    "akosha_get_agent",
-    "akosha_list_ecosystem_skills",
+    "generate_embedding",
+    "generate_batch_embeddings",
+    "search_all_systems",
+    "detect_anomalies",
+    "analyze_trends",
+    "correlate_systems",
+    "query_knowledge_graph",
+    "get_system_metrics",
+    "store_memory",
+    "batch_store_memories",
+    "search_code_patterns",
+    "get_code_problems",
+    "find_function_usage",
+    "analyze_imports",
+    "pycharm_health",
+    "query_local_traces",
+    "run_fitness_analysis",
+    "get_fitness_analyzer_status",
+    "publish_to_eventbridge",
+    "cross_repo_capability_search",
+    "list_skills",
+    "get_skill",
+    "list_agents",
+    "get_agent",
+    "list_ecosystem_skills",
 }
 
 
@@ -98,9 +98,9 @@ def test_readme_inventory_has_no_phantom_tools() -> None:
 def test_full_profile_count_matches_documented_count() -> None:
     """Total FULL-profile tool count must equal the README's claim (31).
 
-    Phase 1 added 2 tools (``akosha_list_skills`` + ``akosha_get_skill``)
-    → 28. Phase 3/4 added 3 more (``akosha_list_agents``,
-    ``akosha_get_agent``, ``akosha_list_ecosystem_skills``) → 31.
+    Phase 1 added 2 tools (``list_skills`` + ``get_skill``)
+    → 28. Phase 3/4 added 3 more (``list_agents``,
+    ``get_agent``, ``list_ecosystem_skills``) → 31.
     """
     registered = {t for tools in REGISTRATION_TOOLS.values() for t in tools}
     documented = _read_readme_tools()
@@ -124,4 +124,22 @@ def test_doc_tools_set_equals_readme_bullets() -> None:
         f"README tools ({sorted(documented_tools)}) disagree with "
         f"_DOC_TOOLS ({sorted(_DOC_TOOLS - documented_tools)} missing, "
         f"{sorted(_DOC_TOOLS & documented_tools)} unexpected)"
+    )
+
+
+@pytest.mark.unit
+def test_no_akosha_prefix_in_registered_names() -> None:
+    """REQ-001: no registered tool name begins with ``akosha_``.
+
+    The MCP harness prepends the server name (``mcp__akosha__``) at call
+    time; the underlying registered name must stay unprefixed. A tool
+    named ``akosha_xyz`` would surface to clients as ``mcp__akosha__akosha_xyz``
+    — a duplicate-prefix bug. This walks the registration map the same way
+    the other inventory tests do and fails on any ``akosha_`` prefix.
+    """
+    registered = [name for tools in REGISTRATION_TOOLS.values() for name in tools]
+    prefixed = [name for name in registered if name.startswith("akosha_")]
+    assert not prefixed, (
+        f"Found {len(prefixed)} tool name(s) starting with 'akosha_' in "
+        f"REGISTRATION_TOOLS: {sorted(prefixed)}"
     )

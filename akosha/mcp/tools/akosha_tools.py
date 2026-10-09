@@ -123,7 +123,7 @@ def register_embedding_tools(
 
     @registry.register(
         ToolMetadata(
-            name="akosha_generate_embedding",
+            name="generate_embedding",
             description="Generate semantic embedding for text using local AI model",
             category=ToolCategory.SEARCH,
             examples=[
@@ -189,7 +189,7 @@ def register_embedding_tools(
 
     @registry.register(
         ToolMetadata(
-            name="akosha_generate_batch_embeddings",
+            name="generate_batch_embeddings",
             description="Generate embeddings for multiple texts at once",
             category=ToolCategory.SEARCH,
         )
@@ -288,7 +288,7 @@ def register_search_tools(
 
     @registry.register(
         ToolMetadata(
-            name="akosha_search_all_systems",
+            name="search_all_systems",
             description="Search across all system memories using semantic similarity",
             category=ToolCategory.SEARCH,
             examples=[
@@ -475,7 +475,7 @@ def register_analytics_tools(
 
     @registry.register(
         ToolMetadata(
-            name="akosha_get_system_metrics",
+            name="get_system_metrics",
             description="Get metrics and statistics for all systems",
             category=ToolCategory.ANALYTICS,
         )
@@ -526,7 +526,7 @@ def register_analytics_tools(
 
     @registry.register(
         ToolMetadata(
-            name="akosha_analyze_trends",
+            name="analyze_trends",
             description="Analyze trends across systems over time",
             category=ToolCategory.ANALYTICS,
             examples=[
@@ -639,7 +639,7 @@ def register_analytics_tools(
 
     @registry.register(
         ToolMetadata(
-            name="akosha_detect_anomalies",
+            name="detect_anomalies",
             description="Detect statistical anomalies in system metrics",
             category=ToolCategory.ANALYTICS,
             examples=[
@@ -750,7 +750,7 @@ def register_analytics_tools(
 
     @registry.register(
         ToolMetadata(
-            name="akosha_correlate_systems",
+            name="correlate_systems",
             description="Analyze correlations between systems for a metric",
             category=ToolCategory.ANALYTICS,
             examples=[
@@ -849,13 +849,13 @@ def register_analytics_tools(
 
     @registry.register(
         ToolMetadata(
-            name="akosha_add_eval_metric",
+            name="add_eval_metric",
             description=(
                 "Write a per-(adapter, fixture) eval pass rate to the analytics "
                 "service. Eval metrics must match the suffixed convention "
                 "'eval_pass_rate:<adapter>:<fixture>'. After posting, the "
-                "metric is queryable via akosha_analyze_trends and "
-                "akosha_get_system_metrics. Persistence is added in Phase 2 "
+                "metric is queryable via analyze_trends and "
+                "get_system_metrics. Persistence is added in Phase 2 "
                 "of the eval-metric-sink plan; until then metrics live in "
                 "the in-memory cache for the Akosha process lifetime."
             ),
@@ -983,7 +983,7 @@ def register_graph_tools(
 
     @registry.register(
         ToolMetadata(
-            name="akosha_query_knowledge_graph",
+            name="query_knowledge_graph",
             description="Query the cross-system knowledge graph",
             category=ToolCategory.GRAPH,
             examples=[
@@ -1070,7 +1070,7 @@ def register_graph_tools(
 
     @registry.register(
         ToolMetadata(
-            name="akosha_find_path",
+            name="find_path",
             description="Find shortest path between entities in knowledge graph",
             category=ToolCategory.GRAPH,
         )
@@ -1159,7 +1159,7 @@ def register_graph_tools(
 
     @registry.register(
         ToolMetadata(
-            name="akosha_get_graph_statistics",
+            name="get_graph_statistics",
             description="Get knowledge graph statistics",
             category=ToolCategory.GRAPH,
         )

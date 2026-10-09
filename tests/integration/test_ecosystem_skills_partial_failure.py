@@ -186,7 +186,7 @@ class TestPartialFailure:
             http_client_factory=_http_client_factory(mock_client),
         )
         cache.invalidate()
-        fn = app.registered["akosha_list_ecosystem_skills"]
+        fn = app.registered["list_ecosystem_skills"]
         result = await fn()
 
         # Healthy 3 servers each return 3 skills -> 9 entries (mahavishnu is down).
@@ -218,7 +218,7 @@ class TestPartialFailure:
             http_client_factory=_http_client_factory(mock_client),
         )
         cache.invalidate()
-        fn = app.registered["akosha_list_ecosystem_skills"]
+        fn = app.registered["list_ecosystem_skills"]
 
         result = await fn()
         assert len(result["data"]) == 6  # 2 servers * 3 skills
@@ -252,7 +252,7 @@ class TestPartialFailure:
             http_client_factory=_http_client_factory(mock_client),
         )
         cache.invalidate()
-        fn = app.registered["akosha_list_ecosystem_skills"]
+        fn = app.registered["list_ecosystem_skills"]
 
         result = await fn()
         assert result["data"] == []
@@ -289,7 +289,7 @@ class TestPartialFailure:
             circuit=circuit,
             http_client_factory=_http_client_factory(mock_client),
         )
-        fn = app.registered["akosha_list_ecosystem_skills"]
+        fn = app.registered["list_ecosystem_skills"]
 
         # Three calls: each makes 5 transport attempts; after the third
         # call every server's breaker is in cooldown (3 failures in
@@ -328,7 +328,7 @@ async def _cache_partial_failure_async(tmp_path: Path) -> None:
         http_client_factory=_http_client_factory(mock_client),
     )
     cache.invalidate()
-    fn = app.registered["akosha_list_ecosystem_skills"]
+    fn = app.registered["list_ecosystem_skills"]
     first = await fn(limit=20)
     assert set(first["errors"].keys()) == down
 

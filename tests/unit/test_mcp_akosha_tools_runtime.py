@@ -138,16 +138,16 @@ async def test_tool_runtime_branches(
     registry = CapturingRegistry()
     register_akosha_tools(registry, embedding_service, analytics_service, graph_builder)
 
-    generate_embedding = registry.tools["akosha_generate_embedding"]
-    search_all_systems = registry.tools["akosha_search_all_systems"]
-    generate_batch_embeddings = registry.tools["akosha_generate_batch_embeddings"]
-    get_system_metrics = registry.tools["akosha_get_system_metrics"]
-    analyze_trends = registry.tools["akosha_analyze_trends"]
-    detect_anomalies = registry.tools["akosha_detect_anomalies"]
-    correlate_systems = registry.tools["akosha_correlate_systems"]
-    query_knowledge_graph = registry.tools["akosha_query_knowledge_graph"]
-    find_path = registry.tools["akosha_find_path"]
-    get_graph_statistics = registry.tools["akosha_get_graph_statistics"]
+    generate_embedding = registry.tools["generate_embedding"]
+    search_all_systems = registry.tools["search_all_systems"]
+    generate_batch_embeddings = registry.tools["generate_batch_embeddings"]
+    get_system_metrics = registry.tools["get_system_metrics"]
+    analyze_trends = registry.tools["analyze_trends"]
+    detect_anomalies = registry.tools["detect_anomalies"]
+    correlate_systems = registry.tools["correlate_systems"]
+    query_knowledge_graph = registry.tools["query_knowledge_graph"]
+    find_path = registry.tools["find_path"]
+    get_graph_statistics = registry.tools["get_graph_statistics"]
 
     embedding = await generate_embedding(text="how to secure JWT auth")
     assert embedding["embedding_dim"] == 384
@@ -235,7 +235,7 @@ def test_register_analytics_tools_skips_when_service_is_none(
         register_analytics_tools(registry, analytics_service=None)
 
     assert "analytics_service is None" in caplog.text
-    assert "akosha_detect_anomalies" not in registry.tools
-    assert "akosha_analyze_trends" not in registry.tools
-    assert "akosha_correlate_systems" not in registry.tools
-    assert "akosha_get_system_metrics" not in registry.tools
+    assert "detect_anomalies" not in registry.tools
+    assert "analyze_trends" not in registry.tools
+    assert "correlate_systems" not in registry.tools
+    assert "get_system_metrics" not in registry.tools
