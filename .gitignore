@@ -161,7 +161,11 @@ tests/archived/
 .lycheecache/
 
 # XDG - State directories
-.claude/
+# `.claude/*` excludes top-level entries only — directory itself stays
+# accessible, so the per-subdir negation rules below can re-include nested
+# content. Per `man gitignore`: "It is not possible to re-include a file
+# if a parent directory of that file is excluded."
+.claude/*
 # Shared team content (whitelisted — decisions, agents, workflows, skills).
 # Directory entries MUST come before the `**` recursive entries so git's
 # pattern matching re-includes the directory before evaluating the recursive
@@ -175,6 +179,12 @@ tests/archived/
 !.claude/workflows/**
 !.claude/skills/
 !.claude/skills/**
+# PR-1c: SessionEnd hook + settings.json are part of the cross-repo
+# merge-workflow infra (mahavishnu/.claude/hooks/agent-merge-on-end.py
+# + .claude/settings.json). Track them so fresh clones ship the hook.
+!.claude/hooks/
+!.claude/hooks/**
+!.claude/settings.json
 .session-buddy/
 .crackerjack/
 
