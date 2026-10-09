@@ -566,8 +566,25 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 interval = 60.0
             while True:
                 try:
-                    await asyncio.sleep(interval)
+                    # Phase 4 (2026-10-05 fix): bump cycles_total at the
+                    # START of each cycle (mirrors code_graph_ingester.py
+                    # and otel_ingester.py) so the aggregator's HNSW
+                    # hardening stops flagging knowledge_graph_feed as
+                    # ``broken-before-first-success`` during the first
+                    # 60s of uptime. The previous ``sleep(interval)``
+                    # before the increment meant fresh servers sat at
+                    # cycles=0 (DEGRADED) for one full interval — and
+                    # since mcp_tool_call_feed has its own per-task-class
+                    # counter, the aggregate stayed ``degraded`` and
+                    # /health returned 503 even after the AgingService
+                    # init failure was repaired. The fix matches the
+                    # OTel + code_graph processor pattern: count, sleep,
+                    # work, repeat.
                     _kg_refresh_cycles += 1
+                    # Work runs immediately after the count, then we
+                    # sleep. This matches the OTel + code_graph processor
+                    # pattern (otel_ingester.py:156,
+                    # code_graph_ingester.py:129).
                     # ``query_traces`` is the consumer API for traces landed
                     # via the BodaiToolInvocationSubscriber. It returns
                     # ``[]`` when the subscriber is disabled or no events
@@ -600,6 +617,11 @@ def create_app(mode: Any | None = None) -> FastMCP:
                             len(kg_builder.entities),
                             len(kg_builder.edges),
                         )
+                    # Phase 4 fix (2026-10-05): sleep at the END of the
+                    # cycle so the first cycle fires immediately rather than
+                    # after ``interval`` seconds. Same ordering as
+                    # code_graph_ingester.py:165 (count, work, sleep).
+                    await asyncio.sleep(interval)
                 except asyncio.CancelledError:
                     logger.info(
                         "kg_refresh loop cancelled after %d cycles (%d errors)",
@@ -911,12 +933,36 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # generically; this feed filters by ``task_class == "mcp_tool_call"``
             # so the four-signal HealthFeedState surface (entities_count,
             # last_updated_timestamp, cycles_total, errors_total) reflects
-            # the tool-call subset specifically. REQ-FEED-002 (Phase 2):
-            # ``cycles_total`` and ``errors_total`` are now read from the
-            # ingester's per-task-class accessors so a healthy
-            # mcp_tool_call stream isn't masked by a noisy
+            # the tool-call subset specifically. REQ-FEED-002 (Phase 2)
+            # initially routed ``cycles_total`` and ``errors_total`` through
+            # the ingester's per-task-class accessors so a healthy
+            # mcp_tool_call stream wasn't masked by a noisy
             # ``conversation`` stream (the two share one ingester-level
             # counter, which used to roll both into this feed's cycles).
+            #
+            # 2026-10-05 fix: ``cycles_total`` and ``errors_total`` now source
+            # from the OTel ingester's OVERALL counters (same pattern as
+            # ``local_traces_feed``'s otel_cycles / otel_errors), not the
+            # per-task-class ones. Reason: per-task-class counts stay at 0
+            # on a fresh server until a ``mcp_tool_call``-class span flows
+            # through (no upstream Bodai event producer yet), which made the
+            # aggregator's HNSW hardening branch fire on every cold start
+            # (cycles_total=0 + ingester_running=True → DEGRADED) and pushed
+            # the aggregate ``status`` to ``degraded`` even after the
+            # ``AgingService`` / ``kg_refresh`` fixes had made their feeds
+            # healthy-or-warming-up. /health returned 503 for the lifetime
+            # of every install. With the overall counter the feed goes
+            # warming_up after the OTel ingester's first poll, matching the
+            # pattern operators expect from a producer that exists but
+            # has not yet seen data on this specific task class.
+            # ``entities_count`` remains per-task-class so operators still
+            # see "zero mcp_tool_call spans landed yet" as distinct from
+            # "ingester dead". If a future operator wants the per-task-class
+            # signal back for /health, the right move is to introduce a
+            # dedicated Bodai-tool-invocation producer with its own
+            # /health feed (e.g. ``bodai_tool_invocation_feed``); until then
+            # coupling the mcp_tool_call_feed's health to the OTel ingester
+            # is the lesser of two evils.
             mcp_tool_call_entities_count = 0
             with suppress(Exception):
                 if isinstance(hot_store, HotStore):
@@ -924,12 +970,12 @@ def create_app(mode: Any | None = None) -> FastMCP:
                         await hot_store.query_traces(task_class="mcp_tool_call", limit=1000)
                     )
             mcp_tool_call_cycles = (
-                _otel_trace_ingester.get_cycles_for_task_class("mcp_tool_call")
+                getattr(_otel_trace_ingester, "_cycles_total", 0) or 0
                 if _otel_trace_ingester is not None
                 else 0
             )
             mcp_tool_call_errors = (
-                _otel_trace_ingester.get_errors_for_task_class("mcp_tool_call")
+                getattr(_otel_trace_ingester, "_errors_total", 0) or 0
                 if _otel_trace_ingester is not None
                 else 0
             )

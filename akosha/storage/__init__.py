@@ -99,8 +99,24 @@ def _coerce_db_path(path: os.PathLike[str] | None) -> Path:
     WarmStore.__init__'s ``database_path`` is typed ``Path`` (required).
     :func:`create_warm_store` accepts ``PathLike | None`` so callers can
     pass raw config-dict values; we narrow + default here.
+
+    When ``path is None``, fall through to the StoragePathResolver's
+    resolved warm-store path (``<base>/warm/warm.db``). The previous
+    default of ``Path()`` (= cwd) silently fed DuckDB the current
+    working directory, which surfaces as ``IO Error: ... Is a directory``
+    the first time ``WarmStore.__init__`` calls ``duckdb.connect``. The
+    failure cascaded to ``AgingService init failed`` -> ``aging_feed``
+    cycles_total=0 / ingester_running=False -> ``/health`` 503 in
+    standard mode. Fixed 2026-10-05 during restart verification.
     """
-    return Path(path) if path is not None else Path()
+    if path is not None:
+        return Path(path)
+    # Local import to avoid a circular import: ``path_resolver`` is a
+    # sibling module, but the canonical resolver is keyed off
+    # ``akosha.config.config.warm.path`` which itself uses this module.
+    from akosha.storage.path_resolver import get_warm_store_path
+
+    return get_warm_store_path()
 
 
 def create_warm_store(
