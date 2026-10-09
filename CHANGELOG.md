@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2026-10-09
+
+### Changed
+
+- akosha: Pre-existing test fix — lift oneiric lock 0.23.0 -> 0.26.4
+
+### Fixed
+
+- akosha: Phase 4 health-check enrichment + lazy warm-store path
+- akosha: Search handler shape guard + 7th site + regression test
+- Strip akosha_ prefix from FastMCP tool names + REQ-001 inventory test
+
+### Internal
+
+- akosha: SessionEnd hook wire-up + push governance cross-link
+- Remove tracked .gitignore.bak.* backups
+
 ## [0.22.1] - 2026-10-03
 
 ### Internal
