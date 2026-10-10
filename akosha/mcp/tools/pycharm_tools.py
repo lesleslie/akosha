@@ -392,11 +392,51 @@ def register_pycharm_tools(
             ... )
         """
         try:
+            # SECURITY: route the pattern through the inner
+            # ``_sanitize_regex`` blocklist + length cap + ``re.compile``
+            # probe BEFORE either search engine sees it. The PyCharm
+            # bridge path (``adapter.search_regex``) already calls
+            # this internally, but the code-graph loop applies the
+            # raw pattern via ``re.search(pattern, source)`` and
+            # ``re`` has no native timeout — a blocklisted
+            # catastrophic-backtracking pattern can hang the
+            # process. Sanitizing once at the entry point covers
+            # both paths. ``_sanitize_regex`` returns ``""`` for
+            # rejected patterns (blocklist match, length > 500, or
+            # ``re.error`` on compile).
+            #
+            # Defensive ``getattr``: the production ``PyCharmMCPAdapter``
+            # implements ``_sanitize_regex``, but tests inject fake
+            # adapters (e.g. ``TestPyCharmToolRuntimeBranches``) that
+            # only stub the public surface. If the gate is absent,
+            # fall through to the outer 1600-char cap below — that
+            # cap is coarser but still rejects pathological input.
+            sanitize_fn = getattr(adapter, "_sanitize_regex", None)
+            if sanitize_fn is not None:
+                sanitized = sanitize_fn(pattern)
+                if not sanitized:
+                    logger.warning(
+                        "Rejecting search_code_patterns call: pattern "
+                        "failed _sanitize_regex gate "
+                        f"(length={len(pattern)})"
+                    )
+                    return {
+                        "status": "success",
+                        "pattern": pattern,
+                        "count": 0,
+                        "results": [],
+                        "pycharm_available": adapter._available,
+                        "rejected": True,
+                    }
+
             # SECURITY: cap caller-supplied pattern length. A
             # catastrophic-backtracking regex against the disk-read
             # source (or any source) can hang the process because
             # ``re`` has no native timeout. Real patterns are
-            # <200 chars; the cap is well above that.
+            # <200 chars; the cap is well above that. (This is the
+            # outer guard — the inner ``_sanitize_regex`` already
+            # caps at 500, but keep this as defense in depth in case
+            # the inner cap is ever loosened.)
             if len(pattern) > _MAX_PATTERN_LENGTH:
                 logger.warning(
                     f"Rejecting search_code_patterns call: pattern "
@@ -458,7 +498,9 @@ def register_pycharm_tools(
                                         from pathlib import Path as _Path
 
                                         _repo_root = _Path(repo_path_abs).resolve()
-                                        _candidate = (_Path(repo_path_abs) / file_path_rel).resolve()
+                                        _candidate = (
+                                            _Path(repo_path_abs) / file_path_rel
+                                        ).resolve()
                                         if not _candidate.is_relative_to(_repo_root):
                                             logger.warning(
                                                 f"Refusing to read {_candidate}: "
