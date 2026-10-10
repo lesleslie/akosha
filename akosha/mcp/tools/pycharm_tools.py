@@ -14,6 +14,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, cast
 
+from akosha.mcp.tools._graph_nodes import iter_graph_nodes
+
 logger = logging.getLogger(__name__)
 
 
@@ -183,8 +185,8 @@ class PyCharmMCPAdapter:
         except TimeoutError:
             logger.warning(f"Search timed out for pattern: {pattern[:50]}")
             return []
-        except Exception as e:
-            logger.error(f"Search failed: {e}")
+        except Exception:
+            logger.exception("search_regex failed")
             return []
 
     async def _get_file_problems_impl(
@@ -309,6 +311,25 @@ class PyCharmMCPAdapter:
 # Global adapter instance
 _pycharm_adapter: PyCharmMCPAdapter | None = None
 
+# SECURITY: maximum bytes the disk-read fallback will read for a
+# single node. Anything beyond is truncated, and the node's ``source``
+# field is left empty so the search falls through to the
+# signature/docstring path (which has its own small cap). 4 MiB is
+# well above any plausible single-function source slice while still
+# bounding memory if a malicious code-graph entry points at a
+# multi-GB file.
+_MAX_DISK_READ_BYTES: int = 4 * 1024 * 1024
+
+# SECURITY: maximum length of a caller-supplied regex pattern. The
+# disk-read fallback adds a fresh ``re.search`` call against
+# operator-controlled source text. Python's ``re`` module has no
+# native timeout, so a malicious caller can hang the process with
+# a catastrophic-backtracking pattern (e.g.
+# ``(a+)+$``). The cheap mitigation is a length cap — real-world
+# patterns are <200 chars; the cap is 8x that. Patterns longer
+# than the cap are rejected with zero results.
+_MAX_PATTERN_LENGTH: int = 1600
+
 
 def get_pycharm_adapter() -> PyCharmMCPAdapter:
     """Get or create the global PyCharm adapter instance."""
@@ -371,6 +392,25 @@ def register_pycharm_tools(
             ... )
         """
         try:
+            # SECURITY: cap caller-supplied pattern length. A
+            # catastrophic-backtracking regex against the disk-read
+            # source (or any source) can hang the process because
+            # ``re`` has no native timeout. Real patterns are
+            # <200 chars; the cap is well above that.
+            if len(pattern) > _MAX_PATTERN_LENGTH:
+                logger.warning(
+                    f"Rejecting search_code_patterns call: pattern "
+                    f"length {len(pattern)} exceeds cap {_MAX_PATTERN_LENGTH}"
+                )
+                return {
+                    "status": "success",
+                    "pattern": pattern,
+                    "count": 0,
+                    "results": [],
+                    "pycharm_available": adapter._available,
+                    "rejected": True,
+                }
+
             # Search via PyCharm adapter
             pycharm_results = await adapter.search_regex(
                 pattern=pattern,
@@ -388,24 +428,105 @@ def register_pycharm_tools(
                         graph_summary["commit_hash"],
                     )
                     if graph and "graph_data" in graph:
-                        nodes_obj = graph["graph_data"].get("nodes")
-                        for node in (
-                            nodes_obj.values()
-                            if isinstance(nodes_obj, dict)
-                            else (nodes_obj or [])
-                        ):
-                            if isinstance(node, dict):
-                                source = node.get("source", "")
-                                if source and re.search(pattern, source):
-                                    code_graph_results.append(
-                                        {
-                                            "repo_path": graph_summary["repo_path"],
-                                            "file_path": node.get("file_path", "unknown"),
-                                            "line_number": node.get("start_line", 0),
-                                            "match_text": source[:100],
-                                            "source": "code_graph",
-                                        }
-                                    )
+                        for node in iter_graph_nodes(graph["graph_data"]):
+                            # Resolve a regex-searchable string for the
+                            # node. The mahavishnu-side
+                            # ``core.code_index.indexer`` ships nodes
+                            # without a ``source`` field (only the
+                            # file/line metadata); the akosha search
+                            # has to reconstruct the slice from disk to
+                            # make the search work against the real
+                            # payload shape. Three layers, in order:
+                            source = node.get("source", "")
+                            if not source:
+                                file_path_rel = node.get("file_path")
+                                repo_path_abs = graph.get("repo_path") or node.get("repo_path")
+                                start_line = node.get("start_line")
+                                end_line = node.get("end_line")
+                                if file_path_rel and repo_path_abs and start_line and end_line:
+                                    # SECURITY: path-traversal guard.
+                                    # The ``file_path`` field comes from
+                                    # the code graph (operator data)
+                                    # and is not caller-controlled, but
+                                    # a compromised or maliciously-crafted
+                                    # graph could point it at
+                                    # ``../../etc/passwd``. Resolve the
+                                    # candidate and verify it stays
+                                    # inside ``repo_path_abs`` before
+                                    # reading.
+                                    try:
+                                        from pathlib import Path as _Path
+
+                                        _repo_root = _Path(repo_path_abs).resolve()
+                                        _candidate = (_Path(repo_path_abs) / file_path_rel).resolve()
+                                        if not _candidate.is_relative_to(_repo_root):
+                                            logger.warning(
+                                                f"Refusing to read {_candidate}: "
+                                                f"outside repo root {_repo_root}"
+                                            )
+                                        else:
+                                            with _candidate.open(encoding="utf-8") as _fh:
+                                                # SECURITY: cap the read at
+                                                # ``_MAX_DISK_READ_BYTES`` so
+                                                # a multi-GB file can't blow
+                                                # up memory. Read in chunks,
+                                                # not ``readlines()``.
+                                                _chunks: list[str] = []
+                                                _remaining = _MAX_DISK_READ_BYTES
+                                                while _remaining > 0:
+                                                    _chunk = _fh.read(_remaining)
+                                                    if not _chunk:
+                                                        break
+                                                    _chunks.append(_chunk)
+                                                    _remaining -= len(_chunk)
+                                            _decoded = "".join(_chunks)
+                                            _all_lines = _decoded.splitlines(keepends=True)
+                                            # ``start_line``/``end_line``
+                                            # are 1-indexed; convert to
+                                            # slice indices. Clamp the
+                                            # end to what we actually
+                                            # read so a stale ``end_line``
+                                            # can't IndexError.
+                                            _lo = max(0, int(start_line) - 1)
+                                            _hi = min(len(_all_lines), int(end_line))
+                                            source = "".join(_all_lines[_lo:_hi])
+                                    except OSError as _e:
+                                        logger.debug(f"Could not read {file_path_rel}: {_e}")
+                                # Final fallback: the docstring is
+                                # carried on function/class nodes as
+                                # ``signature`` (already redacted in the
+                                # parser). Lets docstring-style searches
+                                # work even when the file is missing.
+                                if not source:
+                                    source = node.get("signature") or ""
+
+                            if not source:
+                                continue
+
+                            match = re.search(pattern, source)
+                            if match:
+                                # Compute the actual line number of the
+                                # match. For the disk-read slice the
+                                # offset is relative to ``start_line``;
+                                # for the signature fallback it is the
+                                # node's ``start_line`` (signature is a
+                                # snippet, not a verbatim source slice).
+                                start_line = node.get("start_line") or 0
+                                line_offset = source[: match.start()].count("\n")
+                                actual_line = (
+                                    int(start_line) + line_offset
+                                    if source is not node.get("signature")
+                                    else int(start_line)
+                                )
+                                code_graph_results.append(
+                                    {
+                                        "repo_path": graph_summary["repo_path"],
+                                        "file_path": node.get("file_path", "unknown"),
+                                        "line_number": actual_line,
+                                        "match_text": source[match.start() : match.end()][:100],
+                                        "source": "code_graph",
+                                    }
+                                )
 
             all_results = [
                 {
@@ -432,7 +553,7 @@ def register_pycharm_tools(
             }
 
         except Exception as e:
-            logger.error(f"Failed to search code patterns: {e}")
+            logger.exception("search_code_patterns failed")
             return {
                 "status": "error",
                 "message": f"Search failed: {e}",
@@ -491,34 +612,28 @@ def register_pycharm_tools(
 
                     # Extract problems from code graph if available
                     graph_data = graph.get("graph_data", {})
-                    nodes_obj = graph_data.get("nodes")
-                    for node in (
-                        nodes_obj.values()
-                        if isinstance(nodes_obj, dict)
-                        else (nodes_obj or [])
-                    ):
-                        if isinstance(node, dict):
-                            node_problems = node.get("problems", [])
-                            for prob in node_problems:
-                                if severity == "ERROR" and prob.get("severity") != "ERROR":
-                                    continue
-                                if severity == "WARNING" and prob.get("severity") not in (
-                                    "ERROR",
-                                    "WARNING",
-                                ):
-                                    continue
+                    for node in iter_graph_nodes(graph_data):
+                        node_problems = node.get("problems", [])
+                        for prob in node_problems:
+                            if severity == "ERROR" and prob.get("severity") != "ERROR":
+                                continue
+                            if severity == "WARNING" and prob.get("severity") not in (
+                                "ERROR",
+                                "WARNING",
+                            ):
+                                continue
 
-                                problems.append(
-                                    {
-                                        "repo_path": graph_summary["repo_path"],
-                                        "file_path": node.get("file_path", "unknown"),
-                                        "line_number": node.get("start_line", 0),
-                                        "message": prob.get("message", "Unknown issue"),
-                                        "severity": prob.get("severity", "UNKNOWN"),
-                                        "category": prob.get("category", "GENERAL"),
-                                        "source": "code_graph",
-                                    }
-                                )
+                            problems.append(
+                                {
+                                    "repo_path": graph_summary["repo_path"],
+                                    "file_path": node.get("file_path", "unknown"),
+                                    "line_number": node.get("start_line", 0),
+                                    "message": prob.get("message", "Unknown issue"),
+                                    "severity": prob.get("severity", "UNKNOWN"),
+                                    "category": prob.get("category", "GENERAL"),
+                                    "source": "code_graph",
+                                }
+                            )
 
             # Sort by severity
             severity_order = {"ERROR": 0, "WARNING": 1, "INFO": 2}
@@ -532,7 +647,7 @@ def register_pycharm_tools(
             }
 
         except Exception as e:
-            logger.error(f"Failed to get code problems: {e}")
+            logger.exception("get_code_problems failed")
             return {
                 "status": "error",
                 "message": f"Failed to get problems: {e}",
@@ -593,27 +708,21 @@ def register_pycharm_tools(
                     graph_data = graph.get("graph_data", {})
                     matching_files = []
 
-                    nodes_obj = graph_data.get("nodes")
-                    for node in (
-                        nodes_obj.values()
-                        if isinstance(nodes_obj, dict)
-                        else (nodes_obj or [])
-                    ):
-                        if isinstance(node, dict):
-                            node_name = node.get("name", "")
-                            node_type = node.get("type", "")
+                    for node in iter_graph_nodes(graph_data):
+                        node_name = node.get("name", "")
+                        node_type = node.get("type", "")
 
-                            # Match function definitions, calls, and imports
-                            if function_name.lower() in node_name.lower():  # nosec SIM102  # noqa: SIM102
-                                if node_type in ("function", "method", "call", "import"):
-                                    matching_files.append(
-                                        {
-                                            "file": node.get("file_path", "unknown"),
-                                            "node_type": node_type,
-                                            "line": node.get("start_line", 0),
-                                            "name": node_name,
-                                        }
-                                    )
+                        # Match function definitions, calls, and imports
+                        if function_name.lower() in node_name.lower():  # nosec SIM102  # noqa: SIM102
+                            if node_type in ("function", "method", "call", "import"):
+                                matching_files.append(
+                                    {
+                                        "file": node.get("file_path", "unknown"),
+                                        "node_type": node_type,
+                                        "line": node.get("start_line", 0),
+                                        "name": node_name,
+                                    }
+                                )
 
                     if matching_files:
                         return {
@@ -662,7 +771,7 @@ def register_pycharm_tools(
             }
 
         except Exception as e:
-            logger.error(f"Failed to find function usage: {e}")
+            logger.exception("find_function_usage failed")
             return {
                 "status": "error",
                 "message": f"Failed to find function usage: {e}",
@@ -725,20 +834,14 @@ def register_pycharm_tools(
                         imports = set()
                         usages = set()
 
-                        nodes_obj = graph_data.get("nodes")
-                        for node in (
-                            nodes_obj.values()
-                            if isinstance(nodes_obj, dict)
-                            else (nodes_obj or [])
-                        ):
-                            if isinstance(node, dict):
-                                node_type = node.get("type", "")
-                                node_name = node.get("name", "")
+                        for node in iter_graph_nodes(graph_data):
+                            node_type = node.get("type", "")
+                            node_name = node.get("name", "")
 
-                                if node_type == "import":
-                                    imports.add(node_name.split(".")[-1])
-                                elif node_type in ("call", "reference"):
-                                    usages.add(node_name)
+                            if node_type == "import":
+                                imports.add(node_name.split(".")[-1])
+                            elif node_type in ("call", "reference"):
+                                usages.add(node_name)
 
                         unused = imports - usages
                         for imp in unused:
@@ -779,13 +882,8 @@ def register_pycharm_tools(
                         # Find common import patterns
                         import_counts: dict[str, int] = {}
 
-                        nodes_obj = graph_data.get("nodes")
-                        for node in (
-                            nodes_obj.values()
-                            if isinstance(nodes_obj, dict)
-                            else (nodes_obj or [])
-                        ):
-                            if isinstance(node, dict) and node.get("type") == "import":
+                        for node in iter_graph_nodes(graph_data):
+                            if node.get("type") == "import":
                                 imp = node.get("name", "")
                                 import_counts[imp] = import_counts.get(imp, 0) + 1
 
@@ -811,7 +909,7 @@ def register_pycharm_tools(
             }
 
         except Exception as e:
-            logger.error(f"Failed to analyze imports: {e}")
+            logger.exception("analyze_imports failed")
             return {
                 "status": "error",
                 "message": f"Import analysis failed: {e}",

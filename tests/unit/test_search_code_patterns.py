@@ -178,7 +178,7 @@ async def test_dict_shape_returns_structured_response() -> None:
     """
     async with _build_client(DICT_SHAPE_GRAPH) as client:
         result = await client.call_tool(
-            "akosha_search_code_patterns",
+            "search_code_patterns",
             {"pattern": r"def \w+"},
         )
     payload = _extract_payload(result)
@@ -198,7 +198,7 @@ async def test_list_shape_returns_structured_response() -> None:
     """
     async with _build_client(LIST_SHAPE_GRAPH) as client:
         result = await client.call_tool(
-            "akosha_search_code_patterns",
+            "search_code_patterns",
             {"pattern": r"def \w+"},
         )
     payload = _extract_payload(result)
@@ -214,7 +214,7 @@ async def test_missing_shape_returns_structured_response() -> None:
     """
     async with _build_client(MISSING_SHAPE_GRAPH) as client:
         result = await client.call_tool(
-            "akosha_search_code_patterns",
+            "search_code_patterns",
             {"pattern": r"def \w+"},
         )
     payload = _extract_payload(result)
@@ -229,7 +229,7 @@ async def test_no_hot_store_graphs_returns_structured_response() -> None:
     """
     async with _build_client(None) as client:
         result = await client.call_tool(
-            "akosha_search_code_patterns",
+            "search_code_patterns",
             {"pattern": r"def \w+"},
         )
     payload = _extract_payload(result)
