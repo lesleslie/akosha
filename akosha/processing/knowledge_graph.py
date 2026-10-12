@@ -10,15 +10,14 @@ from typing import Any, cast
 from uuid import uuid7
 
 
-def make_ulid() -> str:
+def make_id() -> str:
     """Generate a UUID7 entity identifier (32 lowercase hex chars).
 
     Returns:
-        Fresh UUID7 hex string per RFC 9562 sec 5.7. The Python 3.14
-        stdlib ``uuid.uuid7()`` is the canonical source; this function
-        is preserved as the substrate shim name so existing call
-        sites (``entity_id=make_ulid() or f"system:{system_id}"``)
-        remain source-compatible.
+        Fresh UUID7 hex string per RFC 9562 sec 5.7 from the Python
+        3.14 stdlib ``uuid.uuid7()``. This replaces the pre-2026-10-11
+        ``make_ulid`` shim name (the ULID substrate is removed; see
+        ``docs/plans/2026-10-12-ulid-surface-elimination.md``).
     """
     return uuid7().hex
 
@@ -98,7 +97,7 @@ class KnowledgeGraphBuilder:
         if system_id:
             entities.append(
                 GraphEntity(
-                    entity_id=make_ulid() or f"system:{system_id}",
+                    entity_id=make_id() or f"system:{system_id}",
                     entity_type="system",
                     properties={"name": system_id},
                     source_system=system_id,
@@ -111,7 +110,7 @@ class KnowledgeGraphBuilder:
         if user_id:
             entities.append(
                 GraphEntity(
-                    entity_id=make_ulid() or f"user:{user_id}",
+                    entity_id=make_id() or f"user:{user_id}",
                     entity_type="user",
                     properties={"user_id": user_id},
                     source_system=system_id or "unknown",
@@ -123,7 +122,7 @@ class KnowledgeGraphBuilder:
         if project:
             entities.append(
                 GraphEntity(
-                    entity_id=make_ulid() or f"project:{project}",
+                    entity_id=make_id() or f"project:{project}",
                     entity_type="project",
                     properties={"name": project},
                     source_system=system_id or "unknown",

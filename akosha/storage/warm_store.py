@@ -31,7 +31,7 @@ def _derive_uuid7_id(conversation_id: str) -> str | None:
     Returns:
         - ``conversation_id`` if it is already a UUID7 hex string.
         - ``None`` if the conversation_id is slug-shaped (e.g. system:foo).
-        - A fresh ``uuid7().hex`` for everything else (legacy ULIDs,
+        - A fresh ``uuid7().hex`` for everything else (reserved watermarks like
           reserved watermarks like ``__bodai_subscriber_watermark__``,
           or composite ids from the otel_ingester that don't match
           the slug pattern).
@@ -66,7 +66,7 @@ class WarmStore:
             # The ``uuid7_id`` column is the Phase 4 lazy dual-write anchor:
             # new rows that carry a UUID7-shaped conversation_id get the
             # same value in both columns; slug-shaped ids leave it NULL;
-            # legacy ULIDs and reserved strings get a fresh UUID7 sibling.
+            # Reserved strings (slugs, watermarks) get a fresh UUID7 sibling.
             # A separate UNIQUE index (NULLs do not conflict in DuckDB)
             # enables index-only lookups once backfill is complete.
             self.conn.execute("""
