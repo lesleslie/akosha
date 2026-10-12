@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] - 2026-10-12
+
+### Added
+
+- akosha: Phase 3 — runtime facts builder + boot push to Oneiric (Plan 1)
+- akosha: Surface canonical 4-field shape on /health + integration test (Plan 2 Phase E2 Task 5)
+- akosha: UUID7-only substrate with lazy dual-write (Phase 4)
+
+### Changed
+
+- akosha: Adopt OneiricSettings.substrate for cache/warm/cold/auth/pool
+
+### Internal
+
+- akosha: Drop make_ulid substrate-shim name + update warm_store docstring
+
 ## [0.23.1] - 2026-10-10
 
 ### Fixed
