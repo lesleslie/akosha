@@ -6,34 +6,21 @@ import logging
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-
-def _load_ulid_generator() -> Callable[[], str] | None:
-    """Load ULID generator from druva package if available."""
-    try:
-        from druva import generate as _gen_fn  # ty: ignore[unresolved-import]
-
-        return _gen_fn  # type: ignore[no-any-return]
-    except ImportError:
-        return None
-
-
-_ulid_impl: Callable[[], str] | None = _load_ulid_generator()
+from typing import Any, cast
+from uuid import uuid7
 
 
 def make_ulid() -> str:
-    """Generate a ULID or fallback to prefixed ID.
+    """Generate a UUID7 entity identifier (32 lowercase hex chars).
 
-    Note: When druva is not installed, returns empty string.
-    Callers must provide fallback via conditional.
+    Returns:
+        Fresh UUID7 hex string per RFC 9562 sec 5.7. The Python 3.14
+        stdlib ``uuid.uuid7()`` is the canonical source; this function
+        is preserved as the substrate shim name so existing call
+        sites (``entity_id=make_ulid() or f"system:{system_id}"``)
+        remain source-compatible.
     """
-    if _ulid_impl is not None:
-        return _ulid_impl()
-    return ""
+    return uuid7().hex
 
 
 from akosha.observability import (  # noqa: E402
