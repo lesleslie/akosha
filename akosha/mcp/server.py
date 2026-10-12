@@ -1088,8 +1088,12 @@ def create_app(mode: Any | None = None) -> FastMCP:
                     "ok": verdict["healthy"],
                     "status": verdict["status"].value,
                     "reason_codes": [c.value for c in verdict["reason_codes"]],
-                    "feed_entities_count": state.entities_count,
-                    "feed_last_updated_timestamp": state.last_updated_timestamp,
+                    # Plan 2 Phase E2 §6.5 — 4 canonical fields per feed
+                    # on the wire (mcp-backend-wiring-discipline.md §3).
+                    # Renamed from the legacy ``feed_*`` prefix to match
+                    # the canonical contract; pre-1.0 replace, not extend.
+                    "entities_count": state.entities_count,
+                    "last_updated_timestamp": state.last_updated_timestamp,
                     "cycles_total": state.cycles_total,
                     "errors_total": state.errors_total,
                 }
