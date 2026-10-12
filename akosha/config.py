@@ -6,15 +6,24 @@ Oneiric pattern with layered configuration loading:
 - settings/akosha.yaml (committed)
 - settings/local.yaml (gitignored)
 - Environment variables AKOSHA_*
+- **Substrate fields via ``ONEIRIC__SUBSTRATE__*``** (Plan 2 Phase E2).
+  Cache/warm/cold/auth/pool settings adopt the shared Bodai substrate
+  (see ``oneiric.core.substrate_settings.SubstrateSettings``). Field
+  names use the canonical double-underscore convention
+  (``cache__max_entries``, ``warm__pg_url``, ``auth__enabled``, etc.)
+  matching the env-var form ``ONEIRIC__SUBSTRATE__CACHE__MAX_ENTRIES``.
 
 Configuration loading order (later overrides earlier):
-1. Default values in field definitions
+1. Default values in field definitions (substrate defaults for substrate
+   fields)
 2. settings/akosha.yaml (committed, for production defaults)
 3. settings/local.yaml (gitignored, for development)
-4. Environment variables AKOSHA_{FIELD}
+4. Environment variables ``ONEIRIC__SUBSTRATE__*`` for substrate fields
+5. Environment variables ``AKOSHA_{FIELD}`` for Akosha-specific fields
 
 For nested storage configs (HotStorageConfig, etc.), environment variables
-use AKOSHA_{FIELD}__{SUBFIELD} format.
+use AKOSHA_{FIELD}__{SUBFIELD} format. Substrate fields use
+``ONEIRIC__SUBSTRATE__<DOUBLE_UNDERSCORE_FIELD>``.
 """
 
 from __future__ import annotations
@@ -52,6 +61,64 @@ logger = logging.getLogger(__name__)
 #: port convention. Override via AKOSHA_MCP_PORT / MCP_PORT env vars or CLI
 #: flag, never by editing this constant.
 DEFAULT_MCP_PORT: int = 8682
+
+
+def _substrate_field(field_name: str) -> Any:
+    """Lazy accessor for ``OneiricSettings.substrate.<field_name>``.
+
+    Plan 2 Phase E2 atomic per-file adoption. Reads fresh at instance
+    creation time so env vars set between module import and config
+    construction are honored (avoids module-load snapshot drift).
+
+    ``load_settings`` is invoked lazily so the oneiric import is not
+    forced at module-load (preserves the existing fallback path when
+    oneiric is unavailable — the ``OneiricMCPConfig`` shim above).
+    """
+    from oneiric.core.config import load_settings as _oneiric_load
+
+    return getattr(_oneiric_load().substrate, field_name)
+
+
+#: Plan 2 Phase E2 — the canonical list of AkoshaConfig fields that have
+#: been adopted from ``OneiricSettings.substrate``. The ``get_config``
+#: merger strips these from YAML-loaded data so per-class
+#: ``default_factory`` lambdas (which read from substrate) take effect.
+_SUBSTRATE_MAPPED_TOP_LEVEL: frozenset[str] = frozenset(
+    {
+        "auth_enabled",
+        "auth_loopback_trusted",
+        "pool_workers_per_instance",
+    },
+)
+_SUBSTRATE_MAPPED_NESTED: dict[str, frozenset[str]] = {
+    "cache": frozenset({"backend", "max_entries", "default_ttl_seconds"}),
+    "warm": frozenset({"backend", "pg_url", "pg_pool_size"}),
+    "cold": frozenset({"backend", "bucket", "prefix", "compression"}),
+}
+
+
+def _strip_substrate_mapped(data: dict[str, Any]) -> dict[str, Any]:
+    """Remove substrate-mapped fields from a config-init dict.
+
+    The substrate settings object is the canonical source of truth for
+    these fields (Plan 2 Phase E2). Without this strip, YAML-loaded
+    values (e.g. ``warm.pg_url: ""`` from ``settings/akosha.yaml``)
+    would silently win over ``ONEIRIC__SUBSTRATE__WARM__PG_URL``
+    env-var overrides — breaking the atomic per-file rule that says
+    substrate wins.
+
+    The strip is shallow + per-nested-config: top-level substrate fields
+    are popped from the dict, and nested substrate fields are popped
+    from their respective nested dicts.
+    """
+    out: dict[str, Any] = {
+        k: v for k, v in data.items() if k not in _SUBSTRATE_MAPPED_TOP_LEVEL
+    }
+    for prefix, fields in _SUBSTRATE_MAPPED_NESTED.items():
+        nested = out.get(prefix)
+        if isinstance(nested, dict):
+            out[prefix] = {k: v for k, v in nested.items() if k not in fields}
+    return out
 
 
 class HotStorageConfig(BaseModel):
@@ -111,37 +178,50 @@ class WarmStorageConfig(BaseModel):
     """Warm storage configuration.
 
     Attributes:
-        backend: Storage backend type (duckdb-ssd, duckdb-hdd, pgvector)
+        backend: Storage backend. Adopted from substrate (``warm__backend``)
+            per Plan 2 Phase E2 — substrate defaults to ``pgvector``.
         path: Path to warm storage directory
-        pg_url: PostgreSQL connection string for pgvector backend
+        pg_url: PostgreSQL connection string for pgvector backend.
+            Adopted from substrate (``warm__pg_url``).
         num_partitions: Number of shards for distributed queries
+        pg_pool_size: SQLAlchemy connection pool size. Adopted from substrate
+            (``warm__pg_pool_size``).
 
     Configuration can be set via:
     1. settings/akosha.yaml under warm
     2. settings/local.yaml
-    3. Environment variables: AKOSHA__STORAGE__WARM__BACKEND, AKOSHA__STORAGE__WARM__PG_URL
+    3. Environment variables: ONEIRIC__SUBSTRATE__WARM__BACKEND,
+       ONEIRIC__SUBSTRATE__WARM__PG_URL, ONEIRIC__SUBSTRATE__WARM__PG_POOL_SIZE.
+       (Legacy AKOSHA__STORAGE__WARM__* still honored via the ``__init__``
+       fallback for one release.)
     """
 
     backend: str = Field(
-        default="duckdb-ssd",
+        default_factory=lambda: _substrate_field("warm__backend"),
         description=(
-            "Storage backend: 'duckdb-ssd', 'duckdb-hdd', or 'pgvector'. "
-            "pgvector is preferred for read-heavy vector similarity workloads. "
-            "Set via AKOSHA__STORAGE__WARM__BACKEND"
+            "Storage backend. Adopted from substrate; default 'pgvector'. "
+            "Override via ONEIRIC__SUBSTRATE__WARM__BACKEND."
         ),
     )
     path: Path | None = None  # Will be resolved by model_validator
     pg_url: str = Field(
-        default="",
+        default_factory=lambda: _substrate_field("warm__pg_url"),
         description=(
             "PostgreSQL connection string for pgvector-backed warm storage. "
-            "Required when backend='pgvector'. Set via AKOSHA__STORAGE__WARM__PG_URL"
+            "Required when backend='pgvector'. "
+            "Override via ONEIRIC__SUBSTRATE__WARM__PG_URL."
         ),
+    )
+    pg_pool_size: int = Field(
+        default_factory=lambda: _substrate_field("warm__pg_pool_size"),
+        description="SQLAlchemy connection pool size (from substrate).",
     )
     num_partitions: int = 256
 
     def __init__(self, **data: Any) -> None:
-        # Honor AKOSHA__STORAGE__WARM__BACKEND and AKOSHA__STORAGE__WARM__PG_URL
+        # Legacy ``AKOSHA__STORAGE__WARM__*`` env vars remain honored as a
+        # one-release fallback. New code should use ONEIRIC__SUBSTRATE__*
+        # (Plan 2 Phase E2).
         _env_backend = os.getenv("AKOSHA__STORAGE__WARM__BACKEND", "")
         _env_pg_url = os.getenv("AKOSHA__STORAGE__WARM__PG_URL", "")
         if _env_backend and "backend" not in data:
@@ -163,9 +243,15 @@ class ColdStorageConfig(BaseModel):
     """Cold storage configuration.
 
     Attributes:
-        backend: Storage backend type (local, s3, gcs, azure)
-        bucket: Bucket name for cloud storage
-        prefix: Prefix for objects in bucket
+        backend: Storage backend type. Adopted from substrate
+            (``cold__backend``) per Plan 2 Phase E2 — substrate defaults to
+            ``r2``.
+        bucket: Bucket name for cloud storage. Adopted from substrate
+            (``cold__bucket``).
+        prefix: Object-key prefix. Adopted from substrate
+            (``cold__prefix``).
+        compression: Compression codec at write time. Adopted from substrate
+            (``cold__compression``).
         format: File format (parquet)
         region: Cloud region (S3/R2: 'auto' for R2)
         endpoint_url: Override the API endpoint (fake-gcs-server in dev, R2 in prod)
@@ -177,20 +263,24 @@ class ColdStorageConfig(BaseModel):
     Configuration can be set via:
     1. settings/akosha.yaml under cold
     2. settings/local.yaml (gitignored)
-    3. Environment variables (nested form, preferred):
+    3. Environment variables (substrate, primary):
+       ONEIRIC__SUBSTRATE__COLD__BACKEND, ONEIRIC__SUBSTRATE__COLD__BUCKET,
+       ONEIRIC__SUBSTRATE__COLD__PREFIX, ONEIRIC__SUBSTRATE__COLD__COMPRESSION
+    4. Environment variables (legacy, one-release fallback):
        AKOSHA__STORAGE__COLD__ENDPOINT_URL,
        AKOSHA__STORAGE__COLD__PROJECT,
        AKOSHA__STORAGE__COLD__ANONYMOUS_CREDENTIALS,
        AKOSHA__STORAGE__COLD__ACCESS_KEY_ID,
        AKOSHA__STORAGE__COLD__SECRET_ACCESS_KEY,
-       AKOSHA__STORAGE__COLD__REGION
-    4. Environment variables (flat legacy form, fallback):
-       AKOSHA_COLD_ENDPOINT, AKOSHA_COLD_REGION
+       AKOSHA__STORAGE__COLD__REGION,
+       AKOSHA_COLD_BACKEND, AKOSHA_COLD_BUCKET, AKOSHA_COLD_ENDPOINT,
+       AKOSHA_COLD_REGION.
     """
 
-    backend: str = Field(default_factory=lambda: os.getenv("AKOSHA_COLD_BACKEND", "local"))
-    bucket: str = Field(default_factory=lambda: os.getenv("AKOSHA_COLD_BUCKET", "akosha-cold-data"))
-    prefix: str = "conversations/"
+    backend: str = Field(default_factory=lambda: _substrate_field("cold__backend"))
+    bucket: str = Field(default_factory=lambda: _substrate_field("cold__bucket"))
+    prefix: str = Field(default_factory=lambda: _substrate_field("cold__prefix"))
+    compression: str = Field(default_factory=lambda: _substrate_field("cold__compression"))
     format: str = "parquet"
     region: str | None = Field(
         default_factory=lambda: os.getenv("AKOSHA_COLD_REGION", "us-west-2")
@@ -242,7 +332,12 @@ class CacheConfig(BaseModel):
     """Cache configuration.
 
     Attributes:
-        backend: Cache backend (redis, memory)
+        backend: Cache backend (redis, memory, multitier, persistent_kv).
+            Adopted from substrate (``cache__backend``) per Plan 2 Phase E2.
+        max_entries: Maximum entries held by the L1 cache.
+            Adopted from substrate (``cache__max_entries``).
+        default_ttl_seconds: Default TTL applied to cache entries.
+            Adopted from substrate (``cache__default_ttl_seconds``).
         host: Redis hostname
         port: Redis port
         db: Redis database number
@@ -250,7 +345,13 @@ class CacheConfig(BaseModel):
         redis_ttl_seconds: TTL for Redis cache
     """
 
-    backend: str = Field(default_factory=lambda: os.getenv("AKOSHA_CACHE_BACKEND", "redis"))
+    backend: str = Field(default_factory=lambda: _substrate_field("cache__backend"))
+    max_entries: int | None = Field(
+        default_factory=lambda: _substrate_field("cache__max_entries"),
+    )
+    default_ttl_seconds: float | None = Field(
+        default_factory=lambda: _substrate_field("cache__default_ttl_seconds"),
+    )
     host: str = Field(default_factory=lambda: os.getenv("AKOSHA_REDIS_HOST", "localhost"))
     port: int = Field(default_factory=lambda: int(os.getenv("AKOSHA_REDIS_PORT", "6379")))
     db: int = 0
@@ -390,6 +491,38 @@ class AkoshaConfig(OneiricMCPConfig):  # type: ignore[reportUntypedBaseClass]
 
     # Environment
     environment: str = Field(default_factory=lambda: os.getenv("AKOSHA_ENVIRONMENT", "development"))
+
+    # ---- Plan 2 Phase E2 substrate fields --------------------------
+    # Atomic per-file adoption (Phase E2 §6.6). These fields read from
+    # ``OneiricSettings.substrate`` rather than local ``AKOSHA_*`` env vars.
+    # Defaults via ``default_factory`` so the read happens at instance
+    # creation time (avoids module-load snapshot drift).
+    #
+    # Auth short-circuit preserved per ``feedback-bodai-localhost-no-auth.md``:
+    # ``auth__enabled=False`` keeps the gate off; ``auth__loopback_trusted=True``
+    # permits loopback unauthenticated requests.
+    auth_enabled: bool = Field(
+        default_factory=lambda: _substrate_field("auth__enabled"),
+        description=(
+            "Master auth gate (from substrate). When False, all auth "
+            "gates short-circuit. Override via "
+            "ONEIRIC__SUBSTRATE__AUTH__ENABLED."
+        ),
+    )
+    auth_loopback_trusted: bool = Field(
+        default_factory=lambda: _substrate_field("auth__loopback_trusted"),
+        description=(
+            "Permit loopback unauthenticated when True (from substrate). "
+            "Override via ONEIRIC__SUBSTRATE__AUTH__LOOPBACK_TRUSTED."
+        ),
+    )
+    pool_workers_per_instance: int = Field(
+        default_factory=lambda: _substrate_field("pool__workers_per_instance"),
+        description=(
+            "Worker count per substrate-touching instance (from substrate). "
+            "Override via ONEIRIC__SUBSTRATE__POOL__WORKERS_PER_INSTANCE."
+        ),
+    )
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -534,6 +667,14 @@ def get_config(config_path: str | None = None) -> AkoshaConfig:
     relevant_data = {
         k: v for k, v in merged.items() if k in AkoshaConfig.model_fields and v is not None
     }
+
+    # Plan 2 Phase E2: strip substrate-mapped fields from the loaded
+    # data so the per-class ``default_factory`` lambdas (which read from
+    # ``OneiricSettings.substrate``) take effect. Without this strip,
+    # YAML-loaded values (e.g. ``warm.pg_url: ""`` from settings/akosha.yaml)
+    # would override substrate env-var overrides. See the field
+    # definitions above for the canonical substrate-mapping list.
+    relevant_data = _strip_substrate_mapped(relevant_data)
     return AkoshaConfig(**relevant_data)
 
 

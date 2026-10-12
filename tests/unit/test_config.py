@@ -37,48 +37,93 @@ class TestHotStorageConfig:
 
 
 class TestWarmStorageConfig:
-    """Test WarmStorageConfig model."""
+    """Test WarmStorageConfig model.
+
+    2026-10-12 Plan 2 Phase E2: warm-tier defaults flow from
+    ``OneiricSettings.substrate.warm__*`` instead of Akosha-local env
+    vars. The substrate default for ``warm__backend`` is ``pgvector``
+    (Phase E1 contract — only pgvector ships as a warm-tier backend).
+    Tests below pin the substrate-backed defaults + env-var binding.
+    """
 
     def test_defaults(self):
         from akosha.config import WarmStorageConfig
 
         cfg = WarmStorageConfig()
-        assert cfg.backend == "duckdb-ssd"
+        # Substrate default is "pgvector" (Phase E1). Akosha's legacy
+        # "duckdb-ssd" default was deleted as part of the atomic
+        # per-file adoption.
+        assert cfg.backend == "pgvector"
+        assert cfg.pg_url != ""  # substrate ships a non-empty DSN default
         assert cfg.path is not None  # resolved by validator
         assert cfg.num_partitions == 256
+        assert cfg.pg_pool_size == 8  # substrate warm__pg_pool_size default
 
     def test_custom_values(self):
         from akosha.config import WarmStorageConfig
 
         cfg = WarmStorageConfig(
-            backend="duckdb-hdd",
+            backend="pgvector",
             path=Path("/tmp/warm"),
             num_partitions=128,
         )
-        assert cfg.backend == "duckdb-hdd"
+        assert cfg.backend == "pgvector"
         assert cfg.num_partitions == 128
+
+    def test_substrate_env_override(self) -> None:
+        """``ONEIRIC__SUBSTRATE__WARM__PG_URL`` overrides the substrate default."""
+        from akosha.config import WarmStorageConfig
+
+        with patch.dict(
+            os.environ,
+            {"ONEIRIC__SUBSTRATE__WARM__PG_URL": "postgresql+psycopg://substrate/test"},
+            clear=False,
+        ):
+            cfg = WarmStorageConfig()
+        assert "substrate" in cfg.pg_url
 
 
 class TestColdStorageConfig:
-    """Test ColdStorageConfig model."""
+    """Test ColdStorageConfig model.
+
+    2026-10-12 Plan 2 Phase E2: backend/bucket/prefix/compression now
+    flow from ``OneiricSettings.substrate.cold__*``. Defaults are
+    ``r2``, ``oneiric-substrate-shared``, ``akosha/``, ``snappy``.
+    Akosha-specific fields (endpoint_url, project, anonymous_credentials,
+    access_key_id, secret_access_key, region) keep their
+    AKOSHA__STORAGE__/AKOSHA_COLD_ env binding (not substrate-mapped).
+    """
 
     def test_defaults(self):
         from akosha.config import ColdStorageConfig
 
         cfg = ColdStorageConfig()
-        assert cfg.backend == "local"
-        assert cfg.bucket == "akosha-cold-data"
-        assert cfg.prefix == "conversations/"
+        assert cfg.backend == "r2"
+        assert cfg.bucket == "oneiric-substrate-shared"
+        assert cfg.prefix == "akosha/"
+        assert cfg.compression == "snappy"
         assert cfg.format == "parquet"
         assert cfg.region == "us-west-2"
 
-    @patch.dict(os.environ, {"AKOSHA_COLD_BACKEND": "s3", "AKOSHA_COLD_BUCKET": "my-bucket"})
-    def test_env_overrides(self):
+    def test_substrate_env_overrides(self) -> None:
+        """``ONEIRIC__SUBSTRATE__COLD__*`` overrides substrate defaults."""
         from akosha.config import ColdStorageConfig
 
-        cfg = ColdStorageConfig()
+        with patch.dict(
+            os.environ,
+            {
+                "ONEIRIC__SUBSTRATE__COLD__BACKEND": "s3",
+                "ONEIRIC__SUBSTRATE__COLD__BUCKET": "my-bucket",
+                "ONEIRIC__SUBSTRATE__COLD__PREFIX": "custom/",
+                "ONEIRIC__SUBSTRATE__COLD__COMPRESSION": "zstd",
+            },
+            clear=False,
+        ):
+            cfg = ColdStorageConfig()
         assert cfg.backend == "s3"
         assert cfg.bucket == "my-bucket"
+        assert cfg.prefix == "custom/"
+        assert cfg.compression == "zstd"
 
     def test_cold_storage_config_has_endpoint_url_field(self) -> None:
         """ColdStorageConfig exposes endpoint_url for fake-gcs-server / R2."""
@@ -144,25 +189,45 @@ class TestColdStorageConfig:
 
 
 class TestCacheConfig:
-    """Test CacheConfig model."""
+    """Test CacheConfig model.
+
+    2026-10-12 Plan 2 Phase E2: ``backend`` now flows from
+    ``OneiricSettings.substrate.cache__backend`` (default ``memory``).
+    ``host``/``port``/``db``/ttl fields stay local (no substrate
+    equivalent — substrate is tier-agnostic about transport).
+    """
 
     def test_defaults(self):
         from akosha.config import CacheConfig
 
         cfg = CacheConfig()
-        assert cfg.backend == "redis"
+        assert cfg.backend == "memory"
         assert cfg.host == "localhost"
         assert cfg.port == 6379
         assert cfg.db == 0
         assert cfg.local_ttl_seconds == 60
         assert cfg.redis_ttl_seconds == 3600
+        assert cfg.max_entries == 10000
+        assert cfg.default_ttl_seconds == 3600.0
 
-    @patch.dict(os.environ, {"AKOSHA_CACHE_BACKEND": "memory", "AKOSHA_REDIS_PORT": "7000"})
-    def test_env_overrides(self):
+    def test_substrate_env_overrides(self) -> None:
+        """``ONEIRIC__SUBSTRATE__CACHE__BACKEND`` overrides substrate default."""
+        from akosha.config import CacheConfig
+
+        with patch.dict(
+            os.environ,
+            {"ONEIRIC__SUBSTRATE__CACHE__BACKEND": "redis"},
+            clear=False,
+        ):
+            cfg = CacheConfig()
+        assert cfg.backend == "redis"
+
+    @patch.dict(os.environ, {"AKOSHA_REDIS_PORT": "7000"})
+    def test_local_env_overrides(self) -> None:
+        """AKOSHA_REDIS_PORT (no substrate equivalent) still binds to port."""
         from akosha.config import CacheConfig
 
         cfg = CacheConfig()
-        assert cfg.backend == "memory"
         assert cfg.port == 7000
 
 

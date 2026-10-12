@@ -69,10 +69,14 @@ async def test_mcp_tool_count_matches_documented() -> None:
 # here because the wiring is dispatched through a helper. Add new entries
 # below whenever a new ``os.getenv``-backed env var is documented.
 DOCUMENTED_ENV_VARS: tuple[str, ...] = (
-    "AKOSHA_COLD_BACKEND",
-    "AKOSHA_COLD_BUCKET",
+    # 2026-10-12 Plan 2 Phase E2 (atomic per-file substrate adoption):
+    # ``AKOSHA_COLD_BACKEND``, ``AKOSHA_COLD_BUCKET``, and
+    # ``AKOSHA_CACHE_BACKEND`` were deliberately removed — they are
+    # superseded by ``ONEIRIC__SUBSTRATE__COLD__BACKEND``,
+    # ``ONEIRIC__SUBSTRATE__COLD__BUCKET``, and
+    # ``ONEIRIC__SUBSTRATE__CACHE__BACKEND`` respectively
+    # (oneiric.core.substrate_settings.SubstrateSettings).
     "AKOSHA_COLD_REGION",
-    "AKOSHA_CACHE_BACKEND",
     "AKOSHA_REDIS_HOST",
     "AKOSHA_REDIS_PORT",
     "AKOSHA_EVENTBRIDGE_ENABLED",
