@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any, Final, TypedDict, cast
 from fastmcp import FastMCP
 
 from akosha import __version__
+from akosha.mcp.oneiric_runtime import report_runtime_to_oneiric
 from akosha.storage.hot_store import HotStore
 from akosha.storage.warm_store import WarmStore
 
@@ -1222,6 +1223,15 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # probe can close over ``signer_feed_state``. Nothing to do here.
 
         set_health_probe(_default_health_probe)
+
+        # Phase 3 (REQ-RUNTIME-001 / Plan 1 Task 3.1): push the static
+        # agent catalog to Oneiric as a fire-and-forget background task,
+        # mirroring the Dhara registration pattern at SB. The coroutine
+        # is fail-soft by contract (see ``oneiric_runtime.py``) so a
+        # degraded Oneiric instance never blocks Akosha boot.
+        asyncio.create_task(
+            report_runtime_to_oneiric(app), name="akosha.oneiric_push"
+        )
 
         yield {
             "akosha_ready": True,

@@ -336,7 +336,15 @@ def register_agents_tools(app: FastMCP) -> None:
         client may need it for previews even without a separate
         ``get_agent`` call). The full body is also available via
         ``akosha_get_agent``.
+
+        Phase 3 (REQ-RUNTIME-001): the body delegates to
+        :class:`RuntimeFactsBuilder` so the wire shape stays
+        bit-for-bit identical to the pre-Phase-3 inline body. The
+        signer-feed cycle bump is preserved so the B-7
+        ``cycles_total`` invariant still holds.
         """
+        from akosha.mcp.runtime_facts import RuntimeFactsBuilder
+
         from akosha.mcp.signer_feed import (
             get_signer_feed_state,
         )
@@ -345,19 +353,7 @@ def register_agents_tools(app: FastMCP) -> None:
         if state is not None:
             state.record_cycle()
 
-        out: list[dict[str, Any]] = []
-        for entry in _STATIC_AGENTS:
-            try:
-                metadata = _build_unsigned_metadata(entry["name"])
-            except (FileNotFoundError, ValidationError, KeyError) as exc:
-                logger.exception(
-                    "list_agents: failed to build metadata for %s: %s",
-                    entry["name"],
-                    exc,
-                )
-                continue
-            out.append(metadata.model_dump(mode="json"))
-        return out
+        return RuntimeFactsBuilder(app).build_all()
 
     @app.tool(name="get_agent")
     async def akosha_get_agent(name: str) -> dict[str, Any]:
