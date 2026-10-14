@@ -10,7 +10,7 @@
     },
     {
       "commit": "wave-3",
-      "coverage": 89.10,
+      "coverage": 89.1,
       "date": "2026-09-05T13:30:00.000000",
       "milestone": true
     }
@@ -24,5 +24,6 @@
     }
   ],
   "next_milestone": 90,
-  "target": 100.0
+  "target": 100.0,
+  "generated_at": "2026-10-14T22:36:31.777288+00:00"
 }

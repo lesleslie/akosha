@@ -71,17 +71,20 @@ The plan executes in 6 waves. Within each wave, parallelizable tasks run as sepa
 
 Within waves 1, 2, and 6 the subagent dispatch is **two Agent tool calls in one assistant message** so they run concurrently.
 
----
+______________________________________________________________________
 
 ## Phase A: Oneiric `GCSStorageAdapter` accepts `endpoint_url`
 
 ### Task A1: Add failing test for `endpoint_url` passthrough
 
 **Files:**
+
 - Modify: `/Users/les/Projects/oneiric-cold-tier/tests/adapters/test_storage_adapters.py` (insert after the existing `test_gcs_init_with_credentials_file` around line 350)
 
 **Interfaces:**
+
 - Consumes: existing `GCSStorageSettings(bucket, project, credentials_file)` from `oneiric.adapters.storage.gcs`
+
 - Produces: `GCSStorageSettings(bucket, project, credentials_file, endpoint_url=None)` field
 
 - [ ] **Step 1: Add the failing test** (mirror the pattern from existing `test_gcs_init_without_client_uses_google_cloud_storage` at lines 267-305):
@@ -165,9 +168,11 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ### Task A2: Add the `endpoint_url` field and wire it through `init()`
 
 **Files:**
+
 - Modify: `/Users/les/Projects/oneiric-cold-tier/oneiric/adapters/storage/gcs.py:18-28` (the `GCSStorageSettings` class) AND `gcs.py:58-77` (the `init()` body)
 
 **Interfaces:**
+
 - Produces: `GCSStorageSettings.endpoint_url: str | None = None` field; `init()` passes `client_options={api_endpoint, use_auth_w_custom_endpoint=False}` when set
 
 - [ ] **Step 1: Add the new field to `GCSStorageSettings`** in `oneiric/adapters/storage/gcs.py`, immediately after `default_content_type`:
@@ -312,7 +317,7 @@ Expected: All tests pass.
 
 - [ ] **Step 3: STOP and report.** Do not merge the worktree branch — that happens after the user reviews Phase A. Report the commit hash and the green test output to the parent agent.
 
----
+______________________________________________________________________
 
 ## Phase B1: Akosha `ColdStorageConfig` exposes new fields (no wiring yet)
 
@@ -321,10 +326,13 @@ This phase ships **before** Phase A merges. The new fields exist on the akosha c
 ### Task B1.1: Add failing tests for new `ColdStorageConfig` fields
 
 **Files:**
+
 - Modify: `/Users/les/Projects/akosha/tests/unit/test_config.py` (NOT `test_config_settings.py` — that file doesn't exist; the actual class is `TestColdStorageConfig` at line 62 of `test_config.py`)
 
 **Interfaces:**
+
 - Consumes: existing `ColdStorageConfig` constructor at `akosha/config.py:162-178`
+
 - Produces: `ColdStorageConfig(endpoint_url=..., project=..., anonymous_credentials=..., access_key_id=..., secret_access_key=..., region=...)` accepts all six fields
 
 - [ ] **Step 1: Read `akosha/tests/unit/test_config.py:62-100`** to find the existing `TestColdStorageConfig` class and confirm the import style (the existing tests use inline `from akosha.config import ColdStorageConfig`).
@@ -420,10 +428,13 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ### Task B1.2: Rewrite `ColdStorageConfig` with new fields + env bindings
 
 **Files:**
+
 - Modify: `/Users/les/Projects/akosha/akosha/config.py:162-178` (the `ColdStorageConfig` class)
 
 **Interfaces:**
+
 - Consumes: existing `os.getenv` pattern from `HotStorageConfig.__init__` at `akosha/config.py:94-99`
+
 - Produces: `ColdStorageConfig` with 6 new fields, all bound via nested env vars; flat `AKOSHA_COLD_*` env vars become fallback bindings
 
 - [ ] **Step 1: Read the existing `ColdStorageConfig`** at `akosha/config.py:162-178` and the `HotStorageConfig.__init__` pattern at lines 94-99 to mirror the env-binding convention.
@@ -573,7 +584,7 @@ Phase B2 will wire these into the storage adapter construction sites.
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
 
----
+______________________________________________________________________
 
 ## Phase B2: Akosha wires the new fields into storage adapter construction
 
@@ -582,9 +593,11 @@ This phase lands **after** Phase A merges (oneiric `GCSStorageAdapter` accepts `
 ### Task B2.1: Add failing tests for the wiring sites (gcs-only this round)
 
 **Files:**
+
 - Modify: `/Users/les/Projects/akosha/tests/integration/test_cold_tier_local.py` (NEW file)
 
 **Interfaces:**
+
 - Consumes: `ColdStore(backend="gcs", bucket=..., endpoint_url=..., project=...)` from `akosha/storage/cold_store.py:36-83, 294-323`
 - Produces: `ColdStore.initialize()` constructs `GCSStorageSettings(bucket=..., project=..., endpoint_url=...)`
 
@@ -673,6 +686,7 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ### Task B2.2: Wire `endpoint_url` into the gcs branch of `ColdStore.initialize()`
 
 **Files:**
+
 - Modify: `/Users/les/Projects/akosha/akosha/storage/cold_store.py:315-323` (the gcs branch of `initialize()`)
 
 - [ ] **Step 1: Edit `cold_store.py:318-322`** to add `endpoint_url=self._endpoint_url`:
@@ -712,9 +726,11 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ### Task B2.3: Wire `access_key_id` + `secret_access_key` into the s3 branch
 
 **Files:**
+
 - Modify: `/Users/les/Projects/akosha/akosha/storage/cold_store.py:36-83` (`ColdStore.__init__`) AND `akosha/storage/cold_store.py:309-313` (the s3 branch of `initialize()`)
 
 **Interfaces:**
+
 - Produces: `ColdStore(..., access_key_id: str | None = None, secret_access_key: str | None = None)` constructor params; `S3StorageSettings(bucket=, region=, endpoint_url=, access_key_id=, secret_access_key=)` in `initialize()`
 
 - [ ] **Step 1: Add the new constructor params to `ColdStore.__init__`** at line 36-83. After the existing `# S3 / R2` block (after `endpoint_url: str | None = None,` at line 45), add the credential params:
@@ -829,9 +845,11 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ### Task B2.4: Wire new fields through `modes/standard.py:initialize_cold_storage()`
 
 **Files:**
+
 - Modify: `/Users/les/Projects/akosha/akosha/modes/standard.py` (the cold-storage branch of `initialize_cold_storage`)
 
 **Interfaces:**
+
 - Produces: when `cold_storage_enabled` is true, the code reads cold-tier config from `self.config` dict and forwards all six new fields into oneiric's `S3StorageSettings` (s3 branch) and `GCSStorageSettings` (gcs branch).
 
 **Important architecture note:** `BaseMode.__init__(self, config: dict[str, Any])` (`akosha/modes/base.py:42`) takes a flat dict, NOT an `AkoshaConfig`. The existing code reads keys like `cold_storage_backend`, `cold_bucket`, `cold_prefix` from this dict (see `modes/standard.py:116-118`). The plan's edit must use this flat-dict access pattern, NOT the Pydantic attribute access used in `ColdStorageConfig`.
@@ -970,16 +988,18 @@ the S3 / GCS adapter regardless of how Phase A wired oneiric.
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ```
 
----
+______________________________________________________________________
 
 ## Phase C: Cold-tier integration test against fake-gcs-server subprocess
 
 ### Task C1: Add the subprocess-based end-to-end test
 
 **Files:**
+
 - Modify: `/Users/les/Projects/akosha/tests/integration/test_cold_tier_local.py` (append the new test)
 
 **Interfaces:**
+
 - Consumes: `fake-gcs-server` binary on PATH (Homebrew-installed per the operator's environment); `ColdRecord` from `akosha.storage.models` (NOT `akosha.models`)
 - Produces: a hermetic end-to-end test that exercises the full Parquet-export → GCS-upload → list → download round trip
 
@@ -1108,15 +1128,18 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 ### Task C2: Operator quickstart documentation
 
 **Files:**
+
 - Create: `/Users/les/Projects/akosha/docs/operators/cold-tier-quickstart.md`
 
 **Interfaces:**
+
 - Consumes: the spec's `§D1`, `§D4`, `§D5` content
+
 - Produces: operator-facing instructions for fake-gcs-server setup, R2 setup, and smoke-test recipe
 
 - [ ] **Step 1: Create the file**
 
-```markdown
+````markdown
 # Cold Tier Quickstart
 
 This guide covers three things:
@@ -1131,7 +1154,7 @@ This guide covers three things:
 
 ```bash
 brew install fake-gcs-server
-```
+````
 
 ### Start
 
@@ -1205,6 +1228,7 @@ Bucket names are global (like S3) — pick something unique.
 ### Step 2: Generate an API token
 
 Cloudflare dashboard → R2 → Manage R2 API Tokens → Create token. Choose:
+
 - Object Read & Write permissions (not Admin)
 - Scope to the bucket you just created
 - TTL: as short as you're comfortable with (rotate regularly)
@@ -1237,8 +1261,8 @@ export AKOSHA__STORAGE__COLD__SECRET_ACCESS_KEY=<your-secret-access-key>
 R2 tokens don't auto-rotate. Periodically:
 
 1. Generate a new token in the Cloudflare dashboard.
-2. Update env vars / `local.yaml`.
-3. Revoke the old token in the Cloudflare dashboard.
+1. Update env vars / `local.yaml`.
+1. Revoke the old token in the Cloudflare dashboard.
 
 ## 3. Smoke-test recipe
 
@@ -1271,7 +1295,8 @@ INFO oneiric.adapters.storage.gcs gcs-endpoint-override endpoint=http://127.0.0.
 
 If `gcs-endpoint-override` doesn't appear when you expect it, your
 `endpoint_url` env var didn't bind — check `ColdStorageConfig` loading.
-```
+
+````
 
 - [ ] **Step 2: Commit**
 
@@ -1291,9 +1316,9 @@ integration contract: this doc is how operators verify the spec's
 \"Demonstrable by\" clause.
 
 Co-Authored-By: Claude Code <noreply@anthropic.com>"
-```
+````
 
----
+______________________________________________________________________
 
 ## Verification
 

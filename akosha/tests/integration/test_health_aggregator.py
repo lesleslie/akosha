@@ -18,12 +18,12 @@ against the pre-widening mcp_common wheel (skip) and asserts
 positively against the new one (pass). The skip message points
 operators to the version bump that closes the gap.
 """
+
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
-
 
 # Akosha's ``/health`` aggregates these feed names (per
 # ``akosha/mcp/server.py:_default_health_probe``):
@@ -64,7 +64,10 @@ def _probe_aggregator_shape() -> dict[str, object] | None:
     )
     check = snap["checks"]["code_graphs_feed"]
     if "entities_count" in check:
-        return check
+        # FeedSnapshot is a TypedDict; structurally a dict[str, object],
+        # but ty sees it as a distinct nominal type, so cast for the
+        # declared return shape without runtime conversion.
+        return cast("dict[str, object]", check)
     return None
 
 
@@ -179,9 +182,12 @@ def test_akosha_health_http_response_shape_carries_four_fields() -> None:
 
     try:
         app = create_app()
-        client = TestClient(app)
+        # FastMCP is a valid ASGI app (callable, async scope handling);
+        # the test client accepts it at runtime, but ty's TestClient
+        # type stub expects the FastAPI/Starlette app flavor.
+        client = TestClient(app)  # ty: ignore[invalid-argument-type]
         response = client.get("/health")
-    except Exception as exc:  # noqa: BLE001 — lifespan init can fail in test envs
+    except Exception as exc:
         pytest.skip(
             f"create_app()/TestClient setup failed in test env "
             f"(the aggregator-level tests above still pin the contract): {exc}"

@@ -111,9 +111,7 @@ def _strip_substrate_mapped(data: dict[str, Any]) -> dict[str, Any]:
     are popped from the dict, and nested substrate fields are popped
     from their respective nested dicts.
     """
-    out: dict[str, Any] = {
-        k: v for k, v in data.items() if k not in _SUBSTRATE_MAPPED_TOP_LEVEL
-    }
+    out: dict[str, Any] = {k: v for k, v in data.items() if k not in _SUBSTRATE_MAPPED_TOP_LEVEL}
     for prefix, fields in _SUBSTRATE_MAPPED_NESTED.items():
         nested = out.get(prefix)
         if isinstance(nested, dict):
@@ -282,9 +280,7 @@ class ColdStorageConfig(BaseModel):
     prefix: str = Field(default_factory=lambda: _substrate_field("cold__prefix"))
     compression: str = Field(default_factory=lambda: _substrate_field("cold__compression"))
     format: str = "parquet"
-    region: str | None = Field(
-        default_factory=lambda: os.getenv("AKOSHA_COLD_REGION", "us-west-2")
-    )
+    region: str | None = Field(default_factory=lambda: os.getenv("AKOSHA_COLD_REGION", "us-west-2"))
     endpoint_url: str | None = None
     project: str | None = None
     anonymous_credentials: bool = False

@@ -26,10 +26,11 @@ from fastmcp import FastMCP
 from akosha import __version__
 from akosha.mcp.oneiric_runtime import report_runtime_to_oneiric
 from akosha.storage.hot_store import HotStore
-from akosha.storage.warm_store import WarmStore
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Awaitable, Callable
+
+    from akosha.storage.warm_store import WarmStore
 
 # Check optional dependencies
 try:
@@ -172,6 +173,11 @@ _aging_task: asyncio.Task[None] | None = None
 _aging_cycles: int = 0
 _aging_errors: int = 0
 _aging_last_run_at: float | None = None
+# Phase 3 (REQ-RUNTIME-001): fire-and-forget Oneiric catalog push.
+# The coroutine is fail-soft by contract, but we still hold the Task
+# handle at module scope so the GC does not collect it before the
+# push coroutine completes (RUF006).
+_oneiric_push_task: asyncio.Task[None] | None = None
 
 
 def set_shared_hot_store(store: Any) -> None:
@@ -333,7 +339,13 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # the declarations here is the cleanest fix; adding more
         # ``global`` lines mid-function only hides the real ordering
         # problem.
-        global _kg_refresh_cycles, _kg_refresh_errors, _kg_refresh_last_error_at, _aging_cycles, _aging_errors, _aging_last_run_at
+        global \
+            _kg_refresh_cycles, \
+            _kg_refresh_errors, \
+            _kg_refresh_last_error_at, \
+            _aging_cycles, \
+            _aging_errors, \
+            _aging_last_run_at
 
         logger.info(f"{APP_NAME} v{APP_VERSION} starting up")
 
@@ -672,7 +684,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
 
                 # DuckDB-ssd backend always returns WarmStore; cast the
                 # ``create_warm_store`` union to narrow the type for ty.
-                aging_warm_store = cast(WarmStore, create_warm_store(backend="duckdb-ssd"))
+                aging_warm_store = cast("WarmStore", create_warm_store(backend="duckdb-ssd"))
                 await aging_warm_store.initialize()
                 aging_service = AgingService(hot_store=hot_store, warm_store=aging_warm_store)
                 logger.info(
@@ -1233,7 +1245,8 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # mirroring the Dhara registration pattern at SB. The coroutine
         # is fail-soft by contract (see ``oneiric_runtime.py``) so a
         # degraded Oneiric instance never blocks Akosha boot.
-        asyncio.create_task(
+        global _oneiric_push_task
+        _oneiric_push_task = asyncio.create_task(
             report_runtime_to_oneiric(app), name="akosha.oneiric_push"
         )
 

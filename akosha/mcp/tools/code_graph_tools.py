@@ -204,9 +204,7 @@ def register_code_graph_analysis_tools(
                 # Search in nodes for the function
                 nodes_obj = graph_data.get("nodes")
                 for node in (
-                    nodes_obj.values()
-                    if isinstance(nodes_obj, dict)
-                    else (nodes_obj or [])
+                    nodes_obj.values() if isinstance(nodes_obj, dict) else (nodes_obj or [])
                 ):
                     if isinstance(node, dict):
                         node_name = node.get("name", "")
@@ -291,21 +289,13 @@ async def _compute_graph_similarity(
 
     # Count node types
     types1: dict[str, int] = {}
-    for node in (
-        nodes1_obj.values()
-        if isinstance(nodes1_obj, dict)
-        else (nodes1_obj or [])
-    ):
+    for node in nodes1_obj.values() if isinstance(nodes1_obj, dict) else (nodes1_obj or []):
         if isinstance(node, dict):
             node_type = node.get("type", "unknown")
             types1[node_type] = types1.get(node_type, 0) + 1
 
     types2: dict[str, int] = {}
-    for node in (
-        nodes2_obj.values()
-        if isinstance(nodes2_obj, dict)
-        else (nodes2_obj or [])
-    ):
+    for node in nodes2_obj.values() if isinstance(nodes2_obj, dict) else (nodes2_obj or []):
         if isinstance(node, dict):
             node_type = node.get("type", "unknown")
             types2[node_type] = types2.get(node_type, 0) + 1

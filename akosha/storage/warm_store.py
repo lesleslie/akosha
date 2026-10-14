@@ -227,8 +227,13 @@ class WarmStore:
             if row is None:
                 return None
             keys = (
-                "system_id", "conversation_id", "uuid7_id", "summary",
-                "timestamp", "metadata", "uploaded_at",
+                "system_id",
+                "conversation_id",
+                "uuid7_id",
+                "summary",
+                "timestamp",
+                "metadata",
+                "uploaded_at",
             )
             return dict(zip(keys, row, strict=True))
 

@@ -71,17 +71,11 @@ class AgingService:
         stats = MigrationStats(start_time=start_time)
         cutoff_date = datetime.now(UTC) - timedelta(days=cutoff_days)
 
-        scope = (
-            f"task_class={task_class} " if task_class else "all-task_classes "
-        )
-        logger.info(
-            f"Starting hot->warm migration for {scope}records older than {cutoff_date}"
-        )
+        scope = f"task_class={task_class} " if task_class else "all-task_classes "
+        logger.info(f"Starting hot->warm migration for {scope}records older than {cutoff_date}")
 
         # Get records to migrate
-        records_to_migrate = await self._get_eligible_records(
-            cutoff_date, task_class=task_class
-        )
+        records_to_migrate = await self._get_eligible_records(cutoff_date, task_class=task_class)
         total_records = len(records_to_migrate)
 
         if total_records == 0:

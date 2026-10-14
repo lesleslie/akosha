@@ -55,7 +55,7 @@ class RuntimeFactsBuilder:
     sync (L-6) by the same token the pre-Phase-3 inline body is sync.
     """
 
-    def __init__(self, app: "FastMCP") -> None:
+    def __init__(self, app: FastMCP) -> None:
         self._app = app
 
     def build_all(self) -> list[dict[str, Any]]:
@@ -82,7 +82,7 @@ class RuntimeFactsBuilder:
         # B-6 content_hash validation path; we deliberately re-raise
         # the same exception types so per-entry failure semantics are
         # preserved bit-for-bit.
-        from akosha.mcp.tools.agents_tools import (  # noqa: PLC0415 - local import
+        from akosha.mcp.tools.agents_tools import (
             _STATIC_AGENTS,
             _build_unsigned_metadata,
         )

@@ -34,7 +34,7 @@ import uuid
 from time import time_ns
 from typing import TYPE_CHECKING, Any
 
-import httpx
+import httpx2 as httpx
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -112,7 +112,7 @@ async def _push_one_agent(
             ],
             "domain": "agent",
         },
-        "runtime": dict(runtime_meta),
+        "runtime": runtime_meta.copy(),
     }
     runtime_facts: dict[str, Any] = {
         "name": metadata.get("name", name),
@@ -126,7 +126,7 @@ async def _push_one_agent(
         "status": metadata.get("status"),
         "last_reviewed": metadata.get("last_reviewed"),
         "scope": metadata.get("scope", "user-global"),
-        "metadata": dict(runtime_meta),
+        "metadata": runtime_meta.copy(),
         "source": f"{CALLER_COMPONENT}.mcp.tools.agents_tools",
     }
     payload = {
@@ -152,7 +152,7 @@ async def _push_one_agent(
         raise RuntimeError(f"oneiric rpc error: {data['error']}")
 
 
-async def report_runtime_to_oneiric(app: "FastMCP") -> None:
+async def report_runtime_to_oneiric(app: FastMCP) -> None:
     """Push Akosha's static agent catalog to Oneiric as JSON-RPC ``tools/call``.
 
     Iterates :class:`RuntimeFactsBuilder`'s output, POSTs each agent's
@@ -170,15 +170,13 @@ async def report_runtime_to_oneiric(app: "FastMCP") -> None:
     Parameters
     ----------
     app : FastMCP
-        The FastMCP application instance. Currently unused — kept on
-        the signature for symmetry with the Mahavishnu Phase 2 caller
-        so the two surfaces can evolve in lockstep (e.g. a future
-        revision may want to read app-owned signing keys).
+        The FastMCP application instance. Forwarded to
+        :class:`RuntimeFactsBuilder` so the builder can read
+        app-owned signing keys / catalog overrides (mirrors the
+        Mahavishnu Phase 2 caller surface).
     """
-    del app  # accepted for API symmetry; unused at the moment
-
     try:
-        from .runtime_facts import RuntimeFactsBuilder  # noqa: PLC0415 - local import
+        from .runtime_facts import RuntimeFactsBuilder
 
         builder = RuntimeFactsBuilder(app)
         facts = builder.build_all()
@@ -206,7 +204,7 @@ async def report_runtime_to_oneiric(app: "FastMCP") -> None:
                         metadata=metadata,
                         runtime_meta=runtime_meta,
                     )
-                except Exception:  # noqa: BLE001 - push failure must not block boot
+                except Exception:
                     logger.exception(
                         "runtime-push component=%s adapter=%s status=fail",
                         CALLER_COMPONENT,
@@ -218,8 +216,6 @@ async def report_runtime_to_oneiric(app: "FastMCP") -> None:
                     CALLER_COMPONENT,
                     name,
                 )
-    except Exception:  # noqa: BLE001 - outer belt-and-braces; never block boot
-        logger.exception(
-            "runtime-push component=%s outer-failure status=fail", CALLER_COMPONENT
-        )
+    except Exception:
+        logger.exception("runtime-push component=%s outer-failure status=fail", CALLER_COMPONENT)
         return

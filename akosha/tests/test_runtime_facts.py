@@ -20,10 +20,11 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
-import pytest
-
+if TYPE_CHECKING:
+    import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RUNTIME_FACTS_PATH = REPO_ROOT / "akosha" / "mcp" / "runtime_facts.py"
@@ -56,8 +57,7 @@ def test_akosha_runtime_facts_preserves_wire_shape() -> None:
     from akosha.mcp.tools.agents_tools import _STATIC_AGENTS
 
     mock_app = MagicMock()
-    builder = RuntimeFactsBuilder(mock_app)
-    result = builder.build_all()
+    result = RuntimeFactsBuilder(mock_app).build_all()
 
     # Shape contract
     assert isinstance(result, list)
@@ -77,9 +77,7 @@ def test_akosha_runtime_facts_preserves_wire_shape() -> None:
     for entry, item in zip(_STATIC_AGENTS, result, strict=True):
         assert isinstance(item, dict), f"entry {entry['name']!r} returned non-dict"
         missing = required_fields - set(item.keys())
-        assert not missing, (
-            f"entry {entry['name']!r} missing AgentMetadata fields: {missing}"
-        )
+        assert not missing, f"entry {entry['name']!r} missing AgentMetadata fields: {missing}"
         # The ``name`` field must match the catalog entry so the
         # installer can resolve the agent to its body file.
         assert item["name"] == entry["name"], (
@@ -125,14 +123,16 @@ def test_akosha_runtime_facts_survives_broken_catalog_entry(
     # Force every ``_build_unsigned_metadata`` call to raise
     # ``FileNotFoundError`` (mimics a missing body file). The builder
     # must swallow the exception, log, and return an empty list.
-    with patch(
-        "akosha.mcp.tools.agents_tools._build_unsigned_metadata",
-        side_effect=FileNotFoundError("simulated missing body"),
+    with (
+        patch(
+            "akosha.mcp.tools.agents_tools._build_unsigned_metadata",
+            side_effect=FileNotFoundError("simulated missing body"),
+        ),
+        caplog.at_level("ERROR", logger="akosha.mcp.runtime_facts"),
     ):
-        with caplog.at_level("ERROR", logger="akosha.mcp.runtime_facts"):
-            result = RuntimeFactsBuilder(mock_app).build_all()
+        result = RuntimeFactsBuilder(mock_app).build_all()
 
-    assert result == [], "broken entries must be skipped, not raised"
+    assert not result, "broken entries must be skipped, not raised"
     assert any("list_agents: failed to build metadata" in rec.message for rec in caplog.records), (
         "expected an error log per broken entry"
     )

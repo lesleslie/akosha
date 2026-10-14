@@ -129,8 +129,7 @@ class TimeSeriesAnalytics:
         self._initialized: bool = False
         self._open_sqlite()
         logger.info(
-            "Time-series analytics service initialized (db_path=%s, "
-            "sqlite=%s)",
+            "Time-series analytics service initialized (db_path=%s, sqlite=%s)",
             self._db_path,
             "open" if self._conn is not None else "unavailable",
         )

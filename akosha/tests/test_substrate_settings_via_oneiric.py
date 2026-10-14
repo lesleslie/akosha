@@ -63,7 +63,7 @@ def test_auth_enabled_via_substrate(monkeypatch: pytest.MonkeyPatch) -> None:
     from akosha.config import get_config
 
     cfg = get_config()
-    assert cfg.auth_enabled is True
+    assert cfg.auth_enabled
 
 
 def test_auth_loopback_trusted_via_substrate(
@@ -74,7 +74,7 @@ def test_auth_loopback_trusted_via_substrate(
     from akosha.config import get_config
 
     cfg = get_config()
-    assert cfg.auth_loopback_trusted is False
+    assert not cfg.auth_loopback_trusted
 
 
 def test_cold_bucket_via_substrate(monkeypatch: pytest.MonkeyPatch) -> None:

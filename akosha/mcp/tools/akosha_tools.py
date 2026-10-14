@@ -25,7 +25,6 @@ if TYPE_CHECKING:
     from akosha.processing.embeddings import EmbeddingService
     from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
 
-from akosha.observability import record_counter
 from akosha.mcp.validation import (
     AddEvalMetricRequest,
     AnalyzeTrendsRequest,
@@ -40,6 +39,7 @@ from akosha.mcp.validation import (
     is_eval_metric_name,
     validate_request,
 )
+from akosha.observability import record_counter
 from akosha.security import require_auth
 
 
@@ -935,9 +935,7 @@ def register_analytics_tools(
             metadata=params.metadata,
         )
 
-        record_counter(
-            "akosha.eval_metrics.added", 1, {"metric_name": params.metric_name}
-        )
+        record_counter("akosha.eval_metrics.added", 1, {"metric_name": params.metric_name})
 
         return {
             "success": True,

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.1] - 2026-10-14
+
+### Internal
+
+- Untrack 25 historical archive files
+
 ## [0.24.0] - 2026-10-12
 
 ### Added
@@ -25,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Route search_code_patterns through _sanitize_regex gate
+- Route search_code_patterns through \_sanitize_regex gate
 - search: Reconstruct code-graph source from disk + signature fallback (with security hardening)
 
 ### Internal
@@ -42,12 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - akosha: Phase 4 health-check enrichment + lazy warm-store path
 - akosha: Search handler shape guard + 7th site + regression test
-- Strip akosha_ prefix from FastMCP tool names + REQ-001 inventory test
+- Strip akosha\_ prefix from FastMCP tool names + REQ-001 inventory test
 
 ### Internal
 
 - akosha: SessionEnd hook wire-up + push governance cross-link
-- Remove tracked .gitignore.bak.* backups
+- Remove tracked .gitignore.bak.\* backups
 
 ## [0.22.1] - 2026-10-03
 
@@ -123,7 +129,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Testing
 
-- Admin-granted Akosha read of sb.* reflections works
+- Admin-granted Akosha read of sb.\* reflections works
 - akosha: Cover ColdStorageConfig new fields + env bindings
 - akosha: Cover ColdStore gcs branch forwards endpoint_url
 - akosha: Rewrite pgvector test suite for warm-tier contract

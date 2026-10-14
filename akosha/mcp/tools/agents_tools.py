@@ -344,7 +344,6 @@ def register_agents_tools(app: FastMCP) -> None:
         ``cycles_total`` invariant still holds.
         """
         from akosha.mcp.runtime_facts import RuntimeFactsBuilder
-
         from akosha.mcp.signer_feed import (
             get_signer_feed_state,
         )

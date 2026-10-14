@@ -14,7 +14,9 @@ from akosha.storage.hot_store import HotStore
 from akosha.storage.warm_store import WarmStore
 
 if TYPE_CHECKING:
-    from akosha.storage.pgvector_hot_store import PgvectorHotStore  # noqa: F401  # legacy import surface
+    from akosha.storage.pgvector_hot_store import (
+        PgvectorHotStore,  # noqa: F401  # legacy import surface
+    )
     from akosha.storage.pgvector_warm_store import PgvectorWarmStore
 
 logger = logging.getLogger(__name__)
@@ -35,6 +37,7 @@ def _safe_exc_message(exc: BaseException, *dsns: str | None) -> str:
         if dsn:
             msg = msg.replace(dsn, "***")
     return msg
+
 
 #: Default drain period in seconds when stopping the application.
 #: Production callers may tune via ``AKOSHA_STOP_DRAIN_TIMEOUT`` so unit

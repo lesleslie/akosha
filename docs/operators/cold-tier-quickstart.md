@@ -3,8 +3,8 @@
 This guide covers three things:
 
 1. Running akosha's cold tier against fake-gcs-server (dev).
-2. Pointing the cold tier at Cloudflare R2 (prod).
-3. A smoke-test recipe for verifying your R2 wiring before committing.
+1. Pointing the cold tier at Cloudflare R2 (prod).
+1. A smoke-test recipe for verifying your R2 wiring before committing.
 
 ## 1. fake-gcs-server (dev)
 
@@ -101,6 +101,7 @@ Bucket names are global (like S3) — pick something unique.
 ### Step 2: Generate an API token
 
 Cloudflare dashboard → R2 → Manage R2 API Tokens → Create token. Choose:
+
 - Object Read & Write permissions (not Admin)
 - Scope to the bucket you just created
 - TTL: as short as you're comfortable with (rotate regularly)
@@ -133,8 +134,8 @@ export AKOSHA__STORAGE__COLD__SECRET_ACCESS_KEY=<your-secret-access-key>
 R2 tokens don't auto-rotate. Periodically:
 
 1. Generate a new token in the Cloudflare dashboard.
-2. Update env vars / `local.yaml`.
-3. Revoke the old token in the Cloudflare dashboard.
+1. Update env vars / `local.yaml`.
+1. Revoke the old token in the Cloudflare dashboard.
 
 ## 3. Smoke-test recipe
 

@@ -6,8 +6,7 @@ import typing as t
 # handshakes report the same value as ``akosha.__version__``. The
 # single source of truth is :file:`pyproject.toml` via
 # :func:`importlib.metadata.version`.
-from akosha import __version__  # noqa: F401  (re-export)
-
+from akosha import __version__
 from akosha.mcp.server import APP_NAME, APP_VERSION, create_app
 
 __all__ = [
