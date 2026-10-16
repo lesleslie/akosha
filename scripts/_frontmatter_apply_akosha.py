@@ -14,8 +14,10 @@ Layout detected (Step 1):
 Schema files get a fixed assignment (status: active, role: canonical, topic: lifecycle).
 
 Per-file status/role/topic assignments derived from each file's body and filename
-following the playbook's Step 3 matrix and the per-akosha topic vocabulary
-extension in docs/schemas/topic-vocabulary-v1.md.
+following the playbook's Step 3 matrix. The controlled topic vocabulary now lives
+in `oneiric.schemas.topic_vocabulary_v1` (wheel data, importlib.resources); the
+local copy was removed when the canonical became the oneiric package resource
+(oneiric@fed6a1b).
 """
 
 from __future__ import annotations
@@ -39,9 +41,9 @@ PLAN_FM_TEMPLATE = (
 # Assignments keyed on repo-relative POSIX path.
 # (status, role, topic)
 ASSIGNMENTS: dict[str, tuple[str, str, str]] = {
-    # Schema / vocabulary (canonical, never expires)
+    # Schema (canonical, never expires). The topic vocabulary itself now
+    # lives in oneiric.schemas (oneiric@fed6a1b) — not iterated here.
     "docs/schemas/document-frontmatter-v1.md": ("active", "canonical", "lifecycle"),
-    "docs/schemas/topic-vocabulary-v1.md": ("active", "canonical", "lifecycle"),
     # Loose docs/*.md — user-facing guides & canonicals
     "docs/README.md": ("active", "canonical", "lifecycle"),
     "docs/ROADMAP.md": ("active", "canonical", "lifecycle"),
