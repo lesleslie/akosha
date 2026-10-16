@@ -221,6 +221,9 @@ node_modules/
 
 # Archived test artifacts - emit to /tmp instead of git
 docs/archive/test-artifacts/
+# Defensive ignore: prevents regression to legacy `docs/archive/` (no leading dot).
+# The canonical path is `docs/.archive/` (gitignored via `.archive/` above).
+docs/archive/
 # Belt-and-suspenders: any coverage*.json dump regardless of location
 coverage*.json
 
