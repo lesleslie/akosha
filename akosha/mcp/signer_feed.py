@@ -190,10 +190,16 @@ def init_signer_feed_state() -> SignerFeedState:
     if new_state.signer is None:
         msg = "init_signer_feed_state must construct SignerFeedState with a real SkillsSigner"
         raise RuntimeError(msg)
+    # Install-cycle credit per feedback-bodai-publisher-install-needs-cycle-credit.
+    # Without this bump, the mcp-common aggregator reports FAILED on
+    # cycles_total == 0 and ``/health`` returns 503 for a server that
+    # is in fact ready to serve.
+    new_state.record_cycle()
     logger.info(
-        "init_signer_feed_state: signer singleton installed (key_id=%s, generation=%d)",
+        "init_signer_feed_state: signer singleton installed (key_id=%s, generation=%d, cycles_total=%d)",
         new_state.signer.key_id,
         new_state.generation,
+        new_state.cycles_total,
     )
     return new_state
 
