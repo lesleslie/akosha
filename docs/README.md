@@ -13,7 +13,7 @@ Semantic search and knowledge aggregation
 
 - Use current root docs for maintained operator and developer guidance.
 - Use [plans/PLAN_INDEX.md](plans/PLAN_INDEX.md) for active and historical plans.
-- Use [archive/README.md](archive/README.md) for historical, non-authoritative material.
+
 
 ## Maintenance Rules
 
