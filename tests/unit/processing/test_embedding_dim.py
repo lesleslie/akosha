@@ -58,17 +58,6 @@ class TestResolveEmbeddingDimInitialized:
 class TestResolveEmbeddingDimUninitialized:
     """Service exists but ``dimension()`` returns ``None`` → fall back to the defaults table."""
 
-    def test_uninitialized_service_with_backend_name_ollama(self) -> None:
-        """``_backend_dim=None`` and ``backend_name()='ollama'`` returns 768."""
-        service = SimpleNamespace(
-            _backend_dim=None,
-            dimension=lambda: None,
-            backend_name=lambda: "ollama",
-        )
-
-        assert resolve_embedding_dim(service) == 768
-        assert BACKEND_DEFAULT_DIMS["ollama"] == 768
-
     def test_uninitialized_service_with_unknown_backend_falls_back(self) -> None:
         """An unknown backend name still falls back to 384 (no table entry)."""
         service = SimpleNamespace(

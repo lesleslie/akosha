@@ -46,7 +46,6 @@ BACKEND_DEFAULT_DIMS: dict[str, int] = {
     "mock": 384,
     "model2vec": 256,
     "llama_cpp": 768,
-    "ollama": 768,
     "minimax": 1024,
 }
 

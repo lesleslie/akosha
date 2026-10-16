@@ -37,7 +37,6 @@ class TestEmbeddingService:
         # reached; the old test's "always False" assertion is removed.
         assert service.backend_name() in {
             "llama_cpp",
-            "ollama",
             "minimax",
             "model2vec",
             "mock",
