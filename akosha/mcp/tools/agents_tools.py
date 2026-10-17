@@ -44,6 +44,7 @@ Non-goals:
   (``mcp__akosha__list_ecosystem_agents``) is what exposes them
   alongside the other 4 servers' catalogs.
 """
+
 from __future__ import annotations
 
 import logging
@@ -52,7 +53,7 @@ from typing import TYPE_CHECKING, Any
 
 from mcp_common.agents_tools import build_register_agents_tools
 from mcp_common.canonical_schemas.agent import AgentCanonicalSchema
-from mcp_common.signing import SkillsSigner  # noqa: F401  # re-exported for type compat
+from mcp_common.signing import SkillsSigner  # re-exported for type compat
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -196,9 +197,7 @@ def _read_body(filename: str) -> str:
     """
     path = _AGENTS_DIR / filename
     if not path.is_file():
-        raise FileNotFoundError(
-            f"Agent body {filename!r} missing from catalog at {path}"
-        )
+        raise FileNotFoundError(f"Agent body {filename!r} missing from catalog at {path}")
     return path.read_text(encoding="utf-8")
 
 
@@ -291,9 +290,16 @@ def _sign(metadata: AgentCanonicalSchema) -> AgentCanonicalSchema:
 
     state = get_signer_feed_state()
     if state is None:
-        raise RuntimeError(
-            "signer not initialized (server may still be starting up)"
-        )
+        raise RuntimeError("signer not initialized (server may still be starting up)")
+    if state.signer is None:
+        # ``SignerFeedState.signer`` is typed ``SkillsSigner | None`` so
+        # feed-state tests can construct the state with just a manifest
+        # (the four mandatory feed signals don't require the signing
+        # capability). ``init_signer_feed_state()`` always installs a
+        # real signer in production, so reaching this branch means the
+        # caller wired a test-only state into a tool path — fail loud
+        # rather than silently producing an unsigned response.
+        raise RuntimeError("signer not configured on feed state")
 
     canonical = canonical_payload_for_signing(metadata.to_dict())
     signed = state.signer.sign(canonical)
@@ -352,7 +358,7 @@ def register_agents_tools(app: FastMCP) -> None:
     )(app)
 
 
-__all__ = ["register_agents_tools", "AgentCanonicalSchema"]
+__all__ = ["AgentCanonicalSchema", "register_agents_tools"]
 
 
 # Silence "imported but unused" for the SkillsSigner re-export —

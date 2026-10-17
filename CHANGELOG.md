@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.2] - 2026-10-17
+
+### Changed
+
+- akosha: Use mcp_common agents_tools factory
+
+### Fixed
+
+- /Users/les/Projects/akosha/docs: Remove stale archive reference
+- /Users/les/Projects/akosha/docs: Remove stale archive reference
+- akosha/docs: Point topic-vocabulary references at oneiric package source
+- akosha: Bump cycles_total on init so /health reports HEALTHY
+- akosha: Drop ollama from embedding backend dim table
+
+### Internal
+
+- akosha: Drop dead topic-vocabulary dict entry and update docstring
+- akosha: Drop redundant topic-vocabulary-v1.md
+- akosha: Untrack docs/archive/, keep historical on disk in docs/.archive/
+- Regenerate PLAN_INDEX.md via plan_index_sync (git-aware)
+
 ## [0.24.1] - 2026-10-14
 
 ### Internal
