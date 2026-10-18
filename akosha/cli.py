@@ -445,15 +445,23 @@ def _start_server(
     # captures ``mode_instance`` from the enclosing scope per the
     # variadic Callable contract (REQ-003 in the launcher cookbook).
     from mcp_common.server import launch
+    from akosha.mcp.oneiric_runtime import report_runtime_to_oneiric
 
     def build_server() -> Any:
         from akosha.mcp import create_app
 
         return create_app(mode=mode_instance)
 
+    # Phase 3 component-boot hook: build the app once, push runtime facts
+    # to Oneiric, then start the server. Per the oneiric-substrate umbrella
+    # (2026-10-15). The push is fire-and-forget; the helper swallows all
+    # exceptions so a degraded Oneiric never blocks Akosha boot.
+    app = build_server()
+    asyncio.run(report_runtime_to_oneiric(app))
+
     asyncio.run(
         launch(
-            build_server=build_server,
+            build_server=lambda: app,
             component_name="akosha",
             secrets_path=Path("~/.config/secrets.env"),
             settings_path=None,  # akosha has no fixed settings.yaml
