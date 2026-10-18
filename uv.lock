@@ -229,7 +229,7 @@ requires-dist = [
     { name = "datasketch", specifier = ">=0.6.0" },
     { name = "duckdb", specifier = ">=0.10.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
-    { name = "fastmcp", specifier = ">=3.4.0,<5" },
+    { name = "fastmcp", specifier = ">=4.0.0,<5" },
     { name = "httpx2", specifier = ">=0.28.1" },
     { name = "mcp-common", specifier = ">=0.28.0" },
     { name = "numpy", specifier = ">=2.0.0" },
