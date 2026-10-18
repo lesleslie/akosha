@@ -181,7 +181,7 @@ dev = [
     "bandit>=1.7.0",
     "refurb>=0.0.0",
     "pyright>=1.1.0",
-    "crackerjack>=0.70.0",
+    "crackerjack>=0.89.2",
     "session-buddy>=0.18.0",
     "fakeredis>=2.20.0",  # fakeredis.aioredis for tests/unit/ingestion/test_bodai_event_subscriber.py
 ]

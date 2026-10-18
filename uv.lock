@@ -168,7 +168,7 @@ wheels = [
 
 [[package]]
 name = "akosha"
-version = "0.24.2"
+version = "0.24.3"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -256,7 +256,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "bandit", specifier = ">=1.7.0" },
-    { name = "crackerjack", specifier = ">=0.70.0" },
+    { name = "crackerjack", specifier = ">=0.89.2" },
     { name = "fakeredis", specifier = ">=2.20.0" },
     { name = "mypy", specifier = ">=1.0.0" },
     { name = "pre-commit", specifier = ">=3.0.0" },
