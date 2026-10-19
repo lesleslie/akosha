@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.4] - 2026-10-19
+
+### Added
+
+- akosha: Add MCP get_health tool; fold ty cleanups to clear gate
+- akosha: Wire oneiric_report_runtime component-boot hook per oneiric-substrate umbrella Phase 3 (2026-10-18)
+
+### Internal
+
+- Akosha slice — drop ollama from embedding dim lookup (plan 5)
+- deps: Bump crackerjack pin to >=0.89.2
+- deps: Bump fastmcp pin to >=4.0.0,<5 (operator correction 2026-10-18)
+
 ## [0.24.3] - 2026-10-17
 
 ### Testing
