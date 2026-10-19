@@ -158,3 +158,155 @@ def test_http_health_works_without_importing_cli_app() -> None:
     # We don't care WHAT the response is, only that it works without
     # the CLI module being loaded.
     assert response.status_code in (200, 503)
+
+
+# ---------------------------------------------------------------------------
+# Third surface: MCP ``get_health()`` tool.
+# ---------------------------------------------------------------------------
+# Akosha ships three health surfaces: CLI snapshot, HTTP ``/health``
+# route, and (as of the mcp-backend-wiring-discipline fix) the MCP
+# ``get_health()`` tool. The MCP body MUST match the HTTP body so that
+# radar / orchestrator callers polling via MCP get the same verdict
+# the load balancer sees on its HTTP probe. Divergence is the bug
+# the wiring discipline was written to surface.
+
+
+@pytest.fixture
+def mcp_app() -> Any:
+    """Build a real FastMCP app via ``create_app()`` for tool-surface tests.
+
+    Real app (not a mock) is required so ``list_tools()`` and
+    ``call_tool()`` exercise FastMCP's actual tool-resolution path —
+    mocks would let us fake ``get_health`` into existence on a
+    different module without proving the registration landed.
+    """
+    return create_app()
+
+
+@pytest.mark.asyncio
+async def test_mcp_get_health_is_registered(mcp_app: Any) -> None:
+    """The ``get_health`` MCP tool must appear in the live tool surface.
+
+    Without it, bodai-radar's parallel ``mcp__akosha__get_health``
+    fan-out returns "tool not found" and the Akosha health signal
+    drops to ``:grey_circle:``. This test pins the registration so a
+    future refactor (e.g. moving the tool into a profile-gated group
+    that ``AKOSHA_TOOL_PROFILE=minimal`` would disable) cannot silently
+    strip it.
+    """
+    tools = await mcp_app.list_tools()
+    tool_names = sorted(t.name for t in tools)
+    assert "get_health" in tool_names, (
+        f"get_health missing from akosha MCP tool surface. Available: "
+        f"{tool_names}. Re-register the tool inside create_app() or "
+        f"document why it is profile-gated (and update this test)."
+    )
+
+
+@pytest.mark.asyncio
+async def test_mcp_get_health_body_matches_http_route_when_all_ok(
+    mcp_app: Any,
+) -> None:
+    """Healthy probe → MCP body == HTTP body (drift is the discipline bug).
+
+    Both surfaces route through ``_compute_health_body_and_status()``
+    in ``akosha.mcp.server`` so they MUST agree. We compare every
+    field except ``uptime_seconds`` (clock moves; duration drifts by
+    a few microseconds between the two calls).
+    """
+
+    async def all_ok_probe() -> dict[str, dict[str, Any]]:
+        return {
+            "hot_store": {"ok": True},
+            "embeddings": {"ok": True, "mode": "real"},
+            "cold_storage": {"ok": True},
+        }
+
+    set_health_probe(all_ok_probe)
+    client = TestClient(mcp_app.http_app())
+
+    http_response = client.get("/health")
+    tool_record = await mcp_app.get_tool("get_health")
+    mcp_body = await tool_record.fn()
+
+    assert http_response.status_code == 200
+    assert http_response.json()["status"] == "healthy"
+    assert mcp_body["status"] == "healthy"
+
+    # Field-by-field parity; tolerate the uptime clock advancing.
+    http_body = http_response.json()
+    for field in ("status", "service", "version", "launcher", "checks"):
+        assert mcp_body[field] == http_body[field], (
+            f"MCP/HTTP drift on {field!r}: MCP={mcp_body[field]!r} "
+            f"HTTP={http_body[field]!r}"
+        )
+    assert "http_status" in mcp_body  # canonical wire snapshot
+    assert mcp_body["http_status"] == http_response.status_code
+
+
+@pytest.mark.asyncio
+async def test_mcp_get_health_reports_degraded_with_failing_probe(
+    mcp_app: Any,
+) -> None:
+    """Degraded probe → MCP body ``status=degraded`` + failing-feed detail.
+
+    Symmetric with ``test_http_health_returns_503_when_any_feed_unhealthy``
+    — the MCP caller sees the same verdict as the load balancer.
+    """
+
+    async def degraded_probe() -> dict[str, dict[str, Any]]:
+        return {
+            "hot_store": {"ok": False, "error": "connection refused"},
+            "embeddings": {"ok": True},
+        }
+
+    set_health_probe(degraded_probe)
+    tool_record = await mcp_app.get_tool("get_health")
+    body = await tool_record.fn()
+
+    assert body["status"] == "degraded"
+    assert body["http_status"] == 503
+    assert body["checks"]["hot_store"]["ok"] is False
+    assert "connection refused" in body["checks"]["hot_store"]["error"]
+    assert body["checks"]["embeddings"]["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_mcp_get_health_reports_degraded_when_no_probe_registered(
+    mcp_app: Any,
+) -> None:
+    """Fail-loud default: no probe → MCP body ``status=degraded``.
+
+    Mirrors ``test_health_returns_503_when_no_probe_registered`` for
+    the HTTP route. A misconfigured server MUST NOT silently report
+    healthy.
+    """
+    set_health_probe(None)
+    tool_record = await mcp_app.get_tool("get_health")
+    body = await tool_record.fn()
+
+    assert body["status"] == "degraded"
+    assert body["http_status"] == 503
+    assert body["checks"]["probe"]["ok"] is False
+    assert "no health probe registered" in body["checks"]["probe"]["error"]
+
+
+@pytest.mark.asyncio
+async def test_mcp_get_health_includes_uptime_seconds(mcp_app: Any) -> None:
+    """``uptime_seconds`` is non-negative and bounded by wall-clock sanity.
+
+    The helper captures ``_HEALTH_START_TIME`` at module-import time
+    and subtracts from ``time.time()`` — uptime should always be ≥ 0
+    and never absurdly large (cap at 1 hour for a unit test process).
+    """
+    set_health_probe(None)
+    tool_record = await mcp_app.get_tool("get_health")
+    body = await tool_record.fn()
+
+    assert "uptime_seconds" in body
+    assert isinstance(body["uptime_seconds"], (int, float))
+    assert body["uptime_seconds"] >= 0
+    assert body["uptime_seconds"] < 3600, (
+        f"uptime_seconds={body['uptime_seconds']!r} implausibly large "
+        f"for a process spawned during a unit test"
+    )

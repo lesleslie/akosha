@@ -82,7 +82,7 @@ from threading import Lock
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Generator
 
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
 
@@ -227,7 +227,7 @@ def observe_search_latency(
     query_type: Literal["semantic", "keyword", "hybrid", "graph"],
     shard_count: int,
     tier: Literal["hot", "warm", "cold"] = "hot",
-) -> Iterator[Callable[[int], None]]:
+) -> Generator[Callable[[int], None]]:
     """Context manager for measuring search latency.
 
     Automatically records the search operation duration and result count.
@@ -474,7 +474,7 @@ def update_store_sizes(
 def observe_store_operation(
     tier: Literal["hot", "warm", "cold"],
     operation: Literal["read", "write", "delete", "scan"],
-) -> Iterator[Callable[[Literal["success", "error"]], None]]:
+) -> Generator[Callable[[Literal["success", "error"]], None]]:
     """Context manager for measuring storage operation duration.
 
     Args:
@@ -624,7 +624,7 @@ operation_duration: Histogram = Histogram(
 @contextmanager
 def observe_operation(
     operation_type: str,
-) -> Iterator[Callable[[Literal["success", "error"]], None]]:
+) -> Generator[Callable[[Literal["success", "error"]], None]]:
     """Context manager for measuring any operation duration and status.
 
     Args:

@@ -6,7 +6,7 @@ import logging
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 from uuid import uuid7
 
 
@@ -38,7 +38,7 @@ class GraphEntity:
 
     entity_id: str
     entity_type: str  # user, project, concept, error, system
-    properties: dict[str, Any] = field(default_factory=lambda: cast("dict[str, Any]", {}))
+    properties: dict[str, Any] = field(default_factory=dict)
     source_system: str = "unknown"
 
 
@@ -50,7 +50,7 @@ class GraphEdge:
     target_id: str
     edge_type: str  # worked_on, fixed, related_to, similar_to, mentioned
     weight: float = 1.0
-    properties: dict[str, Any] = field(default_factory=lambda: cast("dict[str, Any]", {}))
+    properties: dict[str, Any] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     source_system: str = "unknown"
 

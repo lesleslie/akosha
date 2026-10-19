@@ -98,9 +98,7 @@ def test_akosha_no_oneiric_imports() -> None:
         assert path.is_file(), f"Phase 3 file missing: {path}"
         content = path.read_text(encoding="utf-8")
         match = pattern.search(content)
-        assert match is None, (
-            f"direct oneiric import found in {path.name}: {match.group(0) if match else None!r}"
-        )
+        assert match is None, f"direct oneiric import found in {path.name}: {match.group(0)!r}"
 
 
 def test_akosha_runtime_facts_survives_broken_catalog_entry(

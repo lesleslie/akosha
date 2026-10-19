@@ -99,6 +99,14 @@ if TYPE_CHECKING:
 _health_probe_fn: Callable[[], Awaitable[dict[str, dict[str, Any]]]] | None = None
 
 
+# Process-start timestamp used to derive ``uptime_seconds`` in the
+# canonical health body. Captured at module-import time, which is the
+# closest observable proxy for process start; ``akosha.mcp.server``
+# is imported during the first call to ``create_app()`` so the value
+# is stable for the lifetime of the running MCP server.
+_HEALTH_START_TIME: float = time.time()
+
+
 def set_health_probe(
     probe: Callable[[], Awaitable[dict[str, dict[str, Any]]]] | None,
 ) -> None:
@@ -115,6 +123,97 @@ def set_health_probe(
 def get_health_probe() -> Callable[[], Awaitable[dict[str, dict[str, Any]]]] | None:
     """Return the currently-registered health probe (test helper)."""
     return _health_probe_fn
+
+
+async def _compute_health_body_and_status() -> tuple[dict[str, Any], int]:
+    """Compute the canonical health body and HTTP status.
+
+    Per ``mcp-backend-wiring-discipline.md`` the HTTP ``/health`` route
+    AND the MCP ``get_health()`` tool MUST return identical verdicts.
+    Routing both surfaces through this helper makes divergence
+    structurally impossible — there is exactly one source of truth for
+    ``status``, ``checks``, ``version``, ``launcher``, ``uptime_seconds``,
+    and the HTTP status code.
+
+    Returns:
+        Tuple ``(body, http_status_code)`` where ``body`` is the canonical
+        HealthSnapshot-shaped dict and ``http_status_code`` is the
+        status the HTTP route should set (200 for healthy/warming_up,
+        503 otherwise). MCP tools always return ``body`` — they discard
+        the status (MCP wire is status-agnostic for tool results).
+    """
+    import mcp_common
+
+    launcher_field = f"mcp_common.server.launcher@{mcp_common.__version__}"
+    service_info = {"service": APP_NAME, "version": APP_VERSION}
+
+    if _health_probe_fn is None:
+        # Fail-loud default: a server that never had its lifespan run
+        # must NOT silently report healthy. Mirrors the prior /health
+        # behaviour; preserved verbatim so existing 503 callers keep
+        # working.
+        body = {
+            "status": "degraded",
+            **service_info,
+            "launcher": launcher_field,
+            "checks": {
+                "probe": {
+                    "ok": False,
+                    "error": "no health probe registered (lifespan not run?)",
+                }
+            },
+            "http_status": 503,
+            "uptime_seconds": time.time() - _HEALTH_START_TIME,
+        }
+        return body, 503
+
+    try:
+        checks = await _health_probe_fn()
+    except Exception as exc:
+        # Probe contract is "return a dict" but tools raise; surface
+        # the exception as a degraded verdict rather than 500ing the
+        # /health route (the load balancer would mark every pod down
+        # on an unhandled probe exception, which makes outages worse).
+        body = {
+            "status": "degraded",
+            **service_info,
+            "launcher": launcher_field,
+            "checks": {"probe": {"ok": False, "error": str(exc)}},
+            "http_status": 503,
+            "uptime_seconds": time.time() - _HEALTH_START_TIME,
+        }
+        return body, 503
+
+    # Phase 4 verdict: worst data-feed status from ``_aggregate`` +
+    # independent infra-failure gate (hot_store, embeddings, cold_storage
+    # carry ``ok`` not ``status``). 200 iff every data feed is
+    # healthy-or-warming_up AND every infrastructure probe is ok.
+    worst_status = checks.get("_aggregate", {}).get("status", "healthy")
+    status_severity = {
+        "healthy": 0,
+        "warming_up": 1,
+        "degraded": 2,
+        "failed": 3,
+    }
+    worst_severity = status_severity.get(worst_status, 0)
+    infra_failure = any(
+        not bool(c.get("ok"))
+        for c in checks.values()
+        if "status" not in c  # only infrastructure checks lack ``status``
+    )
+    http_ok = (worst_severity < 2) and not infra_failure
+    status_label = worst_status if not infra_failure else "degraded"
+    http_status_code = 200 if http_ok else 503
+
+    body = {
+        "status": status_label,
+        **service_info,
+        "launcher": launcher_field,
+        "checks": checks,
+        "http_status": http_status_code,
+        "uptime_seconds": time.time() - _HEALTH_START_TIME,
+    }
+    return body, http_status_code
 
 
 # ---------------------------------------------------------------------------
@@ -1349,76 +1448,58 @@ def create_app(mode: Any | None = None) -> FastMCP:
     # Phase 4: the route uses the aggregator's top-level ``status`` rather
     # than ``all(c.get("ok"))`` — warming_up is intentionally NOT a 503 so
     # the launchd wrapper sees a 200 during normal startup (plan §5).
+    #
+    # Both surfaces (HTTP /health + MCP get_health) route through the
+    # single ``_compute_health_body_and_status()`` helper below so the
+    # ``mcp-backend-wiring-discipline.md`` parity invariant — "MCP and
+    # /health must agree" — holds by construction, not by convention.
     @app.custom_route("/health", methods=["GET"])
     async def health_check(request: Any) -> Any:  # noqa: ARG001
         """HTTP readiness check — 200 only when all data feeds are healthy."""
-        # Phase 4c: REQ-005 — every /health body includes the
-        # ``launcher`` field so incident responders can grep the
-        # canonical launcher version. Per cookbook Trap C, patch the
-        # existing handler (do NOT register a duplicate route).
-        import mcp_common
         from starlette.responses import JSONResponse
 
-        launcher_field = f"mcp_common.server.launcher@{mcp_common.__version__}"
+        body, status_code = await _compute_health_body_and_status()
+        return JSONResponse(body, status_code=status_code)
 
-        if _health_probe_fn is None:
-            body = {
-                "status": "degraded",
-                "service": APP_NAME,
-                "version": APP_VERSION,
-                "launcher": launcher_field,
-                "checks": {
-                    "probe": {
-                        "ok": False,
-                        "error": "no health probe registered (lifespan not run?)",
-                    }
-                },
-            }
-            return JSONResponse(body, status_code=503)
+    # MCP ``get_health()`` tool — the canonical surface name every other
+    # Bodai component ships (mahavishnu, session-buddy, crackerjack,
+    # oneiric). Akosha exposes the same shape via HTTP /health but was
+    # missing the MCP tool itself; bodai-radar expects parity so
+    # akosha's primary health signal could not be polled through MCP.
+    # Body is computed by the same helper as /health → guaranteed
+    # parity.
+    @app.tool()
+    async def get_health() -> dict[str, object]:
+        """Get the canonical Akosha health snapshot.
 
-        try:
-            checks = await _health_probe_fn()
-        except Exception as exc:  # probe raised — surface as degraded
-            body = {
-                "status": "degraded",
-                "service": APP_NAME,
-                "version": APP_VERSION,
-                "launcher": launcher_field,
-                "checks": {"probe": {"ok": False, "error": str(exc)}},
-            }
-            return JSONResponse(body, status_code=503)
+        Per ``mcp-backend-wiring-discipline.md`` this returns the same
+        verdict as the HTTP ``GET /health`` route — they share one
+        implementation (:func:`_compute_health_body_and_status`) so
+        the two surfaces cannot drift.
 
-        # Phase 4: derive the worst data-feed status from the aggregator's
-        # top-level verdict (``checks["_aggregate"]["status"]``) and
-        # separately gate on infrastructure checks (hot_store, embeddings,
-        # cold_storage — these lack a ``status`` field and only carry
-        # ``ok``). 200 iff every data feed is healthy-or-warming-up AND
-        # every infrastructure check is ok.
-        worst_status = checks.get("_aggregate", {}).get("status", "healthy")
-        status_severity = {
-            "healthy": 0,
-            "warming_up": 1,
-            "degraded": 2,
-            "failed": 3,
-        }
-        worst_severity = status_severity.get(worst_status, 0)
-        infra_failure = any(not bool(c.get("ok")) for c in checks.values() if "status" not in c)
-        http_ok = (worst_severity < 2) and not infra_failure
-
-        # Body ``status`` mirrors the aggregator's worst-case verdict so
-        # callers reading ``/health`` see the same enum string operators
-        # see in the per-feed detail (``healthy`` / ``warming_up`` /
-        # ``degraded`` / ``failed``). The legacy binary "ok" / "degraded"
-        # would lose nuance — a warming_up service is operationally
-        # distinct from a degraded one even though both are 200.
-        body = {
-            "status": worst_status if not infra_failure else "degraded",
-            "service": APP_NAME,
-            "version": APP_VERSION,
-            "launcher": launcher_field,
-            "checks": checks,
-        }
-        return JSONResponse(body, status_code=200 if http_ok else 503)
+        Body fields:
+            status: One of ``healthy`` / ``warming_up`` / ``degraded`` /
+                ``failed`` (canonical 4-field status string).
+            service: Akosha service name (``akosha-mcp``).
+            version: Akosha package version (from ``akosha.__version__``).
+            launcher: ``mcp_common.server.launcher@<version>`` for
+                incident-response grep.
+            checks: Per-feed verdict dict (``hot_store``, ``embeddings``,
+                ``cold_storage``, ``_aggregate``, plus any registered
+                ``mcp_tool_call`` feed). Each entry carries ``ok`` for
+                infrastructure checks and ``status``/``healthy``/
+                ``reason_codes`` for data feeds.
+            http_status: Mirror of the HTTP route's status code (200/503)
+                for callers that want the verdict in band-status terms.
+            uptime_seconds: Seconds since Akosha MCP import (process
+                start), rounded to wall-clock.
+        """
+        body, _status_code = await _compute_health_body_and_status()
+        # MCP tools always return 200 on the wire — the ``status`` field
+        # in the body is what callers consult. Discard ``status_code``
+        # intentionally; if a future caller wants the HTTP-style code
+        # they can read ``body["http_status"]``.
+        return body
 
     @app.custom_route("/healthz", methods=["GET"])
     async def healthz_check(request: Any) -> Any:  # noqa: ARG001
