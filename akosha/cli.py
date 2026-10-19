@@ -445,6 +445,7 @@ def _start_server(
     # captures ``mode_instance`` from the enclosing scope per the
     # variadic Callable contract (REQ-003 in the launcher cookbook).
     from mcp_common.server import launch
+
     from akosha.mcp.oneiric_runtime import report_runtime_to_oneiric
 
     def build_server() -> Any:

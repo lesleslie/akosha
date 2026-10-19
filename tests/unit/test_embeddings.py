@@ -22,9 +22,9 @@ class TestEmbeddingService:
         """Test service initialization.
 
         After the oneiric delegation migration, ``is_available()`` is
-        finally honest: it returns True when a real backend (Ollama,
-        llama.cpp, MiniMax, model2vec) probed successfully. The old
-        "always False because mock-only" assertion is gone.
+        finally honest: it returns True when a real backend (llama.cpp,
+        MiniMax, model2vec) probed successfully. The old "always False
+        because mock-only" assertion is gone.
         """
         assert not service._initialized
         # Before initialize(), the service has no opinion on availability.
