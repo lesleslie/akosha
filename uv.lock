@@ -168,7 +168,7 @@ wheels = [
 
 [[package]]
 name = "akosha"
-version = "0.24.3"
+version = "0.24.4"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -233,7 +233,7 @@ requires-dist = [
     { name = "httpx2", specifier = ">=0.28.1" },
     { name = "mcp-common", specifier = ">=0.28.0" },
     { name = "numpy", specifier = ">=2.0.0" },
-    { name = "oneiric", specifier = ">=0.20" },
+    { name = "oneiric", specifier = ">=0.33" },
     { name = "opentelemetry-api", specifier = ">=1.0.0" },
     { name = "opentelemetry-exporter-otlp", specifier = ">=1.0.0" },
     { name = "opentelemetry-exporter-prometheus", specifier = ">=0.40b0,<1.0.0" },
@@ -2759,7 +2759,7 @@ wheels = [
 
 [[package]]
 name = "oneiric"
-version = "0.32.1"
+version = "0.33.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiobreaker" },
@@ -2782,9 +2782,9 @@ dependencies = [
     { name = "typer" },
     { name = "watchfiles" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/20/55/f236610483e910911459c765df4a27448d4d635b6ee72747657e9b0bc3b9/oneiric-0.32.1.tar.gz", hash = "sha256:209205027a87c19e7ab0772aaa2583d6d6ab54489ad1f43103e3d163fb305c25", size = 1774840, upload-time = "2026-10-19T07:36:03.587Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/09/0b/71ae1f48c0786b706a916cbe6aba8e1fdd57afb82e7b9f06520f887f2822/oneiric-0.33.0.tar.gz", hash = "sha256:7dd9e2fb3175d26a5e34139862e245dda66739891d2e8bf0aedd00b932d73f5b", size = 1783592, upload-time = "2026-10-20T06:54:11.955Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f0/73/bac9301a12ce619696703ef86c2fde219ea58eb16fcbf5e699b48ca57fdd/oneiric-0.32.1-py3-none-any.whl", hash = "sha256:9886c93a5ea75a8464a0d6bfa4b079bdc3b4dddb449a17b9fd484929c142d372", size = 492164, upload-time = "2026-10-19T07:36:01.629Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/35/f9b1085cf789dbd404ce532fdf739cf4ec04f6897d0bcb8cbc8cb362336c/oneiric-0.33.0-py3-none-any.whl", hash = "sha256:d249c5125a81bd5074d5d403801777385ffcfe46ef4ead9a11a3c664350345aa", size = 506956, upload-time = "2026-10-20T06:54:09.456Z" },
 ]
 
 [[package]]

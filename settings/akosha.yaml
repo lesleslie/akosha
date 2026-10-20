@@ -22,23 +22,28 @@ warm:
   num_partitions: 256
   pg_url: ""            # required when warm.backend="pgvector"; e.g. postgresql://user@host:5432/akosha
 
-# Cold storage — committed default is "local" (works with zero dependencies).
-# To opt in to fake-gcs-server in dev: set cold.backend=gcs +
-# cold.endpoint_url=http://127.0.0.1:4443 in settings/local.yaml.
-# To opt in to Cloudflare R2 in prod: set cold.backend=s3 + R2 credentials
-# (see docs/operators/cold-tier-quickstart.md for the full walkthrough).
-# New fields exposed in ColdStorageConfig (Phase B1):
+# Cold storage — backend/bucket/prefix/compression are substrate-mapped
+# (per akosha/config.py:_SUBSTRATE_MAPPED_NESTED). The committed substrate
+# default is `cold.backend="r2"`, but `cold_store.py` only supports
+# [local, s3, gcs, azure]; prod must override to "s3" via
+# ONEIRIC__SUBSTRATE__COLD__BACKEND. See docs/operators/cold-tier-quickstart.md
+# §"Cloudflare R2" for the full walkthrough.
+#
+# Non-substrate fields you can set in settings/local.yaml:
 #   cold.endpoint_url — override API endpoint (fake-gcs / R2)
-#   cold.project — GCP project ID (gcs backend only)
+#   cold.project — GCP project ID (gcs backend only; ignored on s3)
 #   cold.anonymous_credentials — use anonymous GCS creds (fake-gcs only)
 #   cold.access_key_id / cold.secret_access_key — S3 credentials (R2 etc.)
-#   cold.region — S3 region ('auto' for R2)
+#   cold.region — S3 region ("auto" for R2; real region for AWS S3)
+#   cold.format — file format (parquet)
 cold:
   backend: local
-  bucket: akosha-cold-data
+  bucket: akosha-cold         # canonical cold-store bucket name for akosha
   prefix: conversations/
   format: parquet
-  region: us-west-2
+  # region intentionally omitted so per-deployment values from settings/local.yaml
+  # or AKOSHA_COLD_REGION win cleanly. R2 needs "auto", AWS S3 needs a real region
+  # (e.g. us-west-2), GCS ignores the field.
 
 cache:
   backend: redis

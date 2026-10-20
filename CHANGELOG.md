@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Akosha slice — drop ollama from embedding dim lookup (plan 5)
 - deps: Bump crackerjack pin to >=0.89.2
-- deps: Bump fastmcp pin to >=4.0.0,<5 (operator correction 2026-10-18)
+- deps: Bump fastmcp pin to >=4.0.0,\<5 (operator correction 2026-10-18)
 
 ## [0.24.3] - 2026-10-17
 
