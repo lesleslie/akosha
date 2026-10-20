@@ -273,28 +273,34 @@ class HotStore(DuckdbHotStore):
             select_cols = "system_id, conversation_id, content, timestamp, metadata"
 
             if task_class:
-                # Filter on metadata JSON: attributes.task_class OR top-level
-                # task_class. DuckDB's optimiser miscomputes the metadata
-                # type when a JSON-path ``= ?`` predicate is ANDed with
-                # other WHERE conditions (e.g. timestamp, system_id),
-                # surfacing ``ConversionException: Failed to cast value
-                # to numerical``. A CTE (non-JSON filters) + UNION ALL of
-                # two complete queries (one per JSON path) avoids the
-                # optimiser path that triggers the cast.
-                cte_where = "WHERE " + " AND ".join(common_conditions) if common_conditions else ""
-
-                inner = (
-                    f"SELECT {select_cols} FROM filtered "
-                    f"WHERE metadata->>'task_class' = ? "
-                    f"UNION ALL "
-                    f"SELECT {select_cols} FROM filtered "
-                    f"WHERE metadata->'attributes'->>'task_class' = ?"
-                )
+                # Filter on metadata JSON: top-level ``task_class`` OR
+                # ``attributes.task_class``.
+                #
+                # Uses ``json_extract_string`` rather than the ``->>`` / ``->``
+                # operator sugar, and drops the CTE + UNION ALL that used to
+                # wrap it. Both were workarounds for a real bug and are now
+                # themselves the bug:
+                #
+                #   * ``->>`` with a ``= ?`` predicate ANDed with other WHERE
+                #     conditions miscomputes the JSON type on 1.5.6 --
+                #     "ConversionException: Failed to cast value to numerical".
+                #     Hence the CTE + UNION ALL.
+                #   * That construct's two-level ``->'attributes'->>`` is
+                #     rejected outright on 2.0.0-dev: "BinderException: No
+                #     function matches ... 'json_extract(JSON, BOOLEAN)'".
+                #
+                # ``json_extract_string(metadata, '$....')`` returns VARCHAR on
+                # both builds and needs no shape workaround, so the predicate
+                # folds back into a single OR. Verified on 1.5.6 and
+                # 2.0.0.dev2610192346.
+                conditions = common_conditions + [
+                    "(json_extract_string(metadata, '$.task_class') = ? "
+                    "OR json_extract_string(metadata, '$.attributes.task_class') = ?)"
+                ]
+                where_clause = " AND ".join(conditions)
                 query = (
-                    f"WITH filtered AS ("
-                    f"SELECT {select_cols} FROM conversations {cte_where}"
-                    f") "
-                    f"SELECT * FROM ({inner}) "
+                    f"SELECT {select_cols} FROM conversations "
+                    f"WHERE {where_clause} "
                     f"ORDER BY timestamp DESC LIMIT ?"
                 )
                 params.extend([task_class, task_class, limit])

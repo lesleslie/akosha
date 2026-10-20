@@ -13,7 +13,7 @@ dependencies = [
     "httpx2>=0.28.1",
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
-    "duckdb>=0.10.0",
+    "duckdb>=2.0.0.dev0",
     "oneiric>=0.33",
     "typer>=0.12.0",  # CLI framework
     "uvicorn[standard]>=0.30.0",
@@ -47,6 +47,18 @@ akosha = "akosha.cli:app"
 
 [project.license]
 text = "BSD-3-CLAUSE"
+
+[tool.uv]
+# Aligns akosha with the DuckDB oneiric resolves (oneiric/uv.lock -> 2.0.0.dev*).
+#
+# The `duckdb` library is resolved by the importing process, not by the repo
+# that owns the DDL: oneiric owns spans_substrate, akosha opens it. With no
+# prerelease setting here, akosha resolved the latest STABLE (1.5.6) while
+# oneiric ran a 2.0.0 dev build -- so shared substrate code behaved
+# differently depending on which repo called it. The skew is silent rather
+# than loud: `result.rowcount` returns the affected count on 2.x and -1 on
+# 1.5.6, and -1 is a number, so nothing raises.
+prerelease = "allow"
 
 [tool.ruff]
 line-length = 100
