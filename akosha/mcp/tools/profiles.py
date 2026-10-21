@@ -41,6 +41,7 @@ FULL_REGISTRATIONS: list[str] = [
     "register_session_buddy_tools",
     "register_pycharm_tools",
     "register_otel_query_tools",
+    "register_otel_span_tools",
     "register_fitness_tools",
     "register_eventbridge_tools",
     # Phase 1 cross-repo capability search
@@ -61,6 +62,10 @@ REGISTRATION_DESCRIPTIONS: dict[str, str] = {
     "register_session_buddy_tools": "Session-Buddy integration: in-process memory ingestion via shared hot store",
     "register_pycharm_tools": "IDE diagnostics, regex search, function-usage lookup, and import analysis via PyCharm",
     "register_otel_query_tools": "OTel trace queries by system_id and attribute filters (Bodai feedback loop)",
+    "register_otel_span_tools": (
+        "spans_substrate browse: keyset-paginated search over stored OTel spans "
+        "(read-path R-2; sibling query_local_traces reads the legacy trace table)"
+    ),
     "register_fitness_tools": "Fitness analysis for Bodai routing feedback loop (failure rate, p99 latency per task class)",
     "register_eventbridge_tools": "EventBridge publisher: emit Akosha analytics events to the unified Bodai queue",
     "register_cross_repo_tools": "Phase 1 cross-repo capability search (Bodai component adapter/tool/error catalog)",
@@ -106,6 +111,7 @@ REGISTRATION_TOOLS: dict[str, list[str]] = {
         "pycharm_health",
     ],
     "register_otel_query_tools": ["query_local_traces"],
+    "register_otel_span_tools": ["search_spans"],
     "register_fitness_tools": [
         "run_fitness_analysis",
         "get_fitness_analyzer_status",
@@ -153,6 +159,7 @@ def _build_registration_map() -> dict[str, Callable[[FastMCP], Awaitable[None] |
         register_fitness_group,
         register_health_akosha_group,
         register_otel_query_group,
+        register_otel_span_group,
         register_pycharm_group,
         register_session_buddy_group,
         register_skill_tools_group,
@@ -164,6 +171,7 @@ def _build_registration_map() -> dict[str, Callable[[FastMCP], Awaitable[None] |
         "register_session_buddy_tools": register_session_buddy_group,
         "register_pycharm_tools": register_pycharm_group,
         "register_otel_query_tools": register_otel_query_group,
+        "register_otel_span_tools": register_otel_span_group,
         "register_fitness_tools": register_fitness_group,
         "register_eventbridge_tools": register_eventbridge_group,
         "register_cross_repo_tools": register_cross_repo_group,

@@ -207,6 +207,26 @@ async def register_otel_query_group(app: FastMCP) -> None:
     logger.info("Registered OTel query tools")
 
 
+def register_otel_span_group(app: FastMCP) -> None:
+    """Register the ``spans_substrate`` browse tools (read-path R-2).
+
+    Unlike ``register_otel_query_group`` this does NOT call
+    ``_try_create_hot_store``. That helper falls back to *constructing* a
+    store when the lifespan has not published one, which is precisely the
+    second connection spec §4.1 forbids -- the receiver is the only writer of
+    ``spans_substrate``, and a second handle would read whatever that handle
+    happens to see.
+
+    Registration therefore needs no store at all: ``search_spans`` resolves
+    the shared one per call and returns ``[]`` when there is none, so the
+    group registers cleanly at every profile tier and in lite mode.
+    """
+    from akosha.mcp.tools.otel_span_tools import register_otel_span_tools
+
+    register_otel_span_tools(app)
+    logger.info("Registered spans_substrate browse tools")
+
+
 def register_fitness_group(app: FastMCP) -> None:
     """Register FitnessAnalyzer tools (failure-rate / p99 latency signals).
 
@@ -314,6 +334,7 @@ __all__ = [
     "register_fitness_group",
     "register_health_akosha_group",
     "register_otel_query_group",
+    "register_otel_span_group",
     "register_pycharm_group",
     "register_session_buddy_group",
     "register_skill_tools_group",

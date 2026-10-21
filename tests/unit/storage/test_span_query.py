@@ -1,11 +1,9 @@
 """Tests for SpanQuery — the read surface over spans_substrate (read-path R-1).
 
-The DDL below is a verbatim copy of spec §5.1's ``spans_substrate``. It is
-duplicated here because the only production writer — the OTLP receiver, which
-owns ``_ensure_operational_tables`` — is not built yet (v7 plan, PR-A2). When
-that lands, these two copies must be updated together; ``SpanQuery`` reads
-whatever shape the receiver creates, so a drift here shows up as a read path
-that silently returns nothing.
+The DDL is imported from ``tests/_support/spans_ddl.py`` rather than pasted
+here: the only production writer is the OTLP receiver (v7 plan, PR-A2), which
+is not built yet, so every test in the read path has to create the table
+itself. One shared copy beats a per-module one — see that module for why.
 
 Everything here writes through ``HotStore.conn`` directly rather than going
 through the receiver, because there is no receiver yet to ingest through.
@@ -20,48 +18,10 @@ import pytest
 
 from akosha.storage.hot_store import HotStore
 from akosha.storage.span_query import SpanQuery
+from tests._support.spans_ddl import SPANS_SUBSTRATE_DDL
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-# Spec §5.1, verbatim. Kept in sync with the receiver's DDL (v7 PR-A2).
-SPANS_SUBSTRATE_DDL = """
-CREATE TABLE IF NOT EXISTS spans_substrate (
-    span_id                   TEXT PRIMARY KEY,
-    trace_id                  TEXT,
-    parent_span_id            TEXT,
-    service_name              TEXT         NOT NULL,
-    service_namespace         TEXT         NOT NULL,
-    deployment_environment    TEXT,
-    telemetry_source          TEXT,
-    telemetry_source_type     TEXT,
-    span_name                 TEXT         NOT NULL,
-    start_time_unix_nano      BIGINT       NOT NULL,
-    end_time_unix_nano        BIGINT,
-    received_at_unix_nano     BIGINT       NOT NULL,
-    duration_ms               REAL,
-    outcome                   TEXT,
-    selector                  TEXT,
-    task_class                TEXT,
-    latency_ms                REAL,
-    gen_ai_provider_name      TEXT,
-    gen_ai_request_model      TEXT,
-    gen_ai_response_model     TEXT,
-    gen_ai_usage_input_tokens INTEGER,
-    gen_ai_usage_output_tokens INTEGER,
-    gen_ai_usage_cost         NUMERIC(10, 6),
-    status_code               TEXT,
-    status_message            TEXT,
-    attributes                JSON         NOT NULL,
-    events                    JSON,
-    resource                  JSON         NOT NULL,
-    has_gen_ai_attrs          BOOLEAN      NOT NULL DEFAULT FALSE,
-    has_dispatch_attrs        BOOLEAN      NOT NULL DEFAULT FALSE,
-    inserted_at               TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at                TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_span_identity UNIQUE (trace_id, span_id)
-);
-"""
 
 BASE_RECEIVED = 1_700_000_000_000_000_000
 
