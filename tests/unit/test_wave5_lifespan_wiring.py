@@ -32,7 +32,7 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -45,43 +45,12 @@ from akosha.mcp.server import (
     get_shared_hot_store,
     get_shared_kg_builder,
 )
-
-
-# ---------------------------------------------------------------------------
-# Dummy FastMCP fixture (mirrors test_mcp_server_lifespan.py)
-# ---------------------------------------------------------------------------
-
-
-class DummyFastMCP:
-    def __init__(self, name: str, version: str, lifespan: Any = None) -> None:
-        self.name = name
-        self.version = version
-        self.lifespan = lifespan
-        self._mcp_server = SimpleNamespace(lifespan=lifespan)
-        self.routes: dict[str, object] = {}
-
-    def custom_route(self, path: str, methods: list[str]):
-        def decorator(func):
-            self.routes[path] = {"methods": methods, "handler": func}
-            return func
-
-        return decorator
-
-    def http_app(self) -> str:
-        return "http-app"
+from tests._support.dummy_fastmcp import DummyFastMCP, make_fastmcp_factory
 
 
 @pytest.fixture
 def fastmcp_factory(monkeypatch: pytest.MonkeyPatch) -> DummyFastMCP:
-    app = DummyFastMCP(APP_NAME, APP_VERSION)
-
-    def factory(name: str, version: str, lifespan: Any = None) -> DummyFastMCP:
-        app.lifespan = lifespan
-        app._mcp_server.lifespan = lifespan
-        return app
-
-    monkeypatch.setattr("akosha.mcp.server.FastMCP", factory)
-    return app
+    return make_fastmcp_factory(monkeypatch, APP_NAME, APP_VERSION)
 
 
 @pytest.fixture(autouse=True)
@@ -108,6 +77,33 @@ def _reset_wave5_module_state(monkeypatch: pytest.MonkeyPatch):
     mcp_server._kg_refresh_errors = 0
 
 
+@pytest.fixture(autouse=True)
+def _stub_aging_service(monkeypatch: pytest.MonkeyPatch):
+    """Stub AgingService so lifespan tests never open a real warm DuckDB.
+
+    The lifespan constructs a real ``AgingService`` over
+    ``create_warm_store(backend="duckdb-ssd")``. Left alone that does real
+    file I/O per test, against whatever path the ambient config resolves --
+    including the directory ``akosha doctor`` leaves at
+    ``<base>/warm/warm.db`` when it mkdir's the database FILE path.
+
+    Stubbing the two seams keeps these tests hermetic AND fast. An earlier
+    attempt set ``AKOSHA_WARM_PATH`` to a tmp file instead; that made the
+    store genuinely open, which is slow enough to exceed the 0.5s budget the
+    ``_kg_refresh_cycles`` wait loops allow -- so 11 unrelated lifespan tests
+    passed in isolation and failed in the full suite.
+    """
+    warm_store = MagicMock()
+    warm_store.initialize = AsyncMock()
+    monkeypatch.setattr("akosha.storage.create_warm_store", lambda **_kw: warm_store)
+
+    aging = MagicMock()
+    aging.migrate_hot_to_warm = AsyncMock(
+        return_value=SimpleNamespace(records_migrated=0)
+    )
+    monkeypatch.setattr("akosha.storage.aging.AgingService", lambda **_kw: aging)
+
+
 @pytest.fixture
 def lifespan_deps(monkeypatch: pytest.MonkeyPatch):
     """Patch every heavy dependency the lifespan touches.
@@ -120,6 +116,11 @@ def lifespan_deps(monkeypatch: pytest.MonkeyPatch):
     embedding_service.is_available.return_value = True
 
     analytics_service = MagicMock(name="analytics")
+    # The lifespan does ``await analytics_service.initialize()``. A bare
+    # MagicMock returns a MagicMock from that call, which is not awaitable --
+    # TypeError at akosha/mcp/server.py:510. Mirrors the embedding_service and
+    # hot_store mocks below, which set .initialize to AsyncMock.
+    analytics_service.initialize = AsyncMock()
 
     # KnowledgeGraphBuilder is now constructed by the lifespan (Wave 5),
     # so the test asserts on the real class — no monkeypatching the
@@ -487,12 +488,12 @@ async def test_health_probe_surfaces_per_feed_aggregates(
 
     # The four data feeds each carry the new aggregator verdict.
     assert "code_graphs_feed" in result
-    assert result["code_graphs_feed"]["feed_entities_count"] == 0
+    assert result["code_graphs_feed"]["entities_count"] == 0
     assert result["code_graphs_feed"]["ingester_running"] is True
     # The probe surfaces the cycle + error counters on every feed.
     assert "cycles_total" in result["code_graphs_feed"]
     assert "errors_total" in result["code_graphs_feed"]
-    assert "feed_last_updated_timestamp" in result["code_graphs_feed"]
+    assert "last_updated_timestamp" in result["code_graphs_feed"]
     # Phase 4: each per-feed dict has a ``status`` enum + reason_codes
     # array carried over from the aggregator's verdict.
     # code_graphs's ingester is alive but cycles_total == 0 (CodeGraphIngester
@@ -506,7 +507,7 @@ async def test_health_probe_surfaces_per_feed_aggregates(
     assert isinstance(result["code_graphs_feed"]["reason_codes"], list)
 
     assert "knowledge_graph_feed" in result
-    assert result["knowledge_graph_feed"]["feed_entities_count"] == 0
+    assert result["knowledge_graph_feed"]["entities_count"] == 0
     assert result["knowledge_graph_feed"]["edges_count"] == 0
     # Phase 4: kg_refresh has cycled at least once (cycles_total >= 1)
     # AND ingester_running=True AND entities=0 → WARMING_UP. The
@@ -520,7 +521,7 @@ async def test_health_probe_surfaces_per_feed_aggregates(
     assert result["knowledge_graph_feed"]["refresh_task_running"] is True
 
     assert "local_traces_feed" in result
-    assert result["local_traces_feed"]["feed_entities_count"] == 0
+    assert result["local_traces_feed"]["entities_count"] == 0
     # Same warming_up shape as knowledge_graph_feed — kg_refresh cycled
     # at least once with no errors, OTel ingester is alive (under the
     # fixture's AKOSHA_SKIP_OTEL_INGESTER default the OTel path is
@@ -657,9 +658,8 @@ async def test_group_registers_reuses_shared_kg_builder(
     """``register_akosha_group`` passes the lifespan-owned
     KnowledgeGraphBuilder to the tool registration. Without the
     singleton it constructs a fresh empty one (pre-Wave-5 behaviour)."""
-    from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
-
     from akosha.mcp.tools.group_registers import _get_shared_kg_builder
+    from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
 
     clear_shared_services()
     # Without singleton: returns None (caller constructs fresh).

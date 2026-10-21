@@ -122,14 +122,22 @@ class AkoshaCLI(OneiricCLIBase):
                     "detail": "warm storage path is not configured",
                 }
             else:
-                warm_path.mkdir(parents=True, exist_ok=True)
-                probe = warm_path / ".akosha-doctor-probe"
+                # ``cfg.warm.path`` is the DuckDB FILE (<base>/warm/warm.db),
+                # not a directory -- WarmStorageConfig.resolve_paths assigns it
+                # from resolver.get_warm_store_path(). mkdir'ing it here
+                # shadows the database with a directory, after which every
+                # open fails with "IO Error: ... Is a directory": the doctor
+                # corrupts the very storage it is meant to verify, and still
+                # reports "ok". Probe the PARENT instead.
+                warm_dir = warm_path.parent
+                warm_dir.mkdir(parents=True, exist_ok=True)
+                probe = warm_dir / ".akosha-doctor-probe"
                 try:
                     probe.write_text("ok")
                     probe.unlink(missing_ok=True)
                     checks["storage_paths"] = {
                         "status": "ok",
-                        "detail": f"warm path writable at {warm_path}",
+                        "detail": f"warm path writable at {warm_dir}",
                     }
                 except OSError as exc:
                     checks["storage_paths"] = {

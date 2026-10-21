@@ -840,7 +840,13 @@ def create_app(mode: Any | None = None) -> FastMCP:
             global _aging_task
             _aging_task = asyncio.create_task(_aging_loop(), name="akosha.aging")
             logger.info(
-                "aging task started (Phase 2 REQ-FEED-002, interval=%ss, cutoff=%dd)",
+                # %s for both: os.getenv returns str. The cutoff slot was %d,
+                # which raises TypeError ("a real number is required, not str")
+                # on every startup where AgingService initialises successfully.
+                # It went unnoticed because this line was unreachable in tests --
+                # aging_service was always None, since `akosha doctor` had left a
+                # directory at the warm.db path and init failed first.
+                "aging task started (Phase 2 REQ-FEED-002, interval=%ss, cutoff=%ss)",
                 os.getenv("AKOSHA_AGING_INTERVAL_SECONDS", "3600"),
                 os.getenv("AKOSHA_AGING_CUTOFF_DAYS", "7"),
             )

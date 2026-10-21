@@ -1,55 +1,17 @@
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from akosha.mcp.server import APP_NAME, APP_VERSION, create_app
-
-
-class DummyFastMCP:
-    def __init__(self, name: str, version: str, lifespan: Any = None) -> None:
-        self.name = name
-        self.version = version
-        # Store lifespan in both places: the new public path (lifespan
-        # passed via the FastMCP constructor) and the legacy _mcp_server
-        # path that the existing tests below still reference.
-        self.lifespan = lifespan
-        self._mcp_server = SimpleNamespace(lifespan=lifespan)
-        self.routes: dict[str, object] = {}
-
-    def custom_route(self, path: str, methods: list[str]):
-        def decorator(func):
-            self.routes[path] = {"methods": methods, "handler": func}
-            return func
-
-        return decorator
-
-    def http_app(self) -> str:
-        return "http-app"
+from tests._support.dummy_fastmcp import DummyFastMCP, make_fastmcp_factory
 
 
 @pytest.fixture
 def fastmcp_factory(monkeypatch: pytest.MonkeyPatch) -> DummyFastMCP:
-    app = DummyFastMCP(APP_NAME, APP_VERSION)
-
-    def factory(name: str, version: str, lifespan: Any = None) -> DummyFastMCP:
-        # When create_app() calls FastMCP(..., lifespan=lifespan), update
-        # the existing dummy's lifespan reference. The test then reaches
-        # the lifespan via `app._mcp_server.lifespan` (the legacy access
-        # pattern used by the existing tests). This is a side-effect
-        # fixture; pre-fix the same dummy was used and create_app assigned
-        # `app._mcp_server.lifespan = lifespan` after the constructor,
-        # which is the same end result.
-        app.lifespan = lifespan
-        app._mcp_server.lifespan = lifespan
-        return app
-
-    monkeypatch.setattr("akosha.mcp.server.FastMCP", factory)
-    return app
+    return make_fastmcp_factory(monkeypatch, APP_NAME, APP_VERSION)
 
 
 @pytest.fixture
@@ -59,6 +21,11 @@ def patched_lifespan(monkeypatch: pytest.MonkeyPatch):
     embedding_service.is_available.return_value = True
 
     analytics_service = MagicMock(name="analytics")
+    # The lifespan does ``await analytics_service.initialize()``. A bare
+    # MagicMock returns a MagicMock from that call, which is not awaitable --
+    # TypeError at akosha/mcp/server.py:510. Mirrors the embedding_service and
+    # hot_store mocks below, which set .initialize to AsyncMock.
+    analytics_service.initialize = AsyncMock()
     graph_builder = MagicMock(name="graph_builder")
     hot_store = MagicMock()
     hot_store.initialize = AsyncMock()
