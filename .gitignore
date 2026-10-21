@@ -264,6 +264,18 @@ test-results/
 !docs/specs/.archive/
 !docs/specs/.archive/**
 
+# Runtime data dirs. Placed ABOVE the synced block deliberately: `data/` is
+# not in crackerjack/templates/GITIGNORE_BODAI.md, so a rule inside the block
+# would be stripped by `crackerjack gitignore sync`. Adding it to the canonical
+# template is the durable fix (and would make this line redundant).
+#
+# Restored 2026-10-20. c37dde2 (2026-09-26) removed this rule and untracked
+# data/warm/warm.db; f4a5376 (2026-09-27, "chore: bump version") re-added the
+# 274 KB binary one day later. A .gitignore rule only binds untracked files, so
+# once the artifact re-entered the index the rule stopped mattering -- and the
+# rule itself was dropped in that same commit.
+data/
+
 
 # >>> bodai-shared-gitignore >>>
 # Source of truth: crackerjack/templates/GITIGNORE_BODAI.md

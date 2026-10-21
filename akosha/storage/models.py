@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+from akosha.models import ColdRecord as ColdRecord
+
 if TYPE_CHECKING:
     from datetime import datetime
 
@@ -48,20 +50,6 @@ class WarmRecord(BaseModel):
     conversation_id: str
     embedding: list[int]  # INT8[384] quantized (75% size reduction)
     summary: str  # Extractive summary (3 sentences)
-    timestamp: datetime
-    metadata: dict[str, Any] = Field(default_factory=dict)  # Plain dict for DuckDB JSON
-
-
-class ColdRecord(BaseModel):
-    """Record for cold tier storage (90+ days).
-
-    Contains ultra-compressed fingerprint and single-sentence summary.
-    """
-
-    system_id: str
-    conversation_id: str
-    fingerprint: list[int]  # MinHash fingerprint for fuzzy deduplication
-    ultra_summary: str  # Single-sentence summary
     timestamp: datetime
     metadata: dict[str, Any] = Field(default_factory=dict)  # Plain dict for DuckDB JSON
 

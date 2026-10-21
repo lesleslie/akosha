@@ -44,10 +44,10 @@ class TestColdStore:
             ColdRecord(
                 system_id=f"system-{i}",
                 conversation_id=f"conv-{i}",
-                fingerprint=f"fp-{i}".encode(),  # bytes
+                fingerprint=[i, i + 1, i + 2],  # MinHash values
                 ultra_summary=f"Summary {i}",
                 timestamp=datetime.now(UTC),
-                daily_metrics={"count": i},
+                metadata={"count": i},
             )
             for i in range(10)
         ]
@@ -143,10 +143,10 @@ class TestColdStore:
             ColdRecord(
                 system_id="system-with-dashes",
                 conversation_id="conv-with-slashes",
-                fingerprint=b"fp:with:colons",  # bytes
+                fingerprint=[1, 2, 3, 5, 8],  # MinHash values
                 ultra_summary="Summary with 'quotes' and \"double quotes\"",
                 timestamp=datetime.now(UTC),
-                daily_metrics={"count": 42.5},
+                metadata={"count": 42.5},
             )
         ]
 
@@ -180,7 +180,7 @@ class TestColdStore:
             partition_path="test/path",
         )
 
-        # daily_metrics (dict) should be serialized to JSON string
+        # metadata (dict) should be serialized to JSON string
         # (Would require reading Parquet file to verify)
 
     @pytest.mark.asyncio
@@ -191,10 +191,10 @@ class TestColdStore:
             ColdRecord(
                 system_id=f"system-{i // 100}",
                 conversation_id=f"conv-{i}",
-                fingerprint=f"fp-{i}".encode(),  # bytes
+                fingerprint=[i, i + 1, i + 2],  # MinHash values
                 ultra_summary=f"Summary {i}",
                 timestamp=datetime.now(UTC),
-                daily_metrics={"index": float(i)},  # float value
+                metadata={"index": float(i)},  # float value
             )
             for i in range(1000)
         ]
@@ -207,16 +207,16 @@ class TestColdStore:
         assert object_key is not None
 
     @pytest.mark.asyncio
-    async def test_export_batch_fingerprint_bytes(self, cold_store: ColdStore) -> None:
-        """Test that fingerprints (binary) are handled correctly."""
+    async def test_export_batch_fingerprint_values(self, cold_store: ColdStore) -> None:
+        """Test that MinHash fingerprint values survive the Arrow conversion."""
         records_with_binary_fp = [
             ColdRecord(
                 system_id="system-1",
                 conversation_id="conv-1",
-                fingerprint=b"\x00\x01\x02\x03",  # Binary fingerprint
+                fingerprint=[0, 1, 2, 3],  # MinHash values, including zeros
                 ultra_summary="Summary",
                 timestamp=datetime.now(UTC),
-                daily_metrics={},  # Empty dict
+                metadata={},  # Empty dict
             )
         ]
 
@@ -294,10 +294,10 @@ class TestColdStoreBackends:
                 ColdRecord(
                     system_id="sys-1",
                     conversation_id="conv-1",
-                    fingerprint=b"\x00\x01",
+                    fingerprint=[0, 1],
                     ultra_summary="hello",
                     timestamp=datetime.now(UTC),
-                    daily_metrics={"x": 1},
+                    metadata={"x": 1},
                 )
             ]
             object_key = await store.export_batch(records, "sys-1/2026/01/01")
@@ -582,10 +582,10 @@ class TestColdStoreBackends:
             ColdRecord(
                 system_id="sys-1",
                 conversation_id="conv-1",
-                fingerprint=b"\x00",
+                fingerprint=[0],
                 ultra_summary="lazy",
                 timestamp=datetime.now(UTC),
-                daily_metrics={},
+                metadata={},
             )
         ]
         try:

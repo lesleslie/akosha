@@ -38,10 +38,10 @@ class TestSecureTempFileCreation:
             {
                 "system_id": ["system-1"],
                 "conversation_id": ["conv-1"],
-                "fingerprint": [b"test_fingerprint"],
+                "fingerprint": [[9, 8, 7]],
                 "ultra_summary": ["Test summary"],
                 "timestamp": [datetime.now(UTC)],
-                "daily_metrics": [{"count": 1.0}],
+                "metadata": ['{"count": 1.0}'],
             }
         )
 
@@ -70,10 +70,10 @@ class TestSecureTempFileCreation:
             {
                 "system_id": ["system-1"],
                 "conversation_id": ["conv-1"],
-                "fingerprint": [b"test_fingerprint"],
+                "fingerprint": [[9, 8, 7]],
                 "ultra_summary": ["Test summary"],
                 "timestamp": [datetime.now(UTC)],
-                "daily_metrics": [{"count": 1.0}],
+                "metadata": ['{"count": 1.0}'],
             }
         )
 
@@ -101,10 +101,10 @@ class TestSecureTempFileCreation:
             ColdRecord(
                 system_id="system-1",
                 conversation_id="conv-1",
-                fingerprint=b"test_fingerprint",
+                fingerprint=[9, 8, 7],
                 ultra_summary="Test summary",
                 timestamp=datetime.now(UTC),
-                daily_metrics={"count": 1.0},
+                metadata={"count": 1.0},
             )
         ]
 
@@ -128,10 +128,10 @@ class TestSecureTempFileCreation:
             {
                 "system_id": ["system-1"],
                 "conversation_id": ["conv-1"],
-                "fingerprint": [b"test_fingerprint"],
+                "fingerprint": [[9, 8, 7]],
                 "ultra_summary": ["Test summary"],
                 "timestamp": [datetime.now(UTC)],
-                "daily_metrics": [{"count": 1.0}],
+                "metadata": ['{"count": 1.0}'],
             }
         )
 
@@ -162,10 +162,10 @@ class TestSecureTempFileCreation:
             {
                 "system_id": ["system-1"],
                 "conversation_id": ["conv-1"],
-                "fingerprint": [b"test_fingerprint"],
+                "fingerprint": [[9, 8, 7]],
                 "ultra_summary": ["Test summary"],
                 "timestamp": [datetime.now(UTC)],
-                "daily_metrics": [{"count": 1.0}],
+                "metadata": ['{"count": 1.0}'],
             }
         )
 
@@ -192,10 +192,10 @@ class TestSecureTempFileCreation:
             {
                 "system_id": ["system-1"],
                 "conversation_id": ["conv-1"],
-                "fingerprint": [b"test_fingerprint"],
+                "fingerprint": [[9, 8, 7]],
                 "ultra_summary": ["Test summary"],
                 "timestamp": [datetime.now(UTC)],
-                "daily_metrics": [{"count": 1.0}],
+                "metadata": ['{"count": 1.0}'],
             }
         )
 
@@ -268,10 +268,10 @@ class TestSymlinkAttackPrevention:
             {
                 "system_id": ["system-1"],
                 "conversation_id": ["conv-1"],
-                "fingerprint": [b"test_fingerprint"],
+                "fingerprint": [[9, 8, 7]],
                 "ultra_summary": ["Test summary"],
                 "timestamp": [datetime.now(UTC)],
-                "daily_metrics": [{"count": 1.0}],
+                "metadata": ['{"count": 1.0}'],
             }
         )
 
@@ -305,10 +305,10 @@ class TestSymlinkAttackPrevention:
             {
                 "system_id": ["system-1"],
                 "conversation_id": ["conv-1"],
-                "fingerprint": [b"test_fingerprint"],
+                "fingerprint": [[9, 8, 7]],
                 "ultra_summary": ["Test summary"],
                 "timestamp": [datetime.now(UTC)],
-                "daily_metrics": [{"count": 1.0}],
+                "metadata": ['{"count": 1.0}'],
             }
         )
 

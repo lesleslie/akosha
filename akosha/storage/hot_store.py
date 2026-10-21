@@ -293,9 +293,10 @@ class HotStore(DuckdbHotStore):
                 # both builds and needs no shape workaround, so the predicate
                 # folds back into a single OR. Verified on 1.5.6 and
                 # 2.0.0.dev2610192346.
-                conditions = common_conditions + [
+                conditions = [
+                    *common_conditions,
                     "(json_extract_string(metadata, '$.task_class') = ? "
-                    "OR json_extract_string(metadata, '$.attributes.task_class') = ?)"
+                    "OR json_extract_string(metadata, '$.attributes.task_class') = ?)",
                 ]
                 where_clause = " AND ".join(conditions)
                 query = (

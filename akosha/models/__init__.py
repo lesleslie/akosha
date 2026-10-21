@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 @dataclass
@@ -43,11 +43,21 @@ class WarmRecord(BaseModel):
 
 
 class ColdRecord(BaseModel):
-    """Cold tier record with ultra-compressed data."""
+    """Cold tier record with ultra-compressed data.
+
+    This is the single definition site; ``akosha.storage.models`` re-exports it
+    rather than defining a second class.
+
+    ``fingerprint`` is a MinHash *list*, not bytes. A bytes payload does satisfy
+    ``pa.list_(pa.int32())``, but only by being reinterpreted as a list of
+    codepoints -- it round-trips and is no longer the MinHash value. ``metadata``
+    is the JSON blob the exporter serializes, named the same as on
+    HotRecord/WarmRecord so all three tiers present one shape to storage.
+    """
 
     system_id: str
     conversation_id: str
-    fingerprint: bytes  # MinHash fingerprint (for deduplication)
-    ultra_summary: str  # Single sentence summary
+    fingerprint: list[int]  # MinHash fingerprint for fuzzy deduplication
+    ultra_summary: str  # Single-sentence summary
     timestamp: datetime
-    daily_metrics: dict[str, float]
+    metadata: dict[str, Any] = Field(default_factory=dict)  # Plain dict for JSON
