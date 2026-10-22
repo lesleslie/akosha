@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 from tests.fixtures.mock_bodai_mcp import (
@@ -175,7 +174,7 @@ async def test_otel_filters_spans_by_since(
 @pytest.mark.asyncio
 async def test_ecosystem_start_yields_urls_and_stops_cleanly() -> None:
     """The fixture starts both mocks, yields reachable URLs, stops cleanly."""
-    import httpx as _httpx
+    import httpx2 as _httpx
 
     code_graphs = [{"id": "akosha@deadbeef", "repo_path": "/a", "commit_hash": "deadbeef"}]
     spans = [
