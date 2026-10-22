@@ -11,13 +11,27 @@ from uuid import uuid7
 
 
 def make_id() -> str:
-    """Generate a UUID7 entity identifier (32 lowercase hex chars).
+    """Generate a UUID7 identifier (32 lowercase hex chars).
 
-    Returns:
-        Fresh UUID7 hex string per RFC 9562 sec 5.7 from the Python
-        3.14 stdlib ``uuid.uuid7()``. This replaces the pre-2026-10-11
-        ``make_ulid`` shim name (the ULID substrate is removed; see
-        ``docs/plans/2026-10-12-ulid-surface-elimination.md``).
+    NOT used for graph entity IDs. Entity IDs are deterministic --
+    ``system:<id>``, ``user:<id>``, ``project:<name>`` -- because the
+    knowledge graph is a correlation graph: the same user seen in two
+    conversations must resolve to one node, and ``get_neighbors`` resolves
+    by ID.
+
+    This function previously sat behind ``make_id() or f"system:{system_id}"``
+    at all three call sites, a fallback inherited from the ``make_ulid`` shim
+    that returned ``""`` when the ULID substrate was absent -- so the
+    deterministic arm was the only one that ever ran. UUID7 returns 32
+    non-empty hex chars, so the ``or`` short-circuited to the UUID7 arm and
+    the fallback became dead code. That silently broke two things: entities
+    could not be re-identified across conversations, and the ``contains``
+    edge below was built against ``system:<id>`` while the entity it pointed
+    at got a UUID7 -- a dangling edge that resolved to nothing.
+
+    Kept for callers that genuinely want a unique opaque ID (correlation
+    records, batch tags). Callers that want a graph entity ID want the
+    deterministic form.
     """
     return uuid7().hex
 
@@ -97,7 +111,7 @@ class KnowledgeGraphBuilder:
         if system_id:
             entities.append(
                 GraphEntity(
-                    entity_id=make_id() or f"system:{system_id}",
+                    entity_id=f"system:{system_id}",
                     entity_type="system",
                     properties={"name": system_id},
                     source_system=system_id,
@@ -110,7 +124,7 @@ class KnowledgeGraphBuilder:
         if user_id:
             entities.append(
                 GraphEntity(
-                    entity_id=make_id() or f"user:{user_id}",
+                    entity_id=f"user:{user_id}",
                     entity_type="user",
                     properties={"user_id": user_id},
                     source_system=system_id or "unknown",
@@ -122,7 +136,7 @@ class KnowledgeGraphBuilder:
         if project:
             entities.append(
                 GraphEntity(
-                    entity_id=make_id() or f"project:{project}",
+                    entity_id=f"project:{project}",
                     entity_type="project",
                     properties={"name": project},
                     source_system=system_id or "unknown",
