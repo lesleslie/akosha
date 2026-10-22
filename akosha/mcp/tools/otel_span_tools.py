@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from akosha.storage.span_query import SpanQuery
+from akosha.storage.span_query import SpanQuery, SpanSummary
 
 DEFAULT_PAGE_SIZE = 50
 MAX_PAGE_SIZE = 500
@@ -128,3 +128,56 @@ def register_otel_span_tools(app: Any) -> None:
             cursor=_parse_cursor(cursor),
         )
         return [hit.model_dump() for hit in hits]
+
+    @app.tool(name="spans_summary")
+    async def spans_summary(
+        selector: str | None = None,
+        task_class: str | None = None,
+        cutoff_unix_nano: int = 0,
+    ) -> dict[str, Any]:
+        """Aggregate the health of one (selector, task_class) pair.
+
+        This is the number the fitness loop is built on: how many scored spans
+        a pair produced since ``cutoff_unix_nano``, how many of them failed,
+        and how slow the slow tail was.
+
+        ``selector`` and ``task_class`` are matched with NULL-aware equality,
+        so passing ``None`` selects the rows where that column IS NULL rather
+        than dropping them. Half-NULL pairs are the common case, and treating
+        NULL as "no match" would under-report them as healthy zeros.
+
+        Only ``success`` and ``error`` spans are scored — a span still in
+        flight when it landed is neither, and counting it would pad the
+        failure-rate denominator. The p99 is computed over the scored spans
+        that carry a latency, so it is a different population from
+        ``span_count``.
+
+        Args:
+            selector: Pair selector; ``None`` selects NULL selectors.
+            task_class: Pair task class; ``None`` selects NULL task classes.
+            cutoff_unix_nano: Exclusive lower bound on ``received_at_unix_nano``,
+                in nanoseconds since the Unix epoch. ``0`` means "everything".
+
+        Returns:
+            ``span_count`` (scored spans since the cutoff), ``failure_count``
+            (of those, the errors), and ``latency_p99_ms``.
+
+            ``latency_p99_ms is None`` means no latency signal, never "fast" —
+            it is None when the window is empty *and* when every scored span
+            carries a NULL latency. Check ``span_count`` to tell those apart.
+            An empty substrate reports zeros, not an error.
+        """
+        from akosha.mcp.server import get_shared_hot_store
+
+        store = get_shared_hot_store()
+        if store is None:
+            # No receiver means no DDL means no rows. Zeroed, not an error --
+            # same contract as search_spans.
+            return SpanSummary(span_count=0, failure_count=0, latency_p99_ms=None).model_dump()
+
+        summary = await SpanQuery(store).summary(
+            selector=selector,
+            task_class=task_class,
+            cutoff_unix_nano=int(cutoff_unix_nano),
+        )
+        return summary.model_dump()

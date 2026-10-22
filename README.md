@@ -379,10 +379,10 @@ akosha start --host 0.0.0.0 --port 8682
 ### MCP Tools (Profile-Gated Inventory)
 
 Akosha exposes its tools via the `AKOSHA_TOOL_PROFILE` environment variable.
-The list below is the **FULL profile** (32 tools), which is the default.
+The list below is the **FULL profile** (33 tools), which is the default.
 Profiles: **MINIMAL** (9 tools, health plus published-agent and ecosystem-skill
 discovery) → **STANDARD** (19 tools, adds core memory aggregation and the
-signed skill catalog) → **FULL** (32 tools, adds Session-Buddy, PyCharm, OTel,
+signed skill catalog) → **FULL** (33 tools, adds Session-Buddy, PyCharm, OTel,
 fitness, EventBridge, and cross-repo integrations).
 
 Source of truth: [`akosha/mcp/tools/profiles.py`](akosha/mcp/tools/profiles.py),
@@ -425,9 +425,10 @@ Source of truth: [`akosha/mcp/tools/profiles.py`](akosha/mcp/tools/profiles.py),
 
 - `query_local_traces` - Query OTel traces by task class + time window
 
-**Spans Substrate Browse (1):**
+**Spans Substrate Read Path (2):**
 
 - `search_spans` - Browse stored OTel spans with keyset pagination (exact-match filters, bounded pages)
+- `spans_summary` - Per-pair health aggregate: scored span count, failure count, p99 latency
 
 **Fitness Analyzer (2):**
 

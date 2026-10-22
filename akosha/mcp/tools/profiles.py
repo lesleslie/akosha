@@ -63,8 +63,9 @@ REGISTRATION_DESCRIPTIONS: dict[str, str] = {
     "register_pycharm_tools": "IDE diagnostics, regex search, function-usage lookup, and import analysis via PyCharm",
     "register_otel_query_tools": "OTel trace queries by system_id and attribute filters (Bodai feedback loop)",
     "register_otel_span_tools": (
-        "spans_substrate browse: keyset-paginated search over stored OTel spans "
-        "(read-path R-2; sibling query_local_traces reads the legacy trace table)"
+        "spans_substrate read path: keyset-paginated span search (R-2) and "
+        "per-pair health aggregate (R-3); sibling query_local_traces reads the "
+        "legacy trace table"
     ),
     "register_fitness_tools": "Fitness analysis for Bodai routing feedback loop (failure rate, p99 latency per task class)",
     "register_eventbridge_tools": "EventBridge publisher: emit Akosha analytics events to the unified Bodai queue",
@@ -111,7 +112,7 @@ REGISTRATION_TOOLS: dict[str, list[str]] = {
         "pycharm_health",
     ],
     "register_otel_query_tools": ["query_local_traces"],
-    "register_otel_span_tools": ["search_spans"],
+    "register_otel_span_tools": ["search_spans", "spans_summary"],
     "register_fitness_tools": [
         "run_fitness_analysis",
         "get_fitness_analyzer_status",

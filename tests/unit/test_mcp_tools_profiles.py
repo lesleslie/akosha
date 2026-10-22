@@ -63,8 +63,9 @@ async def test_register_all_tools_minimal_profile(monkeypatch: pytest.MonkeyPatc
     # Phase 3/4 added ``list_agents`` + ``get_agent`` +
     # ``list_ecosystem_skills`` → 31 total. Minimal still only loads
     # the health group (6 tools), so not_loaded grew from 22 → 25;
-    # read-path R-2 added ``search_spans`` → 26.
-    assert default_result["not_loaded_count"] == 26
+    # read-path R-2 added ``search_spans`` → 26; R-3 added
+    # ``spans_summary`` → 27.
+    assert default_result["not_loaded_count"] == 27
     # Hint must point operators toward loading more tools (minimal
     # profile is the most restrictive; the full default is reachable
     # by unsetting the env var).
@@ -188,16 +189,16 @@ def test_readme_tool_count_matches_full_registrations() -> None:
 
     readme = Path(__file__).resolve().parents[2] / "README.md"
     text = readme.read_text(encoding="utf-8")
-    # FULL count is 32 = sum of all groups registered in REGISTRATION_TOOLS.
+    # FULL count is 33 = sum of all groups registered in REGISTRATION_TOOLS.
     # Each register_*_group contributes at least 1 tool. ``loaded_count +
-    # not_loaded_count == 32`` is pinned in this file's
+    # not_loaded_count == 33`` is pinned in this file's
     # ``test_register_all_tools_full_profile_and_discovery`` (the
     # filtered "session" query case). Phase 1 added
     # ``list_skills`` + ``get_skill`` (26 → 28); Phase 3/4
     # added ``list_agents`` + ``get_agent`` +
     # ``list_ecosystem_skills`` (28 → 31); read-path R-2 added
-    # ``search_spans`` (31 → 32).
-    expected_count = 32
+    # ``search_spans`` (31 → 32) and R-3 ``spans_summary`` (32 → 33).
+    expected_count = 33
     assert f"({expected_count} tools)" in text, (
         f"README.md tool count missing '({expected_count} tools)'; "
         f"checking that the FULL profile claim matches the registration"

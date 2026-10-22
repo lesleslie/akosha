@@ -47,6 +47,7 @@ _DOC_TOOLS: set[str] = {
     "pycharm_health",
     "query_local_traces",
     "search_spans",
+    "spans_summary",
     "run_fitness_analysis",
     "get_fitness_analyzer_status",
     "publish_to_eventbridge",
@@ -97,19 +98,19 @@ def test_readme_inventory_has_no_phantom_tools() -> None:
 
 @pytest.mark.unit
 def test_full_profile_count_matches_documented_count() -> None:
-    """Total FULL-profile tool count must equal the README's claim (32).
+    """Total FULL-profile tool count must equal the README's claim (33).
 
     Phase 1 added 2 tools (``list_skills`` + ``get_skill``)
     → 28. Phase 3/4 added 3 more (``list_agents``,
     ``get_agent``, ``list_ecosystem_skills``) → 31. Read-path R-2
-    added ``search_spans`` → 32.
+    added ``search_spans`` → 32; R-3 added ``spans_summary`` → 33.
     """
     registered = {t for tools in REGISTRATION_TOOLS.values() for t in tools}
     documented = _read_readme_tools()
     documented_tools = {name for name in documented if "_" in name}
-    assert len(registered) == 32, f"Expected 32 FULL-profile tools, found {len(registered)}"
-    assert len(documented_tools) == 32, (
-        f"README documents {len(documented_tools)} tools but expected 32"
+    assert len(registered) == 33, f"Expected 33 FULL-profile tools, found {len(registered)}"
+    assert len(documented_tools) == 33, (
+        f"README documents {len(documented_tools)} tools but expected 33"
     )
 
 
