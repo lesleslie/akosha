@@ -46,13 +46,12 @@ import types
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-from akosha.models import WarmRecord
 from oneiric.adapters.vector.vector_types import VectorSearchResult
 
+from akosha.models import WarmRecord
 
 # ---------------------------------------------------------------------------
 # Import the module under test without triggering ``akosha.storage.__init__``
@@ -67,6 +66,7 @@ from oneiric.adapters.vector.vector_types import VectorSearchResult
 
 _mod_path = Path("/Users/les/Projects/akosha/akosha/storage/pgvector_warm_store.py")
 _storage_dir = _mod_path.parent
+
 
 # Stub the ``akosha`` and ``akosha.storage`` packages so submodule
 # lookups (e.g. ``akosha.storage.sharding``) resolve to real packages
@@ -99,14 +99,30 @@ _pkg_stub = _make_pkg_stub("akosha.storage", str(_storage_dir))
 sys.modules.setdefault("akosha.storage", _pkg_stub)
 
 
+#: ``sys.modules`` entries this harness displaces, saved before replacement so
+#: they can be restored once the private module graph is built.
+_DISPLACED: dict[str, types.ModuleType | None] = {}
+
+
 def _load_module_directly(name: str, file_path: Path) -> types.ModuleType:
     """Load a single .py file into ``sys.modules[name]`` via importlib.
 
-    Used to pre-install dependency modules that production lazily
-    imports (``akosha.storage.sharding``, ``akosha.models``,
-    ``akosha.processing.embedding_dim``) so monkeypatch can target
-    them at their canonical binding point.
+    Pre-installs dependency modules that production lazily imports
+    (``akosha.storage.sharding``, ``akosha.models``,
+    ``akosha.processing.embedding_dim``) so ``exec_module`` can resolve them.
+
+    Registration is only needed during ``exec_module``. Afterwards ``_mod``'s
+    globals hold direct references and this module's tests patch ``_mod`` and
+    ``_sharding_mod`` by object reference, so the previous entry is restored by
+    :func:`_restore_canonical_modules` below.
+
+    Leaving the replacement installed is not harmless: this runs at collection
+    time and outlives the module, so later code that imports one of these names
+    lazily resolves the replacement. ``storage/aging.py`` imports ``WarmRecord``
+    inside the function body, so it resolved this module's copy while
+    ``test_aging.py`` had bound the canonical class at collection time.
     """
+    _DISPLACED.setdefault(name, sys.modules.get(name))
     spec = importlib.util.spec_from_file_location(name, file_path)
     mod = importlib.util.module_from_spec(spec)
     sys.modules[name] = mod
@@ -115,12 +131,8 @@ def _load_module_directly(name: str, file_path: Path) -> types.ModuleType:
 
 
 # Pre-install dependencies that production lazily imports.
-_sharding_mod = _load_module_directly(
-    "akosha.storage.sharding", _storage_dir / "sharding.py"
-)
-_models_mod = _load_module_directly(
-    "akosha.models", _storage_dir.parent / "models" / "__init__.py"
-)
+_sharding_mod = _load_module_directly("akosha.storage.sharding", _storage_dir / "sharding.py")
+_models_mod = _load_module_directly("akosha.models", _storage_dir.parent / "models" / "__init__.py")
 _embed_mod = _load_module_directly(
     "akosha.processing.embedding_dim",
     _storage_dir.parent / "processing" / "embedding_dim.py",
@@ -134,12 +146,31 @@ _processing_pkg = _make_pkg_stub(
 )
 sys.modules.setdefault("akosha.processing", _processing_pkg)
 
-_spec = importlib.util.spec_from_file_location(
-    "akosha.storage.pgvector_warm_store", _mod_path
-)
+_spec = importlib.util.spec_from_file_location("akosha.storage.pgvector_warm_store", _mod_path)
 _mod = importlib.util.module_from_spec(_spec)
+_DISPLACED.setdefault(
+    "akosha.storage.pgvector_warm_store", sys.modules.get("akosha.storage.pgvector_warm_store")
+)
 sys.modules["akosha.storage.pgvector_warm_store"] = _mod
 _spec.loader.exec_module(_mod)
+
+
+def _restore_canonical_modules() -> None:
+    """Put back every ``sys.modules`` entry this harness replaced.
+
+    Called once the private graph is built. After this, later modules that
+    import ``akosha.models`` / ``akosha.storage.sharding`` get the canonical
+    implementations again; this module keeps working because it holds direct
+    references to its private copies.
+    """
+    for name, original in _DISPLACED.items():
+        if original is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = original
+
+
+_restore_canonical_modules()
 
 PgvectorWarmStore = _mod.PgvectorWarmStore
 _DEFAULT_LEGACY_DIMENSION = _mod._DEFAULT_LEGACY_DIMENSION
@@ -350,9 +381,7 @@ class TestInitialize:
         assert set(store._adapters.keys()) == {0, 1, 2, 3}
 
     @pytest.mark.asyncio
-    async def test_initialize_is_idempotent(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_initialize_is_idempotent(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Second ``initialize()`` is a no-op (won't re-provision adapters)."""
         router = _make_router(2)
         # Patch the canonical binding point — production uses lazy
@@ -478,9 +507,7 @@ class TestInsert:
         store = _store(shard_router=router)
         await store.initialize()
 
-        await store.insert(
-            _warm_record(metadata={"source": "test", "language": "en"})
-        )
+        await store.insert(_warm_record(metadata={"source": "test", "language": "en"}))
         inserted_doc = adapter.insert.await_args.args[1][0]
         assert inserted_doc.metadata["source"] == "test"
         assert inserted_doc.metadata["language"] == "en"
@@ -686,9 +713,7 @@ class TestSearchSimilar:
         assert scores[0] == pytest.approx(min(scores))
 
     @pytest.mark.asyncio
-    async def test_search_threshold_filters_results(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_search_threshold_filters_results(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """``threshold`` filters results where ``distance > (1 - threshold)``."""
         # 1 shard keeps the assertion deterministic (no shard fan-out
         # duplication of the surviving result).
@@ -727,11 +752,7 @@ class TestSearchSimilar:
         router.get_target_shards.return_value = [0]
         adapter = _adapter_mock()
         adapter.search = AsyncMock(
-            return_value=[
-                VectorSearchResult(
-                    id="any", score=999.0, metadata={"system_id": "s"}
-                )
-            ]
+            return_value=[VectorSearchResult(id="any", score=999.0, metadata={"system_id": "s"})]
         )
         # Patch the canonical binding point — production uses lazy
         # ``from akosha.storage.sharding import ShardRouter``, so the
@@ -998,9 +1019,7 @@ class TestClose:
     """``close`` cleans up all adapters and is idempotent."""
 
     @pytest.mark.asyncio
-    async def test_close_cleans_up_all_adapters(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_close_cleans_up_all_adapters(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Each adapter's ``cleanup()`` is awaited exactly once."""
         router = _make_router(3)
         adapter = _adapter_mock()
@@ -1049,9 +1068,7 @@ class TestClose:
         """One adapter's ``cleanup()`` raising doesn't block the rest."""
         router = _make_router(3)
         adapter = _adapter_mock()
-        adapter.cleanup = AsyncMock(
-            side_effect=[None, RuntimeError("boom"), None]
-        )
+        adapter.cleanup = AsyncMock(side_effect=[None, RuntimeError("boom"), None])
         # Patch the canonical binding point — production uses lazy
         # ``from akosha.storage.sharding import ShardRouter``, so the
         # canonical attribute lives on sys.modules["akosha.storage.sharding"].
@@ -1127,8 +1144,6 @@ class TestShardRouterIntegration:
 
         # 4 shards × 10 IDs ⇒ should hit at least 2 distinct shards
         # (uniform hashing guarantees >1 with very high probability).
-        distinct_shards = {
-            call.args[0] for call in adapter.insert.await_args_list
-        }
+        distinct_shards = {call.args[0] for call in adapter.insert.await_args_list}
         assert len(distinct_shards) >= 2
         assert len(distinct_shards) <= 4

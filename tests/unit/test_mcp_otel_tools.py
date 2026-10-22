@@ -106,8 +106,9 @@ class TestQueryLocalTracesSuccess:
     async def test_reshapes_row_fields_into_documented_payload(
         self, tool: Any, hot_store: AsyncMock
     ) -> None:
-        """Each HotStore row must be projected to ``conversation_id``/``content``/``timestamp``/``metadata``."""
+        """Each HotStore row must be projected to ``system_id``/``conversation_id``/``content``/``timestamp``/``metadata``."""
         input_row = {
+            "system_id": "akosha",
             "conversation_id": "conv-123",
             "content": "trace payload",
             "timestamp": "2026-09-06T04:00:00Z",
@@ -120,7 +121,12 @@ class TestQueryLocalTracesSuccess:
         result = await tool(system_id="akosha")
         assert len(result) == 1
         row = result[0]
+        # ``system_id`` is part of the projection because the ``dry_run`` path
+        # skips the system_id SQL filter (see otel_tools.py), so a row can come
+        # back belonging to a system the caller never named. Without the field
+        # an unscoped row is unattributable.
         assert row == {
+            "system_id": "akosha",
             "conversation_id": "conv-123",
             "content": "trace payload",
             "timestamp": "2026-09-06T04:00:00Z",
