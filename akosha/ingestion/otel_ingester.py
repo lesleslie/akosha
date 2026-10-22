@@ -352,7 +352,20 @@ class OtelTraceIngester:
         # leaving ``metadata.attributes`` empty and ``mcp_tool_call_feed``
         # perpetually at 0 entities.
         attrs_dict = self._attrs_to_dict(span.get("attributes", []))
-        task_class = attrs_dict.get("task_class")
+        # Accept BOTH spellings. The 2026-09-28 note above is right that
+        # reading ``task.class`` alone always returned None for our producer,
+        # because ToolCallEnrichmentMiddleware sets both forms and only the
+        # underscore one was being looked up. But its stated reason -- that
+        # "the OpenTelemetry SDK normalizes dot-separated attribute names to
+        # underscores BEFORE export" -- is not a guarantee the SDK makes. The
+        # Python SDK passes attribute keys through verbatim; the underscore
+        # spelling is a per-producer convention, not a transport transform.
+        # A Collector, or the Go/Java SDKs, forwards whatever key was set.
+        # Reading the underscore form first keeps the working path
+        # unchanged; falling back to the dotted form means a producer that
+        # emits only the semconv-canonical name stops being silently
+        # invisible.
+        task_class = attrs_dict.get("task_class") or attrs_dict.get("task.class")
         # Also extract the four enrichment keys (selector, outcome,
         # duration_ms) so downstream consumers (audit_top_tool_calls.py
         # and the fitness analyzer) can group by tool name without

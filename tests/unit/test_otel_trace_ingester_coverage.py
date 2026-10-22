@@ -735,7 +735,10 @@ async def test_polling_loop_swallows_per_span_exception() -> None:
         await ingester._polling_loop()
 
     assert ingester._errors_total == 1
-    assert "svc" not in ingester._watermarks
+    # The watermark advances despite the failure -- _ingest_span records it
+    # before the embed/insert work (otel_ingester.py:415). See the watermarking
+    # semantics in that module's docstring.
+    assert ingester._watermarks["svc"] == 1500
     ingester.hot_store.insert.assert_not_awaited()
 
 
@@ -872,8 +875,17 @@ async def test_initial_lookback_parameter_is_honored_on_first_cycle() -> None:
 
 
 @pytest.mark.asyncio
-async def test_watermark_only_advances_after_successful_insert() -> None:
-    """Watermark advances iff hot_store.insert completes successfully."""
+async def test_watermark_advances_before_insert_even_when_insert_fails() -> None:
+    """The watermark is recorded BEFORE the embed/insert work, not after.
+
+    Deliberate, and the ordering is load-bearing: the poll's ``since`` is an
+    exclusive lower bound, so recording first keeps a failing system from
+    re-polling the same window forever. The cost is that a span whose insert
+    raises is never redelivered -- at-most-once, not at-least-once. The
+    module docstring's "Watermarking semantics" section records the related
+    global-watermark tradeoff; this test pins the narrower per-span one so a
+    future reorder shows up as a failure rather than a silent guarantee change.
+    """
     ingester = _make_ingester(
         embedding_service=MagicMock(
             generate_embedding=AsyncMock(return_value=np.zeros(4, dtype=np.float32))
@@ -891,5 +903,5 @@ async def test_watermark_only_advances_after_successful_insert() -> None:
     with pytest.raises(RuntimeError, match="store down"):
         await ingester._ingest_span(span, system_id="svc")
 
-    # Watermark must NOT advance since insert failed.
-    assert "svc" not in ingester._watermarks
+    # Watermark advanced even though insert raised -- see the docstring.
+    assert ingester._watermarks["svc"] == 1234

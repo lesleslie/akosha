@@ -113,8 +113,14 @@ class TestMCPIntegration:
         result = await tools["generate_embedding"].coroutine(text="test conversation about Python")
 
         assert result["text"] == "test conversation about Python"
-        assert result["embedding_dim"] == 768
-        assert len(result["embedding"]) == 768
+        # Assert the invariant, not a literal width. The tool reports
+        # ``embedding_dim = len(embedding)`` (akosha_tools.py), so it is
+        # backend-dependent by design: 384 when no model is installed and the
+        # mock backend resolves, 768 under llama_cpp, something else under a
+        # real model. Pinning 768 here only passed while the machine happened
+        # to have a real model; pinning 384 would fail the moment one loads.
+        assert result["embedding_dim"] == len(result["embedding"])
+        assert result["embedding_dim"] > 0
         assert result["mode"] in ["real", "fallback"]
 
     @pytest.mark.asyncio

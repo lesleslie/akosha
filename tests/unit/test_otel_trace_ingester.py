@@ -189,7 +189,14 @@ async def test_ingest_span_skips_when_embedding_fails() -> None:
         await ingester._ingest_span(span, system_id="akosha")
 
     hot_store.insert.assert_not_awaited()
-    assert "akosha" not in ingester._watermarks
+    # The watermark DOES advance even though ingestion failed: _ingest_span
+    # records it before the embed/insert work so the poll's `since` stays an
+    # exclusive lower bound. See otel_ingester.py:415 and the watermarking
+    # semantics in the module docstring -- this costs at-most-once delivery
+    # for a span whose embedding raises, and buys no redelivery loop. Asserted
+    # here so a future change to that ordering is a visible test failure rather
+    # than a silent shift in delivery guarantees.
+    assert ingester._watermarks["akosha"] == 1700000000000000000
 
 
 @pytest.mark.asyncio

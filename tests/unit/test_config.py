@@ -94,8 +94,23 @@ class TestColdStorageConfig:
     AKOSHA__STORAGE__/AKOSHA_COLD_ env binding (not substrate-mapped).
     """
 
-    def test_defaults(self):
+    def test_defaults(self, monkeypatch: pytest.MonkeyPatch):
         from akosha.config import ColdStorageConfig
+
+        # This asserts the *declared* defaults, so it must not inherit the
+        # machine's substrate env. This host exports
+        # ONEIRIC__SUBSTRATE__COLD_{BACKEND,BUCKET,PREFIX} (Cloudflare R2 via
+        # the S3 protocol layer -- documented in settings/local.yaml and
+        # settings/akosha.yaml), which overrides exactly the three fields
+        # below. Without clearing them the test measures the operator's
+        # configuration, not the class default, and fails on any properly
+        # configured dev box.
+        for var in (
+            "ONEIRIC__SUBSTRATE__COLD__BACKEND",
+            "ONEIRIC__SUBSTRATE__COLD__BUCKET",
+            "ONEIRIC__SUBSTRATE__COLD__PREFIX",
+        ):
+            monkeypatch.delenv(var, raising=False)
 
         cfg = ColdStorageConfig()
         assert cfg.backend == "r2"
