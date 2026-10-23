@@ -284,7 +284,13 @@ class OTLPReceiver:
         otlp_metrics.spans_received_total.inc(len(spans))
         otlp_metrics.spans_inserted_total.inc(inserted)
         otlp_metrics.spans_deduped_total.inc(deduped)
-        otlp_metrics.spans_rejected_total.inc(len(bad))
+        # Tally by field before incrementing. The hot store is :memory:, so
+        # _dlq_rows cannot be queried from outside the process -- this label is
+        # the only externally-visible record of WHICH validation rule fired.
+        # "139 rejected" is unactionable; "139 rejected, 139x service_namespace"
+        # names the defect.
+        for field, count in _count_by_field(bad).items():
+            otlp_metrics.spans_rejected_total.labels(field=field).inc(count)
         return {"inserted": inserted, "deduped": deduped, "rejected": len(bad)}
 
     async def _handle_http(self, body: bytes) -> dict[str, int]:
@@ -493,6 +499,22 @@ class _TraceServiceServicer:
 
 
 # ── helpers ──────────────────────────────────────────────────────────────
+
+
+def _count_by_field(
+    bad: list[tuple[RowValidationError, dict[str, Any]]],
+) -> dict[str, int]:
+    """Tally rejected rows by the field that failed validation.
+
+    Sorted output would be nicer for tests, but Counter's natural ordering is
+    insertion-ordered and pre_validate iterates ``REQUIRED_FIELDS`` sorted, so
+    a single-rule batch is deterministic anyway.
+    """
+    counts: dict[str, int] = {}
+    for error, _ in bad:
+        key = error.field or "unknown"
+        counts[key] = counts.get(key, 0) + 1
+    return counts
 
 
 def _extract_spans(batch: Any) -> list[dict[str, Any]]:

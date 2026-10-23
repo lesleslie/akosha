@@ -263,6 +263,38 @@ async def test_still_rejected_when_neither_bag_carries_it(receiver: OTLPReceiver
     assert result["rejected"] == 1
 
 
+async def test_a_rejected_batch_names_the_failing_field(receiver: OTLPReceiver) -> None:
+    """The label must come from the real ingest path, not just the metric API.
+
+    Asserts a delta, never an absolute: the registry is a process-wide
+    singleton, so any fixed number here is a race with every other test that
+    touches the same counter.
+
+    The field is ``service_name``, not ``service_namespace``: pre_validate
+    iterates ``sorted(REQUIRED_FIELDS)`` and reports the FIRST failure, and
+    ``service_name`` sorts ahead of ``service_namespace``. A span carrying
+    neither trips the earlier one.
+    """
+    from akosha.observability.prometheus_metrics import generate_metrics
+
+    before = _sample_value(generate_metrics().decode(), 'field="service_name"')
+
+    await receiver._handle_batch(
+        _span_request(b"\x0e" * 8, resource_attrs=[], span_attrs=[])
+    )
+
+    after = _sample_value(generate_metrics().decode(), 'field="service_name"')
+    assert after == before + 1
+
+
+def _sample_value(blob: str, needle: str) -> float:
+    total = 0.0
+    for line in blob.splitlines():
+        if line.startswith("akosha_otlp_spans_rejected_total") and needle in line:
+            total += float(line.rsplit(" ", 1)[1])
+    return total
+
+
 # ── metrics ──────────────────────────────────────────────────────────────
 
 
@@ -278,9 +310,45 @@ def test_receiver_metrics_land_in_the_shared_registry() -> None:
     blob = generate_metrics().decode()
     for expected in (
         "akosha_otlp_spans_inserted_total",
-        "akosha_otlp_spans_rejected_total",
         "akosha_otlp_dlq_inserts_total",
         "akosha_otlp_sweep_first_started_unix_nano",
         "akosha_otlp_sweep_last_completed_unix_nano",
     ):
         assert expected in blob, f"{expected} missing from the shared registry"
+
+
+# ── rejection labels ─────────────────────────────────────────────────────
+
+
+def test_rejections_are_labelled_by_the_field_that_failed() -> None:
+    """An unlabelled rejection count cannot be acted on.
+
+    The hot store is :memory:, so _dlq_rows is not queryable from outside the
+    process. This label is the only external record of WHY rows were
+    quarantined — which is the difference between "139 rejected" and
+    "139 rejected, all service_namespace".
+    """
+    from akosha.observability.prometheus_metrics import generate_metrics
+
+    otlp_metrics.spans_rejected_total.labels(field="service_namespace").inc(3)
+    otlp_metrics.spans_rejected_total.labels(field="status_code").inc(1)
+    blob = generate_metrics().decode()
+
+    # Deltas, not absolutes: the registry is process-wide, so other tests may
+    # already have moved these counters.
+    for field, delta in (("service_namespace", 3), ("status_code", 1)):
+        samples = [
+            line
+            for line in blob.splitlines()
+            if line.startswith("akosha_otlp_spans_rejected_total")
+            and f'field="{field}"' in line
+        ]
+        assert samples, f"no sample for field={field}"
+        for line in samples:
+            assert float(line.rsplit(" ", 1)[1]) >= delta
+
+    # The base name must never appear unlabelled: a sample with no field
+    # dimension cannot be attributed to a validation rule.
+    for line in blob.splitlines():
+        if line.startswith("akosha_otlp_spans_rejected_total"):
+            assert 'field="' in line, f"unlabelled rejection sample: {line}"

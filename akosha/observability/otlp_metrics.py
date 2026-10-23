@@ -45,7 +45,18 @@ spans_deduped_total: Counter = Counter(
 
 spans_rejected_total: Counter = Counter(
     name="akosha_otlp_spans_rejected_total",
-    documentation="Spans quarantined to _dlq_rows by pre_validate",
+    documentation=(
+        "Spans quarantined to _dlq_rows by pre_validate, labelled by the "
+        "field that failed. Labelled because an unlabelled count is "
+        "undiagnosable: '139 rejected' cannot be acted on, while "
+        "'139 rejected, all field=service_namespace' names the defect "
+        "immediately. The hot store is :memory:, so the DLQ table is not "
+        "queryable from outside the process -- this label is the only way to "
+        "see WHY rows were quarantined. Sum it for a total: "
+        "sum(akosha_otlp_spans_rejected_total). Cardinality is bounded -- "
+        "field names come from REQUIRED_FIELDS / ENUM_FIELDS, not values."
+    ),
+    labelnames=["field"],
     registry=_REGISTRY,
 )
 
