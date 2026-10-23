@@ -25,6 +25,7 @@ from fastmcp import FastMCP
 
 from akosha import __version__
 from akosha.mcp.oneiric_runtime import report_runtime_to_oneiric
+from akosha.observability.otlp_receiver import OTLPReceiver
 from akosha.storage.hot_store import HotStore
 
 if TYPE_CHECKING:
@@ -249,6 +250,10 @@ async def _compute_health_body_and_status() -> tuple[dict[str, Any], int]:
 # pre-Wave-5 behaviour.
 _shared_hot_store: Any | None = None
 _shared_kg_builder: Any | None = None
+# The lifespan-owned OTLP receiver. Untyped like its two siblings so importing
+# this module never drags in gRPC and the proto descriptors — server.py is
+# imported by every akosha test that touches the MCP surface.
+_shared_otel_receiver: Any | None = None
 # Background task handles for the lifespan-owned ingester + graph refresh.
 # Storing them here so the shutdown path can cancel them deterministically.
 # ``CodeGraphIngester`` owns its own polling task internally; we only hold
@@ -305,11 +310,63 @@ def get_shared_kg_builder() -> Any | None:
     return _shared_kg_builder
 
 
+def set_shared_otel_receiver(receiver: Any) -> None:
+    """Publish the lifespan-owned OTLPReceiver.
+
+    A 1:1 mirror of :func:`set_shared_hot_store`. The receiver is not
+    reachable from a tool otherwise: it borrows the lifespan's HotStore and
+    has no reference back to the app, so a health probe or an MCP tool that
+    wants to report ingest counters has nothing to read.
+
+    Cleared by :func:`clear_shared_services` on shutdown. Leaving it set would
+    hand the next ``create_app()`` a receiver whose listeners are closed —
+    one that answers every status query and binds nothing.
+    """
+    global _shared_otel_receiver
+    _shared_otel_receiver = receiver
+
+
+def get_shared_otel_receiver() -> Any | None:
+    """Return the lifespan-owned OTLPReceiver, or ``None`` if unset."""
+    return _shared_otel_receiver
+
+
 def clear_shared_services() -> None:
     """Clear all singletons. Called from the lifespan teardown."""
-    global _shared_hot_store, _shared_kg_builder
+    global _shared_hot_store, _shared_kg_builder, _shared_otel_receiver
     _shared_hot_store = None
     _shared_kg_builder = None
+    _shared_otel_receiver = None
+
+
+def _receiver_port(kind: str) -> int:
+    """Resolve the OTLP listener port from the lifespan's ``SpansSubstrateConfig``.
+
+    Defaults to the canonical :4317 / :4318 the substrate owns per the v7
+    port-ownership decision. Overridable because a second akosha on one host
+    (tests, a staging box) cannot bind the canonical ports, and a hardcoded
+    value would make that case fail with EADDRINUSE rather than with a
+    message naming the setting to set.
+
+    Reads the default off ``SpansSubstrateConfig`` rather than off
+    ``OTLPReceiver.GRPC_PORT`` so this resolver does not depend on the
+    receiver class existing — the config model is the single source of truth
+    for ports, and a resolver that reached through the receiver would break
+    the moment anything substitutes a double for it. A test pins that the two
+    defaults agree, so they cannot drift.
+    """
+    from akosha.config import SpansSubstrateConfig
+
+    config = _lifespan_spans_config
+    if config is None:
+        config = SpansSubstrateConfig()
+    field = "receiver_grpc_port" if kind == "grpc" else "receiver_http_port"
+    return int(getattr(config, field))
+
+
+# Set by ``create_app`` from the loaded config; ``None`` until the lifespan
+# runs, which is exactly when ``_receiver_port`` should return the defaults.
+_lifespan_spans_config: Any | None = None
 
 
 def _env_truthy(name: str) -> bool:
@@ -519,6 +576,40 @@ def create_app(mode: Any | None = None) -> FastMCP:
             "Hot store initialized (%s)",
             type(hot_store).__name__,
         )
+
+        # ------------------------------------------------------------------
+        # v7 PR-A3: bind the OTLP receiver immediately after the substrate
+        # exists and before anything else touches the port.
+        #
+        # Order is not cosmetic:
+        #   - after ``hot_store.initialize()`` because ``receiver.start()``
+        #     asserts ``spans_substrate`` exists and raises
+        #     ``LifecycleError("spans_substrate_missing")`` otherwise. Bind
+        #     first and you get listeners that accept connections, return
+        #     200s, and store nothing — indistinguishable from working.
+        #   - before ``set_shared_hot_store`` below so a boot that cannot
+        #     bind fails before publishing a substrate nothing is writing to.
+        #   - before ``_apply_tool_profile`` so a tool that reports ingest
+        #     health during registration sees a live receiver.
+        #
+        # Binding is unconditional and not feature-flagged: the receiver owns
+        # the canonical :4317/:4318 per the v7 port-ownership decision
+        # (docs/decisions/2026-10-21-otel-substrate-port-ownership.md). A
+        # flag here would mean a config error silently un-owns the fleet's
+        # OTLP endpoint.
+        # ------------------------------------------------------------------
+        stop_event = asyncio.Event()
+        global _lifespan_spans_config
+        from akosha.config import get_config
+
+        _lifespan_spans_config = get_config().spans_substrate
+        receiver = OTLPReceiver(
+            hot_store,
+            grpc_port=_receiver_port("grpc"),
+            http_port=_receiver_port("http"),
+        )
+        await receiver.start()
+        set_shared_otel_receiver(receiver)
 
         # Initialize cold storage if available
         if mode_instance is not None and hasattr(mode_instance, "initialize_cold_storage"):
@@ -1355,6 +1446,16 @@ def create_app(mode: Any | None = None) -> FastMCP:
             report_runtime_to_oneiric(app), name="akosha.oneiric_push"
         )
 
+        # v7 PR-A3: the receiver's two lifespan tasks. Both ship as stubs at
+        # PR-A3 (see OTLPReceiver.run_canary_emitter / run_retention_sweep)
+        # and run in parallel with the MCP server.
+        canary_task = asyncio.create_task(
+            receiver.run_canary_emitter(stop_event), name="receiver_canary_stub_at_PR_A3"
+        )
+        retention_task = asyncio.create_task(
+            receiver.run_retention_sweep(stop_event), name="spans_retention_sweep"
+        )
+
         yield {
             "akosha_ready": True,
             "embedding_service": embedding_service,
@@ -1364,7 +1465,25 @@ def create_app(mode: Any | None = None) -> FastMCP:
             "mode": "lite" if is_lite_mode else "standard",
             "cache_client": cache_client,
             "cold_storage": cold_storage,
+            "otel_receiver": receiver,
         }
+
+        # v7 PR-A3: reverse-order shutdown for the receiver.
+        #
+        # ``stop_event.set()`` BEFORE the cancel so a task parked on
+        # ``stop_event.wait()`` wakes through the event and returns cleanly,
+        # rather than being torn down mid-await by ``Task.cancel()``. The
+        # receiver stops AFTER its tasks so a canary can never write into a
+        # substrate whose listeners are already closed.
+        stop_event.set()
+        retention_task.cancel()
+        canary_task.cancel()
+        await asyncio.gather(retention_task, canary_task, return_exceptions=True)
+        try:
+            await receiver.stop()
+        except Exception as exc:
+            logger.warning("OTLPReceiver stop failed: %s", exc)
+        set_shared_otel_receiver(None)
 
         # Wave 5: cancel the kg_refresh task and stop the CodeGraphIngester
         # before the lifespan returns. Order matters: cancel kg_refresh

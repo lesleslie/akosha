@@ -124,3 +124,22 @@ bodai_tool_invocation_subscriber:
   consumer_group: "akosha-tool-invocation-indexers"
   xreadgroup_block_ms: 1500
   per_event_timeout_seconds: 30.0
+
+# v7 PR-A3: OTel span substrate + receiver.
+#
+# The receiver OWNS the canonical OTLP ports. Grafana Alloy moves to
+# :14317/:14318 at cutover per
+# docs/decisions/2026-10-21-otel-substrate-port-ownership.md.
+#
+# These keys must be declared on AkoshaConfig.spans_substrate to take effect:
+# get_config strips any key not declared there, and does so silently — an
+# undeclared key is dropped with nothing in the logs, so the receiver binds
+# the defaults while the operator believes otherwise.
+spans_substrate:
+  receiver_grpc_port: 4317
+  receiver_http_port: 4318
+  retention_days: 30
+  # PR-A3 ships the lifespan task; PR-A4 lands the sweep body. Until then
+  # the task runs and does nothing, and the retention runbook's
+  # "sweep never started" alert correctly does not fire.
+  retention_sweep_interval_hours: 6

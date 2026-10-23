@@ -419,6 +419,37 @@ class EventBridgeConfig(BaseModel):
         super().__init__(**data)
 
 
+class SpansSubstrateConfig(BaseModel):
+    """Settings for the OTel span substrate and its receiver.
+
+    v7 §6.4. The port defaults are the canonical OTLP ports, which the
+    substrate OWNS per docs/decisions/2026-10-21-otel-substrate-port-ownership.md
+    — Grafana Alloy moves to :14317/:14318 at cutover. These exist as real
+    fields rather than a defensive ``settings.get(...)`` lookup because
+    ``get_config`` strips any key not declared on ``AkoshaConfig``: an
+    undeclared key is dropped silently, so the operator sets it, the value
+    vanishes, and the receiver binds the canonical ports anyway with nothing
+    in the logs to say why.
+    """
+
+    receiver_grpc_port: int = Field(
+        default=4317,
+        description="OTLP/gRPC listen port. Owned by the substrate, not Alloy.",
+    )
+    receiver_http_port: int = Field(
+        default=4318,
+        description="OTLP/HTTP listen port. Owned by the substrate, not Alloy.",
+    )
+    retention_days: int = Field(
+        default=30,
+        description="Days a span is retained before the §8.1 sweep removes it.",
+    )
+    retention_sweep_interval_hours: int = Field(
+        default=6,
+        description="Hours between retention sweeps. PR-A3 ships the task; PR-A4 the body.",
+    )
+
+
 class AkoshaConfig(OneiricMCPConfig):  # type: ignore[reportUntypedBaseClass]
     """Main Akosha configuration using Oneiric MCPBaseSettings pattern.
 
@@ -461,6 +492,9 @@ class AkoshaConfig(OneiricMCPConfig):  # type: ignore[reportUntypedBaseClass]
     cold: ColdStorageConfig = Field(default_factory=ColdStorageConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
     eventbridge: EventBridgeConfig = Field(default_factory=EventBridgeConfig)
+    spans_substrate: SpansSubstrateConfig = Field(
+        default_factory=SpansSubstrateConfig
+    )
 
     # API
     api_port: int = Field(

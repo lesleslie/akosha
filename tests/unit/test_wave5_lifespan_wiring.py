@@ -132,10 +132,34 @@ def lifespan_deps(monkeypatch: pytest.MonkeyPatch):
     # Default feed aggregates: 0 ingested code graphs, 0 traces.
     hot_store.list_code_graphs = AsyncMock(return_value=[])
     hot_store.query_traces = AsyncMock(return_value=[])
+    # v7 PR-A3: the lifespan starts the OTLP receiver against this hot_store,
+    # and start() asserts the substrate table exists before binding. Both are
+    # needed on the double — a bare MagicMock attribute is not awaitable and
+    # would raise TypeError at server.py, which is the same trap the
+    # analytics_service comment above describes for .initialize.
+    hot_store.spans_substrate_table = "spans_substrate"
+    hot_store.table_exists = AsyncMock(return_value=True)
+    hot_store.insert_spans_substrate = AsyncMock(return_value=(0, 0))
+    hot_store.insert_dlq_rows = AsyncMock(return_value=0)
 
     cache_client = object()
     cold_storage = object()
     telemetry = (object(), object())
+
+    # v7 PR-A3: replace the OTLP receiver with a test double, for the same
+    # reason this fixture already replaces ``setup_telemetry`` above. These
+    # tests assert LIFESPAN WIRING (shared hot store, kg builder, ingesters),
+    # and a real receiver would open two network listeners as a side effect
+    # of assertions that have nothing to do with telemetry ingest. No socket
+    # is created here. The receiver's own behaviour is covered in
+    # tests/unit/observability/test_otlp_receiver.py, and its listeners are
+    # exercised end-to-end in the slow e2e module.
+    otel_receiver = MagicMock(name="otel_receiver")
+    otel_receiver.start = AsyncMock()
+    otel_receiver.stop = AsyncMock()
+    otel_receiver.run_canary_emitter = AsyncMock()
+    otel_receiver.run_retention_sweep = AsyncMock()
+    monkeypatch.setattr("akosha.mcp.server.OTLPReceiver", lambda *a, **k: otel_receiver)
 
     monkeypatch.setattr("akosha.mcp.auth.validate_auth_config", lambda: True)
     monkeypatch.setattr(

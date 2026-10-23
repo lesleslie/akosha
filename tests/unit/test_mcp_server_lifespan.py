@@ -58,6 +58,19 @@ def patched_lifespan(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("akosha.storage.hot_store.HotStore", lambda database_path: hot_store)
     monkeypatch.setattr("akosha.storage.create_hot_store", lambda: hot_store)
 
+    # v7 PR-A3: substitute the OTLP receiver, for the same reason the
+    # CodeGraphIngester is skipped below — this module asserts the lifespan's
+    # health-aggregator wiring, and a real receiver would open two network
+    # listeners as a side effect of assertions that have nothing to do with
+    # telemetry ingest. No socket is created here. Receiver behaviour is
+    # covered in tests/unit/observability/test_otlp_receiver.py.
+    otel_receiver = MagicMock(name="otel_receiver")
+    otel_receiver.start = AsyncMock()
+    otel_receiver.stop = AsyncMock()
+    otel_receiver.run_canary_emitter = AsyncMock()
+    otel_receiver.run_retention_sweep = AsyncMock()
+    monkeypatch.setattr("akosha.mcp.server.OTLPReceiver", lambda *a, **k: otel_receiver)
+
     # Wave 5: skip the CodeGraphIngester and kg_refresh task in tests that
     # aren't designed to exercise them. The ingester would otherwise start
     # a real httpx client that attempts to reach ``SESSION_BUDDY_MCP_URL``,
