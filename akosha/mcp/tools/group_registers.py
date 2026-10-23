@@ -230,29 +230,60 @@ def register_otel_span_group(app: FastMCP) -> None:
 def register_fitness_group(app: FastMCP) -> None:
     """Register FitnessAnalyzer tools (failure-rate / p99 latency signals).
 
-    Creates a standalone FitnessAnalyzer instance, starts its periodic
-    poll loop, and registers its tools. The analyzer now keeps signals
-    in memory only — the historical Dhara-populate step was removed
-    when Dhara was decommissioned.
+    Creates the analyzer, starts its periodic poll loop, and registers its
+    tools. The analyzer keeps signals in memory only — the historical
+    Dhara-populate step was removed when Dhara was decommissioned.
 
     R-6 replaced the per-component HTTP fan-out with ``SpanQuery.summary``
-    over ``spans_substrate``, so the analyzer no longer registers component
-    endpoints. Constructed with no arguments it has neither a ``SpanQuery``
-    nor any declared ``(task_class, selector)`` pairs, so every cycle is a
-    no-op and ``run_fitness_analysis`` returns ``{}``.
+    over ``spans_substrate``. PR-A3 wired the two together: the analyzer
+    borrows the lifespan-owned HotStore through
+    ``get_shared_hot_store()``, so its reads hit the same substrate the
+    OTLP receiver writes to. Registering happens after
+    ``set_shared_hot_store``, so the store is always available here.
 
-    That is inert rather than broken: supplying the store and the declared
-    inventory belongs to the lifespan that owns the OTLP receiver (v7 PR-A3),
-    which has not landed. See
+    The declared ``(task_class, selector)`` inventory comes from
+    ``spans_substrate.declared_pairs`` in settings. It is NOT derived from
+    the rows being analysed: a pair that migrated and went quiet would then
+    vanish rather than report zero, making "idle" indistinguishable from
+    "broken". See
     ``docs/decisions/2026-10-21-fitness-analyzer-pair-inventory.md``.
+
+    Do not declare the cross product (15 task classes x 5 selectors = 75
+    pairs). That yields 75 rows of "configured but never emitted" — the
+    same healthy-looking-zero defect, only louder. A pair belongs in the
+    inventory only when a named emitter is expected to produce it.
+
+    With no store available (a direct tool-registration call outside the
+    lifespan) the analyzer is constructed inert rather than raising: the
+    group must still register so ``run_fitness_analysis`` exists and can
+    report why it has no signals.
     """
     import asyncio
 
     from akosha.mcp.tools.fitness_tools import init_fitness_analyzer, register_fitness_tools
     from akosha.processing.fitness_analyzer import FitnessAnalyzer
+    from akosha.storage.span_query import SpanQuery
 
-    analyzer = FitnessAnalyzer()
+    store = _shared_store_only()
+    span_query = SpanQuery(store) if store is not None else None
+    declared = _declared_pairs()
+
+    analyzer = FitnessAnalyzer(
+        span_query=span_query,
+        declared_pairs=declared,
+    )
     init_fitness_analyzer(analyzer)
+
+    if span_query is None or not declared:
+        # Logged rather than silent: an inert analyzer and a broken one look
+        # identical from the tool surface, and the difference is exactly
+        # what an operator is being asked to debug at 3am.
+        logger.info(
+            "FitnessAnalyzer registered inert (span_query=%s declared_pairs=%d); "
+            "run_fitness_analysis will report no signals",
+            span_query is not None,
+            len(declared),
+        )
 
     try:
         loop = asyncio.get_running_loop()
@@ -262,6 +293,58 @@ def register_fitness_group(app: FastMCP) -> None:
 
     register_fitness_tools(app)
     logger.info("Registered fitness analysis tools")
+
+
+def _shared_store_only() -> Any:
+    """The lifespan-owned HotStore, or ``None``. Never constructs one.
+
+    Deliberately unlike :func:`_try_create_hot_store`, which falls back to
+    building a fresh store. That fallback is right for the search tools but
+    catastrophic here: a freshly-constructed in-memory DuckDB is a
+    DIFFERENT database from the one the OTLP receiver is writing spans
+    into. The analyzer would query an empty substrate every cycle and report
+    every declared pair as idle — a permanently-wrong number produced by
+    infrastructure that looks correct.
+    """
+    with contextlib.suppress(Exception):
+        from akosha.mcp.server import get_shared_hot_store  # type: ignore[attr-defined]
+
+        return get_shared_hot_store()
+    return None
+
+
+def _declared_pairs() -> list[tuple[str, str]]:
+    """Parse ``spans_substrate.declared_pairs`` into ``(task_class, selector)``.
+
+    Entries are ``"task_class:selector"`` strings. A malformed entry is
+    skipped with a warning rather than raising: one typo in a YAML list
+    would otherwise take down every tool registration in the profile, which
+    is a far worse failure than a pair quietly missing from a dashboard.
+
+    A selector containing ``:`` is not supported — none of the enum values
+    do, and supporting it would need a quoting convention nobody has asked
+    for. The split is on the LAST colon so a future namespaced task_class
+    still works.
+    """
+    try:
+        from akosha.config import get_config
+
+        raw = get_config().spans_substrate.declared_pairs
+    except Exception:  # pragma: no cover - settings unavailable
+        return []
+    if not raw:
+        return []
+    pairs: list[tuple[str, str]] = []
+    for entry in raw:
+        if not isinstance(entry, str) or ":" not in entry:
+            logger.warning("spans_substrate.declared_pairs: skipping %r", entry)
+            continue
+        task_class, _, selector = entry.rpartition(":")
+        if not task_class or not selector:
+            logger.warning("spans_substrate.declared_pairs: skipping %r", entry)
+            continue
+        pairs.append((task_class, selector))
+    return pairs
 
 
 def register_eventbridge_group(app: FastMCP) -> None:

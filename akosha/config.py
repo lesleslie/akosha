@@ -448,6 +448,18 @@ class SpansSubstrateConfig(BaseModel):
         default=6,
         description="Hours between retention sweeps. PR-A3 ships the task; PR-A4 the body.",
     )
+    declared_pairs: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Curated '(task_class:selector)' inventory the FitnessAnalyzer reports on. "
+            "NOT derived from observed rows — a pair that went quiet must still be "
+            "listed so 'idle' stays distinguishable from 'broken'. Never populate this "
+            "with the cross product: 15 task classes x 5 selectors yields 75 rows of "
+            "'configured but never emitted', which is the same healthy-looking-zero "
+            "defect, only louder. A pair belongs here only when a named emitter is "
+            "expected to produce it."
+        ),
+    )
 
 
 class AkoshaConfig(OneiricMCPConfig):  # type: ignore[reportUntypedBaseClass]
