@@ -40,11 +40,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from oneiric.core.lifecycle import LifecycleError
+
+from akosha.observability import otlp_metrics
 
 if TYPE_CHECKING:
     from akosha.storage.hot_store import HotStore
@@ -278,6 +281,10 @@ class OTLPReceiver:
         self.rows_inserted_total += inserted
         self.rows_deduped_total += deduped
         self.rows_rejected_total += len(bad)
+        otlp_metrics.spans_received_total.inc(len(spans))
+        otlp_metrics.spans_inserted_total.inc(inserted)
+        otlp_metrics.spans_deduped_total.inc(deduped)
+        otlp_metrics.spans_rejected_total.inc(len(bad))
         return {"inserted": inserted, "deduped": deduped, "rejected": len(bad)}
 
     async def _handle_http(self, body: bytes) -> dict[str, int]:
@@ -297,6 +304,7 @@ class OTLPReceiver:
             request.ParseFromString(body)
         except Exception:
             logger.warning("akosha.otlp_receiver.http_body_undecodable bytes=%s", len(body))
+            otlp_metrics.http_body_undecodable_total.inc()
             return {"inserted": 0, "deduped": 0, "rejected": 0}
         return await self._handle_batch(request)
 
@@ -322,8 +330,10 @@ class OTLPReceiver:
         ]
         try:
             await self._hot_store.insert_dlq_rows(rows)
+            otlp_metrics.dlq_inserts_total.inc(len(rows))
         except Exception as exc:
             self.dlq_insert_failed_total += 1
+            otlp_metrics.dlq_insert_failed_total.inc()
             logger.error(
                 "akosha.otlp_receiver.dlq_write_failed rows=%s reason=%s exc=%s",
                 len(rows),
@@ -344,11 +354,108 @@ class OTLPReceiver:
         await stop_event.wait()
 
     async def run_retention_sweep(self, stop_event: asyncio.Event) -> None:
-        """PR-A3 stub. PR-A4 lands the §8.1 sweep body.
+        """Sweep both substrate tables on the §8.1/§8.2 interval.
 
-        Also a real task awaiting the event, for the same reason as the canary.
+        Two sweeps, one cadence. ``spans_substrate`` ages out on
+        ``retention_days`` (30); ``_dlq_rows`` ages out at a flat 24h because a
+        quarantined row is debugging evidence, not history — by day two the
+        operator has either acted on it or not, and the table only ever grows.
+
+        Cardinal rule (§15): retention filters on ``received_at_unix_nano``,
+        the receiver's clock. A producer can claim any ``start_time`` it likes,
+        and driving deletion off that would let a skewed clock delete rows
+        that just arrived.
+
+        The first sweep runs one full interval after start, not at t=0.
+        ``sweep_first_started_unix_nano`` stays 0 until then — exactly the
+        signal ``sweep_retention_late`` is gated on, so a pod whose sweep has
+        simply not come due yet cannot page anyone.
+
+        No cold archival here. §8.2 permits ``archival_target: null`` (no cold
+        sink) as the default, and that is what this ships: adding an operator-
+        configured egress path for span rows is a separate change with its own
+        review, and until it exists the sweep deletes rather than stalling on a
+        write it cannot make.
+
+        Returns on ``stop_event`` being set. The lifespan also cancels this
+        task; both paths are safe because nothing here is non-idempotent.
         """
-        await stop_event.wait()
+        from akosha.config import get_config
+
+        cfg = get_config().spans_substrate
+        interval_s = max(1, cfg.retention_sweep_interval_hours) * 3600
+        first_started = 0
+
+        while not stop_event.is_set():
+            # wait_for cancels only the waiter, never the Event itself, so a
+            # timeout leaves stop_event usable by the lifespan's teardown.
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=interval_s)
+                return
+            except asyncio.TimeoutError:
+                pass
+            # Random jitter so a fleet of pods does not DELETE in lockstep.
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=random.uniform(0, 60))
+                return
+            except asyncio.TimeoutError:
+                pass
+
+            sweep_started = time.time_ns()
+            if first_started == 0:
+                first_started = sweep_started
+                otlp_metrics.sweep_first_started_unix_nano.set(sweep_started)
+
+            clean = True
+            cutoff_ns = sweep_started - int(cfg.retention_days) * 86_400 * 1_000_000_000
+            deleted = self._sweep_table(
+                self._hot_store.spans_substrate_table,
+                "WHERE received_at_unix_nano < ?",
+                [cutoff_ns],
+            )
+            if deleted is None:
+                clean = False
+
+            dlq_deleted = self._sweep_table(
+                self._hot_store.dlq_rows_table,
+                "WHERE rejected_at < CURRENT_TIMESTAMP - INTERVAL '24 hours'",
+            )
+            if dlq_deleted is None:
+                clean = False
+            elif dlq_deleted > 0:
+                otlp_metrics.dlq_rows_deleted_total.inc(dlq_deleted)
+
+            # 0 means "the last cycle did not finish cleanly". first_started is
+            # never reset — that pair is how an operator tells "sweep failed"
+            # from "sweep has never run" (runbook §11.1.6).
+            otlp_metrics.sweep_last_completed_unix_nano.set(sweep_started if clean else 0)
+            otlp_metrics.sweep_duration_seconds.observe((time.time_ns() - sweep_started) / 1e9)
+            logger.info(
+                "akosha.retention_sweep_complete cutoff_unix_nano=%s spans_deleted=%s "
+                "dlq_deleted=%s clean=%s",
+                cutoff_ns,
+                deleted,
+                dlq_deleted,
+                clean,
+            )
+
+    def _sweep_table(
+        self, table: str, where: str, params: list[Any] | None = None
+    ) -> int | None:
+        """DELETE expired rows from ``table``. Row count, or ``None`` on failure.
+
+        Returns ``None`` rather than 0 for a failed delete: "deleted nothing"
+        and "could not run" are different facts, and collapsing them is how a
+        broken sweep reports itself as healthy for weeks.
+        """
+        try:
+            return self._hot_store.conn.execute(
+                f"DELETE FROM {table} {where}", params or []
+            ).rowcount
+        except Exception:
+            otlp_metrics.retention_sweep_failed_total.labels(table=table).inc()
+            logger.exception("akosha.retention_sweep_failed table=%s", table)
+            return None
 
 
 class _TraceServiceServicer:
@@ -502,11 +609,26 @@ def _proto_to_dict(
     # misconfigured producers quietly wrote rows no read-path filter could
     # ever match. Leaving them absent routes them to the DLQ, where an
     # operator sees them.
-    if "service.name" in resource_attrs:
-        row["service_name"] = resource_attrs["service.name"]
-    if "service.namespace" in resource_attrs:
-        row["service_namespace"] = resource_attrs["service.namespace"]
-    row["deployment_environment"] = resource_attrs.get("deployment.environment")
+    #
+    # Resource first, then the span's own attributes. Resource is where OTel
+    # semantics say service identity belongs, but mcp-common's
+    # FastMCPOpenTelemetryMiddleware sets service.name/service.namespace as
+    # SPAN attributes (mcp_common/server/telemetry.py:102-103) — reading
+    # resource only would quarantine every mahavishnu-dispatched span even
+    # though the producer declared its identity. Span-level wins for neither;
+    # a producer that states the value has stated it.
+    row["service_name"] = resource_attrs.get("service.name") or attrs.get("service.name")
+    row["service_namespace"] = (
+        resource_attrs.get("service.namespace") or attrs.get("service.namespace")
+    )
+    if row["service_name"] is None:
+        del row["service_name"]
+    if row["service_namespace"] is None:
+        del row["service_namespace"]
+    row["deployment_environment"] = (
+        resource_attrs.get("deployment.environment")
+        or attrs.get("deployment.environment")
+    )
     return row
 
 
