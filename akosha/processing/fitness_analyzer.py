@@ -1,8 +1,18 @@
 """Fitness analyzer — periodic background job that computes routing fitness signals.
 
-Polls each Bodai component's MCP endpoint (via CommonMCPClient) for local OTel
-traces and computes rolling failure_rate and p99 latency per
-(task_class, selector) pair.
+Reads spans from the ``spans_substrate`` table via ``SpanQuery.summary`` and
+computes rolling failure_rate and p99 latency per (task_class, selector) pair.
+
+The pair set is a **declared inventory** (``declared_pairs``), not a set derived
+from the rows that happen to be present — see
+``docs/decisions/2026-10-21-fitness-analyzer-pair-inventory.md``. A declared pair
+that emitted nothing is reported with ``samples == 0`` and ``score == 0.0``
+rather than being skipped, so "idle" and "broken" stay distinguishable.
+
+This replaced a per-component HTTP fan-out whose endpoint list had no writers in
+production. The declared inventory keeps the property that made that approach
+sound in principle: the report's shape comes from configuration, not from
+traffic.
 
 Signals are returned in-memory (via :meth:`run_fitness_analysis`); the
 prior Dhara-backed persistence layer was removed when Dhara was
@@ -18,13 +28,10 @@ import contextlib
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING
 
-from mcp_common.clients.common_mcp_client import (
-    CommonMCPClient,
-)
-
-from akosha.mcp.client import query_local_traces
+if TYPE_CHECKING:
+    from akosha.storage.span_query import SpanQuery, SpanSummary
 
 logger = logging.getLogger(__name__)
 
@@ -61,140 +68,112 @@ class FitnessAnalyzer:
         self,
         poll_interval_seconds: int = _DEFAULT_POLL_INTERVAL_SECONDS,
         component_endpoints: list[tuple[str, str]] | None = None,
+        *,
+        declared_pairs: list[tuple[str, str]] | None = None,
+        span_query: SpanQuery | None = None,
+        window_start_unix_nano: int | None = None,
     ) -> None:
         self._poll_interval = max(poll_interval_seconds, 1)
         self._component_endpoints = component_endpoints or []
+        # R-6: the (task_class, selector) pairs this analyzer reports on. This is
+        # the *declared* set from
+        # docs/decisions/2026-10-21-fitness-analyzer-pair-inventory.md — it must
+        # never be derived from the rows it analyses, because a pair that
+        # migrated and emitted nothing would then vanish rather than report
+        # zero, making "idle" indistinguishable from "broken".
+        self._declared_pairs = list(declared_pairs or [])
+        self._span_query = span_query
+        self._window_start_unix_nano = window_start_unix_nano
         # In-memory signal cache, keyed by ``task_class -> selector -> FitnessSignal``.
         self._signals: dict[str, dict[str, FitnessSignal]] = {}
 
         self._running = False
         self._task: asyncio.Task[None] | None = None
 
-    def add_component(self, component_name: str, mcp_url: str) -> None:
-        """Register a component endpoint to be polled.
-
-        Args:
-            component_name: Name of the component (e.g. "mahavishnu")
-            mcp_url: MCP HTTP server URL (e.g. "http://localhost:8680/mcp")
-        """
-        entry = (component_name, mcp_url)
-        if entry not in self._component_endpoints:
-            self._component_endpoints.append(entry)
-
-    async def _fetch_traces_from_component(
+    def _signal_from_summary(
         self,
-        component_name: str,
-        mcp_url: str,
-        task_class: str,
-        time_range_minutes: int = 60,
-    ) -> list[dict[str, Any]]:
-        """Fetch traces from a single component via its MCP endpoint."""
-        client = CommonMCPClient(base_url=mcp_url, timeout=15.0)
-        try:
-            return await query_local_traces(client, task_class, time_range_minutes)
-        except Exception as exc:
-            logger.debug(
-                "Failed to fetch traces from %s (%s): %s",
-                component_name,
-                mcp_url,
-                exc,
-            )
-            return []
-        finally:
-            await client.aclose()
-
-    async def _collect_traces(self, task_class: str) -> list[dict[str, Any]]:
-        """Poll all registered component endpoints for traces."""
-        results = await asyncio.gather(
-            *[
-                self._fetch_traces_from_component(name, url, task_class)
-                for name, url in self._component_endpoints
-            ],
-            return_exceptions=True,
-        )
-        traces: list[dict[str, Any]] = []
-        for result in results:
-            if isinstance(result, list):
-                traces.extend(result)
-        return traces
-
-    def _compute_signal(
-        self,
-        _task_class: str,  # Intentionally unused; reserved for future per-task-class routing
-        _selector: str,  # Intentionally unused; reserved for future per-selector routing
-        traces: list[dict[str, Any]],
+        summary: SpanSummary,
+        cutoff_unix_nano: int,
     ) -> FitnessSignal:
-        """Compute a FitnessSignal from a list of traces."""
-        if not traces:
-            return FitnessSignal()
+        """Build a signal from a substrate aggregate.
 
-        outcomes = [t.get("outcome", "") for t in traces]
-        durations = [float(t.get("duration_ms", 0.0)) for t in traces]
+        ``failure_rate`` keeps its original denominator: ``failure_count /
+        span_count`` over *every* row in the window. The substrate's
+        ``span_count`` is the same population the old ``len(traces)`` counted,
+        so the reported number does not silently change meaning. Rows with a
+        NULL ``latency_ms`` stay in that denominator even though
+        ``PERCENTILE_CONT`` excludes them from ``latency_p99_ms`` — the two
+        aggregates cover different populations on purpose (read-path spec §4.2).
 
-        error_count = sum(1 for o in outcomes if o == "error")
-        failure_rate = error_count / len(traces) if traces else 0.0
-        score = 1.0 - failure_rate
-
-        sorted_durations = sorted(durations)
-        p99_idx = min(int(len(sorted_durations) * 0.99), len(sorted_durations) - 1)
-        p99_latency = sorted_durations[p99_idx] if sorted_durations else 0.0
-
-        now_iso = datetime.now(UTC).isoformat()
-        window_start_iso = (datetime.now(UTC) - timedelta(minutes=60)).isoformat()
-
+        ``component_count`` is 0: it came from counting distinct
+        ``component_name`` across per-component HTTP responses, and the
+        substrate query returns one aggregate rather than the rows behind it.
+        """
+        span_count = summary.span_count
+        failure_rate = summary.failure_count / span_count if span_count else 0.0
+        # Score is NOT ``1.0 - failure_rate`` when there are no rows: that would
+        # score silence as 1.0 and report a broken producer as perfect. The old
+        # ``_compute_signal`` returned the default (score 0.0) for empty input,
+        # pinned by test_fitness_analyzer_baseline.py::test_empty_traces_yields
+        # _the_default_signal. Silence is unknown, not healthy.
+        score = 1.0 - failure_rate if span_count else 0.0
+        window_start = datetime.fromtimestamp(cutoff_unix_nano / 1_000_000_000, UTC)
         return FitnessSignal(
             score=score,
-            samples=len(traces),
+            samples=span_count,
             failure_rate=failure_rate,
-            p99_latency_ms=p99_latency,
-            updated_at=now_iso,
-            window_start=window_start_iso,
-            component_count=len({t.get("component_name", "") for t in traces}),
+            # None means "no rows carried a latency", not "zero latency" — but
+            # FitnessSignal.p99_latency_ms is a plain float, so ``samples == 0``
+            # is what carries the no-data distinction at this layer.
+            p99_latency_ms=summary.latency_p99_ms if summary.latency_p99_ms is not None else 0.0,
+            updated_at=datetime.now(UTC).isoformat(),
+            window_start=window_start.isoformat(),
+            component_count=0,
         )
 
     async def _analyze_and_persist(self) -> None:
-        """Run one analysis cycle: collect traces and update the signal cache.
+        """Run one analysis cycle: query the substrate and update the signal cache.
+
+        R-6 replaced the per-component HTTP fan-out. The old cycle could not
+        distinguish a declared pair that went quiet from a pair that did not
+        exist, because it derived both the pair set and the signals from the
+        rows it happened to get back — and ``if not traces: continue`` dropped
+        silent pairs entirely. Here every declared pair produces a row, so
+        ``samples == 0`` is a reportable state rather than an absence.
 
         The historical Dhara write step was removed when Dhara was
-        decommissioned; signals are now stored in ``self._signals``
-        and returned in-memory via :meth:`run_fitness_analysis`.
+        decommissioned; signals are stored in ``self._signals`` and returned
+        in-memory via :meth:`run_fitness_analysis`.
         """
-        if not self._component_endpoints:
-            logger.debug("FitnessAnalyzer: no component endpoints registered")
+        if self._span_query is None:
+            logger.debug(
+                "FitnessAnalyzer: no SpanQuery configured; nothing to analyze"
+            )
             return
 
-        # REQ-TSQ-003 (docs/plans/2026-09-26-tool-surface-quality.md):
-        # Append "mcp_tool_call" so Mahavishnu's tool-call enrichment layer
-        # produces analyzer-visible per-tool failure_rate + p99 signals.
-        # Paired-PR with the Mahavishnu commit that ships
-        # mahavishnu/mcp/tool_call_{enricher,middleware}.py.
-        task_classes = [
-            "code_generation",
-            "reasoning",
-            "swarm",
-            "quick",
-            "documentation",
-            "mcp_tool_call",
-        ]
+        if not self._declared_pairs:
+            logger.debug("FitnessAnalyzer: no declared (task_class, selector) pairs")
+            return
+
+        cutoff = self._window_start_unix_nano
+        if cutoff is None:
+            cutoff = int((datetime.now(UTC) - timedelta(minutes=60)).timestamp() * 1e9)
+
         all_signals: dict[str, dict[str, FitnessSignal]] = {}
-
-        for task_class in task_classes:
-            traces = await self._collect_traces(task_class)
-            if not traces:
-                continue
-
-            by_selector: dict[str, list[dict[str, Any]]] = {}
-            for trace in traces:
-                selector = trace.get("selector", "unknown")
-                by_selector.setdefault(selector, []).append(trace)
-
-            for selector, selector_traces in by_selector.items():
-                signal = self._compute_signal(task_class, selector, selector_traces)
-                all_signals.setdefault(task_class, {})[selector] = signal
-
-        if not all_signals:
-            logger.debug("FitnessAnalyzer: no traces collected in this cycle")
-            return
+        for task_class, selector in self._declared_pairs:
+            summary = await self._span_query.summary(
+                selector=selector,
+                task_class=task_class,
+                cutoff_unix_nano=cutoff,
+                # All rows, not just success/error: this analyzer's historical
+                # denominator was every returned trace, with only the literal
+                # 'error' counted as a failure. See
+                # SpanQuery.summary's docstring for why the two callers differ.
+                scored_outcomes_only=False,
+            )
+            all_signals.setdefault(task_class, {})[selector] = self._signal_from_summary(
+                summary, cutoff
+            )
 
         self._signals = all_signals
 

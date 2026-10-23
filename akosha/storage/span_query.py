@@ -188,6 +188,7 @@ class SpanQuery:
         selector: str | None,
         task_class: str | None,
         cutoff_unix_nano: int,
+        scored_outcomes_only: bool = True,
     ) -> SpanSummary:
         """Aggregate over rows matching the pair with ``received_at`` > cutoff.
 
@@ -195,6 +196,23 @@ class SpanQuery:
         column", which is why the predicate is ``IS NOT DISTINCT FROM`` rather
         than ``=``: ``selector = NULL`` evaluates to NULL and silently drops
         every row, under-reporting ``span_count``.
+
+        ``scored_outcomes_only`` picks which population ``span_count`` covers,
+        because two consumers legitimately want different ones:
+
+        - ``True`` (default) scores only ``success`` and ``error``. A span that
+          was still running when it landed (``unsettled``) is neither, and
+          counting it would pad the denominator with rows that say nothing about
+          whether the producer worked. This is the ``spans_summary`` MCP tool's
+          contract.
+        - ``False`` counts *every* row in the window. This is what
+          ``FitnessAnalyzer`` needs, because its historical failure rate was
+          ``error_count / len(traces)`` over all returned rows — filtering here
+          would silently redefine a reported fitness number that nothing
+          downstream knows changed.
+
+        Getting this wrong in either direction produces a plausible number that
+        means something other than what the caller thinks.
         """
         if not self._table_exists():
             return SpanSummary(span_count=0, failure_count=0, latency_p99_ms=None)
@@ -203,7 +221,10 @@ class SpanQuery:
         # the int field. PERCENTILE_CONT excludes NULLs, so p99 is None only
         # when the whole window lacks latency -- that is the distinction between
         # "no data" and "fast".
-        sql = """
+        outcome_filter = (
+            "AND outcome IN ('success', 'error')" if scored_outcomes_only else ""
+        )
+        sql = f"""
             SELECT
                 COUNT(*) AS span_count,
                 COALESCE(SUM(CASE WHEN outcome = 'error' THEN 1 ELSE 0 END), 0)
@@ -213,8 +234,8 @@ class SpanQuery:
             FROM spans_substrate
             WHERE selector IS NOT DISTINCT FROM $selector
               AND task_class IS NOT DISTINCT FROM $task_class
-              AND outcome IN ('success', 'error')
               AND received_at_unix_nano > $cutoff
+              {outcome_filter}
         """
         async with self._store._lock:
             row = self._store.conn.execute(

@@ -233,10 +233,18 @@ def register_fitness_group(app: FastMCP) -> None:
     Creates a standalone FitnessAnalyzer instance, starts its periodic
     poll loop, and registers its tools. The analyzer now keeps signals
     in memory only — the historical Dhara-populate step was removed
-    when Dhara was decommissioned, so the analyzer starts with an
-    empty target list and ``run_fitness_analysis`` will report empty
-    results until callers explicitly register components via
-    ``analyzer.add_component``.
+    when Dhara was decommissioned.
+
+    R-6 replaced the per-component HTTP fan-out with ``SpanQuery.summary``
+    over ``spans_substrate``, so the analyzer no longer registers component
+    endpoints. Constructed with no arguments it has neither a ``SpanQuery``
+    nor any declared ``(task_class, selector)`` pairs, so every cycle is a
+    no-op and ``run_fitness_analysis`` returns ``{}``.
+
+    That is inert rather than broken: supplying the store and the declared
+    inventory belongs to the lifespan that owns the OTLP receiver (v7 PR-A3),
+    which has not landed. See
+    ``docs/decisions/2026-10-21-fitness-analyzer-pair-inventory.md``.
     """
     import asyncio
 
