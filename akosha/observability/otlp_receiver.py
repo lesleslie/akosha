@@ -422,6 +422,10 @@ def _proto_to_dict(
     for every row, and every span in the system looks like it came from a
     service called "unknown".
     """
+    attrs = {_attr_key(a): _attr_value(a) for a in span.attributes}
+    computed_duration_ms = (
+        int(span.end_time_unix_nano) - int(span.start_time_unix_nano)
+    ) / 1_000_000
     row: dict[str, Any] = {
         "span_id": _hex(span.span_id),
         "trace_id": _hex(span.trace_id),
@@ -438,9 +442,7 @@ def _proto_to_dict(
         "received_at_unix_nano": time.time_ns(),
         "status_code": _status_name(span.status.code),
         "status_message": span.status.message or None,
-        "attributes": json.dumps(
-            {_attr_key(a): _attr_value(a) for a in span.attributes}
-        ),
+        "attributes": json.dumps(attrs),
         "resource": json.dumps(resource_attrs),
         "events": json.dumps(
             [
@@ -449,6 +451,50 @@ def _proto_to_dict(
             ]
         ),
     }
+    # ── promote well-known attributes into their dedicated columns ──────
+    # The substrate has first-class columns for these; SpanQuery.summary
+    # filters on the COLUMNS, not on the attributes blob. Leaving them in
+    # the JSON alone makes the entire read path return empty while ingest
+    # looks perfectly healthy — rows are landing, the table is populated,
+    # and every query misses.
+    #
+    # Vocabulary follows akosha's existing OtelTraceIngester._normalize_span
+    # (akosha/ingestion/otel_ingester.py), which established the same
+    # mapping for the conversations table. Keeping one vocabulary means a
+    # producer's attributes mean the same thing on both paths.
+    row["task_class"] = attrs.get("task_class") or attrs.get("task.class")
+    row["selector"] = attrs.get("selector")
+    row["outcome"] = attrs.get("outcome")
+    row["latency_ms"] = _as_float(attrs.get("duration_ms"), computed_duration_ms)
+    row["duration_ms"] = computed_duration_ms
+    row["telemetry_source"] = resource_attrs.get("service.name")
+    row["telemetry_source_type"] = resource_attrs.get("telemetry.sdk.language")
+
+    gen_ai = {
+        "gen_ai.provider.name": "gen_ai_provider_name",
+        "gen_ai.request.model": "gen_ai_request_model",
+        "gen_ai.response.model": "gen_ai_response_model",
+        "gen_ai.usage.input_tokens": "gen_ai_usage_input_tokens",
+        "gen_ai.usage.output_tokens": "gen_ai_usage_output_tokens",
+    }
+    has_gen_ai = False
+    for attr_key, column in gen_ai.items():
+        value = attrs.get(attr_key)
+        if value is not None:
+            row[column] = value
+            has_gen_ai = True
+    cost = attrs.get("gen_ai.usage.cost")
+    if cost is not None:
+        row["gen_ai_usage_cost"] = cost
+        has_gen_ai = True
+    row["has_gen_ai_attrs"] = has_gen_ai
+
+    # A dispatch span carries the routing decision that produced it. The
+    # boolean exists so a reader can find them with an index scan rather
+    # than JSON-contains over the whole table.
+    row["has_dispatch_attrs"] = any(
+        key in attrs for key in ("effective_selector", "pool_id", "caller_kind")
+    )
     # No "unknown" default for service_name / service_namespace / span_name.
     # A sentinel here would make REQUIRED_FIELDS unreachable: the ingest path
     # would satisfy every required field on every row, so pre_validate could
@@ -461,9 +507,6 @@ def _proto_to_dict(
     if "service.namespace" in resource_attrs:
         row["service_namespace"] = resource_attrs["service.namespace"]
     row["deployment_environment"] = resource_attrs.get("deployment.environment")
-    row["duration_ms"] = (
-        (int(span.end_time_unix_nano) - int(span.start_time_unix_nano)) / 1_000_000
-    )
     return row
 
 
@@ -487,6 +530,24 @@ def _status_name(code: Any) -> str:
         1: "STATUS_CODE_OK",
         2: "STATUS_CODE_ERROR",
     }.get(int(code), "STATUS_CODE_UNSET")
+
+
+def _as_float(value: Any, fallback: float) -> float:
+    """Coerce an attribute to float, falling back to the span's own duration.
+
+    Producers send ``duration_ms`` as a string often enough that a p99 over
+    the ``latency_ms`` column would trip on a type mismatch rather than
+    returning a number. Falling back to the computed span duration is better
+    than NULL: the fitness analyzer treats a missing latency as "no data"
+    for the whole pair, when in fact the span's own timestamps were right
+    there.
+    """
+    if value is None:
+        return fallback
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
 
 
 def _attr_key(attr: Any) -> str:

@@ -236,6 +236,140 @@ async def test_duration_is_derived_from_the_span_timestamps(
     assert got == pytest.approx(5.0)
 
 
+async def test_read_path_columns_are_populated_not_left_in_the_json_blob(
+    receiver: OTLPReceiver,
+) -> None:
+    """The columns ``SpanQuery.summary`` filters on must be real columns.
+
+    Leaving these in the ``attributes`` JSON alone makes the whole read path
+    return empty while ingest looks perfectly healthy: rows are landing, the
+    table is populated, and every query misses because it filters on
+    ``task_class``/``selector``/``outcome`` columns that are all NULL. That
+    is the failure mode the fitness analyzer would have shipped as "every
+    pair is idle".
+    """
+    request = _request(
+        span_attrs=[
+            common_pb2.KeyValue(key="task_class", value=_sv("mcp_tool_call")),
+            common_pb2.KeyValue(key="selector", value=_sv("pool_route_execute")),
+            common_pb2.KeyValue(key="outcome", value=_sv("success")),
+            common_pb2.KeyValue(key="duration_ms", value=_sv("42.5")),
+        ]
+    )
+    await receiver._handle_batch(request)
+    row = _stored(
+        receiver,
+        "SELECT task_class, selector, outcome, latency_ms FROM spans_substrate",
+    )[0]
+    assert row == ("mcp_tool_call", "pool_route_execute", "success", 42.5)
+
+
+async def test_the_semconv_dotted_task_class_is_also_accepted(
+    receiver: OTLPReceiver,
+) -> None:
+    """``task.class`` is the canonical spelling; ``task_class`` is our convention.
+
+    Producers set both (mahavishnu's enricher writes both), but a producer
+    that emits only the semconv name must not become silently invisible —
+    which is exactly what happened to the conversations path once already.
+    """
+    request = _request(
+        span_attrs=[
+            common_pb2.KeyValue(key="task.class", value=_sv("code_generation")),
+            common_pb2.KeyValue(key="selector", value=_sv("least_loaded")),
+        ]
+    )
+    await receiver._handle_batch(request)
+    assert _stored(receiver, "SELECT task_class FROM spans_substrate")[0][0] == (
+        "code_generation"
+    )
+
+
+async def test_latency_falls_back_to_the_span_duration_when_unparseable(
+    receiver: OTLPReceiver,
+) -> None:
+    """A stringly-typed ``duration_ms`` must not NULL the whole p99.
+
+    Falling back to the span's own timestamps beats storing NULL: the fitness
+    analyzer reads a missing latency as "no data for this pair" when the
+    number was sitting right there in start/end.
+    """
+    request = _request(
+        start=1_000_000_000,
+        span_attrs=[
+            common_pb2.KeyValue(key="duration_ms", value=_sv("not-a-number"))
+        ],
+    )
+    await receiver._handle_batch(request)
+    assert _stored(receiver, "SELECT latency_ms FROM spans_substrate")[0][0] == (
+        pytest.approx(5.0)
+    )
+
+
+async def test_gen_ai_columns_are_promoted_and_flagged(receiver: OTLPReceiver) -> None:
+    """``has_gen_ai_attrs`` exists so readers can index-scan, not JSON-scan.
+
+    A boolean the read path can filter on beats a JSON-contains over every
+    row ever ingested.
+    """
+    request = _request(
+        span_attrs=[
+            common_pb2.KeyValue(key="gen_ai.request.model", value=_sv("minimax-M3")),
+            common_pb2.KeyValue(
+                key="gen_ai.usage.input_tokens",
+                value=common_pb2.AnyValue(int_value=120),
+            ),
+        ]
+    )
+    await receiver._handle_batch(request)
+    row = _stored(
+        receiver,
+        "SELECT gen_ai_request_model, gen_ai_usage_input_tokens, has_gen_ai_attrs "
+        "FROM spans_substrate",
+    )[0]
+    assert row == ("minimax-M3", 120, True)
+
+
+async def test_a_span_with_no_gen_ai_attrs_is_not_flagged(
+    receiver: OTLPReceiver,
+) -> None:
+    """The flag must be False, not NULL — an index scan on NULL misses."""
+    await receiver._handle_batch(_request())
+    assert _stored(receiver, "SELECT has_gen_ai_attrs FROM spans_substrate")[0][0] is False
+
+
+async def test_the_span_query_actually_finds_a_receiver_row(
+    receiver: OTLPReceiver,
+) -> None:
+    """End-to-end: ingest then read, through the real SpanQuery.
+
+    Every other test in this file asserts on SQL written here. This one goes
+    through the class the fitness analyzer will actually call, so a column
+    the receiver forgets to populate shows up as a failing read rather than as
+    a quietly empty dashboard.
+    """
+    from akosha.storage.span_query import SpanQuery
+
+    request = _request(
+        span_attrs=[
+            common_pb2.KeyValue(key="task_class", value=_sv("mcp_tool_call")),
+            common_pb2.KeyValue(key="selector", value=_sv("pool_route_execute")),
+            common_pb2.KeyValue(key="outcome", value=_sv("success")),
+        ]
+    )
+    await receiver._handle_batch(request)
+
+    summary = await SpanQuery(receiver._hot_store).summary(
+        selector="pool_route_execute",
+        task_class="mcp_tool_call",
+        cutoff_unix_nano=0,
+        scored_outcomes_only=False,
+    )
+    assert summary.span_count == 1
+    assert summary.failure_count == 0
+    assert summary.latency_p99_ms == pytest.approx(5.0)
+
+
 async def test_received_at_comes_from_the_receiver_clock(
     receiver: OTLPReceiver,
 ) -> None:
