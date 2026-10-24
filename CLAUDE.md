@@ -221,6 +221,102 @@ Akosha requires configuration for:
 > `config/akosha_secrets.yaml` do NOT exist; the `config/` directory was
 > deleted. See `akosha/config.py:get_config()` for the actual loader.
 
+## OTel Substrate (operator note)
+
+Since 2026-10-23 this repo is the **substrate owner**: it holds the OTLP
+receiver and the tables every Bodai producer writes into. Oneiric owns the
+DDL; the read path (`search_spans`, `spans_summary`) lives here too.
+
+### The receiver
+
+| | |
+|---|---|
+| gRPC | `127.0.0.1:4317` (`ExportTraceServiceRequest`) |
+| HTTP | `127.0.0.1:4318` (`POST /v1/traces`) |
+| Code | `akosha/observability/otlp_receiver.py` |
+
+These are the canonical OTLP ports and **they are not negotiable** — Grafana
+Alloy used to hold them. A producer that "successfully" exports to a
+collector that then drops the spans is the classic way to conclude the
+substrate is broken when it has no writer. There is now a writer.
+
+Tables (all DuckDB, owned here):
+
+- `spans_substrate` — 28 typed columns, the read path's source
+- `_dlq_rows` — rejected spans, quarantined not dropped
+- `_akosha_otel_receiver_state` — receiver bookkeeping
+
+### The three settings that matter
+
+```yaml
+otel:
+  receiver:
+    trace_ingester_poller: false   # legacy poller; see below
+    known_mcp_servers: [mahavishnu, akosha, session-buddy, oneiric, crackerjack]
+resource_validator:
+  allowed_namespaces: [bodai, cli-tools]
+```
+
+**`trace_ingester_poller` ships `false` and the legacy
+`AKOSHA_SKIP_OTEL_INGESTER` env var is retired — it is read nowhere.** The
+poller POSTs empty JSON envelopes to an OTLP/HTTP endpoint, which no standard
+receiver answers; it has ingested nothing since the receiver took `:4318`.
+The `OtelTraceIngester` class is **retained behind the flag on purpose**:
+rollback is setting this to `true` and restarting, never a code revert. Do
+not delete the class — that turns the flag into a settings key pointing at
+deleted code.
+
+**`known_mcp_servers` must be non-empty.** An empty roster is a P0 in
+itself, not an all-clear: the heartbeat watcher has nothing to check.
+
+**`allowed_namespaces` deliberately excludes `mcp-ecosystem`.** The fleet
+default is `bodai`; keeping the pre-flip value would permit a producer that
+has regressed, which is the entire reason the validator exists. A rejected
+span is quarantined to `_dlq_rows` and counted, never dropped silently.
+
+### When a producer is rejected
+
+`akosha_otlp_spans_rejected_total` is **labelled by the field that failed**
+(`sum(akosha_otlp_spans_rejected_total)` for the total). An unlabelled count
+is undiagnosable — "139 rejected" cannot be acted on, "139 rejected, all
+`field=service_namespace`" names the defect immediately. Cardinality is
+bounded: labels come from `REQUIRED_FIELDS`/`ENUM_FIELDS`, never from
+values.
+
+Most common rejection: a producer emits no `service.namespace` at all.
+`REQUIRED_FIELDS` catches that before the allowlist does. Fix the producer.
+
+### Metrics
+
+On the existing `/metrics` route (`:8682`) — the receiver has **no port of
+its own**; `OTLPReceiver.PROMETHEUS_PORT = 9464` is dead code and 9464 is
+Alloy's `otelcol.exporter.prometheus` default.
+
+`akosha_otlp_{spans_received,spans_inserted,spans_deduped,spans_rejected,
+dlq_inserts,dlq_insert_failed,http_body_undecodable,retention_sweep_failed,
+dlq_rows_deleted}_total`, plus
+`akosha_otlp_sweep_{last_completed,first_started}_unix_nano` and
+`akosha_otlp_sweep_duration_seconds`.
+
+`spans_rejected_total` and `retention_sweep_failed_total` carry labels
+(`field`, `table`); the rest do not.
+
+### Retention
+
+Filters on **`received_at_unix_nano`** (the receiver's clock), never
+`start_time_unix_nano` (the producer's). A producer with a skewed clock
+would otherwise pin rows past their expiry, or delete live rows.
+
+Sweep leader-election is deferred — single-pod only today.
+
+### Where to read more
+
+- `docs/ops/OTEL_TEMPO_HOOK.md` — the Alloy/Tempo pipeline, and the
+  retirement of the old poller
+- `docs/decisions/2026-10-21-otel-producer-migration.md` — how to move a
+  producer onto the substrate
+- `docs/CHANGELOG.md` — PR-A5/A6/A8 entries
+
 ## Development Guidelines
 
 ### Type Safety

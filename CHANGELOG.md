@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- akosha: PR-A5 heartbeat watcher — a static roster of expected MCP servers is
+  checked against the substrate on a 60s window; an absent producer and an
+  empty roster are both P0
+- akosha: PR-A6 resource-attribute validator — `service.namespace` is checked
+  against an allowlist (`bodai`, `cli-tools`); the pre-flip `mcp-ecosystem`
+  value is deliberately excluded so a producer that regresses is caught
+- akosha: label `akosha_otlp_spans_rejected_total` by the field that failed.
+  An unlabelled count is undiagnosable: "139 rejected" cannot be acted on,
+  "139 rejected, all `field=service_namespace`" names the defect immediately
+- akosha: operator note for the OTel substrate in `CLAUDE.md` — the receiver's
+  ports, the three settings that matter, and how to read the rejection metric
+
+### Changed
+
+- akosha: PR-A8 retires the legacy `OtelTraceIngester` poller behind
+  `otel.receiver.trace_ingester_poller`, which ships `false`. The class is
+  retained behind the flag so rollback is a flag flip plus a restart, never a
+  code revert. The `AKOSHA_SKIP_OTEL_INGESTER` env var is retired and read
+  nowhere
+- akosha: the `/health` feed state is sourced from the OTLP receiver and
+  `spans_substrate` rather than the retired poller's counters. With the
+  poller gone, `mcp_tool_call_feed` had `entities_count=0`, `cycles_total=0`
+  and `ingester_running=False` — which `mcp_common.health.feed.is_healthy`
+  maps to FAILED, and severity 3 is a 503 on the `/health` route
+
+### Fixed
+
+- akosha: `reset_all_metrics()` now zeroes metrics in place instead of
+  replacing the shared `CollectorRegistry`. The old implementation
+  re-registered only `prometheus_metrics.py`'s own metrics against the new
+  registry, so every other module bound to it at import time — the OTLP
+  metrics, the resource validator, the heartbeat watcher — was silently
+  dropped from the `/metrics` exposition after a single reset
+
 ## [0.24.5] - 2026-10-20
 
 ### Fixed
