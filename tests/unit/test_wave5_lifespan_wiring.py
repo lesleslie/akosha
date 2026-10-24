@@ -585,9 +585,10 @@ async def test_health_probe_surfaces_per_feed_aggregates(
     assert "local_traces_feed" in result
     assert result["local_traces_feed"]["entities_count"] == 0
     # Same warming_up shape as knowledge_graph_feed — kg_refresh cycled
-    # at least once with no errors, OTel ingester is alive (under the
-    # fixture's AKOSHA_SKIP_OTEL_INGESTER default the OTel path is
-    # disabled, so the local_traces verdict follows kg's).
+    # at least once with no errors. The OTel path is gated off
+    # (``otel.receiver.trace_ingester_poller`` ships false, and the
+    # retired AKOSHA_SKIP_OTEL_INGESTER env var is read nowhere), so the
+    # local_traces verdict follows kg's.
     assert result["local_traces_feed"]["status"] == "warming_up"
     assert result["local_traces_feed"]["ok"] is False
     assert result["local_traces_feed"]["feed_populated"] is False

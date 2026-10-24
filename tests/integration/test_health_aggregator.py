@@ -534,9 +534,9 @@ def test_akosha_health_mcp_tool_call_feed_wire_out(
         checks: dict[str, dict[str, Any]] = {}
         checks["mcp_tool_call_feed"] = _feed_dict("mcp_tool_call_feed", mcp_tool_call_state)
         checks["mcp_tool_call_feed"]["source"] = (
-            "hot_store.query_traces(task_class='mcp_tool_call', limit=1000)"
+            "spans_substrate(task_class='mcp_tool_call')"
         )
-        checks["mcp_tool_call_feed"]["otel_ingester_running"] = True
+        checks["mcp_tool_call_feed"]["otel_receiver_running"] = True
         checks["local_traces_feed"] = _feed_dict("local_traces_feed", local_traces_state)
 
         # Infrastructure checks (no-ops for this test).
@@ -576,7 +576,7 @@ def test_akosha_health_mcp_tool_call_feed_wire_out(
     assert "ok" in feed, feed
     # Production probe adds these extras (source for repro, ingester visibility).
     assert "source" in feed, feed
-    assert "otel_ingester_running" in feed, feed
+    assert "otel_receiver_running" in feed, feed
     # Five mcp_tool_call traces, all healthy.
     assert feed["feed_entities_count"] == 5
     assert feed["status"] == "healthy"
@@ -639,9 +639,9 @@ def test_akosha_health_mcp_tool_call_feed_degraded_drives_503(
         checks: dict[str, dict[str, Any]] = {}
         checks["mcp_tool_call_feed"] = _feed_dict("mcp_tool_call_feed", mcp_tool_call_state)
         checks["mcp_tool_call_feed"]["source"] = (
-            "hot_store.query_traces(task_class='mcp_tool_call', limit=1000)"
+            "spans_substrate(task_class='mcp_tool_call')"
         )
-        checks["mcp_tool_call_feed"]["otel_ingester_running"] = True
+        checks["mcp_tool_call_feed"]["otel_receiver_running"] = True
         checks["local_traces_feed"] = _feed_dict("local_traces_feed", local_traces_state)
 
         checks["hot_store"] = {"ok": True}

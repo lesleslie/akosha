@@ -38,6 +38,7 @@ Two deviations from the spec, both forced by the fleet's actual shape:
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import random
@@ -249,6 +250,14 @@ class OTLPReceiver:
         seed, and a DLQ row whose ``field`` differs between two runs of the
         same batch is unreproducible from its own evidence.
         """
+        # Checked FIRST: a span that could not be rendered is reported as
+        # unrenderable, not as a missing required field. The stand-in row
+        # carries placeholder values for the required fields, so without
+        # this check the reason would be a misleading ``not_null`` on a
+        # field the span may well have had.
+        render_error = span.get("_render_error")
+        if render_error:
+            return RowValidationError(field="span", reason="unrenderable", value=render_error)
         for name in sorted(self.REQUIRED_FIELDS):
             value = span.get(name)
             if value is None or value == "":
@@ -568,8 +577,42 @@ def _extract_spans(batch: Any) -> list[dict[str, Any]]:
         }
         for scope_spans in getattr(resource_spans, "scope_spans", None) or []:
             for span in getattr(scope_spans, "spans", None) or []:
-                rows.append(_proto_to_dict(span, resource_attrs))
+                try:
+                    rows.append(_proto_to_dict(span, resource_attrs))
+                except Exception as exc:
+                    # One unrenderable span must not fail the whole Export
+                    # RPC. An exception here escapes the gRPC servicer, gRPC
+                    # answers UNKNOWN, and the producer drops the ENTIRE
+                    # batch — up to 512 spans from a BatchSpanProcessor. The
+                    # span is quarantined instead: the DLQ row is the
+                    # evidence, and the rest of the batch still lands.
+                    rows.append(_unrenderable_row(span, exc))
     return rows
+
+
+def _unrenderable_row(span: Any, exc: Exception) -> dict[str, Any]:
+    """A stand-in row for a span that could not be rendered.
+
+    Carries the span's identity so the DLQ row can be correlated with the
+    producer's logs, and ``_render_error`` so ``pre_validate`` reports the
+    real reason rather than a misleading ``not_null`` on a field the span
+    may well have had.
+    """
+    return {
+        "span_id": _hex(getattr(span, "span_id", b"")),
+        "trace_id": _hex(getattr(span, "trace_id", b"")),
+        "parent_span_id": _hex(getattr(span, "parent_span_id", b"")),
+        "span_name": getattr(span, "name", "") or "",
+        "start_time_unix_nano": int(getattr(span, "start_time_unix_nano", 0) or 0),
+        "end_time_unix_nano": int(getattr(span, "end_time_unix_nano", 0) or 0),
+        "received_at_unix_nano": time.time_ns(),
+        "status_code": "STATUS_CODE_UNSET",
+        "status_message": None,
+        "attributes": "{}",
+        "resource": "{}",
+        "events": "[]",
+        "_render_error": f"{type(exc).__name__}: {exc}",
+    }
 
 
 def _proto_to_dict(
@@ -740,12 +783,61 @@ def _attr_value(attr: Any) -> Any:
     loses its type, which matters because ``duration_ms`` and the gen_ai token
     counters are read as numbers by the fitness analyzer.
     """
-    value = getattr(attr, "value", None)
+    return _any_value_to_python(getattr(attr, "value", None))
+
+
+def _any_value_to_python(value: Any) -> Any:
+    """Unwrap an OTLP ``AnyValue`` into a JSON-serializable Python value.
+
+    ``AnyValue`` is a oneof over seven value shapes. ``WhichOneof`` names the
+    set field, and ``getattr(value, which)`` yields:
+
+    ==================  ==================================  ==============
+    shape               Python type                         JSON-safe
+    ==================  ==================================  ==============
+    ``string_value``    ``str``                             yes
+    ``bool_value``      ``bool``                            yes
+    ``int_value``       ``int``                             yes
+    ``double_value``    ``float``                           yes
+    ``bytes_value``     ``bytes``                           **no**
+    ``array_value``     ``ArrayValue`` protobuf message     **no**
+    ``kvlist_value``    ``KeyValueList`` protobuf message   **no**
+    ==================  ==================================  ==============
+
+    Returning the raw protobuf for the last three is what a first cut did,
+    and it was a real production failure. ``json.dumps`` raised
+    ``TypeError: Object of type ArrayValue is not JSON serializable``,
+    the exception escaped the gRPC servicer, gRPC answered
+    ``StatusCode.UNKNOWN`` for the **whole Export RPC**, and the producer
+    dropped the entire batch — up to 512 spans per failed export from a
+    ``BatchSpanProcessor``. The trigger was ordinary: oneiric's resolver
+    emits a ``resolver.decision`` span whose ``ordered`` attribute is a
+    list of dicts, and pydantic-ai emits
+    ``gen_ai.response.finish_reasons`` as a list.
+
+    So the array and kvlist shapes are unwrapped **recursively** into plain
+    Python lists and dicts, and bytes become base64 — the same encoding
+    OTLP/JSON uses. The retired JSON-poll path in
+    ``akosha/ingestion/otel_ingester.py`` already did this; the gRPC
+    receiver regressed it.
+    """
     if value is None:
         return None
     which = value.WhichOneof("value")
     if which is None:
         return None
+    if which == "array_value":
+        return [
+            _any_value_to_python(v)
+            for v in getattr(value.array_value, "values", None) or []
+        ]
+    if which == "kvlist_value":
+        return {
+            _attr_key(kv): _any_value_to_python(kv.value)
+            for kv in getattr(value.kvlist_value, "values", None) or []
+        }
+    if which == "bytes_value":
+        return base64.b64encode(value.bytes_value).decode("ascii")
     return getattr(value, which)
 
 

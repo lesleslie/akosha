@@ -7,8 +7,13 @@ REQ-005: the formula must tolerate a running-but-empty OTel producer
 ("warming up") as healthy, and emit ``feed_populated`` so callers can
 distinguish empty-feed from crash-without-data.
 
-REQ-007: the existing ``AKOSHA_SKIP_OTEL_INGESTER`` env var must
-continue to gate the OTel ingester; no new opt-out flag is added.
+REQ-007: the OTel ingester must stay gated by a control the operator can
+still reach. PR-A8 (2026-10-23) retired the ``AKOSHA_SKIP_OTEL_INGESTER``
+env var — it is read nowhere — and replaced it with the
+``otel.receiver.trace_ingester_poller`` settings key, which ships
+``false``. The control is still there; only the spelling changed. The
+replica formula below reads the key the production code reads, so it
+cannot drift back to naming a retired knob.
 
 Phase 4 migration note:
     The original AST-based source-code assertions (pinning
@@ -32,6 +37,11 @@ from starlette.testclient import TestClient
 
 from akosha.mcp.server import create_app, set_health_probe
 
+# Captured at import time: the REAL get_config. ``_config_with_poller``
+# must not call the possibly-patched one, or it would recurse into
+# itself.
+from akosha.config import get_config as _real_get_config
+
 
 @pytest.fixture(autouse=True)
 def _reset_probe() -> None:
@@ -47,13 +57,61 @@ def http_client() -> TestClient:
     return TestClient(create_app().http_app())
 
 
+def _config_module() -> Any:
+    """The ``akosha.config`` MODULE.
+
+    ``akosha/__init__.py`` resolves the ``akosha.config`` ATTRIBUTE to the
+    config INSTANCE through a lazy ``__getattr__``. So ``akosha.config`` is
+    not a reliable way to reach the module, and
+    ``monkeypatch.setattr("akosha.config.get_config", ...)`` resolves that
+    attribute -- the instance -- and raises ``AttributeError``. Reach the
+    module explicitly.
+    """
+    import importlib
+
+    return importlib.import_module("akosha.config")
+
+
+def _config_with_poller(enabled: bool) -> Any:
+    """A config whose ``otel.receiver.trace_ingester_poller`` is ``enabled``."""
+    from akosha.config import OTelConfig, OTelReceiverConfig
+
+    real = _real_get_config()
+
+    class _Cfg:
+        spans_substrate = real.spans_substrate
+        resource_validator = real.resource_validator
+        otel = OTelConfig(
+            receiver=OTelReceiverConfig(
+                trace_ingester_poller=enabled,
+                known_mcp_servers=list(real.otel.receiver.known_mcp_servers),
+            )
+        )
+
+    return _Cfg()
+
+
+def _poller_enabled() -> bool:
+    """Whether the legacy OTel poller is enabled by the CURRENT config.
+
+    Reads the settings key the production code reads — and reads it
+    through the module attribute, so a test that patches the config is
+    honoured. The retired ``AKOSHA_SKIP_OTEL_INGESTER`` env var is
+    consulted by nothing, so a replica formula that still read it would
+    be testing a knob that does not exist.
+    """
+    return bool(_config_module().get_config().otel.receiver.trace_ingester_poller)
+
+
 # ---------------------------------------------------------------------------
 # End-to-end behaviour: the real ``_default_health_probe`` reports
 # ``ok=True`` for the audit case.
 # ---------------------------------------------------------------------------
 
 
-async def test_local_traces_ok_true_for_running_empty_producer_without_errors() -> None:
+async def test_local_traces_ok_true_for_running_empty_producer_without_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """REQ-005 follow-up: running empty OTel producer (no errors) → ``ok=True``.
 
     The Phase 3 follow-up audit failure: the OTel producer is alive,
@@ -74,12 +132,16 @@ async def test_local_traces_ok_true_for_running_empty_producer_without_errors() 
     from akosha.mcp import server as mcp_server
 
     # Ensure OTel ingester construction is enabled — the formula must
-    # evaluate every disjunct, not short-circuit on otel_disabled.
-    # (Env var is read at probe-call time via _env_truthy; we don't
-    # need to delete it here, only assert it is not set.)
-    import os
-
-    os.environ.pop("AKOSHA_SKIP_OTEL_INGESTER", None)
+    # evaluate every disjunct, not short-circuit on otel_disabled. A
+    # RUNNING producer implies the poller is enabled, so the settings key
+    # is patched to true. (The key is read at probe-call time, so the
+    # patch has to be in place when the probe runs, not just when the
+    # test is set up.)
+    monkeypatch.setattr(
+        _config_module(),
+        "get_config",
+        lambda: _config_with_poller(True),
+    )
 
     # Mock ingester shaped like the audit failure case:
     #   running=True, cycled once, no errors, poll task alive.
@@ -144,7 +206,7 @@ async def test_local_traces_ok_true_for_running_empty_producer_without_errors() 
         any_producer_alive = (
             kg_task_alive or otel_task_alive or otel_running
         )
-        otel_disabled = mcp_server._env_truthy("AKOSHA_SKIP_OTEL_INGESTER")
+        otel_disabled = not _poller_enabled()
         otel_warming_up = otel_running and otel_errors_total == 0
         local_traces_ok = (
             otel_disabled
@@ -161,10 +223,10 @@ async def test_local_traces_ok_true_for_running_empty_producer_without_errors() 
                 "cycles_total": kg_cycles + otel_cycles_total,
                 "errors_total": kg_errors + otel_errors_total,
                 "feed_last_updated_timestamp": None,
-                "otel_ingester_running": otel_running,
-                "otel_endpoint": otel_endpoint,
-                "otel_cycles_total": otel_cycles_total,
-                "otel_errors_total": otel_errors_total,
+                "otel_receiver_running": otel_running,
+                "otel_receiver_http_port": otel_endpoint,
+                "otel_receiver_batches_total": otel_cycles_total,
+                "otel_receiver_errors_total": otel_errors_total,
                 "source": "test-local replica of _default_health_probe",
             }
         }
@@ -190,10 +252,10 @@ async def test_local_traces_ok_true_for_running_empty_producer_without_errors() 
     # warming-up from crash-without-data.
     assert feed["feed_populated"] is False
     # Sanity: the rest of the feed payload mirrors the patched state.
-    assert feed["otel_ingester_running"] is True
-    assert feed["otel_errors_total"] == 0
-    assert feed["otel_cycles_total"] == 1
-    assert feed["otel_endpoint"] == "http://localhost:4318/v1/traces"
+    assert feed["otel_receiver_running"] is True
+    assert feed["otel_receiver_errors_total"] == 0
+    assert feed["otel_receiver_batches_total"] == 1
+    assert feed["otel_receiver_http_port"] == "http://localhost:4318/v1/traces"
 
 
 # ---------------------------------------------------------------------------
@@ -224,11 +286,11 @@ def test_health_endpoint_surfaces_feed_populated_field(
                 "cycles_total": 5,
                 "errors_total": 0,
                 "feed_last_updated_timestamp": "2026-09-09T10:05:00+00:00",
-                "otel_ingester_running": True,
-                "otel_endpoint": "http://localhost:4318/v1/traces",
-                "otel_cycles_total": 5,
-                "otel_errors_total": 0,
-                "source": "hot_store.query_traces (populated via kg_refresh + OtelTraceIngester)",
+                "otel_receiver_running": True,
+                "otel_receiver_http_port": "http://localhost:4318/v1/traces",
+                "otel_receiver_batches_total": 5,
+                "otel_receiver_errors_total": 0,
+                "source": "hot_store.query_traces (populated via kg_refresh) + spans_substrate (populated by the OTLP receiver)",
             },
         }
 
@@ -265,11 +327,11 @@ def test_health_endpoint_reports_feed_populated_false_for_empty_running_feed(
                 "cycles_total": 1,
                 "errors_total": 1,
                 "feed_last_updated_timestamp": "2026-09-09T10:00:00+00:00",
-                "otel_ingester_running": True,
-                "otel_endpoint": "http://localhost:4318/v1/traces",
-                "otel_cycles_total": 1,
-                "otel_errors_total": 1,
-                "source": "hot_store.query_traces (populated via kg_refresh + OtelTraceIngester)",
+                "otel_receiver_running": True,
+                "otel_receiver_http_port": "http://localhost:4318/v1/traces",
+                "otel_receiver_batches_total": 1,
+                "otel_receiver_errors_total": 1,
+                "source": "hot_store.query_traces (populated via kg_refresh) + spans_substrate (populated by the OTLP receiver)",
             },
         }
 
@@ -282,18 +344,20 @@ def test_health_endpoint_reports_feed_populated_false_for_empty_running_feed(
     assert feed["feed_entities_count"] == 0
 
 
-def test_otel_disabled_short_circuits_local_traces_ok_via_existing_env_var(
-    monkeypatch: pytest.MonkeyPatch,
+def test_otel_disabled_short_circuits_local_traces_ok_via_the_settings_key(
     http_client: TestClient,
 ) -> None:
-    """REQ-007: AKOSHA_SKIP_OTEL_INGESTER=1 → ``otel_disabled`` wins.
+    """REQ-007: the poller being gated off → ``otel_disabled`` wins.
 
-    Even with zero producer state (the env var caused the lifespan
-    to skip constructing ``_otel_trace_ingester``), the new
+    Even with zero producer state (the poller is gated off, so the
+    lifespan never constructs ``_otel_trace_ingester``), the
     ``otel_disabled`` disjunct in the formula reports ``ok=True``.
-    """
 
-    monkeypatch.setenv("AKOSHA_SKIP_OTEL_INGESTER", "1")
+    The control is the ``otel.receiver.trace_ingester_poller`` settings
+    key. The ``AKOSHA_SKIP_OTEL_INGESTER`` env var this test used to
+    name was retired by PR-A8 and is read nowhere — a test that still
+    set it would be asserting a contract that no longer exists.
+    """
 
     async def otel_disabled_probe() -> dict[str, dict[str, Any]]:
         return {
@@ -307,11 +371,11 @@ def test_otel_disabled_short_circuits_local_traces_ok_via_existing_env_var(
                 "cycles_total": 0,
                 "errors_total": 0,
                 "feed_last_updated_timestamp": None,
-                "otel_ingester_running": False,
-                "otel_endpoint": None,
-                "otel_cycles_total": 0,
-                "otel_errors_total": 0,
-                "source": "hot_store.query_traces (populated via kg_refresh + OtelTraceIngester)",
+                "otel_receiver_running": False,
+                "otel_receiver_http_port": None,
+                "otel_receiver_batches_total": 0,
+                "otel_receiver_errors_total": 0,
+                "source": "hot_store.query_traces (populated via kg_refresh) + spans_substrate (populated by the OTLP receiver)",
             },
         }
 
@@ -320,8 +384,8 @@ def test_otel_disabled_short_circuits_local_traces_ok_via_existing_env_var(
     assert response.status_code == 200
     feed = response.json()["checks"]["local_traces_feed"]
     assert feed["ok"] is True
-    assert feed["otel_ingester_running"] is False
-    assert feed["otel_endpoint"] is None
+    assert feed["otel_receiver_running"] is False
+    assert feed["otel_receiver_http_port"] is None
 
 
 # ---------------------------------------------------------------------------
