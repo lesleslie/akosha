@@ -48,12 +48,9 @@ NS_PER_SECOND = 1_000_000_000
 
 # Captured at import time. The watcher module registered its metrics
 # against whatever registry was current when it was imported, which is
-# this object. ``reset_all_metrics()`` — a pre-existing helper in
-# ``akosha.observability.prometheus_metrics`` — replaces the shared
-# registry wholesale, and metrics defined outside that module keep their
-# original binding. Reading the exposition from the captured registry is
-# what makes the assertion mean the same thing in a full-suite run as it
-# does in this file alone.
+# this object. ``reset_all_metrics()`` zeroes metrics in place and does
+# NOT replace the shared registry, so this object stays the live one for
+# the life of the process.
 _SHARED_REGISTRY = get_metrics_registry()
 
 
@@ -129,9 +126,8 @@ def _samples(counter: Counter, sample_name: str) -> list[Sample]:
     """The samples a counter currently exposes, by sample name.
 
     Read off the metric object rather than off the exposition blob: the
-    blob reflects whichever registry is CURRENT, and a sibling test's
-    ``reset_all_metrics()`` replaces it wholesale. A delta assertion that
-    depends on test ORDER is a delta assertion that will be flaky.
+    blob mixes every metric in the shared registry, and the object is the
+    one counter under test.
     """
     found: list[Sample] = []
     for metric in counter.collect():

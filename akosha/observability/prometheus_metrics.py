@@ -79,7 +79,7 @@ import logging
 import time
 from contextlib import contextmanager
 from threading import Lock
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -867,9 +867,25 @@ def start_metrics_server(port: int = 8000, addr: str = "0.0.0.0") -> None:
 
 
 def reset_all_metrics() -> None:
-    """Reset all metrics to zero.
+    """Reset every metric in the shared registry to zero.
 
     WARNING: This is primarily useful for testing. Do not use in production.
+
+    The metrics are zeroed **in place**. The registry object is not replaced.
+
+    The previous implementation swapped in a fresh ``CollectorRegistry`` and
+    re-created *this module's own* metrics against it. That silently
+    amputated every other module's metrics: ``akosha/observability/
+    otlp_metrics.py``, ``resource_validator.py`` and ``heartbeat_watcher.py``
+    each capture ``get_metrics_registry()`` at import time, so after a
+    single reset their collectors were bound to a discarded registry and
+    stopped appearing in the ``/metrics`` exposition entirely. The bug was
+    easy to miss because the metrics that vanished were the ones the caller
+    had just been asserting were absent.
+
+    Zeroing in place keeps the registry's identity stable, so every module
+    that captured it stays wired -- including modules written after this
+    one, which need no bookkeeping at all.
 
     Example:
         ```python
@@ -883,302 +899,71 @@ def reset_all_metrics() -> None:
             reset_all_metrics()
         ```
     """
-    # Clear all metrics by re-creating the registry
-    global _registry
+    registry = get_metrics_registry()
     with _registry_lock:
-        _registry = CollectorRegistry()
-        # Re-register all metrics with new registry
-        _reregister_metrics(_registry)
+        for collector in _registry_collectors(registry):
+            _zero_metric(collector)
 
     logger.warning("All Prometheus metrics reset to zero")
 
 
-def _reregister_metrics(registry: CollectorRegistry) -> None:
-    """Re-register all metrics with the given registry.
+def _registry_collectors(registry: CollectorRegistry) -> list[Any]:
+    """The metric objects registered against ``registry``.
 
-    This is called internally after reset_all_metrics().
-
-    Args:
-        registry: The new registry to register metrics with
+    ``CollectorRegistry`` has no public accessor for the collectors it
+    holds: ``collect()`` yields rendered Metric *families*, not the objects
+    that own the values, and only the latter can be reset. ``_collector_
+    to_names`` is the registry's own bookkeeping dict and has been part of
+    ``prometheus_client`` for years. If a future version drops it, the
+    reset degrades to a no-op rather than raising.
     """
-    global \
-        ingestion_throughput, \
-        ingestion_bytes_total, \
-        ingestion_duration_seconds, \
-        search_latency, \
-        search_results_total, \
-        search_result_count, \
-        cache_operations, \
-        cache_hit_rate, \
-        cache_size_bytes, \
-        cache_entry_count, \
-        store_size, \
-        store_size_bytes, \
-        store_operations, \
-        store_operation_duration, \
-        error_total, \
-        error_last_timestamp, \
-        operations_total, \
-        operation_duration, \
-        deduplication_checks, \
-        deduplication_duration, \
-        embedding_generation_duration, \
-        embedding_batch_size, \
-        vector_index_size, \
-        vector_index_build_duration, \
-        knowledge_graph_entities, \
-        knowledge_graph_relationships, \
-        knowledge_graph_query_duration, \
-        http_requests_total, \
-        http_request_duration, \
-        http_active_requests
+    collectors = getattr(registry, "_collector_to_names", None)
+    if collectors is None:  # pragma: no cover - defensive
+        logger.warning("CollectorRegistry has no _collector_to_names; nothing was reset")
+        return []
+    return list(collectors)
 
-    # Re-create all metrics with new registry
-    ingestion_throughput = Gauge(
-        name="akosha_ingestion_throughput",
-        documentation="Records processed per second by system and status",
-        labelnames=["system_id", "status"],
-        registry=registry,
-    )
-    ingestion_bytes_total = Counter(
-        name="akosha_ingestion_bytes_total",
-        documentation="Total bytes ingested by system",
-        labelnames=["system_id"],
-        registry=registry,
-    )
-    ingestion_duration_seconds = Histogram(
-        name="akosha_ingestion_duration_seconds",
-        documentation="Time spent ingesting records in seconds",
-        labelnames=["system_id", "operation"],
-        buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
-        registry=registry,
-    )
-    search_latency = Histogram(
-        name="akosha_search_latency_milliseconds",
-        documentation="Search operation latency in milliseconds with percentiles",
-        labelnames=["query_type", "shard_count", "tier"],
-        buckets=(
-            1.0,
-            5.0,
-            10.0,
-            25.0,
-            50.0,
-            75.0,
-            100.0,
-            150.0,
-            200.0,
-            300.0,
-            500.0,
-            750.0,
-            1000.0,
-            2000.0,
-            5000.0,
-        ),
-        registry=registry,
-    )
-    search_results_total = Counter(
-        name="akosha_search_results_total",
-        documentation="Total number of searches performed",
-        labelnames=["query_type", "tier", "has_results"],
-        registry=registry,
-    )
-    search_result_count = Histogram(
-        name="akosha_search_result_count",
-        documentation="Number of results returned per search",
-        labelnames=["query_type", "tier"],
-        buckets=(1, 5, 10, 25, 50, 100, 250, 500, 1000),
-        registry=registry,
-    )
-    cache_operations = Counter(
-        name="akosha_cache_operations_total",
-        documentation="Cache operations (hits and misses) by tier and query type",
-        labelnames=["operation", "cache_tier", "query_type"],
-        registry=registry,
-    )
-    cache_hit_rate = Gauge(
-        name="akosha_cache_hit_rate",
-        documentation="Cache hit rate ratio (0-1) by cache tier and query type",
-        labelnames=["cache_tier", "query_type"],
-        registry=registry,
-    )
-    cache_size_bytes = Gauge(
-        name="akosha_cache_size_bytes",
-        documentation="Current cache size in bytes by tier",
-        labelnames=["cache_tier"],
-        registry=registry,
-    )
-    cache_entry_count = Gauge(
-        name="akosha_cache_entry_count",
-        documentation="Number of entries in cache by tier",
-        labelnames=["cache_tier"],
-        registry=registry,
-    )
-    store_size = Gauge(
-        name="akosha_store_size_records",
-        documentation="Number of records in each storage tier",
-        labelnames=["tier"],
-        registry=registry,
-    )
-    store_size_bytes = Gauge(
-        name="akosha_store_size_bytes",
-        documentation="Storage size in bytes by tier",
-        labelnames=["tier"],
-        registry=registry,
-    )
-    store_operations = Counter(
-        name="akosha_store_operations_total",
-        documentation="Storage operations (read/write/delete) by tier",
-        labelnames=["tier", "operation", "status"],
-        registry=registry,
-    )
-    store_operation_duration = Histogram(
-        name="akosha_store_operation_duration_seconds",
-        documentation="Storage operation duration in seconds",
-        labelnames=["tier", "operation"],
-        buckets=(
-            0.0001,
-            0.0005,
-            0.001,
-            0.005,
-            0.01,
-            0.025,
-            0.05,
-            0.1,
-            0.25,
-            0.5,
-            1.0,
-            2.5,
-            5.0,
-        ),
-        registry=registry,
-    )
-    error_total = Counter(
-        name="akosha_errors_total",
-        documentation="Total errors by component, type, and severity",
-        labelnames=["component", "error_type", "severity"],
-        registry=registry,
-    )
-    error_last_timestamp = Gauge(
-        name="akosha_error_last_timestamp_seconds",
-        documentation="Unix timestamp of last error by component and type",
-        labelnames=["component", "error_type"],
-        registry=registry,
-    )
-    operations_total = Counter(
-        name="akosha_operations_total",
-        documentation="Total operations by type and status",
-        labelnames=["operation_type", "status"],
-        registry=registry,
-    )
-    operation_duration = Histogram(
-        name="akosha_operation_duration_seconds",
-        documentation="Operation duration in seconds",
-        labelnames=["operation_type"],
-        buckets=(
-            0.001,
-            0.005,
-            0.01,
-            0.025,
-            0.05,
-            0.1,
-            0.25,
-            0.5,
-            1.0,
-            2.5,
-            5.0,
-            10.0,
-            30.0,
-            60.0,
-            300.0,
-        ),
-        registry=registry,
-    )
-    deduplication_checks = Counter(
-        name="akosha_deduplication_checks_total",
-        documentation="Deduplication checks performed",
-        labelnames=["check_type", "result"],
-        registry=registry,
-    )
-    deduplication_duration = Histogram(
-        name="akosha_deduplication_duration_seconds",
-        documentation="Time spent on deduplication checks",
-        labelnames=["check_type"],
-        buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
-        registry=registry,
-    )
-    embedding_generation_duration = Histogram(
-        name="akosha_embedding_generation_duration_seconds",
-        documentation="Time spent generating embeddings",
-        labelnames=["model_type"],
-        buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
-        registry=registry,
-    )
-    embedding_batch_size = Histogram(
-        name="akosha_embedding_batch_size",
-        documentation="Number of embeddings processed per batch",
-        buckets=(1, 5, 10, 25, 50, 100, 250, 500, 1000),
-        registry=registry,
-    )
-    vector_index_size = Gauge(
-        name="akosha_vector_index_size_vectors",
-        documentation="Number of vectors in the index",
-        labelnames=["index_name"],
-        registry=registry,
-    )
-    vector_index_build_duration = Histogram(
-        name="akosha_vector_index_build_duration_seconds",
-        documentation="Time spent building vector index",
-        labelnames=["index_name"],
-        buckets=(1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0, 1800.0),
-        registry=registry,
-    )
-    knowledge_graph_entities = Gauge(
-        name="akosha_knowledge_graph_entities_total",
-        documentation="Total number of entities in knowledge graph",
-        registry=registry,
-    )
-    knowledge_graph_relationships = Gauge(
-        name="akosha_knowledge_graph_relationships_total",
-        documentation="Total number of relationships in knowledge graph",
-        registry=registry,
-    )
-    knowledge_graph_query_duration = Histogram(
-        name="akosha_knowledge_graph_query_duration_seconds",
-        documentation="Knowledge graph query duration",
-        labelnames=["query_type"],
-        buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
-        registry=registry,
-    )
-    http_requests_total = Counter(
-        name="akosha_http_requests_total",
-        documentation="Total HTTP requests",
-        labelnames=["method", "endpoint", "status"],
-        registry=registry,
-    )
-    http_request_duration = Histogram(
-        name="akosha_http_request_duration_seconds",
-        documentation="HTTP request latency in seconds",
-        labelnames=["method", "endpoint"],
-        buckets=(
-            0.005,
-            0.01,
-            0.025,
-            0.05,
-            0.1,
-            0.25,
-            0.5,
-            1.0,
-            2.5,
-            5.0,
-            10.0,
-        ),
-        registry=registry,
-    )
-    http_active_requests = Gauge(
-        name="akosha_http_active_requests",
-        documentation="Number of active HTTP requests",
-        registry=registry,
-    )
+
+def _zero_metric(metric: Any) -> None:
+    """Zero one metric in place, without replacing the object.
+
+    ``prometheus_client`` exposes no uniform "reset to zero", which is why
+    this is a type switch rather than a single call:
+
+    * ``MetricWrapperBase.clear()`` drops *labelsets* and is a **no-op for
+      an unlabeled metric** -- so it cannot be the whole answer.
+    * ``Counter.reset()`` exists only on ``Counter``.
+    * ``Gauge`` has ``set()`` but no ``reset()``.
+    * A ``Histogram`` keeps its state in per-bucket ``Value`` objects plus a
+      separate ``_sum`` ``Value``, and offers no public way to zero them.
+
+    A metric **with** labels is fully reset by dropping its labelsets: the
+    next ``.labels(...)`` call creates a fresh child whose value starts at
+    zero. A metric **without** labels has to have its value zeroed
+    directly, because there is no child to drop.
+    """
+    if getattr(metric, "_labelnames", ()):
+        metric.clear()
+        return
+
+    if hasattr(metric, "_buckets"):  # Histogram
+        metric._sum.set(0)
+        for bucket in metric._buckets:
+            bucket.set(0)
+        return
+
+    if hasattr(metric, "_count"):  # Summary
+        metric._sum.set(0)
+        metric._count.set(0)
+        return
+
+    reset = getattr(metric, "reset", None)
+    if reset is not None:  # Counter
+        reset()
+        return
+
+    if hasattr(metric, "set"):  # Gauge
+        metric.set(0)
 
 
 def _collect_metrics_text(registry: CollectorRegistry) -> str:

@@ -324,13 +324,10 @@ def _metric_samples(metric: Any) -> list[Any]:
 def _sample_value(field: str) -> float:
     """Current value of the rejection counter for ``field``.
 
-    Reads the metric OBJECT, not the rendered exposition blob.
-    ``prometheus_metrics.reset_all_metrics()`` replaces the registry
-    wholesale and re-registers only its own metrics, so every
-    ``akosha_otlp_*`` collector is dropped from the live registry afterwards
-    -- and ``tests/test_prometheus_metrics_coverage.py`` calls it about ten
-    times. A test that reads the blob therefore fails depending on what ran
-    before it, which is a property of the test suite, not of the code.
+    Reads the metric OBJECT, not the rendered exposition blob. The blob
+    mixes every metric in the shared registry; the object is the one
+    counter under test, so a delta assertion against it cannot be moved by
+    an unrelated metric changing.
     """
     total = 0.0
     for sample in _metric_samples(otlp_metrics.spans_rejected_total):
@@ -346,12 +343,9 @@ def test_receiver_metrics_land_in_the_shared_registry() -> None:
     """They must ride the /metrics route already on :8682, not a new port.
 
     Asserted against the metric OBJECTS' own samples rather than the
-    rendered exposition blob. ``reset_all_metrics()`` replaces the registry
-    wholesale and re-registers only its OWN metrics, so every
-    ``akosha_otlp_*`` collector is dropped from the live registry afterwards
-    -- and ``tests/test_prometheus_metrics_coverage.py`` calls it about ten
-    times. Reading the objects directly makes this assertion
-    order-independent, which is what it actually cares about.
+    rendered exposition blob: the blob mixes every metric in the shared
+    registry, and reading the objects directly makes the assertion about
+    these collectors and nothing else.
     """
     expected = {
         "akosha_otlp_spans_inserted_total",
