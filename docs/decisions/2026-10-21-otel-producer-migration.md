@@ -75,10 +75,19 @@ and reconcile. Do not proceed on the assumption that the only writer is the
 canary.
 
 **2. Repoint.** A producer repoints by changing its OTLP exporter endpoint and
-restarting. **There is no flag.** The v7 plan deleted
+restarting. **There is no flag on the PRODUCER side.** The v7 plan deleted
 `otel.receiver.trace_ingester_poller` rather than flipping it, because a
 settings key that maps to deleted code is a documentation lie that outlives the
 code.
+
+**Superseded 2026-10-23 (PR-A8).** That reasoning applies to the PRODUCER
+repoint path, which has no flag and never did. The RECEIVER side is
+different: `otel.receiver.trace_ingester_poller` now exists and gates the
+legacy `OtelTraceIngester`, because the class is retained behind the flag
+rather than deleted. The objection above ("a settings key that maps to deleted
+code") does not apply when the code is still there. Rollback is flipping the
+key back to true and restarting, never a code revert. The retired
+`AKOSHA_SKIP_OTEL_INGESTER` env var appears nowhere in `akosha/mcp/server.py`.
 
 For mahavishnu specifically, the knob is an env var and **not** the file the
 plan names:

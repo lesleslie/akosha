@@ -42,7 +42,7 @@ The `debug` exporter writes one log line per received span to the Alloy stdout/l
 ## Why this matters
 
 - Akosha's `/health` `local_traces_feed.feed_populated` will stay `false` until a real client exports a span into Alloy **and** a downstream consumer (Tempo) makes it queryable. The current pipeline receives spans, then drops them.
-- The OTel ingester in `akosha/ingestion/otel_ingester.py` polls Alloy's OTLP endpoint with empty envelopes; when a real trace arrives at Alloy and a consumer (Tempo) is configured, the consumer can be queried independently. Akosha's hot-store OTel ingester is the **consumer-of-the-Aggregator** path; this doc covers the **receiver-to-storage** path inside Alloy.
+- ~~The OTel ingester in `akosha/ingestion/otel_ingester.py` polls Alloy's OTLP endpoint with empty envelopes~~ — **retired by PR-A8 (2026-10-23).** The poller is gated by `otel.receiver.trace_ingester_poller` and ships `false`; the old `AKOSHA_SKIP_OTEL_INGESTER` env var is retired and read nowhere. The OTLP receiver in akosha (`akosha/observability/otlp_receiver.py`) is now the span producer, writing to `spans_substrate` on the canonical `:4317`/`:4318`. Note this whole document predates the port cutover: Alloy's trace pipeline was removed at that point, and the receiver owns those ports.
 
 ## Tempo install options
 
