@@ -58,11 +58,18 @@ def setup_telemetry(
     """
     global _tracer, _meter
 
-    # Create resource with service information
+    # Create resource with service information.
+    #
+    # service.namespace is "bodai", NOT a per-service name. PR-A6's allowlist
+    # is a fixed set of NAMESPACES, and a namespace that differs per service
+    # would mean every service needed its own carve-out -- which is the same
+    # sprawl the namespace was meant to prevent. "akosha" was a service NAME
+    # in the namespace slot, and it is not on the allowlist, so every span
+    # akosha itself emitted would have been quarantined as namespace drift.
     resource = Resource.create(
         {
             "service.name": service_name,
-            "service.namespace": "akosha",
+            "service.namespace": "bodai",
             "deployment.environment": environment,
         }
     )

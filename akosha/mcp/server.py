@@ -384,6 +384,35 @@ def _env_truthy(name: str) -> bool:
     return os.getenv(name, "").lower() in ("1", "true", "yes")
 
 
+def _epoch_or_none(value: Any) -> float | None:
+    """Return ``value`` if it is a real number, else ``None``.
+
+    The health aggregator compares timestamps with ``max()``, so a
+    non-numeric value is not merely ugly -- it raises, and the whole health
+    payload loses its ``_aggregate``. That is how a mock attribute leaking
+    into ``last_batch_at`` took the entire aggregate down: the exception was
+    caught upstream and the aggregate key was simply absent from the
+    response, which reads as "no aggregate computed" rather than "a
+    timestamp was the wrong type".
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _count_or_zero(value: Any) -> int:
+    """Return ``value`` as a non-negative int, or 0 if it is not a number.
+
+    Same reasoning as :func:`_epoch_or_none`: a counter that is not an int
+    must not take the health payload down with it. A negative count would be
+    nonsense and would make the aggregator's rate maths wrong in a way no
+    exception would flag.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0
+    return max(0, int(value))
+
+
 def _resolve_skills_signer_key_path() -> Path:
     """Resolve the persisted keypair path for the skills_signer.
 
@@ -603,10 +632,28 @@ def create_app(mode: Any | None = None) -> FastMCP:
         from akosha.config import get_config
 
         _lifespan_spans_config = get_config().spans_substrate
+        _receiver_validator_cfg = get_config().resource_validator
+        from akosha.observability.resource_validator import ResourceAttributeValidator
+
         receiver = OTLPReceiver(
             hot_store,
             grpc_port=_receiver_port("grpc"),
             http_port=_receiver_port("http"),
+            # PR-A6: the allowlist comes from config so a new MCP server can
+            # be admitted without a code change. The validator owns its drift
+            # history, so the receiver holds ONE instance for its lifetime --
+            # a per-batch instance would detect nothing.
+            resource_validator=ResourceAttributeValidator(
+                allowed_namespaces=frozenset(
+                    _receiver_validator_cfg.allowed_namespaces
+                ),
+                startup_grace_seconds=_receiver_validator_cfg.startup_grace_seconds,
+                rolling_window_seconds=_receiver_validator_cfg.rolling_window_seconds,
+                spike_threshold=_receiver_validator_cfg.spike_threshold,
+                sustained_threshold_hr=(
+                    _receiver_validator_cfg.sustained_threshold_per_hour
+                ),
+            ),
         )
         await receiver.start()
         set_shared_otel_receiver(receiver)
@@ -711,11 +758,28 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # Wave 6: start the OtelTraceIngester so spans from an OTLP/HTTP
         # collector land in the shared HotStore (independent of the
         # BodaiToolInvocationSubscriber's Redis feed). Mirrors the
-        # CodeGraphIngester block above. Opt-out via
-        # ``AKOSHA_SKIP_OTEL_INGESTER=1`` for offline test suites.
+        # CodeGraphIngester block above.
+        #
+        # PR-A8: retired. The poller POSTs an empty JSON envelope to an
+        # OTLP/HTTP endpoint and expects spans back; no standard receiver
+        # answers that, so it has ingested nothing since the OTLP receiver
+        # took :4318. It is kept behind a settings flag rather than deleted so
+        # rollback stays a flag flip -- see below.
         # ------------------------------------------------------------------
         global _otel_trace_ingester
-        if not _env_truthy("AKOSHA_SKIP_OTEL_INGESTER"):
+        # PR-A8. The gate is the settings key, NOT an env var.
+        #
+        # The legacy skip env var for this ingester is retired: it gated a
+        # poller that no longer does anything, and an operator who set it
+        # would believe the poller was off when the settings key is what
+        # actually controls it. Rollback is flipping
+        # ``otel.receiver.trace_ingester_poller`` back to true and restarting.
+        #
+        # The class is retained behind the flag rather than deleted precisely
+        # so that rollback stays a flag flip, and so the flag never becomes "a
+        # settings key that maps to deleted code" -- a documentation lie that
+        # outlives the code.
+        if get_config().otel.receiver.trace_ingester_poller:
             try:
                 from akosha.ingestion.otel_ingester import OtelTraceIngester
 
@@ -749,7 +813,12 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 )
                 _otel_trace_ingester = None
         else:
-            logger.debug("OtelTraceIngester skipped via AKOSHA_SKIP_OTEL_INGESTER")
+            logger.info(
+                "OtelTraceIngester not started: "
+                "otel.receiver.trace_ingester_poller is false. The OTLP receiver "
+                "is the span producer; this poller POSTs empty JSON envelopes to "
+                "an OTLP/HTTP endpoint, which no receiver answers."
+            )
 
         # ------------------------------------------------------------------
         # Wave 5: start the knowledge-graph periodic-refresh task. Every
@@ -1103,15 +1172,43 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 if _otel_trace_ingester is not None
                 else 0
             )
-            otel_last_poll = (
+            otel_last_poll = _epoch_or_none(
                 getattr(_otel_trace_ingester, "_last_poll_at", None)
                 if _otel_trace_ingester is not None
                 else None
             )
-            otel_last_error = (
+            otel_last_error = _epoch_or_none(
                 getattr(_otel_trace_ingester, "_last_error_at", None)
                 if _otel_trace_ingester is not None
                 else None
+            )
+
+            # PR-A8: the OTLP receiver is the span producer now.
+            #
+            # The legacy OtelTraceIngester poller is gated off, so its counters
+            # above are permanently zero and its ``_running`` permanently
+            # False. Reading them for the health verdict would report a dead
+            # producer: ``mcp_tool_call_feed`` would get entities_count=0,
+            # cycles_total=0, ingester_running=False, which
+            # ``mcp_common.health.feed.is_healthy`` maps to FAILED -- and
+            # severity 3 is a 503 on the /health route. The feed only reads
+            # warming_up today because the poller's cycles_total kept
+            # climbing while it ingested nothing at all.
+            #
+            # So the feed is re-pointed at the receiver, which IS alive and
+            # IS the thing writing spans_substrate. The legacy values stay
+            # above only because the retired wire fields still report them.
+            _otel_receiver = get_shared_otel_receiver()
+            receiver_running = _otel_receiver is not None
+            receiver_cycles = _count_or_zero(getattr(_otel_receiver, "batches_total", 0))
+            receiver_errors = _count_or_zero(
+                getattr(_otel_receiver, "dlq_insert_failed_total", 0)
+            )
+            receiver_last_batch = _epoch_or_none(
+                getattr(_otel_receiver, "last_batch_at", None)
+            )
+            receiver_last_error = _epoch_or_none(
+                getattr(_otel_receiver, "last_error_at", None)
             )
             code_graphs_last_poll = (
                 getattr(_code_graph_ingester, "_last_poll_at", None)
@@ -1129,10 +1226,10 @@ def create_app(mode: Any | None = None) -> FastMCP:
             local_traces_state = HealthFeedState(
                 entities_count=local_traces_count,
                 last_updated_timestamp=local_traces_last_poll,
-                cycles_total=_kg_refresh_cycles + otel_cycles,
-                errors_total=_kg_refresh_errors + otel_errors,
+                cycles_total=_kg_refresh_cycles + receiver_cycles,
+                errors_total=_kg_refresh_errors + receiver_errors,
                 last_error_at=local_traces_last_error,
-                ingester_running=(kg_running or otel_running),
+                ingester_running=(kg_running or receiver_running),
             )
 
             # REQ-TSQ-008 (docs/plans/2026-09-26-tool-surface-quality.md):
@@ -1175,26 +1272,24 @@ def create_app(mode: Any | None = None) -> FastMCP:
             mcp_tool_call_entities_count = 0
             with suppress(Exception):
                 if isinstance(hot_store, HotStore):
-                    mcp_tool_call_entities_count = len(
-                        await hot_store.query_traces(task_class="mcp_tool_call", limit=1000)
-                    )
-            mcp_tool_call_cycles = (
-                getattr(_otel_trace_ingester, "_cycles_total", 0) or 0
-                if _otel_trace_ingester is not None
-                else 0
-            )
-            mcp_tool_call_errors = (
-                getattr(_otel_trace_ingester, "_errors_total", 0) or 0
-                if _otel_trace_ingester is not None
-                else 0
-            )
+                    # PR-A8: count from spans_substrate, where the receiver
+                    # writes, rather than from conversations, where the
+                    # retired poller wrote. Querying the old table would
+                    # report zero spans arriving while spans are in fact
+                    # landing -- a health feed that reports the opposite of
+                    # the truth.
+                    from akosha.storage.span_query import SpanQuery
+
+                    mcp_tool_call_entities_count = await SpanQuery(
+                        hot_store
+                    ).count_by_task_class("mcp_tool_call")
             mcp_tool_call_state = HealthFeedState(
                 entities_count=mcp_tool_call_entities_count,
-                last_updated_timestamp=otel_last_poll,
-                cycles_total=mcp_tool_call_cycles,
-                errors_total=mcp_tool_call_errors,
-                last_error_at=otel_last_error,
-                ingester_running=otel_running,
+                last_updated_timestamp=receiver_last_batch,
+                cycles_total=receiver_cycles,
+                errors_total=receiver_errors,
+                last_error_at=receiver_last_error,
+                ingester_running=receiver_running,
             )
 
             if signer_feed_state is not None:
@@ -1319,14 +1414,19 @@ def create_app(mode: Any | None = None) -> FastMCP:
             lt_dict = _feed_dict("local_traces_feed", local_traces_state)
             # Preserve domain-specific OTel visibility fields.
             lt_dict["feed_populated"] = local_traces_count > 0
-            lt_dict["otel_ingester_running"] = otel_running
-            lt_dict["otel_endpoint"] = (
-                _otel_trace_ingester.otlp_endpoint if _otel_trace_ingester is not None else None
-            )
-            lt_dict["otel_cycles_total"] = otel_cycles
-            lt_dict["otel_errors_total"] = otel_errors
+            # PR-A8: these fields describe the OTLP RECEIVER now. The old
+            # ``otel_ingester_*`` names described the legacy poller, which is
+            # retired; keeping the names would make a permanently-dead
+            # producer look like the live one in the health payload.
+            lt_dict["otel_receiver_running"] = receiver_running
+            lt_dict["otel_receiver_http_port"] = _count_or_zero(
+                getattr(_otel_receiver, "_http_port", 0)
+            ) or None
+            lt_dict["otel_receiver_batches_total"] = receiver_cycles
+            lt_dict["otel_receiver_errors_total"] = receiver_errors
             lt_dict["source"] = (
-                "hot_store.query_traces (populated via kg_refresh + OtelTraceIngester)"
+                "hot_store.query_traces (populated via kg_refresh) + "
+                "spans_substrate (populated by the OTLP receiver)"
             )
             checks["local_traces_feed"] = lt_dict
 
@@ -1339,8 +1439,8 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # cycles_total, errors_total). ``source`` documents the filter
             # so operators can reproduce the count via mcp__akosha__query_local_traces.
             mt_dict = _feed_dict("mcp_tool_call_feed", mcp_tool_call_state)
-            mt_dict["source"] = "hot_store.query_traces(task_class='mcp_tool_call', limit=1000)"
-            mt_dict["otel_ingester_running"] = otel_running
+            mt_dict["source"] = "spans_substrate(task_class='mcp_tool_call')"
+            mt_dict["otel_receiver_running"] = receiver_running
             checks["mcp_tool_call_feed"] = mt_dict
 
             # Phase 2 (REQ-FEED-003): the aging cron runs over the same
@@ -1456,6 +1556,27 @@ def create_app(mode: Any | None = None) -> FastMCP:
             receiver.run_retention_sweep(stop_event), name="spans_retention_sweep"
         )
 
+        # v7 PR-A5: the heartbeat watcher. It reads spans_substrate through
+        # SpanQuery -- the SAME store the receiver writes -- and reports MCP
+        # servers that have stopped emitting spans. The roster is injected
+        # rather than read from a module global so the watcher stays
+        # independently testable and free of import-order coupling.
+        #
+        # The roster comes from config. An EMPTY roster is a P0 in its own
+        # right: a watcher with nothing to watch is a misconfiguration, not
+        # an all-clear, and the watcher reports that rather than silently
+        # reporting healthy.
+        from akosha.observability.heartbeat_watcher import HeartbeatWatcher
+        from akosha.storage.span_query import SpanQuery
+
+        heartbeat_watcher = HeartbeatWatcher(
+            SpanQuery(hot_store),
+            known_mcp_servers=get_config().otel.receiver.known_mcp_servers,
+        )
+        heartbeat_task = asyncio.create_task(
+            heartbeat_watcher.run(stop_event), name="heartbeat_watcher"
+        )
+
         yield {
             "akosha_ready": True,
             "embedding_service": embedding_service,
@@ -1478,7 +1599,10 @@ def create_app(mode: Any | None = None) -> FastMCP:
         stop_event.set()
         retention_task.cancel()
         canary_task.cancel()
-        await asyncio.gather(retention_task, canary_task, return_exceptions=True)
+        heartbeat_task.cancel()
+        await asyncio.gather(
+            retention_task, canary_task, heartbeat_task, return_exceptions=True
+        )
         try:
             await receiver.stop()
         except Exception as exc:

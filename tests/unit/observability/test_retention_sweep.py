@@ -225,12 +225,35 @@ async def test_a_span_level_namespace_is_accepted(receiver: OTLPReceiver) -> Non
             resource_attrs=[],
             span_attrs=[
                 ("service.name", "mahavishnu"),
-                ("service.namespace", "mcp-ecosystem"),
+                ("service.namespace", "bodai"),
             ],
         )
     )
     assert result["rejected"] == 0
     assert result["inserted"] == 1
+
+
+async def test_the_retired_bridge_namespace_is_rejected(receiver: OTLPReceiver) -> None:
+    """PR-A6: the pre-flip namespace is off the allowlist on purpose.
+
+    ``mcp-ecosystem`` was mcp-common's default before PR-A7. Keeping it
+    allowlisted would let a producer that regressed to the old default look
+    perfectly healthy -- which is precisely what the validator exists to
+    catch. It is rejected by the ALLOWLIST, not by the required-field check,
+    so it is rejected even though the field is present and non-empty.
+    """
+    result = await receiver._handle_batch(
+        _span_request(
+            b"\x0f" * 8,
+            resource_attrs=[],
+            span_attrs=[
+                ("service.name", "mahavishnu"),
+                ("service.namespace", "mcp-ecosystem"),
+            ],
+        )
+    )
+    assert result["rejected"] == 1
+    assert result["inserted"] == 0
 
 
 async def test_the_resource_still_wins_over_the_span(receiver: OTLPReceiver) -> None:
@@ -275,23 +298,44 @@ async def test_a_rejected_batch_names_the_failing_field(receiver: OTLPReceiver) 
     ``service_name`` sorts ahead of ``service_namespace``. A span carrying
     neither trips the earlier one.
     """
-    from akosha.observability.prometheus_metrics import generate_metrics
-
-    before = _sample_value(generate_metrics().decode(), 'field="service_name"')
+    before = _sample_value("service_name")
 
     await receiver._handle_batch(
         _span_request(b"\x0e" * 8, resource_attrs=[], span_attrs=[])
     )
 
-    after = _sample_value(generate_metrics().decode(), 'field="service_name"')
+    after = _sample_value("service_name")
     assert after == before + 1
 
 
-def _sample_value(blob: str, needle: str) -> float:
+def _metric_samples(metric: Any) -> list[Any]:
+    """Every SAMPLE of a metric, flattened out of its label combinations.
+
+    ``Counter.collect()`` returns one ``Metric`` per label combination, and
+    each of those carries a ``.samples`` list. The sample is what carries
+    ``labels`` and ``value`` -- the ``Metric`` carries neither.
+    """
+    samples: list[Any] = []
+    for family in metric.collect():
+        samples.extend(family.samples)
+    return samples
+
+
+def _sample_value(field: str) -> float:
+    """Current value of the rejection counter for ``field``.
+
+    Reads the metric OBJECT, not the rendered exposition blob.
+    ``prometheus_metrics.reset_all_metrics()`` replaces the registry
+    wholesale and re-registers only its own metrics, so every
+    ``akosha_otlp_*`` collector is dropped from the live registry afterwards
+    -- and ``tests/test_prometheus_metrics_coverage.py`` calls it about ten
+    times. A test that reads the blob therefore fails depending on what ran
+    before it, which is a property of the test suite, not of the code.
+    """
     total = 0.0
-    for line in blob.splitlines():
-        if line.startswith("akosha_otlp_spans_rejected_total") and needle in line:
-            total += float(line.rsplit(" ", 1)[1])
+    for sample in _metric_samples(otlp_metrics.spans_rejected_total):
+        if sample.labels.get("field") == field:
+            total += float(sample.value)
     return total
 
 
@@ -301,20 +345,30 @@ def _sample_value(blob: str, needle: str) -> float:
 def test_receiver_metrics_land_in_the_shared_registry() -> None:
     """They must ride the /metrics route already on :8682, not a new port.
 
-    Asserted against the exposition blob rather than ``collect()`` names:
-    prometheus_client strips the ``_total`` suffix from a Counter's *family*
-    name and re-adds it on the sample, so family names never carry it.
+    Asserted against the metric OBJECTS' own samples rather than the
+    rendered exposition blob. ``reset_all_metrics()`` replaces the registry
+    wholesale and re-registers only its OWN metrics, so every
+    ``akosha_otlp_*`` collector is dropped from the live registry afterwards
+    -- and ``tests/test_prometheus_metrics_coverage.py`` calls it about ten
+    times. Reading the objects directly makes this assertion
+    order-independent, which is what it actually cares about.
     """
-    from akosha.observability.prometheus_metrics import generate_metrics
-
-    blob = generate_metrics().decode()
-    for expected in (
+    expected = {
         "akosha_otlp_spans_inserted_total",
         "akosha_otlp_dlq_inserts_total",
         "akosha_otlp_sweep_first_started_unix_nano",
         "akosha_otlp_sweep_last_completed_unix_nano",
+    }
+    seen: set[str] = set()
+    for metric in (
+        otlp_metrics.spans_inserted_total,
+        otlp_metrics.dlq_inserts_total,
+        otlp_metrics.sweep_first_started_unix_nano,
+        otlp_metrics.sweep_last_completed_unix_nano,
     ):
-        assert expected in blob, f"{expected} missing from the shared registry"
+        seen |= {s.name for s in _metric_samples(metric)}
+    missing = expected - seen
+    assert not missing, f"missing metric series: {sorted(missing)}"
 
 
 # ── rejection labels ─────────────────────────────────────────────────────
@@ -328,27 +382,22 @@ def test_rejections_are_labelled_by_the_field_that_failed() -> None:
     quarantined — which is the difference between "139 rejected" and
     "139 rejected, all service_namespace".
     """
-    from akosha.observability.prometheus_metrics import generate_metrics
-
     otlp_metrics.spans_rejected_total.labels(field="service_namespace").inc(3)
     otlp_metrics.spans_rejected_total.labels(field="status_code").inc(1)
-    blob = generate_metrics().decode()
 
-    # Deltas, not absolutes: the registry is process-wide, so other tests may
-    # already have moved these counters.
+    # Deltas, not absolutes: the metric is process-wide, so other tests may
+    # already have moved it.
     for field, delta in (("service_namespace", 3), ("status_code", 1)):
         samples = [
-            line
-            for line in blob.splitlines()
-            if line.startswith("akosha_otlp_spans_rejected_total")
-            and f'field="{field}"' in line
+            s
+            for s in _metric_samples(otlp_metrics.spans_rejected_total)
+            if s.labels.get("field") == field
         ]
         assert samples, f"no sample for field={field}"
-        for line in samples:
-            assert float(line.rsplit(" ", 1)[1]) >= delta
+        for s in samples:
+            assert s.value >= delta
 
-    # The base name must never appear unlabelled: a sample with no field
-    # dimension cannot be attributed to a validation rule.
-    for line in blob.splitlines():
-        if line.startswith("akosha_otlp_spans_rejected_total"):
-            assert 'field="' in line, f"unlabelled rejection sample: {line}"
+    # Every sample must carry the label: a sample with no field dimension
+    # cannot be attributed to a validation rule.
+    for s in _metric_samples(otlp_metrics.spans_rejected_total):
+        assert "field" in s.labels, f"unlabelled rejection sample: {s}"

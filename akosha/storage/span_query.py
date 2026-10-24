@@ -252,3 +252,26 @@ class SpanQuery:
             failure_count=int(row[1]),
             latency_p99_ms=None if row[2] is None else float(row[2]),
         )
+
+    async def count_by_task_class(self, task_class: str) -> int:
+        """Count rows in ``spans_substrate`` carrying ``task_class``.
+
+        Deliberately not ``summary()``: that method filters on the
+        ``(selector, task_class)`` PAIR, so asking it for one task class
+        would count only the rows whose selector is NULL -- a population that
+        is nearly empty in practice and would read as "no spans are arriving"
+        when spans are arriving in droves.
+
+        Returns 0 when the substrate table is absent rather than raising: this
+        backs a health feed, and a missing table means "nothing has landed
+        yet", not "the health check itself is broken".
+        """
+        if not self._table_exists():
+            return 0
+        async with self._store._lock:
+            row = self._store.conn.execute(
+                "SELECT COUNT(*) FROM spans_substrate "
+                "WHERE task_class IS NOT DISTINCT FROM ?",
+                [task_class],
+            ).fetchone()
+        return int(row[0])

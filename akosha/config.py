@@ -462,6 +462,101 @@ class SpansSubstrateConfig(BaseModel):
     )
 
 
+class ResourceValidatorConfig(BaseModel):
+    """Resource-attribute validator settings (v7 §13.2).
+
+    ``allowed_namespaces`` is the allowlist of permitted ``service.namespace``
+    values. PR-A7 flipped the fleet default to ``bodai``; ``cli-tools`` is
+    the namespace the CLI producers (Claude Code, Codex, Qwen) use. The
+    pre-flip ``mcp-ecosystem`` value is deliberately NOT on the list: keeping
+    it would permit a producer that has regressed to the old default, which
+    is precisely what this validator exists to catch.
+    """
+
+    allowed_namespaces: list[str] = Field(
+        default_factory=lambda: ["bodai", "cli-tools"],
+        description="Permitted service.namespace values (§13.2 allowlist).",
+    )
+    startup_grace_seconds: int = Field(
+        default=300,
+        description=(
+            "Seconds after construction during which drift does not raise an "
+            "alert. The spans are still REJECTED during the grace — the grace "
+            "suppresses the alarm, not the rejection. Without it, a "
+            "misconfigured producer emitting several namespaces in the first "
+            "seconds after bind would page on every restart."
+        ),
+    )
+    rolling_window_seconds: int = Field(
+        default=300,
+        description="Window for the rate-based (P1 spike) drift track.",
+    )
+    spike_threshold: int = Field(
+        default=3,
+        description="Distinct drifted values per producer in the window before P1.",
+    )
+    sustained_threshold_per_hour: float = Field(
+        default=0.5,
+        description="Distinct drifted values per hour per producer before P2.",
+    )
+
+
+class OTelReceiverConfig(BaseModel):
+    """Settings for the OTLP receiver and the tooling around it.
+
+    v7 §11.4 / §13.6. Two things live here:
+
+    ``known_mcp_servers`` is the static roster the heartbeat watcher checks
+    for presence. It is a roster of *expected* producers, not a discovered
+    list -- an empty roster means "we do not know who is supposed to be
+    reporting", which is a P0 in itself, not a quiet all-clear.
+
+    ``trace_ingester_poller`` gates the legacy ``OtelTraceIngester``. PR-A8
+    flips it to ``false``; rollback is a flip back to ``true`` plus a restart,
+    never a code revert. The class is retained behind the flag rather than
+    deleted so that rollback stays a flag flip, and so the flag never becomes
+    "a settings key that maps to deleted code" -- which is a documentation
+    lie that outlives the code.
+
+    The retired ``AKOSHA_SKIP_OTEL_INGESTER`` env var is NOT honoured: it
+    gates nothing, and an operator who set it would otherwise believe the
+    poller is off when the flag is what actually controls it.
+    """
+
+    trace_ingester_poller: bool = Field(
+        default=True,
+        description=(
+            "Run the legacy OtelTraceIngester poller. PR-A8 sets this to false: "
+            "the poller POSTs empty JSON envelopes to an OTLP/HTTP endpoint, "
+            "which no standard receiver answers -- it has ingested nothing "
+            "since the OTLP receiver took :4318. Rollback is setting this back "
+            "to true and restarting."
+        ),
+    )
+    known_mcp_servers: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Static roster of MCP servers expected to be producing spans. An "
+            "EMPTY roster is a P0: the watcher has nothing to check, which is "
+            "a misconfiguration, not 'everything is fine'. Names are matched "
+            "against the service name on incoming spans."
+        ),
+    )
+
+
+class OTelConfig(BaseModel):
+    """Top-level ``otel:`` block. v7 §11.4.
+
+    Three-level nesting (``otel.receiver.*``) has no precedent in akosha --
+    every other nested config is two-level. That is why ``otel`` must be
+    declared on ``AkoshaConfig``: ``get_config`` drops any key not present in
+    ``AkoshaConfig.model_fields``, so an undeclared ``otel:`` block vanishes
+    from the settings file with nothing in the logs to say why.
+    """
+
+    receiver: OTelReceiverConfig = Field(default_factory=OTelReceiverConfig)
+
+
 class AkoshaConfig(OneiricMCPConfig):  # type: ignore[reportUntypedBaseClass]
     """Main Akosha configuration using Oneiric MCPBaseSettings pattern.
 
@@ -506,6 +601,23 @@ class AkoshaConfig(OneiricMCPConfig):  # type: ignore[reportUntypedBaseClass]
     eventbridge: EventBridgeConfig = Field(default_factory=EventBridgeConfig)
     spans_substrate: SpansSubstrateConfig = Field(
         default_factory=SpansSubstrateConfig
+    )
+    otel: OTelConfig = Field(
+        default_factory=OTelConfig,
+        description=(
+            "OTLP receiver tooling: the heartbeat watcher's producer roster "
+            "and the legacy trace-ingester poller gate. Declared here because "
+            "get_config drops any key absent from AkoshaConfig.model_fields, "
+            "silently."
+        ),
+    )
+    resource_validator: ResourceValidatorConfig = Field(
+        default_factory=ResourceValidatorConfig,
+        description=(
+            "Resource-attribute validator settings (§13.2). Lives here rather "
+            "than under otel.receiver because it configures the receiver's "
+            "ingest path, not the receiver's listener."
+        ),
     )
 
     # API

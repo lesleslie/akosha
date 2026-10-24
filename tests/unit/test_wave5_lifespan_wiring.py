@@ -36,6 +36,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from akosha.config import get_config
 from akosha.mcp import server as mcp_server
 from akosha.mcp.server import (
     APP_NAME,
@@ -372,10 +373,20 @@ async def test_lifespan_can_skip_code_graph_ingester(
 
 @pytest.mark.asyncio
 async def test_lifespan_starts_otel_trace_ingester(
-    fastmcp_factory: DummyFastMCP, lifespan_deps: dict[str, Any]
+    fastmcp_factory: DummyFastMCP, lifespan_deps: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The lifespan constructs and starts exactly one OtelTraceIngester,
-    bound to the shared hot_store, and stops it on shutdown."""
+    """PR-A8: the poller is gated by a SETTINGS KEY, and it is off by default.
+
+    The legacy skip env var is retired -- it gated a poller that no longer
+    does anything, and an operator who set it would believe the poller was
+    off when the settings key is what actually controls it. So the gate is
+    now ``otel.receiver.trace_ingester_poller``, and rollback is flipping it
+    back to true and restarting, never a code revert.
+    """
+    monkeypatch.setattr(
+        "akosha.config.get_config",
+        lambda: _config_with_poller(True),
+    )
     app = create_app()
     lifespan = app._mcp_server.lifespan
     async with lifespan(app):
@@ -394,17 +405,44 @@ async def test_lifespan_starts_otel_trace_ingester(
 
 
 @pytest.mark.asyncio
-async def test_lifespan_can_skip_otel_trace_ingester(
+async def test_lifespan_does_not_start_otel_trace_ingester_when_flag_is_false(
     fastmcp_factory: DummyFastMCP, lifespan_deps: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``AKOSHA_SKIP_OTEL_INGESTER=1`` short-circuits the ingester
-    construction (useful for offline test suites)."""
-    monkeypatch.setenv("AKOSHA_SKIP_OTEL_INGESTER", "1")
+    """The shipped default: the poller does not run.
+
+    It POSTs an empty JSON envelope to an OTLP/HTTP endpoint, which no
+    standard receiver answers -- it has ingested nothing since the OTLP
+    receiver took :4318, and it was only ever keeping the health feed's
+    ``cycles_total`` above zero.
+    """
+    monkeypatch.setattr(
+        "akosha.config.get_config",
+        lambda: _config_with_poller(False),
+    )
     app = create_app()
     lifespan = app._mcp_server.lifespan
     async with lifespan(app):
         assert lifespan_deps["otel_ingester_instances"] == []
     # No exception on shutdown.
+
+
+def _config_with_poller(enabled: bool) -> Any:
+    """A config whose ``otel.receiver.trace_ingester_poller`` is ``enabled``."""
+    from akosha.config import OTelConfig, OTelReceiverConfig
+
+    real = get_config()
+
+    class _Cfg:
+        spans_substrate = real.spans_substrate
+        resource_validator = real.resource_validator
+        otel = OTelConfig(
+            receiver=OTelReceiverConfig(
+                trace_ingester_poller=enabled,
+                known_mcp_servers=list(real.otel.receiver.known_mcp_servers),
+            )
+        )
+
+    return _Cfg()
 
 
 # ---------------------------------------------------------------------------

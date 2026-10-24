@@ -48,6 +48,7 @@ from typing import TYPE_CHECKING, Any
 from oneiric.core.lifecycle import LifecycleError
 
 from akosha.observability import otlp_metrics
+from akosha.observability.resource_validator import ResourceAttributeValidator
 
 if TYPE_CHECKING:
     from akosha.storage.hot_store import HotStore
@@ -111,8 +112,12 @@ class OTLPReceiver:
         *,
         grpc_port: int | None = None,
         http_port: int | None = None,
+        resource_validator: ResourceAttributeValidator | None = None,
     ) -> None:
         self._hot_store = hot_store
+        # PR-A6. One validator per receiver, not per row: it owns the drift
+        # history, and a per-row instance would detect nothing.
+        self._resource_validator = resource_validator or ResourceAttributeValidator()
         self._grpc_port = self.GRPC_PORT if grpc_port is None else grpc_port
         self._http_port = self.HTTP_PORT if http_port is None else http_port
         self._grpc_server: Any | None = None
@@ -126,6 +131,14 @@ class OTLPReceiver:
         self.rows_deduped_total = 0
         self.rows_rejected_total = 0
         self.dlq_insert_failed_total = 0
+        # Ingestion-cycle bookkeeping for the /health feed. ``batches_total``
+        # is the receiver's analogue of the retired poller's ``_cycles_total``:
+        # a monotonically increasing count of ingest cycles, which is what the
+        # health aggregator reads to distinguish "producer alive but has seen
+        # no data" from "producer dead".
+        self.batches_total = 0
+        self.last_batch_at: float | None = None
+        self.last_error_at: float | None = None
 
     # ── lifecycle ───────────────────────────────────────────────────────
 
@@ -262,10 +275,29 @@ class OTLPReceiver:
         The DLQ write is therefore wrapped, and the counters move either way.
         """
         spans = list(_extract_spans(batch))
+        self.batches_total += 1
+        self.last_batch_at = time.time()
         good: list[dict[str, Any]] = []
         bad: list[tuple[RowValidationError, dict[str, Any]]] = []
         for span in spans:
             error = self.pre_validate(span)
+            if error is None:
+                # PR-A6: allowlist check, AFTER the required-field check.
+                # The order matters: a span with no namespace must be
+                # reported as the receiver's own ``not_null`` rather than as
+                # the validator's ``namespace_missing``. Both quarantine the
+                # row; only the reason label differs, and the reason is what
+                # an operator reads.
+                verdict = self._resource_validator.validate(span)
+                if not verdict.accepted:
+                    error = RowValidationError(
+                        field="service_namespace",
+                        reason=verdict.reason or "namespace_not_allowed",
+                        value=verdict.seen_namespace,
+                    )
+                    logger.warning(
+                        "akosha.otlp_receiver.namespace_drift %s", verdict.message
+                    )
             if error is None:
                 good.append(span)
             else:
@@ -339,6 +371,7 @@ class OTLPReceiver:
             otlp_metrics.dlq_inserts_total.inc(len(rows))
         except Exception as exc:
             self.dlq_insert_failed_total += 1
+            self.last_error_at = time.time()
             otlp_metrics.dlq_insert_failed_total.inc()
             logger.error(
                 "akosha.otlp_receiver.dlq_write_failed rows=%s reason=%s exc=%s",

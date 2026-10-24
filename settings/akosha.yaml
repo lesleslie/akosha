@@ -143,3 +143,27 @@ spans_substrate:
   # the task runs and does nothing, and the retention runbook's
   # "sweep never started" alert correctly does not fire.
   retention_sweep_interval_hours: 6
+
+# OTLP receiver tooling (v7 §11.4 / §13.6).
+#
+# These keys must be declared on AkoshaConfig.otel to take effect: get_config
+# strips any key not declared there, and does so silently.
+otel:
+  receiver:
+    # PR-A8 sets this to false. The legacy OtelTraceIngester POSTs an empty
+    # JSON envelope to an OTLP/HTTP endpoint every 60s; no standard receiver
+    # answers that, so it has ingested nothing since the OTLP receiver took
+    # :4318. Rollback is setting this back to true and restarting -- never a
+    # code revert. The class is kept behind the flag precisely so that stays
+    # true.
+    trace_ingester_poller: false
+
+    # Static roster of MCP servers expected to be producing spans. An EMPTY
+    # roster is itself a P0: the heartbeat watcher would have nothing to
+    # check, which is a misconfiguration rather than an all-clear.
+    known_mcp_servers:
+      - "mahavishnu"
+      - "akosha"
+      - "session-buddy"
+      - "oneiric"
+      - "crackerjack"
