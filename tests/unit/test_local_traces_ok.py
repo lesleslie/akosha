@@ -29,7 +29,9 @@ Phase 4 migration note:
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -91,16 +93,24 @@ def _config_with_poller(enabled: bool) -> Any:
     return _Cfg()
 
 
-def _poller_enabled() -> bool:
-    """Whether the legacy OTel poller is enabled by the CURRENT config.
+# The replica formula's view of the control. A module-level value rather
+# than a read of the live config, because the replica must be
+# DETERMINISTIC: the config singleton is process-wide, so a test that
+# depends on what it happens to hold is a test that fails depending on
+# what ran before it. The real contract -- that the settings key is the
+# control and it ships false -- is pinned separately, by
+# ``test_the_settings_key_is_the_control_and_it_ships_off``.
+_POLLER_ENABLED = False
 
-    Reads the settings key the production code reads — and reads it
-    through the module attribute, so a test that patches the config is
-    honoured. The retired ``AKOSHA_SKIP_OTEL_INGESTER`` env var is
-    consulted by nothing, so a replica formula that still read it would
-    be testing a knob that does not exist.
+
+def _poller_enabled() -> bool:
+    """The replica's view of whether the legacy OTel poller is enabled.
+
+    The retired ``AKOSHA_SKIP_OTEL_INGESTER`` env var is consulted by
+    nothing, so a replica formula that still read it would be testing a
+    knob that does not exist.
     """
-    return bool(_config_module().get_config().otel.receiver.trace_ingester_poller)
+    return _POLLER_ENABLED
 
 
 # ---------------------------------------------------------------------------
@@ -133,14 +143,9 @@ async def test_local_traces_ok_true_for_running_empty_producer_without_errors(
 
     # Ensure OTel ingester construction is enabled — the formula must
     # evaluate every disjunct, not short-circuit on otel_disabled. A
-    # RUNNING producer implies the poller is enabled, so the settings key
-    # is patched to true. (The key is read at probe-call time, so the
-    # patch has to be in place when the probe runs, not just when the
-    # test is set up.)
+    # RUNNING producer implies the poller is enabled.
     monkeypatch.setattr(
-        _config_module(),
-        "get_config",
-        lambda: _config_with_poller(True),
+        sys.modules[__name__], "_POLLER_ENABLED", True
     )
 
     # Mock ingester shaped like the audit failure case:
@@ -342,6 +347,23 @@ def test_health_endpoint_reports_feed_populated_false_for_empty_running_feed(
     assert feed["ok"] is True
     assert feed["feed_populated"] is False
     assert feed["feed_entities_count"] == 0
+
+
+def test_the_settings_key_is_the_control_and_it_ships_off() -> None:
+    """The control is the settings key, and it ships ``false``.
+
+    The replica formula above reads a module-level value so it stays
+    deterministic. This test is where the REAL contract is pinned: the
+    legacy poller is gated by ``otel.receiver.trace_ingester_poller``,
+    the key ships off, and the retired ``AKOSHA_SKIP_OTEL_INGESTER`` env
+    var is consulted by nothing at all.
+    """
+    from akosha.config import get_config
+
+    assert get_config().otel.receiver.trace_ingester_poller is False
+
+    server_py = Path(__file__).resolve().parents[2] / "akosha" / "mcp" / "server.py"
+    assert "AKOSHA_SKIP_OTEL_INGESTER" not in server_py.read_text()
 
 
 def test_otel_disabled_short_circuits_local_traces_ok_via_the_settings_key(
