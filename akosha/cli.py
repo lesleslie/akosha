@@ -10,6 +10,7 @@ surface, the ``--json`` global flag, and the ``ExitCode`` enum.
 
 from __future__ import annotations
 
+import importlib
 import logging
 import sys
 from pathlib import Path
@@ -18,22 +19,7 @@ from typing import Annotated, Any
 import typer
 from oneiric.cli.base import OneiricCLIBase
 
-from akosha.config import DEFAULT_MCP_PORT
-
-try:
-    from akosha.main import AkoshaApplication  # type: ignore[import]
-except Exception:  # pragma: no cover - optional for test patching
-    AkoshaApplication = None  # ty: ignore[invalid-assignment]
-
-try:
-    from akosha.shell import AkoshaShell  # type: ignore[import]
-except Exception:  # pragma: no cover - optional for test patching
-    AkoshaShell = None  # ty: ignore[invalid-assignment]
-
-try:
-    from akosha.mcp import create_app  # type: ignore[import]
-except Exception:  # pragma: no cover - import is validated in command paths
-    create_app = None  # ty: ignore[invalid-assignment]
+from akosha.constants import DEFAULT_MCP_PORT
 
 # Configure logging
 logging.basicConfig(
@@ -41,6 +27,39 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+#: Module path for each lazily-resolved application symbol. Resolved on
+#: first attribute access -- see ``__getattr__`` below.
+_LAZY_APPLICATION_SYMBOLS: dict[str, str] = {
+    "AkoshaApplication": "akosha.main",
+    "AkoshaShell": "akosha.shell",
+    "create_app": "akosha.mcp",
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Resolve the application symbols on first access (PEP 562).
+
+    ``akosha.main`` / ``akosha.shell`` / ``akosha.mcp`` each pull in the
+    storage stack -- and, through it, numpy and the oneiric adapter
+    registry. Importing them at module scope made ``akosha --help`` pay
+    for the whole application before Typer could parse ``argv``.
+
+    The names stay reachable as module attributes, so
+    ``mock.patch("akosha.cli.AkoshaApplication")`` keeps working: the
+    patcher reads the attribute off the module, which is exactly this
+    hook. A symbol whose module cannot be imported resolves to ``None``,
+    matching the old ``try``/``except ImportError`` behaviour.
+    """
+    module_path = _LAZY_APPLICATION_SYMBOLS.get(name)
+    if module_path is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    try:
+        module = importlib.import_module(module_path)
+    except Exception as exc:  # pragma: no cover - optional dependencies
+        logger.warning("akosha.cli.lazy_import_failed: %s", exc)
+        return None
+    return getattr(module, name)
 
 
 class AkoshaCLI(OneiricCLIBase):

@@ -45,6 +45,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- akosha: the CLI no longer imports the application to parse `argv`.
+  `akosha/cli.py` pulled in `akosha.main`, `akosha.shell` and `akosha.mcp` at
+  module scope, and `akosha.config` built the whole oneiric settings chain
+  at import time. Importing the CLI now loads **two** akosha modules
+  (`akosha.cli`, `akosha.constants`) instead of 27, and 1,967 modules instead
+  of 2,563 — numpy is no longer loaded at all. `python -m akosha status`
+  dropped from ~4.0–5.7s to ~3.0s, and from a 1.75s spread between runs to
+  0.05s. The spread was the point: `tests/unit/test_main_entrypoints.py`
+  asserts the CLI answers within 10s, and on a cold cache the old import
+  graph took 10.4s, so the test was a coin flip
+- akosha: `akosha.config.config` is resolved lazily (PEP 562) instead of
+  being built by a module-scope `config = get_config()`. The old form made
+  every import under `akosha.` pay for a configuration load nobody asked
+  for. `from akosha.config import config` still works — the import machinery
+  falls back to `getattr` on the module — and `get_config_singleton()` returns
+  the same stable object the module attribute used to be. `get_config()`
+  keeps its own contract: a fresh load per call
 - akosha: `reset_all_metrics()` now zeroes metrics in place instead of
   replacing the shared `CollectorRegistry`. The old implementation
   re-registered only `prometheus_metrics.py`'s own metrics against the new
