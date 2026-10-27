@@ -15,11 +15,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - akosha: PR-A6 resource-attribute validator — `service.namespace` is checked
   against an allowlist (`bodai`, `cli-tools`); the pre-flip `mcp-ecosystem`
   value is deliberately excluded so a producer that regresses is caught
+- akosha: PR-A4 synthetic canary — the receiver writes a marker span into its
+  own substrate every 30s, through the FULL production path (protobuf decode,
+  conversion, validation, INSERT). A canary that shortcut into the INSERT
+  would miss the bug class it exists to catch: the `ArrayValue` serializer
+  defect of 2026-10-23 broke the conversion step for 223 Export RPCs while
+  `/health` stayed green. New metrics: `akosha_otlp_canary_last_success_unix_nano`,
+  `..._canary_writes_{attempted,succeeded,failed,rejected}_total`,
+  `..._canary_rows_deleted_total`
 - akosha: label `akosha_otlp_spans_rejected_total` by the field that failed.
   An unlabelled count is undiagnosable: "139 rejected" cannot be acted on,
   "139 rejected, all `field=service_namespace`" names the defect immediately
 - akosha: operator note for the OTel substrate in `CLAUDE.md` — the receiver's
-  ports, the three settings that matter, and how to read the rejection metric
+  ports, the three settings that matter, the canary, and how to read the
+  rejection metric
 
 ### Changed
 

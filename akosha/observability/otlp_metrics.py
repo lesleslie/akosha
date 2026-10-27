@@ -126,8 +126,78 @@ dlq_rows_deleted_total: Counter = Counter(
     registry=_REGISTRY,
 )
 
+# ── synthetic canary (§11.3) ───────────────────────────────────────────
+
+canary_last_success_unix_nano: Gauge = Gauge(
+    name="akosha_otlp_canary_last_success_unix_nano",
+    documentation=(
+        "Unix nanos of the last canary write that landed in the "
+        "substrate. The P0-C alert measures staleness against this: a "
+        "receiver that accepts spans but writes nothing leaves this "
+        "frozen while /health stays green. 0 means the canary has never "
+        "succeeded."
+    ),
+    registry=_REGISTRY,
+)
+
+canary_writes_attempted_total: Counter = Counter(
+    name="akosha_otlp_canary_writes_attempted_total",
+    documentation="Canary write attempts",
+    registry=_REGISTRY,
+)
+
+canary_writes_succeeded_total: Counter = Counter(
+    name="akosha_otlp_canary_writes_succeeded_total",
+    documentation=(
+        "Canary writes that inserted exactly one row with nothing "
+        "deduped. Strict on purpose: a multi-pod race that dedups on "
+        "the UNIQUE constraint is counted as a rejection, not a success."
+    ),
+    registry=_REGISTRY,
+)
+
+canary_writes_failed_total: Counter = Counter(
+    name="akosha_otlp_canary_writes_failed_total",
+    documentation=(
+        "Canary writes that did not land. Labelled by reason: the "
+        "exception class name, or `unexpected_result` when the write "
+        "returned without inserting. Cardinality is bounded -- reasons "
+        "are exception class names, not values."
+    ),
+    labelnames=["reason"],
+    registry=_REGISTRY,
+)
+
+canary_writes_rejected_total: Counter = Counter(
+    name="akosha_otlp_canary_writes_rejected_total",
+    documentation=(
+        "Canary writes the UNIQUE constraint rejected. A separate "
+        "counter rather than a label on the failure counter, because a "
+        "constraint rejection is not an exception: the write path "
+        "worked, another pod got there first."
+    ),
+    registry=_REGISTRY,
+)
+
+canary_rows_deleted_total: Counter = Counter(
+    name="akosha_otlp_canary_rows_deleted_total",
+    documentation=(
+        "Canary rows removed by the sweep. Canaries are swept at 24h, "
+        "not at the substrate's retention horizon: at one row per 30 "
+        "seconds the canary alone would add millions of rows to an "
+        "in-memory DuckDB inside a month."
+    ),
+    registry=_REGISTRY,
+)
+
 
 __all__ = [
+    "canary_last_success_unix_nano",
+    "canary_rows_deleted_total",
+    "canary_writes_attempted_total",
+    "canary_writes_failed_total",
+    "canary_writes_rejected_total",
+    "canary_writes_succeeded_total",
     "dlq_insert_failed_total",
     "dlq_inserts_total",
     "dlq_rows_deleted_total",

@@ -294,12 +294,41 @@ Alloy's `otelcol.exporter.prometheus` default.
 
 `akosha_otlp_{spans_received,spans_inserted,spans_deduped,spans_rejected,
 dlq_inserts,dlq_insert_failed,http_body_undecodable,retention_sweep_failed,
-dlq_rows_deleted}_total`, plus
-`akosha_otlp_sweep_{last_completed,first_started}_unix_nano` and
-`akosha_otlp_sweep_duration_seconds`.
+dlq_rows_deleted,canary_writes_attempted,canary_writes_succeeded,
+canary_writes_failed,canary_writes_rejected,canary_rows_deleted}_total`, plus
+`akosha_otlp_sweep_{last_completed,first_started}_unix_nano`,
+`akosha_otlp_sweep_duration_seconds` and
+`akosha_otlp_canary_last_success_unix_nano`.
 
-`spans_rejected_total` and `retention_sweep_failed_total` carry labels
-(`field`, `table`); the rest do not.
+`spans_rejected_total` (`field`), `retention_sweep_failed_total` (`table`)
+and `canary_writes_failed_total` (`reason`) carry labels; the rest do not.
+
+### The synthetic canary
+
+The receiver writes a marker span into its own substrate every 30s
+(`service.name = _receiver_canary`, `service.namespace = bodai`), through
+the **full production path** — protobuf decode, conversion, validation,
+INSERT. That is deliberate: a canary that shortcut into the INSERT would
+miss exactly the bug class it exists to catch. The `ArrayValue` serializer
+defect of 2026-10-23 broke the conversion step for 223 Export RPCs while
+`/health` stayed green.
+
+`akosha_otlp_canary_last_success_unix_nano` is the receiver's clock at the
+last successful write. **Stale by 60s is a P0** — the receiver accepts
+spans and then fails to write them, which no health probe would otherwise
+catch. The Prometheus rule is `OtelReceiverCanaryStale` in
+`mahavishnu/config/prometheus/health_aggregator_alerts.yml`.
+
+Three outcomes stay distinct, and the counters are how you tell them
+apart: `canary_writes_succeeded_total` (one row inserted, nothing
+deduped), `canary_writes_rejected_total` (the UNIQUE constraint rejected
+it — another pod got there first; the write path worked), and
+`canary_writes_failed_total{reason}` (the write path is broken).
+
+Canary rows are swept at **24h**, not at the substrate's `retention_days`.
+At one row per 30 seconds that is 86,400 rows a day, and the substrate is
+in-memory — on the normal horizon the canary would fill the table it is
+measuring.
 
 ### Retention
 

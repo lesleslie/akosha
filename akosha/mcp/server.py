@@ -1549,7 +1549,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # PR-A3 (see OTLPReceiver.run_canary_emitter / run_retention_sweep)
         # and run in parallel with the MCP server.
         canary_task = asyncio.create_task(
-            receiver.run_canary_emitter(stop_event), name="receiver_canary_stub_at_PR_A3"
+            receiver.run_canary_emitter(stop_event), name="receiver_canary"
         )
         retention_task = asyncio.create_task(
             receiver.run_retention_sweep(stop_event), name="spans_retention_sweep"

@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING, Any
 from oneiric.core.lifecycle import LifecycleError
 
 from akosha.observability import otlp_metrics
+from akosha.observability.canary_watcher import CANARY_SERVICE_NAME
 from akosha.observability.resource_validator import ResourceAttributeValidator
 
 if TYPE_CHECKING:
@@ -162,6 +163,9 @@ class OTLPReceiver:
         self.cycles_total = 0
         self.last_batch_at: float | None = None
         self.last_error_at: float | None = None
+        # The canary emitter, once ``run_canary_emitter`` has started. Its
+        # state is the receiver's own proof that it can still write.
+        self.canary_emitter: Any | None = None
 
     # ── lifecycle ───────────────────────────────────────────────────────
 
@@ -419,14 +423,46 @@ class OTLPReceiver:
     # ── lifespan tasks ──────────────────────────────────────────────────
 
     async def run_canary_emitter(self, stop_event: asyncio.Event) -> None:
-        """PR-A3 stub. PR-A4 swaps the body to emit one canary span per §11.3.
+        """Emit one canary span every ``CANARY_EMIT_INTERVAL_SECONDS`` (§11.3).
 
-        The stub exists so the §6 lifespan ordering compiles at PR-A3; it is a
-        real task awaiting the shutdown event rather than a bare ``return``, so
-        the lifespan's cancel/gather sequence behaves identically before and
-        after PR-A4 replaces the body.
+        The canary is the receiver proving to itself that it can still
+        WRITE. The heartbeat watcher proves the substrate is queryable; a
+        broken write path — a serializer that raises, a DLQ that swallows
+        the error — would leave /health green while every producer's
+        spans silently drop.
+
+        The marker goes through the FULL production path (protobuf decode
+        → convert → validate → INSERT), not a shortcut into the INSERT. A
+        shortcut would miss the class of bug this exists to catch.
+
+        A failed emit does NOT kill the task: the next cycle retries, and
+        the staleness of ``canary_last_success_unix_nano`` is what the
+        P0-C alert reads. A task that died on the first transient error
+        would look identical to a task that is still running, and would
+        stop testing the thing it exists to test.
         """
-        await stop_event.wait()
+        from akosha.observability.canary_watcher import (
+            CANARY_EMIT_INTERVAL_SECONDS,
+            CanaryEmitter,
+        )
+
+        emitter = CanaryEmitter(self)
+        self.canary_emitter = emitter
+        interval_s = max(1, CANARY_EMIT_INTERVAL_SECONDS)
+
+        while not stop_event.is_set():
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=interval_s)
+                return
+            except TimeoutError:
+                pass
+            try:
+                await emitter.emit_once()
+            except Exception:
+                # emit_once already records its own failures; this is the
+                # belt-and-braces around the whole call. The task must
+                # survive, or the canary stops testing the write path.
+                logger.exception("akosha.canary.emit_raised")
 
     async def run_retention_sweep(self, stop_event: asyncio.Event) -> None:
         """Sweep both substrate tables on the §8.1/§8.2 interval.
@@ -491,6 +527,24 @@ class OTLPReceiver:
             if deleted is None:
                 clean = False
 
+            # Canary rows get a 24h horizon, not the substrate's 30 days.
+            # At one row per 30 seconds that is 86,400 rows a day, and the
+            # substrate is an IN-MEMORY DuckDB with a 1GB limit — on the
+            # normal horizon the canary alone would fill it with millions
+            # of rows inside a month. A canary row is liveness evidence,
+            # not history: the same reasoning §8.1 applies to _dlq_rows.
+            canary_cutoff_ns = sweep_started - 24 * 3600 * 1_000_000_000
+            canary_deleted = self._sweep_table(
+                self._hot_store.spans_substrate_table,
+                "WHERE service_name = ? AND received_at_unix_nano < ?",
+                [CANARY_SERVICE_NAME, canary_cutoff_ns],
+                label="spans_substrate_canary",
+            )
+            if canary_deleted is None:
+                clean = False
+            elif canary_deleted > 0:
+                otlp_metrics.canary_rows_deleted_total.inc(canary_deleted)
+
             dlq_deleted = self._sweep_table(
                 self._hot_store.dlq_rows_table,
                 "WHERE rejected_at < CURRENT_TIMESTAMP - INTERVAL '24 hours'",
@@ -515,21 +569,34 @@ class OTLPReceiver:
             )
 
     def _sweep_table(
-        self, table: str, where: str, params: list[Any] | None = None
+        self,
+        table: str,
+        where: str,
+        params: list[Any] | None = None,
+        label: str | None = None,
     ) -> int | None:
         """DELETE expired rows from ``table``. Row count, or ``None`` on failure.
 
         Returns ``None`` rather than 0 for a failed delete: "deleted nothing"
         and "could not run" are different facts, and collapsing them is how a
         broken sweep reports itself as healthy for weeks.
+
+        ``label`` names the sweep in the failure counter. Two sweeps can
+        target the same table with different horizons (the substrate's 30
+        days and the canary's 24h), and a single ``table=`` label would
+        make them indistinguishable in an alert.
         """
         try:
             return self._hot_store.conn.execute(
                 f"DELETE FROM {table} {where}", params or []
             ).rowcount
         except Exception:
-            otlp_metrics.retention_sweep_failed_total.labels(table=table).inc()
-            logger.exception("akosha.retention_sweep_failed table=%s", table)
+            otlp_metrics.retention_sweep_failed_total.labels(
+                table=label or table
+            ).inc()
+            logger.exception(
+                "akosha.retention_sweep_failed table=%s", label or table
+            )
             return None
 
 
