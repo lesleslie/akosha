@@ -7,7 +7,7 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from akosha.config import config
+from akosha.config import get_config_singleton
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -27,7 +27,9 @@ class ShardRouter:
         Args:
             num_shards: Number of shards (default: from config.shard_count)
         """
-        self.num_shards = num_shards if num_shards is not None else config.shard_count
+        self.num_shards = (
+            num_shards if num_shards is not None else get_config_singleton().shard_count
+        )
         logger.info(f"ShardRouter initialized with {self.num_shards} shards")
 
     def get_shard(self, system_id: str) -> int:
@@ -81,7 +83,7 @@ class ShardRouter:
 
         # Use config.warm.path as default base path
         if base_path is None:
-            base_path = config.warm.path
+            base_path = get_config_singleton().warm.path
 
         if base_path is None:
             raise ValueError(

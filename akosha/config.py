@@ -52,15 +52,28 @@ else:
             """Fallback base class when ``oneiric`` is unavailable."""
 
 
-from akosha.storage.path_resolver import StoragePathResolver
+from akosha.constants import DEFAULT_MCP_PORT
 
 logger = logging.getLogger(__name__)
 
-#: Single source of truth for the Akosha network port. The Bodai ecosystem
-#: reserves 8682 for the Akosha seer; the previous 3002 default predates the
-#: port convention. Override via AKOSHA_MCP_PORT / MCP_PORT env vars or CLI
-#: flag, never by editing this constant.
-DEFAULT_MCP_PORT: int = 8682
+__all__ = [
+    "DEFAULT_MCP_PORT",
+    "AkoshaConfig",
+    "CacheConfig",
+    "ColdStorageConfig",
+    "EventBridgeConfig",
+    "HotStorageConfig",
+    "OTelConfig",
+    "OTelReceiverConfig",
+    "ResourceValidatorConfig",
+    "SpansSubstrateConfig",
+    "WarmStorageConfig",
+    "config",
+    "get_config",
+    "get_config_singleton",
+    "load_config_from_file",
+    "validate_storage_config",
+]
 
 
 def _substrate_field(field_name: str) -> Any:
@@ -167,6 +180,12 @@ class HotStorageConfig(BaseModel):
     def resolve_paths(self) -> HotStorageConfig:
         """Resolve WAL path using StoragePathResolver."""
         if self.wal_path is None:
+            # Imported here, not at module scope: the resolver lives in
+            # ``akosha.storage``, which drags in ``akosha.storage.aging``
+            # and therefore numpy. Importing the config module must not
+            # pay for the storage stack.
+            from akosha.storage.path_resolver import StoragePathResolver
+
             resolver = StoragePathResolver()
             self.wal_path = resolver.get_hot_store_wal_path()
         return self
@@ -232,6 +251,10 @@ class WarmStorageConfig(BaseModel):
     def resolve_paths(self) -> WarmStorageConfig:
         """Resolve warm storage path using StoragePathResolver."""
         if self.path is None:
+            # Imported here, not at module scope -- see ``HotStorageConfig.
+            # resolve_paths`` for why.
+            from akosha.storage.path_resolver import StoragePathResolver
+
             resolver = StoragePathResolver()
             self.path = resolver.get_warm_store_path()
         return self
@@ -599,9 +622,7 @@ class AkoshaConfig(OneiricMCPConfig):  # type: ignore[reportUntypedBaseClass]
     cold: ColdStorageConfig = Field(default_factory=ColdStorageConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
     eventbridge: EventBridgeConfig = Field(default_factory=EventBridgeConfig)
-    spans_substrate: SpansSubstrateConfig = Field(
-        default_factory=SpansSubstrateConfig
-    )
+    spans_substrate: SpansSubstrateConfig = Field(default_factory=SpansSubstrateConfig)
     otel: OTelConfig = Field(
         default_factory=OTelConfig,
         description=(
@@ -832,5 +853,49 @@ def get_config(config_path: str | None = None) -> AkoshaConfig:
     return AkoshaConfig(**relevant_data)
 
 
-# Global configuration instance
-config = get_config()
+# ---------------------------------------------------------------------------
+# Lazy singleton
+# ---------------------------------------------------------------------------
+# ``config`` used to be built at module scope (``config = get_config()``).
+# That made EVERY import under ``akosha.`` pay for the full oneiric
+# settings chain -- the settings-source-chain load for the akosha project,
+# plus oneiric's own, thirteen times over -- before any caller had asked
+# for a configuration value.
+#
+# PEP 562 module ``__getattr__`` resolves ``config`` on first access
+# instead. ``from akosha.config import config`` still works: the import
+# machinery falls back to ``getattr`` on the module, which is exactly the
+# hook below.
+
+_config_singleton: AkoshaConfig | None = None
+
+
+def get_config_singleton() -> AkoshaConfig:
+    """Return the process-wide config, building it on first use.
+
+    The returned object is stable across calls. The old module-scope
+    assignment built the config exactly once; an accessor that rebuilt
+    on every read would silently change that, and config values would
+    drift between reads.
+    """
+    global _config_singleton
+    if _config_singleton is None:
+        _config_singleton = get_config()
+    return _config_singleton
+
+
+if TYPE_CHECKING:
+    # Declared for type checkers only. At runtime the name is served by
+    # ``__getattr__`` below, which keeps the import side-effect-free.
+    config: AkoshaConfig
+
+
+def __getattr__(name: str) -> Any:
+    """Serve ``config`` lazily (PEP 562).
+
+    Any other name raises ``AttributeError`` -- the hook must not turn a
+    typo into a silent ``None``.
+    """
+    if name == "config":
+        return get_config_singleton()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
