@@ -622,8 +622,8 @@ def create_app(mode: Any | None = None) -> FastMCP:
         #     health during registration sees a live receiver.
         #
         # Binding is unconditional and not feature-flagged: the receiver owns
-        # the canonical :4317/:4318 per the v7 port-ownership decision
-        # (docs/decisions/2026-10-21-otel-substrate-port-ownership.md). A
+        # the canonical :4317/:4318 per the v7 port-ownership decision in
+        # docs/decisions/2026-10-21-otel-substrate-port-ownership.md. A
         # flag here would mean a config error silently un-owns the fleet's
         # OTLP endpoint.
         # ------------------------------------------------------------------
@@ -1158,20 +1158,9 @@ def create_app(mode: Any | None = None) -> FastMCP:
             with suppress(Exception):
                 if isinstance(hot_store, HotStore):
                     local_traces_count = len(await hot_store.query_traces(limit=1000))
-            otel_running = bool(
-                _otel_trace_ingester is not None
-                and getattr(_otel_trace_ingester, "_running", False)
-            )
-            otel_cycles = (
-                getattr(_otel_trace_ingester, "_cycles_total", 0) or 0
-                if _otel_trace_ingester is not None
-                else 0
-            )
-            otel_errors = (
-                getattr(_otel_trace_ingester, "_errors_total", 0) or 0
-                if _otel_trace_ingester is not None
-                else 0
-            )
+            # The retired poller's counters are read only for the LEGACY wire
+            # fields below; its running/cycles/errors values are gone, because
+            # the feed is sourced from the OTLP receiver now.
             otel_last_poll = _epoch_or_none(
                 getattr(_otel_trace_ingester, "_last_poll_at", None)
                 if _otel_trace_ingester is not None
@@ -1200,7 +1189,17 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # above only because the retired wire fields still report them.
             _otel_receiver = get_shared_otel_receiver()
             receiver_running = _otel_receiver is not None
-            receiver_cycles = _count_or_zero(getattr(_otel_receiver, "batches_total", 0))
+            # The feed's cycle count is the receiver's HEALTH cycle count, not
+            # its batch count. The batch count is zero until a producer
+            # actually exports, and a feed stuck at cycles_total=0 is
+            # `feed_never_populated` -- DEGRADED, so a 503, and the launchd
+            # wrapper's `curl -fsS` kills the server it just started. The
+            # receiver counts its startup as its first cycle precisely so
+            # this cannot happen; see OTLPReceiver.cycles_total.
+            receiver_cycles = _count_or_zero(getattr(_otel_receiver, "cycles_total", 0))
+            receiver_batches = _count_or_zero(
+                getattr(_otel_receiver, "batches_total", 0)
+            )
             receiver_errors = _count_or_zero(
                 getattr(_otel_receiver, "dlq_insert_failed_total", 0)
             )
@@ -1422,7 +1421,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
             lt_dict["otel_receiver_http_port"] = _count_or_zero(
                 getattr(_otel_receiver, "_http_port", 0)
             ) or None
-            lt_dict["otel_receiver_batches_total"] = receiver_cycles
+            lt_dict["otel_receiver_batches_total"] = receiver_batches
             lt_dict["otel_receiver_errors_total"] = receiver_errors
             lt_dict["source"] = (
                 "hot_store.query_traces (populated via kg_refresh) + "

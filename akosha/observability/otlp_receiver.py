@@ -138,6 +138,28 @@ class OTLPReceiver:
         # health aggregator reads to distinguish "producer alive but has seen
         # no data" from "producer dead".
         self.batches_total = 0
+        # The HEALTH cycle count, kept separate from ``batches_total``.
+        #
+        # ``batches_total`` counts Export RPCs received, so it is zero until a
+        # producer actually sends something. But a push producer's first cycle
+        # is its STARTUP: bind the port, assert the substrate, and it is
+        # alive. If the /health feed reports the batch count as its cycle
+        # count, the feed sits at ``cycles_total=0`` from boot until the first
+        # export -- and the aggregator maps "alive but never cycled" to
+        # ``feed_never_populated``, which is DEGRADED, which is a 503.
+        #
+        # That 503 is not cosmetic. The launchd wrapper polls /health with
+        # ``curl -fsS``, and ``-f`` fails on any 4xx/5xx, so a degraded
+        # /health makes the wrapper kill the server it was supposed to
+        # start. The service then crash-loops: launchd restarts it, it comes
+        # up with the same zero count, and /health is 503 again.
+        #
+        # So the receiver counts its startup as its first cycle. The
+        # heartbeat watcher (PR-A5) is the instrument that answers "is the
+        # producer ALIVE", and the canary (PR-A4) answers "is the receiver
+        # WORKING"; the feed's cycle count only has to answer "has it
+        # started".
+        self.cycles_total = 0
         self.last_batch_at: float | None = None
         self.last_error_at: float | None = None
 
@@ -157,6 +179,10 @@ class OTLPReceiver:
         await self._start_grpc()
         await self._start_http()
         self.receiver_started_total += 1
+        # The startup cycle is complete: the substrate was asserted and both
+        # listeners are bound. See ``cycles_total`` in ``__init__`` for why
+        # this has to be counted.
+        self.cycles_total += 1
         logger.info(
             "akosha.otlp_receiver.started grpc_port=%s http_port=%s",
             self._grpc_port,
@@ -285,6 +311,7 @@ class OTLPReceiver:
         """
         spans = list(_extract_spans(batch))
         self.batches_total += 1
+        self.cycles_total += 1
         self.last_batch_at = time.time()
         good: list[dict[str, Any]] = []
         bad: list[tuple[RowValidationError, dict[str, Any]]] = []
@@ -440,13 +467,13 @@ class OTLPReceiver:
             try:
                 await asyncio.wait_for(stop_event.wait(), timeout=interval_s)
                 return
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
             # Random jitter so a fleet of pods does not DELETE in lockstep.
             try:
                 await asyncio.wait_for(stop_event.wait(), timeout=random.uniform(0, 60))
                 return
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
             sweep_started = time.time_ns()
@@ -519,7 +546,7 @@ class _TraceServiceServicer:
     def __init__(self, receiver: OTLPReceiver) -> None:
         self._receiver = receiver
 
-    async def Export(self, request: Any, context: Any) -> Any:
+    async def Export(self, request: Any, _context: Any) -> Any:
         """Return an ``ExportTraceServiceResponse``.
 
         The counts ride on ``partial_success.rejected_spans`` rather than the

@@ -11,13 +11,14 @@ needs a live listener and lands in the e2e module, which is marked ``slow``.
 
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import Any
 
 import pytest
 from opentelemetry.proto.collector.trace.v1 import trace_service_pb2
 from opentelemetry.proto.common.v1 import common_pb2
-from opentelemetry.proto.trace.v1 import trace_pb2
 from opentelemetry.proto.resource.v1 import resource_pb2
+from opentelemetry.proto.trace.v1 import trace_pb2
 
 from akosha.observability.otlp_receiver import OTLPReceiver, RowValidationError
 from akosha.storage.hot_store import HotStore
@@ -614,10 +615,8 @@ async def test_start_does_not_bind_when_the_substrate_is_missing(
     port-in-use error that hides the real cause.
     """
     store.conn.execute("DROP TABLE spans_substrate")  # type: ignore[union-attr]
-    try:
+    with suppress(Exception):
         await receiver.start()
-    except Exception:
-        pass
     assert receiver._grpc_server is None
 
 

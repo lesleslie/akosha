@@ -16,13 +16,16 @@ completeness test below fails the moment its metrics go missing.
 
 from __future__ import annotations
 
-from prometheus_client import CollectorRegistry
+from typing import TYPE_CHECKING
 
 from akosha.observability import otlp_metrics
 from akosha.observability.prometheus_metrics import (
     get_metrics_registry,
     reset_all_metrics,
 )
+
+if TYPE_CHECKING:
+    from prometheus_client import CollectorRegistry
 
 
 def _families(registry: CollectorRegistry) -> set[str]:
