@@ -221,9 +221,20 @@ def register_otel_span_group(app: FastMCP) -> None:
     the shared one per call and returns ``[]`` when there is none, so the
     group registers cleanly at every profile tier and in lite mode.
     """
+    from akosha.mcp.tools.otel_retention_tools import register_otel_retention_tools
     from akosha.mcp.tools.otel_span_tools import register_otel_span_tools
 
     register_otel_span_tools(app)
+    # The retention trigger is the substrate's one mutating operation: it
+    # asks the receiver's sweep loop to run a cycle now, and that cycle
+    # DELETEs rows older than the retention horizon from `spans_substrate`
+    # (plus the 24h canary and `_dlq_rows` sweeps). This is the operator
+    # interface the operator selected -- the sweep is otherwise reachable
+    # only by waiting out the interval (6h by default).
+    #
+    # The tool SIGNALS; it never deletes. The loop owns the single DuckDB
+    # connection and performs the DELETE, so a caller cannot race it.
+    register_otel_retention_tools(app)
     logger.info("Registered spans_substrate browse tools")
 
 

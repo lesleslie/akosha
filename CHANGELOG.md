@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- akosha: `mcp__akosha__force_retention_sweep` — the operator can now run
+  the retention sweep on demand instead of waiting out the 6-hour interval.
+  §11.4a's operator-interface table had marked "force a sweep now" as *Not
+  available*, which was honest but left a six-hour worst-case wait on the
+  one operation where waiting hurts: the substrate is IN-MEMORY with a 1GB
+  limit. The trigger is an MCP tool and not a CLI command because it has
+  to be — the substrate lives in the running akosha process's memory and
+  the receiver is a process-local singleton published by
+  `set_shared_otel_receiver`, so a CLI subprocess has neither the rows nor
+  the receiver. The tool **signals** rather than deletes: the sweep loop
+  owns the single DuckDB connection and performs the DELETE, so a caller
+  cannot race it. One pending request is one sweep (`already_pending:
+  true` on a second call), and the response names
+  `akosha_otlp_sweep_last_completed_unix_nano` for confirming it landed.
+  Operator runbook: `docs/ops/OTEL_RETENTION.md`
 - akosha: PR-A5 heartbeat watcher — a static roster of expected MCP servers is
   checked against the substrate on a 60s window; an absent producer and an
   empty roster are both P0

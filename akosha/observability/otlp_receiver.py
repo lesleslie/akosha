@@ -166,6 +166,20 @@ class OTLPReceiver:
         # The canary emitter, once ``run_canary_emitter`` has started. Its
         # state is the receiver's own proof that it can still write.
         self.canary_emitter: Any | None = None
+        # The operator's "sweep now" request.
+        #
+        # This is a SIGNAL, not a command. The sweep loop owns the single
+        # DuckDB connection to the substrate; a caller that ran the sweep
+        # itself would put a second DELETE against that connection, and two
+        # coroutines deleting on one DuckDB handle is a race, not a feature.
+        # The request wakes the loop, and the loop -- the sole writer --
+        # performs the sweep.
+        self._sweep_requested = asyncio.Event()
+        # The interval the sweep loop is actually running on, published when
+        # the loop starts. The operator tool reports THIS, not a re-read of
+        # the settings: if the settings changed since boot, the running
+        # receiver's interval is the one the operator is waiting out.
+        self.sweep_interval_s: int | None = None
 
     # ── lifecycle ───────────────────────────────────────────────────────
 
@@ -470,6 +484,67 @@ class OTLPReceiver:
                 # survive, or the canary stops testing the write path.
                 logger.exception("akosha.canary.emit_raised")
 
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=interval_s)
+                return
+            except TimeoutError:
+                pass
+
+    def request_retention_sweep(self) -> bool:
+        """Ask the sweep loop to run a retention sweep now.
+
+        Returns True when this call queued the request, False when one was
+        already pending (the pending one will run; queueing a second would
+        only make the loop sweep twice for one request).
+
+        The request is a SIGNAL. The sweep loop performs the sweep, because
+        the loop -- not the caller -- owns the single DuckDB connection to
+        the substrate. A caller that ran the sweep itself would race the
+        loop's own DELETE on that connection.
+
+        Returns immediately; the sweep happens on the loop's next turn. The
+        caller watches ``akosha_otlp_sweep_last_completed_unix_nano`` to see
+        that it landed.
+        """
+        if self._sweep_requested.is_set():
+            return False
+        self._sweep_requested.set()
+        return True
+
+    async def _wait_for_sweep_wakeup(self, stop_event: asyncio.Event, timeout: float) -> str:
+        """Wait for the stop event, a sweep request, or the timeout.
+
+        Returns ``"stop"``, ``"requested"``, or ``"timeout"``.
+
+        Stop wins over a request: a receiver that is shutting down must not
+        start a sweep on the way out.
+        """
+        stop_task = asyncio.ensure_future(stop_event.wait())
+        request_task = asyncio.ensure_future(self._sweep_requested.wait())
+        try:
+            done, _pending = await asyncio.wait(
+                {stop_task, request_task},
+                timeout=max(0.0, timeout),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            # Cancel whichever waiter is still pending and let the
+            # cancellation settle, so Python does not warn about a task
+            # destroyed while pending.
+            for task in (stop_task, request_task):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(stop_task, request_task, return_exceptions=True)
+        if stop_task in done:
+            return "stop"
+        if request_task in done:
+            return "requested"
+        if stop_event.is_set():
+            # A zero timeout can return before the waiter task gets a turn,
+            # so the event may be set without its task having completed.
+            return "stop"
+        return "timeout"
+
     async def run_retention_sweep(self, stop_event: asyncio.Event) -> None:
         """Sweep both substrate tables on the §8.1/§8.2 interval.
 
@@ -486,7 +561,10 @@ class OTLPReceiver:
         The first sweep runs one full interval after start, not at t=0.
         ``sweep_first_started_unix_nano`` stays 0 until then — exactly the
         signal ``sweep_retention_late`` is gated on, so a pod whose sweep has
-        simply not come due yet cannot page anyone.
+        simply not come due yet cannot page anyone. The one exception is an
+        operator request (``request_retention_sweep``), which makes the
+        sweep run early; the gauge then means "a sweep has run on this
+        pod", which is what it is for.
 
         No cold archival here. §8.2 permits ``archival_target: null`` (no cold
         sink) as the default, and that is what this ships: adding an operator-
@@ -501,22 +579,27 @@ class OTLPReceiver:
 
         cfg = get_config().spans_substrate
         interval_s = max(1, cfg.retention_sweep_interval_hours) * 3600
+        self.sweep_interval_s = interval_s
         first_started = 0
 
         while not stop_event.is_set():
-            # wait_for cancels only the waiter, never the Event itself, so a
-            # timeout leaves stop_event usable by the lifespan's teardown.
-            try:
-                await asyncio.wait_for(stop_event.wait(), timeout=interval_s)
+            # Wait for the interval, the stop event, or an operator request.
+            # A request wakes the loop early so the operator does not wait
+            # out the interval to reclaim substrate space.
+            wake = await self._wait_for_sweep_wakeup(stop_event, interval_s)
+            if wake == "stop":
                 return
-            except TimeoutError:
-                pass
-            # Random jitter so a fleet of pods does not DELETE in lockstep.
-            try:
-                await asyncio.wait_for(stop_event.wait(), timeout=random.uniform(0, 60))
-                return
-            except TimeoutError:
-                pass
+            if wake == "timeout":
+                # The interval elapsed. Random jitter so a fleet of pods does
+                # not DELETE in lockstep. A REQUESTED sweep skips the jitter
+                # entirely: the operator named one pod, and there is no fleet
+                # to desynchronise from.
+                wake = await self._wait_for_sweep_wakeup(stop_event, random.uniform(0, 60))
+                if wake == "stop":
+                    return
+            # Either the interval elapsed (and the jitter too), or an
+            # operator asked for this sweep. Both mean "sweep now".
+            self._sweep_requested.clear()
 
             sweep_started = time.time_ns()
             if first_started == 0:
