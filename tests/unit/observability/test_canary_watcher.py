@@ -253,6 +253,51 @@ async def test_a_failing_emit_does_not_kill_the_task(
     assert calls["n"] >= 2, "the emitter must have retried, not died"
 
 
+async def test_the_first_canary_lands_without_waiting_an_interval(
+    receiver: OTLPReceiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The first emit must not wait out the interval.
+
+    The gauge starts at 0 and the P0-C rule reads
+    ``time() - canary_last_success > 60s`` with ``for: 30s``. If the
+    first emit waited a full 30-second interval, the gauge would sit at
+    0 for half a minute on every boot -- long enough for the rule to
+    page on a receiver that is starting up perfectly normally.
+
+    This is the same reasoning the receiver already applies to
+    ``cycles_total``: the startup IS the first cycle.
+    """
+    import asyncio
+
+    import akosha.observability.canary_watcher as cw
+
+    calls = {"n": 0}
+
+    async def _count(self: object) -> str:
+        calls["n"] += 1
+        return "succeeded"
+
+    monkeypatch.setattr(cw.CanaryEmitter, "emit_once", _count)
+    # A long interval: if the emitter waited for it, the test would time
+    # out instead of failing on the count.
+    monkeypatch.setattr(cw, "CANARY_EMIT_INTERVAL_SECONDS", 3600)
+
+    stop = asyncio.Event()
+    task = asyncio.create_task(receiver.run_canary_emitter(stop))
+    try:
+        for _ in range(100):
+            if calls["n"] >= 1:
+                break
+            await asyncio.sleep(0.01)
+    finally:
+        stop.set()
+        await asyncio.wait_for(task, timeout=5)
+
+    assert calls["n"] >= 1, (
+        "the first canary must land at startup, not one interval later"
+    )
+
+
 # ── retention: the canary cannot be allowed to fill the table ──────────
 
 

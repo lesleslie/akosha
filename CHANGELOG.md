@@ -45,6 +45,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- akosha: the canary's FIRST emit now happens at startup rather than one
+  interval later. `akosha_otlp_canary_last_success_unix_nano` starts at 0,
+  and the P0-C rule reads `time() - canary_last_success > 60s` with
+  `for: 30s` — so a receiver whose first canary waited out a 30-second
+  interval would leave the gauge at 0 for half a minute on every boot,
+  long enough for the rule to page on a receiver starting up perfectly
+  normally. This is the same reasoning the receiver already applies to
+  `cycles_total`: the startup IS the first cycle
 - akosha: the CLI no longer imports the application to parse `argv`.
   `akosha/cli.py` pulled in `akosha.main`, `akosha.shell` and `akosha.mcp` at
   module scope, and `akosha.config` built the whole oneiric settings chain

@@ -451,11 +451,17 @@ class OTLPReceiver:
         interval_s = max(1, CANARY_EMIT_INTERVAL_SECONDS)
 
         while not stop_event.is_set():
-            try:
-                await asyncio.wait_for(stop_event.wait(), timeout=interval_s)
-                return
-            except TimeoutError:
-                pass
+            # Emit BEFORE the first wait, not after it.
+            #
+            # The gauge starts at 0, and the P0 rule reads
+            # `time() - canary_last_success > 60s`. If the first emit
+            # waited a full interval, the gauge would sit at 0 for 30
+            # seconds on every boot -- and the rule carries `for: 30s`,
+            # so a receiver starting up perfectly normally could page.
+            #
+            # This is the same reasoning as ``cycles_total``: the startup
+            # IS the first cycle. A receiver that has just written a
+            # canary is healthy, and the gauge has to say so.
             try:
                 await emitter.emit_once()
             except Exception:
