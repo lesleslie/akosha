@@ -187,9 +187,18 @@ class EcosystemSkillsCache:
         """Write ``data`` atomically to ``self._path``.
 
         Uses ``tempfile.mkstemp`` in the same directory so ``os.replace``
-        (rename) is atomic on POSIX. Falls back to a sibling ``.tmp`` file
-        when the directory is not writable (defense-in-depth for tests
-        with locked filesystems).
+        (rename) is atomic on POSIX. The temp file has a unique name, so
+        concurrent writers of the same cache cannot collide over one
+        temp file, and a temp left behind by a crashed write is never
+        reused.
+
+        If the temp file cannot be created at all, the write falls back
+        to writing the destination directly. It is no longer atomic in
+        that case -- a truncated cache is harmless, because the reader
+        treats an unparseable cache as empty -- but it keeps the write
+        off the fixed-name sibling (``<path>.json.tmp``) that every
+        writer of this cache shared, and that was a predictable path to
+        plant a symlink on.
         """
         self._path.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(data, default=str, sort_keys=True)
@@ -199,23 +208,41 @@ class EcosystemSkillsCache:
                 suffix=".tmp",
                 dir=str(self._path.parent),
             )
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as fp:
-                    fp.write(payload)
-                Path(tmp_path).replace(self._path)
-            except Exception:
-                with suppress(OSError):
-                    Path(tmp_path).unlink()
-                raise
         except OSError as exc:
             logger.warning(
-                "ecosystem_skills cache write to %s failed (%s); falling back",
+                "ecosystem_skills cache write to %s failed (%s); writing directly",
                 self._path,
                 exc,
             )
-            sibling = self._path.with_suffix(self._path.suffix + ".tmp")
-            sibling.write_text(payload, encoding="utf-8")
-            sibling.replace(self._path)
+            self._write_direct(payload)
+            return
+
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fp:
+                fp.write(payload)
+            Path(tmp_path).replace(self._path)
+        except Exception:
+            with suppress(OSError):
+                Path(tmp_path).unlink()
+            raise
+
+    def _write_direct(self, payload: str) -> None:
+        """Write straight to the destination, refusing a symlink there.
+
+        ``O_NOFOLLOW`` means a symlink planted at the destination is
+        refused rather than written through, and the file is created
+        owner-only.
+        """
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(self._path, flags, 0o600)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fp:
+                fp.write(payload)
+        except BaseException:
+            with suppress(OSError):
+                self._path.unlink()
+            raise
 
 
 __all__ = [

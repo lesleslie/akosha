@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -165,3 +166,65 @@ def test_module_all_exports() -> None:
         "DEFAULT_TTL_SECONDS",
         "EcosystemSkillsCache",
     ]
+
+
+class TestCacheWriteDegradedPath:
+    """The degraded write path must not use a fixed-name temp file.
+
+    The primary write path already used ``tempfile.mkstemp``. The
+    fallback, taken when that failed, wrote through a *fixed-name*
+    sibling (``<path>.json.tmp``) instead -- which every writer of the
+    same cache shares, and which is a predictable path to plant a
+    symlink on.
+    """
+
+    def test_a_failed_temp_creation_does_not_write_through_a_symlink(
+        self, cache_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A planted symlink at the old temp path must not be written to.
+
+        The old fallback wrote through ``<path>.json.tmp`` with
+        ``Path.write_text``, which follows a symlink -- so the planted
+        link's target was truncated and overwritten.
+        """
+        victim = cache_path.parent / "victim.txt"
+        victim.write_text("precious", encoding="utf-8")
+        (cache_path.parent / f"{cache_path.name}.tmp").symlink_to(victim)
+
+        def boom(*args: object, **kwargs: object) -> tuple[int, str]:
+            raise OSError("no temp space")
+
+        monkeypatch.setattr(tempfile, "mkstemp", boom)
+
+        cache = EcosystemSkillsCache(path=cache_path, ttl_seconds=300, clock=_Clock())
+        cache.put("k", {"data": [42]})
+
+        assert victim.read_text(encoding="utf-8") == "precious"
+
+    def test_a_failed_temp_creation_publishes_a_regular_file(
+        self, cache_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The degraded write must not publish a symlink as the cache.
+
+        The old fallback renamed the planted symlink over the
+        destination, so the cache file became a link to whatever the
+        link pointed at.
+        """
+        victim = cache_path.parent / "victim.txt"
+        victim.write_text("precious", encoding="utf-8")
+        planted = cache_path.parent / f"{cache_path.name}.tmp"
+        planted.symlink_to(victim)
+
+        def boom(*args: object, **kwargs: object) -> tuple[int, str]:
+            raise OSError("no temp space")
+
+        monkeypatch.setattr(tempfile, "mkstemp", boom)
+
+        cache = EcosystemSkillsCache(path=cache_path, ttl_seconds=300, clock=_Clock())
+        cache.put("k", {"data": [42]})
+
+        assert not cache_path.is_symlink()
+        assert json.loads(cache_path.read_text(encoding="utf-8"))["k"]["data"] == [42]
+        # The planted link is left exactly as it was.
+        assert planted.is_symlink()
+        assert victim.read_text(encoding="utf-8") == "precious"
