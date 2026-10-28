@@ -402,3 +402,89 @@ class TestSecurityLoggingIntegration:
 
 # Need logging import at module level for integration test
 import logging
+
+
+# ============================================================================
+# The provider that is registered must be the one that exports
+# ============================================================================
+
+
+class TestProviderCarriesItsExporter:
+    """Regression tests for the orphaned-exporter defect.
+
+    ``setup_telemetry`` used to build the ``TracerProvider`` twice: once
+    to attach the span processors, and again to apply the sampler. The
+    second assignment REPLACED the first, so the OTLP exporter was
+    attached to a provider that was never registered. Akosha exported
+    nothing, whatever ``OTLP_ENDPOINT`` said, and the receiver's
+    heartbeat roster had no akosha rows to find.
+
+    The second test pins the other half: when a provider is already
+    installed -- which is the normal case, because the fleet launcher
+    installs one before the server's lifespan runs -- that provider wins.
+    """
+
+    @staticmethod
+    def _reset_global_provider() -> None:
+        """Clear the OTel global provider.
+
+        The SDK installs one exactly once per process and refuses to
+        replace it, and the session fixture already installed one, so a
+        test that wants to observe installation has to clear it first.
+        """
+        from opentelemetry.util._once import Once
+
+        trace._TRACER_PROVIDER = None
+        trace._TRACER_PROVIDER_SET_ONCE = Once()
+
+    def test_a_span_reaches_the_exporter(self, monkeypatch):
+        """The registered provider must carry the exporter's processor."""
+        from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+            InMemorySpanExporter,
+        )
+
+        exporter = InMemorySpanExporter()
+        monkeypatch.setattr(
+            "akosha.observability.tracing.OTLPSpanExporter",
+            lambda **_kwargs: exporter,
+        )
+
+        self._reset_global_provider()
+        setup_telemetry(
+            service_name="akosha",
+            otlp_endpoint="http://127.0.0.1:4317",
+            enable_console_export=False,
+        )
+
+        tracer = trace.get_tracer("akosha.tests")
+        with tracer.start_as_current_span("exporter_probe"):
+            pass
+
+        trace.get_tracer_provider().force_flush()
+
+        exported = [span.name for span in exporter.get_finished_spans()]
+        assert exported == ["exporter_probe"], (
+            "the registered provider did not carry the exporter — the span "
+            "never left the process"
+        )
+
+    def test_an_installed_provider_is_reused(self):
+        """An incumbent provider wins; it is not replaced."""
+        from opentelemetry.sdk.trace import TracerProvider
+
+        self._reset_global_provider()
+        incumbent = TracerProvider()
+        trace.set_tracer_provider(incumbent)
+
+        setup_telemetry(service_name="akosha")
+
+        assert trace.get_tracer_provider() is incumbent
+
+    def test_the_service_name_reaches_the_resource(self):
+        """The roster watches ``akosha``, so the resource must say so."""
+        self._reset_global_provider()
+        setup_telemetry(service_name="akosha")
+
+        resource = trace.get_tracer_provider().resource
+        assert resource.attributes["service.name"] == "akosha"
+        assert resource.attributes["service.namespace"] == "bodai"

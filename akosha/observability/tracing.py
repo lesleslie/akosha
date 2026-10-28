@@ -26,6 +26,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
+from opentelemetry.trace import ProxyTracerProvider
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -74,8 +75,18 @@ def setup_telemetry(
         }
     )
 
-    # Setup tracing
-    tracer_provider = TracerProvider(resource=resource)
+    # Setup tracing.
+    #
+    # ONE provider, built once. This used to build a second
+    # ``TracerProvider`` to apply the sampler, which REPLACED the one
+    # carrying the span processors: the OTLP exporter was attached to a
+    # provider that was never registered, so akosha exported nothing at
+    # all, whatever ``OTLP_ENDPOINT`` said. The sampler belongs on the
+    # provider that does the exporting.
+    tracer_provider = TracerProvider(
+        resource=resource,
+        sampler=TraceIdRatioBased(sample_rate),
+    )
 
     # Add OTLP exporter if endpoint provided
     if otlp_endpoint:
@@ -92,12 +103,24 @@ def setup_telemetry(
         tracer_provider.add_span_processor(BatchSpanProcessor(console_exporter))
         logger.info("✅ Console span export enabled")
 
-    # Set sampling
-    sampler = TraceIdRatioBased(sample_rate)
-    tracer_provider = TracerProvider(resource=resource, sampler=sampler)
-
-    # Register tracer
-    trace.set_tracer_provider(tracer_provider)
+    # Register tracer.
+    #
+    # An already-installed provider wins, and this is deliberate rather
+    # than defensive: the fleet launcher installs a provider pointing at
+    # the substrate BEFORE the server's lifespan runs, so by the time
+    # ``setup_telemetry`` is called a provider is already in place. The
+    # SDK refuses to replace one, and so does this function -- akosha's
+    # spans then inherit the launcher's provider, whose resource carries
+    # the service name the receiver's heartbeat roster watches.
+    existing = trace.get_tracer_provider()
+    if isinstance(existing, ProxyTracerProvider):
+        trace.set_tracer_provider(tracer_provider)
+    else:
+        logger.info(
+            "✅ Reusing the tracer provider already installed "
+            "(resource=%s) — akosha's spans export through it",
+            dict(existing.resource.attributes).get("service.name", "unknown"),
+        )
     _tracer = trace.get_tracer(__name__)
 
     # Setup metrics

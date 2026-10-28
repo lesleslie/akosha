@@ -60,6 +60,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- akosha: the tracer provider that actually exports is now the provider
+  that gets registered. `setup_telemetry` built the `TracerProvider`
+  twice — once to attach the span processors, and again to apply the
+  sampler — and the second assignment replaced the first. The OTLP
+  exporter was therefore attached to a provider nobody used, so akosha
+  exported no spans at all, whatever `OTLP_ENDPOINT` said. The sampler
+  belongs on the provider that does the exporting.
+- akosha: `setup_telemetry` now reuses an already-installed provider
+  instead of trying to replace it. The fleet launcher installs one before
+  the server's lifespan runs, so akosha's spans inherit that provider and
+  its resource — which carries the service name the receiver's heartbeat
+  roster watches.
+- akosha: the service name is `akosha`, not `akosha-mcp`. No roster
+  entry matched the old value, so akosha's own spans could never have
+  satisfied the watcher that exists to watch them.
+- akosha: console span export is now opt-in (`AKOSHA_CONSOLE_SPAN_EXPORT`).
+  It was switched on whenever `ENVIRONMENT` was unset — the normal case —
+  but it never worked, because the provider carrying the console
+  processor was the one the sampler rebuild discarded. Now that the
+  provider bug is fixed it would work, and it would write every span to
+  stderr, including the asyncio-instrumented task spans. The subprocess's
+  stderr is the launchd log.
 - akosha: the canary's FIRST emit now happens at startup rather than one
   interval later. `akosha_otlp_canary_last_success_unix_nano` starts at 0,
   and the P0-C rule reads `time() - canary_last_success > 60s` with

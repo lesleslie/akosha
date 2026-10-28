@@ -549,11 +549,32 @@ def create_app(mode: Any | None = None) -> FastMCP:
         environment = os.getenv("ENVIRONMENT", "development")
         otlp_endpoint = os.getenv("OTLP_ENDPOINT", None)
 
+        # Console span export is a DEBUGGING aid, and it is opt-in.
+        #
+        # It used to be switched on whenever ENVIRONMENT was unset (which
+        # is the normal case), but it never actually worked: the provider
+        # carrying the console processor was discarded by the sampler
+        # rebuild. Now that the provider bug is fixed it would work, and
+        # it would write every span to stderr -- including the
+        # asyncio-instrumented task spans, of which a server makes a great
+        # many. The subprocess's stderr is the launchd log, so that would
+        # be a 60MB-log problem, not a debugging one.
+        enable_console_export = os.getenv("AKOSHA_CONSOLE_SPAN_EXPORT", "").lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+
         tracer, meter = setup_telemetry(
-            service_name="akosha-mcp",
+            # The name the receiver's heartbeat roster watches. It used to
+            # be "akosha-mcp", which no roster entry matches, so akosha's
+            # own spans could never have satisfied the watcher that exists
+            # to watch them.
+            service_name="akosha",
             environment=environment,
             otlp_endpoint=otlp_endpoint,
-            enable_console_export=(environment == "development"),
+            enable_console_export=enable_console_export,
             sample_rate=1.0 if environment == "development" else 0.1,
         )
         logger.info("OpenTelemetry tracing initialized")
