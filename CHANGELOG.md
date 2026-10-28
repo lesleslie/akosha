@@ -42,8 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   An unlabelled count is undiagnosable: "139 rejected" cannot be acted on,
   "139 rejected, all `field=service_namespace`" names the defect immediately
 - akosha: operator note for the OTel substrate in `CLAUDE.md` — the receiver's
-  ports, the three settings that matter, the canary, and how to read the
-  rejection metric
+  ports, the three settings that matter, the canary, how to read the
+  rejection metric, and how to force a retention sweep now
 
 ### Changed
 

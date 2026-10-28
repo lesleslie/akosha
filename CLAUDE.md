@@ -338,10 +338,44 @@ would otherwise pin rows past their expiry, or delete live rows.
 
 Sweep leader-election is deferred — single-pod only today.
 
+### Forcing a sweep now
+
+The sweep runs every `spans_substrate.retention_sweep_interval_hours`
+(6 by default), so the worst-case wait for space to be reclaimed is six
+hours. The substrate is **in-memory** with a 1GB limit, so that wait is
+sometimes the thing that hurts.
+
+```
+mcp__akosha__force_retention_sweep()
+  -> {"requested": true, "already_pending": false,
+      "interval_s": 21600,
+      "watch": "akosha_otlp_sweep_last_completed_unix_nano"}
+```
+
+The call **queues** the request and returns; the sweep runs on the loop's
+next turn. Confirm it landed on `akosha_otlp_sweep_last_completed_unix_nano`.
+
+Two things it deliberately does NOT do:
+
+- **It does not delete.** The sweep loop owns the single DuckDB connection
+  to the substrate; the tool signals and the loop — the sole writer —
+  performs the DELETE. A tool that deleted on the caller's behalf would
+  race the loop's own DELETE on that connection.
+- **It does not queue a second sweep.** A second call while one is pending
+  reports `already_pending: true`.
+
+This is an MCP tool and not a CLI command because it has to be: the
+substrate is IN-MEMORY inside the running akosha process, and the receiver
+is a process-local singleton published by `set_shared_otel_receiver`. A CLI
+subprocess is a different process and has neither.
+
+The full operator runbook is `docs/ops/OTEL_RETENTION.md`.
+
 ### Where to read more
 
 - `docs/ops/OTEL_TEMPO_HOOK.md` — the Alloy/Tempo pipeline, and the
   retirement of the old poller
+- `docs/ops/OTEL_RETENTION.md` — the retention model, and the sweep trigger
 - `docs/decisions/2026-10-21-otel-producer-migration.md` — how to move a
   producer onto the substrate
 - `docs/CHANGELOG.md` — PR-A5/A6/A8 entries
