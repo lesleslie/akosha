@@ -464,8 +464,7 @@ class TestProviderCarriesItsExporter:
 
         exported = [span.name for span in exporter.get_finished_spans()]
         assert exported == ["exporter_probe"], (
-            "the registered provider did not carry the exporter — the span "
-            "never left the process"
+            "the registered provider did not carry the exporter — the span never left the process"
         )
 
     def test_an_installed_provider_is_reused(self):
@@ -488,3 +487,78 @@ class TestProviderCarriesItsExporter:
         resource = trace.get_tracer_provider().resource
         assert resource.attributes["service.name"] == "akosha"
         assert resource.attributes["service.namespace"] == "bodai"
+
+
+# ============================================================================
+# Who may close the provider
+# ============================================================================
+
+
+class TestProviderOwnership:
+    """``shutdown_telemetry`` closes only what akosha installed.
+
+    The fleet launcher installs a tracer provider before the server's
+    lifespan runs, so akosha normally inherits one it does not own.
+    Narrowing the global slot by type closed that provider at exit, and
+    the damage was invisible: a span created after the close is dropped
+    without an exception and without a metric, so the gap in the
+    substrate reads as "the producer went quiet" rather than "someone
+    closed the exporter".
+    """
+
+    @staticmethod
+    def _reset_global_provider() -> None:
+        """Clear the OTel global provider (see the class above)."""
+        from opentelemetry.util._once import Once
+
+        trace._TRACER_PROVIDER = None
+        trace._TRACER_PROVIDER_SET_ONCE = Once()
+
+    def test_a_provider_akosha_did_not_install_is_not_closed(self):
+        """The incumbent provider must survive akosha's shutdown.
+
+        The observable is the span: if the incumbent had been closed, its
+        exporter would be stopped and the span would be dropped on the
+        floor.
+        """
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+        from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+            InMemorySpanExporter,
+        )
+
+        exporter = InMemorySpanExporter()
+        incumbent = TracerProvider()
+        incumbent.add_span_processor(SimpleSpanProcessor(exporter))
+
+        self._reset_global_provider()
+        trace.set_tracer_provider(incumbent)
+
+        setup_telemetry(service_name="akosha")
+        assert trace.get_tracer_provider() is incumbent
+
+        shutdown_telemetry()
+
+        with incumbent.get_tracer("akosha.tests").start_as_current_span("still_live"):
+            pass
+
+        assert [s.name for s in exporter.get_finished_spans()] == ["still_live"], (
+            "the incumbent provider was closed by akosha — it was not akosha's to close"
+        )
+
+    def test_a_provider_akosha_installed_is_closed(self):
+        """The provider akosha installed is akosha's to close."""
+        from akosha.observability import tracing as tracing_module
+
+        self._reset_global_provider()
+        setup_telemetry(service_name="akosha")
+
+        assert tracing_module._OWNED_TRACER_PROVIDER is not None, (
+            "akosha installed the provider and must own it"
+        )
+
+        shutdown_telemetry()
+
+        assert tracing_module._OWNED_TRACER_PROVIDER is None, (
+            "the provider akosha installed was not closed"
+        )

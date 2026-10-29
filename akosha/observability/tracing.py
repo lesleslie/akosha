@@ -37,6 +37,22 @@ logger = logging.getLogger(__name__)
 _tracer: trace.Tracer | None = None
 _meter: metrics.Meter | None = None
 
+# The providers THIS module installed, if any.
+#
+# Ownership, not type, decides who may close a provider. The fleet
+# launcher installs one before the server's lifespan runs, so akosha
+# usually inherits a provider it did not create; closing it would shut
+# down an exporter that belongs to someone else. The failure would be
+# silent: a span created after the close is dropped without an
+# exception and without a metric, so the only symptom is a gap in the
+# substrate that reads as "the producer went quiet".
+#
+# The instance is tracked rather than the global slot, so "the provider
+# akosha installed" is the thing being closed -- not "whatever happens
+# to be registered when shutdown runs".
+_OWNED_TRACER_PROVIDER: TracerProvider | None = None
+_OWNED_METER_PROVIDER: MeterProvider | None = None
+
 
 def setup_telemetry(
     service_name: str = "akosha",
@@ -57,7 +73,7 @@ def setup_telemetry(
     Returns:
         Tuple of (tracer, meter)
     """
-    global _tracer, _meter
+    global _tracer, _meter, _OWNED_TRACER_PROVIDER, _OWNED_METER_PROVIDER
 
     # Create resource with service information.
     #
@@ -115,11 +131,19 @@ def setup_telemetry(
     existing = trace.get_tracer_provider()
     if isinstance(existing, ProxyTracerProvider):
         trace.set_tracer_provider(tracer_provider)
+        # Ours: the global slot was still the SDK's no-op proxy, so this
+        # registration is the one that took effect.
+        _OWNED_TRACER_PROVIDER = tracer_provider
     elif isinstance(existing, TracerProvider):
         # Narrowed to the SDK provider on purpose: ``trace.get_tracer_provider``
         # is typed as the API base class, which has no ``resource``. Only the
         # SDK implementation carries one, so a provider that is neither the
         # proxy nor the SDK one has no service name to report.
+        #
+        # The provider is NOT ours to close. It belongs to whoever
+        # installed it -- the launcher, in the normal deployment -- and
+        # closing it here would shut down an exporter that is not
+        # akosha's to shut down.
         logger.info(
             "✅ Reusing the tracer provider already installed "
             "(resource=%s) — akosha's spans export through it",
@@ -130,7 +154,15 @@ def setup_telemetry(
     # Setup metrics
     metric_reader = PrometheusMetricReader()
     meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+    # ``set_meter_provider`` DECLINES to replace an existing provider, so
+    # ours only takes the global slot when the slot was free. Compare the
+    # slot before and after rather than testing its type: the SDK's meter
+    # proxy is a private class, and a third-party MeterProvider would
+    # satisfy an ``isinstance`` check against the SDK one just as well.
+    # A meter provider that belongs to someone else is not ours to close.
     metrics.set_meter_provider(meter_provider)
+    if metrics.get_meter_provider() is meter_provider:
+        _OWNED_METER_PROVIDER = meter_provider
     _meter = metrics.get_meter(__name__)
 
     # Instrument asyncio
@@ -366,25 +398,36 @@ def shutdown_telemetry() -> None:
 
     This should be called when shutting down the application.
 
+    Only the providers THIS module installed are closed. The fleet
+    launcher installs a tracer provider before the server's lifespan
+    runs, so akosha normally inherits one it does not own; closing it
+    would shut down an exporter that belongs to someone else, and the
+    damage would be invisible -- a span created after the close is
+    dropped without an exception, so the gap in the substrate would
+    read as "the producer went quiet" rather than "someone closed the
+    exporter".
+
     Note:
         This function is synchronous as OpenTelemetry's shutdown() methods
         are synchronous blocking calls.
     """
-    global _tracer, _meter
+    global _tracer, _meter, _OWNED_TRACER_PROVIDER, _OWNED_METER_PROVIDER
 
     logger.info("Shutting down telemetry...")
 
-    # Shutdown trace provider. trace.get_tracer_provider() returns the abstract
-    # API type which doesn't expose shutdown(); at runtime, akosha installs the
-    # SDK TracerProvider, so narrow via isinstance before calling shutdown().
-    trace_provider = trace.get_tracer_provider()
-    if isinstance(trace_provider, TracerProvider):
-        trace_provider.shutdown()
+    # Close the tracer provider akosha installed, and only that one.
+    # Narrowing the GLOBAL slot by type is what used to close a provider
+    # akosha did not own: the slot holds the launcher's provider in the
+    # normal deployment, and the SDK provider satisfies the isinstance
+    # check whether or not it belongs to us.
+    if _OWNED_TRACER_PROVIDER is not None:
+        _OWNED_TRACER_PROVIDER.shutdown()
+        _OWNED_TRACER_PROVIDER = None
 
-    # Shutdown meter provider. Same reasoning as above for the SDK MeterProvider.
-    meter_provider = metrics.get_meter_provider()
-    if isinstance(meter_provider, MeterProvider):
-        meter_provider.shutdown()
+    # Same rule for the meter provider.
+    if _OWNED_METER_PROVIDER is not None:
+        _OWNED_METER_PROVIDER.shutdown()
+        _OWNED_METER_PROVIDER = None
 
     logger.info("✅ Telemetry shutdown complete")
 
