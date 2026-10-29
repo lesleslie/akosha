@@ -38,7 +38,19 @@ dependencies = [
     "pyarrow>=16.0.0",
     "aiohttp>=3.12.14",  # audit C5: imported in akosha/api/middleware.py:116
     "datasketch>=0.6.0",  # audit H2: MinHash for fuzzy deduplication
-    "mcp-common>=0.28.0",  # ToolProfile dispatch (W0 helper) — Phase 10 task 4 schema extension
+    # 0.18.0+ required for `apply_tool_profile()` (ToolProfile dispatch
+    # helper) — Phase 10 task 4 schema extension.
+    # 0.33.1 is the floor for the producer-telemetry OWNERSHIP API.
+    # `configure_producer_tracing` used to return a bool that meant "we
+    # installed the provider" in one branch and "someone else installed
+    # it and we declined" in another, so a caller could not tell whether
+    # it was allowed to close the provider. 0.33.1 returns
+    # `ProducerTracingResult`, which keeps the export decision and the
+    # ownership question as separate facts. The launcher installs the
+    # provider BEFORE the server is built, so akosha inherits one it does
+    # not own — the ownership distinction is what keeps a component from
+    # closing an exporter that belongs to someone else.
+    "mcp-common>=0.33.1",
 ]
 
 [project.scripts]
