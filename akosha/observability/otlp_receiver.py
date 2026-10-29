@@ -43,6 +43,7 @@ import json
 import logging
 import random
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -274,7 +275,7 @@ class OTLPReceiver:
         if self._http_task is not None:
             try:
                 await asyncio.wait_for(self._http_task, timeout=5.0)
-            except (TimeoutError, asyncio.CancelledError):
+            except TimeoutError, asyncio.CancelledError:
                 self._http_task.cancel()
         if self._grpc_server is not None:
             await self._grpc_server.stop(grace=1.0)
@@ -315,9 +316,7 @@ class OTLPReceiver:
             try:
                 json.dumps(attributes)
             except (TypeError, ValueError) as exc:
-                return RowValidationError(
-                    field="attributes", reason="json", value=str(exc)
-                )
+                return RowValidationError(field="attributes", reason="json", value=str(exc))
         return None
 
     async def _handle_batch(self, batch: Any) -> dict[str, int]:
@@ -327,7 +326,7 @@ class OTLPReceiver:
         and the DLQ error is counted so the heartbeat watcher can surface it.
         The DLQ write is therefore wrapped, and the counters move either way.
         """
-        spans = list(_extract_spans(batch))
+        spans = _extract_spans(batch).copy()
         self.batches_total += 1
         self.cycles_total += 1
         self.last_batch_at = time.time()
@@ -349,9 +348,7 @@ class OTLPReceiver:
                         reason=verdict.reason or "namespace_not_allowed",
                         value=verdict.seen_namespace,
                     )
-                    logger.warning(
-                        "akosha.otlp_receiver.namespace_drift %s", verdict.message
-                    )
+                    logger.warning("akosha.otlp_receiver.namespace_drift %s", verdict.message)
             if error is None:
                 good.append(span)
             else:
@@ -484,11 +481,12 @@ class OTLPReceiver:
                 # survive, or the canary stops testing the write path.
                 logger.exception("akosha.canary.emit_raised")
 
-            try:
+            # The ``return`` inside the ``suppress`` block is the "stop was
+            # requested" exit; a TimeoutError is suppressed instead, so the
+            # loop falls through to the next cycle.
+            with suppress(TimeoutError):
                 await asyncio.wait_for(stop_event.wait(), timeout=interval_s)
                 return
-            except TimeoutError:
-                pass
 
     def request_retention_sweep(self) -> bool:
         """Ask the sweep loop to run a retention sweep now.
@@ -607,7 +605,7 @@ class OTLPReceiver:
                 otlp_metrics.sweep_first_started_unix_nano.set(sweep_started)
 
             clean = True
-            cutoff_ns = sweep_started - int(cfg.retention_days) * 86_400 * 1_000_000_000
+            cutoff_ns = sweep_started - cfg.retention_days * 86_400 * 1_000_000_000
             deleted = self._sweep_table(
                 self._hot_store.spans_substrate_table,
                 "WHERE received_at_unix_nano < ?",
@@ -676,16 +674,13 @@ class OTLPReceiver:
         make them indistinguishable in an alert.
         """
         try:
-            return self._hot_store.conn.execute(
-                f"DELETE FROM {table} {where}", params or []
-            ).rowcount
+            conn = self._hot_store.conn
+            if conn is None:
+                raise RuntimeError("hot store not initialized")
+            return conn.execute(f"DELETE FROM {table} {where}", params or []).rowcount
         except Exception:
-            otlp_metrics.retention_sweep_failed_total.labels(
-                table=label or table
-            ).inc()
-            logger.exception(
-                "akosha.retention_sweep_failed table=%s", label or table
-            )
+            otlp_metrics.retention_sweep_failed_total.labels(table=label or table).inc()
+            logger.exception("akosha.retention_sweep_failed table=%s", label or table)
             return None
 
 
@@ -750,9 +745,10 @@ def _extract_spans(batch: Any) -> list[dict[str, Any]]:
     and the other in a test double would let the test pass against a path
     production never takes.
     """
-    if isinstance(batch, list):
-        return list(batch)
     rows: list[dict[str, Any]] = []
+    if isinstance(batch, list):
+        rows.extend(batch)
+        return rows
     for resource_spans in getattr(batch, "resource_spans", None) or []:
         resource_attrs = {
             _attr_key(a): _attr_value(a)
@@ -798,9 +794,7 @@ def _unrenderable_row(span: Any, exc: Exception) -> dict[str, Any]:
     }
 
 
-def _proto_to_dict(
-    span: Any, resource_attrs: dict[str, str]
-) -> dict[str, Any]:
+def _proto_to_dict(span: Any, resource_attrs: dict[str, str]) -> dict[str, Any]:
     """Map a protobuf Span onto a substrate row.
 
     ``resource_spans``-level attributes are passed in rather than read off the
@@ -833,10 +827,7 @@ def _proto_to_dict(
         "attributes": json.dumps(attrs),
         "resource": json.dumps(resource_attrs),
         "events": json.dumps(
-            [
-                {"name": e.name, "time_unix_nano": int(e.time_unix_nano)}
-                for e in span.events
-            ]
+            [{"name": e.name, "time_unix_nano": int(e.time_unix_nano)} for e in span.events]
         ),
     }
     # ── promote well-known attributes into their dedicated columns ──────
@@ -899,16 +890,15 @@ def _proto_to_dict(
     # though the producer declared its identity. Span-level wins for neither;
     # a producer that states the value has stated it.
     row["service_name"] = resource_attrs.get("service.name") or attrs.get("service.name")
-    row["service_namespace"] = (
-        resource_attrs.get("service.namespace") or attrs.get("service.namespace")
+    row["service_namespace"] = resource_attrs.get("service.namespace") or attrs.get(
+        "service.namespace"
     )
     if row["service_name"] is None:
         del row["service_name"]
     if row["service_namespace"] is None:
         del row["service_namespace"]
-    row["deployment_environment"] = (
-        resource_attrs.get("deployment.environment")
-        or attrs.get("deployment.environment")
+    row["deployment_environment"] = resource_attrs.get("deployment.environment") or attrs.get(
+        "deployment.environment"
     )
     return row
 
@@ -949,7 +939,7 @@ def _as_float(value: Any, fallback: float) -> float:
         return fallback
     try:
         return float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return fallback
 
 
@@ -1010,10 +1000,7 @@ def _any_value_to_python(value: Any) -> Any:
     if which is None:
         return None
     if which == "array_value":
-        return [
-            _any_value_to_python(v)
-            for v in getattr(value.array_value, "values", None) or []
-        ]
+        return [_any_value_to_python(v) for v in getattr(value.array_value, "values", None) or []]
     if which == "kvlist_value":
         return {
             _attr_key(kv): _any_value_to_python(kv.value)

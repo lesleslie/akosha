@@ -58,6 +58,15 @@ _SELECT_COLS = (
 _ORDER = "ORDER BY received_at_unix_nano DESC, span_id DESC"
 
 
+def _empty_summary() -> SpanSummary:
+    """The "nothing landed" summary — a fresh instance on every call.
+
+    A module-level constant would be shared, and pydantic models are mutable
+    by default: one caller mutating it would corrupt every later answer.
+    """
+    return SpanSummary(span_count=0, failure_count=0, latency_p99_ms=None)
+
+
 def _coerce_json(value: Any) -> dict[str, Any]:
     """Normalise a JSON column to a dict.
 
@@ -106,9 +115,16 @@ class SpanQuery:
         The table belongs to the receiver (``_ensure_operational_tables``). A
         read issued before that has ever run must return empty rather than
         raise a CatalogError -- spec §5.5.
+
+        A store that has not been initialized yet has no connection at all,
+        which says the same thing -- nothing has landed -- so it takes the
+        same path.
         """
+        conn = self._store.conn
+        if conn is None:
+            return False
         return bool(
-            self._store.conn.execute(
+            conn.execute(
                 "SELECT 1 FROM duckdb_tables() WHERE table_name = ?",
                 ["spans_substrate"],
             ).fetchone()
@@ -179,7 +195,10 @@ class SpanQuery:
         params.append(limit)
 
         async with self._store._lock:
-            rows = self._store.conn.execute(sql, params).fetchall()
+            conn = self._store.conn
+            if conn is None:
+                return []
+            rows = conn.execute(sql, params).fetchall()
         return [_to_hit(r) for r in rows]
 
     async def summary(
@@ -215,15 +234,13 @@ class SpanQuery:
         means something other than what the caller thinks.
         """
         if not self._table_exists():
-            return SpanSummary(span_count=0, failure_count=0, latency_p99_ms=None)
+            return _empty_summary()
 
         # COALESCE: SUM(CASE ...) returns NULL on zero rows, which would fail
         # the int field. PERCENTILE_CONT excludes NULLs, so p99 is None only
         # when the whole window lacks latency -- that is the distinction between
         # "no data" and "fast".
-        outcome_filter = (
-            "AND outcome IN ('success', 'error')" if scored_outcomes_only else ""
-        )
+        outcome_filter = "AND outcome IN ('success', 'error')" if scored_outcomes_only else ""
         sql = f"""
             SELECT
                 COUNT(*) AS span_count,
@@ -238,20 +255,26 @@ class SpanQuery:
               {outcome_filter}
         """
         async with self._store._lock:
-            row = self._store.conn.execute(
+            conn = self._store.conn
+            if conn is None:
+                return _empty_summary()
+            row = conn.execute(
                 sql,
                 {
                     "selector": selector,
                     "task_class": task_class,
-                    "cutoff": int(cutoff_unix_nano),
+                    "cutoff": cutoff_unix_nano,
                 },
             ).fetchone()
-
-        return SpanSummary(
-            span_count=int(row[0]),
-            failure_count=int(row[1]),
-            latency_p99_ms=None if row[2] is None else float(row[2]),
-        )
+            if row is None:
+                # The aggregate has no GROUP BY, so it always returns one row;
+                # a None here means the connection answered nothing at all.
+                return _empty_summary()
+            return SpanSummary(
+                span_count=int(row[0]),
+                failure_count=int(row[1]),
+                latency_p99_ms=None if row[2] is None else float(row[2]),
+            )
 
     async def count_by_task_class(self, task_class: str) -> int:
         """Count rows in ``spans_substrate`` carrying ``task_class``.
@@ -269,9 +292,13 @@ class SpanQuery:
         if not self._table_exists():
             return 0
         async with self._store._lock:
-            row = self._store.conn.execute(
-                "SELECT COUNT(*) FROM spans_substrate "
-                "WHERE task_class IS NOT DISTINCT FROM ?",
+            conn = self._store.conn
+            if conn is None:
+                return 0
+            row = conn.execute(
+                "SELECT COUNT(*) FROM spans_substrate WHERE task_class IS NOT DISTINCT FROM ?",
                 [task_class],
             ).fetchone()
-        return int(row[0])
+            if row is None:
+                return 0
+            return int(row[0])

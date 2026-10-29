@@ -115,7 +115,11 @@ def setup_telemetry(
     existing = trace.get_tracer_provider()
     if isinstance(existing, ProxyTracerProvider):
         trace.set_tracer_provider(tracer_provider)
-    else:
+    elif isinstance(existing, TracerProvider):
+        # Narrowed to the SDK provider on purpose: ``trace.get_tracer_provider``
+        # is typed as the API base class, which has no ``resource``. Only the
+        # SDK implementation carries one, so a provider that is neither the
+        # proxy nor the SDK one has no service name to report.
         logger.info(
             "✅ Reusing the tracer provider already installed "
             "(resource=%s) — akosha's spans export through it",

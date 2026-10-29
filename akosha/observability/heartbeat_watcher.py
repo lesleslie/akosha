@@ -49,6 +49,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
@@ -286,7 +287,7 @@ class HeartbeatWatcher:
     @property
     def consecutive_absences(self) -> dict[str, int]:
         """Current per-service absence streaks (a copy; mutating it does nothing)."""
-        return dict(self._absences)
+        return self._absences.copy()
 
     def reset(self) -> None:
         """Forget every absence streak."""
@@ -468,11 +469,12 @@ class HeartbeatWatcher:
         """
         interval = self._window_seconds if interval_seconds is None else interval_seconds
         while not stop_event.is_set():
-            try:
+            # The ``return`` inside the ``suppress`` block is the "stop was
+            # requested" exit; a TimeoutError is suppressed instead, so the
+            # loop falls through to the next cycle.
+            with suppress(TimeoutError):
                 await asyncio.wait_for(stop_event.wait(), timeout=interval)
                 return
-            except TimeoutError:
-                pass
             try:
                 report = await self.check()
             except Exception:

@@ -40,7 +40,7 @@ def _format_cursor(received_at_unix_nano: int, span_id: str) -> str:
     of a page — the tool returns hits, not a next-cursor, so the format is
     part of this tool's documented contract.
     """
-    return f"{int(received_at_unix_nano)}:{span_id}"
+    return f"{received_at_unix_nano}:{span_id}"
 
 
 def _parse_cursor(cursor: str | None) -> tuple[int, str] | None:
@@ -116,7 +116,7 @@ def register_otel_span_tools(app: Any) -> None:
             # The receiver has not started, so the DDL has not run either.
             return []
 
-        page = max(1, min(int(limit), MAX_PAGE_SIZE))
+        page = max(1, min(limit, MAX_PAGE_SIZE))
         hits = await SpanQuery(store).search(
             service_name=service_name,
             service_namespace=service_namespace,
@@ -178,6 +178,6 @@ def register_otel_span_tools(app: Any) -> None:
         summary = await SpanQuery(store).summary(
             selector=selector,
             task_class=task_class,
-            cutoff_unix_nano=int(cutoff_unix_nano),
+            cutoff_unix_nano=cutoff_unix_nano,
         )
         return summary.model_dump()

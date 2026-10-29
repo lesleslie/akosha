@@ -131,9 +131,7 @@ def build_canary_request(unix_nano: int) -> Any:
                                 name=CANARY_SPAN_NAME,
                                 start_time_unix_nano=unix_nano,
                                 end_time_unix_nano=unix_nano,
-                                status=trace_pb2.Status(
-                                    code=trace_pb2.Status.STATUS_CODE_OK
-                                ),
+                                status=trace_pb2.Status(code=trace_pb2.Status.STATUS_CODE_OK),
                                 attributes=[
                                     common_pb2.KeyValue(
                                         key="_canary",
@@ -141,9 +139,7 @@ def build_canary_request(unix_nano: int) -> Any:
                                     ),
                                     common_pb2.KeyValue(
                                         key="_canary_version",
-                                        value=common_pb2.AnyValue(
-                                            string_value=CANARY_VERSION
-                                        ),
+                                        value=common_pb2.AnyValue(string_value=CANARY_VERSION),
                                     ),
                                 ],
                             )
@@ -183,16 +179,14 @@ class CanaryEmitter:
             result = await self._receiver._handle_batch(request)
         except Exception as exc:
             self._record_failure(type(exc).__name__)
-            logger.exception(
-                "akosha.canary.write_failed exc=%s", type(exc).__name__
-            )
+            logger.exception("akosha.canary.write_failed exc=%s", type(exc).__name__)
             return "failed"
 
         inserted = int(result.get("inserted", 0))
         deduped = int(result.get("deduped", 0))
         rejected = int(result.get("rejected", 0))
 
-        if inserted == 1 and deduped == 0 and rejected == 0:
+        if inserted == 1 and deduped == rejected == 0:
             self._record_success()
             return "succeeded"
 
@@ -202,9 +196,7 @@ class CanaryEmitter:
             # write path demonstrably works.
             self.state.canary_writes_rejected_total += 1
             otlp_metrics.canary_writes_rejected_total.inc()
-            logger.debug(
-                "akosha.canary.duplicate_constraint_rejected deduped=%s", deduped
-            )
+            logger.debug("akosha.canary.duplicate_constraint_rejected deduped=%s", deduped)
             return "rejected"
 
         # Inserted nothing, inserted more than one, or the row was
@@ -222,9 +214,7 @@ class CanaryEmitter:
         self.state.canary_writes_succeeded_total += 1
         self.state.last_canary_success_unix_nano = time.time_ns()
         otlp_metrics.canary_writes_succeeded_total.inc()
-        otlp_metrics.canary_last_success_unix_nano.set(
-            self.state.last_canary_success_unix_nano
-        )
+        otlp_metrics.canary_last_success_unix_nano.set(self.state.last_canary_success_unix_nano)
 
     def _record_failure(self, reason: str) -> None:
         self.state.canary_writes_failed_total += 1

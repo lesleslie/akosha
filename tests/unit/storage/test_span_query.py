@@ -105,6 +105,30 @@ async def test_summary_missing_table_is_zeroed(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_uninitialized_store_reads_are_empty_not_errors(tmp_path: Path) -> None:
+    """A store that was never initialized has no connection at all.
+
+    ``HotStore.conn`` is ``None`` until ``initialize()`` runs, so a read
+    issued in that window used to raise ``AttributeError`` on the ``None``.
+    It now takes the same path as a store whose table has not been created
+    yet -- "nothing has landed" -- so the health feed and the browse tools
+    report an empty substrate instead of failing.
+    """
+    hs = HotStore(database_path=tmp_path / "uninit.duckdb", embedding_dim=384)
+    assert hs.conn is None
+
+    q = SpanQuery(hs)
+    assert await q.search(limit=10) == []
+
+    got = await q.summary(selector="x", task_class="agent", cutoff_unix_nano=BASE_RECEIVED)
+    assert got.span_count == 0
+    assert got.failure_count == 0
+    assert got.latency_p99_ms is None
+
+    assert await q.count_by_task_class("mcp_tool_call") == 0
+
+
+@pytest.mark.asyncio
 async def test_search_keyset_pages_without_duplicates_or_gaps(
     store: HotStore,
 ) -> None:
