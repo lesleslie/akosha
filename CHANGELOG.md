@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] - 2026-10-28
+
+### Added
+
+- akosha: SpanQuery read surface over spans_substrate (R-1)
+- fitness: Rewire the analyzer onto spans_substrate (R-6)
+- mcp: Search_spans tool over spans_substrate (read-path R-2)
+- mcp: Spans_summary aggregate over spans_substrate (read-path R-3)
+- mcp: Wire the fitness analyzer to the substrate (R-6)
+- mcp: Wire the OTLP receiver into the lifespan
+- observability: Build the OTLP receiver
+- observability: PR-A5 heartbeat watcher, PR-A6 resource validator, PR-A8 poller retirement
+- otel: The operator can force a retention sweep now
+- receiver: Label rejections by the field that failed
+- receiver: Retention sweep, Prometheus counters, namespace fallback
+- storage: Add the two substrate ingest writers
+- The synthetic canary — the receiver proving it can still write
+
+### Fixed
+
+- A started receiver must report a cycle, or /health 503s it
+- deps: Align DuckDB with oneiric; replace ->> JSON sugar with json_extract_string
+- deps: Certifi 2026.10.18 -> 2026.10.19 (PYSEC-2026-4320, CRITICAL)
+- deps: Uv 0.13.1 -> 0.13.5 (PYSEC-2026-4321)
+- ingest: Accept dotted task.class; align 3 tests with the current contract
+- knowledge-graph: Deterministic entity IDs; was breaking correlation
+- mcp: Do not fall back to a fixed-name temp file in the skills cache
+- mcp: Unblock 15 lifespan tests; three latent defects
+- models: Consolidate duplicate ColdRecord; untrack data/ runtime dir
+- observability: Promote span attributes into their substrate columns
+- observability: The tracer provider that exports is the one registered
+- observability: The ty and refurb gates pass on the OTel read path
+- receiver: An array-valued attribute must not fail the whole Export RPC
+- receiver: The canary's first emit lands at startup, not one interval later
+- tests: Import httpx2 as httpx in test_mock_bodai_ecosystem
+- tests: Stop test_pgvector_warm_store from poisoning sys.modules
+- Zero the metrics in place instead of replacing the registry
+
+### Performance
+
+- The CLI does not import the application to parse argv
+- The config singleton is resolved lazily, not built at import
+
+### Documentation
+
+- decisions: OTel producer migration runbook (read-path R-4)
+- observability: Reconcile the PR-A8 flag decision and the retired poller
+- observability: The substrate operator note, and the A5/A6/A8 changelog
+- otel: The operator note covers the retention sweep trigger
+
+### Testing
+
+- fitness: Pin _compute_signal arithmetic before the R-6 rewrite
+- observability: PR-A8 poller retirement -- the spec-required file
+- observability: The replica formula must not read the live config
+
 ## [Unreleased]
 
 ### Added
@@ -20,8 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `set_shared_otel_receiver`, so a CLI subprocess has neither the rows nor
   the receiver. The tool **signals** rather than deletes: the sweep loop
   owns the single DuckDB connection and performs the DELETE, so a caller
-  cannot race it. One pending request is one sweep (`already_pending:
-  true` on a second call), and the response names
+  cannot race it. One pending request is one sweep (`already_pending: true` on a second call), and the response names
   `akosha_otlp_sweep_last_completed_unix_nano` for confirming it landed.
   Operator runbook: `docs/ops/OTEL_RETENTION.md`
 - akosha: PR-A5 heartbeat watcher — a static roster of expected MCP servers is

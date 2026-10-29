@@ -146,9 +146,7 @@ class FitnessAnalyzer:
         in-memory via :meth:`run_fitness_analysis`.
         """
         if self._span_query is None:
-            logger.debug(
-                "FitnessAnalyzer: no SpanQuery configured; nothing to analyze"
-            )
+            logger.debug("FitnessAnalyzer: no SpanQuery configured; nothing to analyze")
             return
 
         if not self._declared_pairs:

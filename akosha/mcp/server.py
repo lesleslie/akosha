@@ -665,15 +665,11 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # history, so the receiver holds ONE instance for its lifetime --
             # a per-batch instance would detect nothing.
             resource_validator=ResourceAttributeValidator(
-                allowed_namespaces=frozenset(
-                    _receiver_validator_cfg.allowed_namespaces
-                ),
+                allowed_namespaces=frozenset(_receiver_validator_cfg.allowed_namespaces),
                 startup_grace_seconds=_receiver_validator_cfg.startup_grace_seconds,
                 rolling_window_seconds=_receiver_validator_cfg.rolling_window_seconds,
                 spike_threshold=_receiver_validator_cfg.spike_threshold,
-                sustained_threshold_hr=(
-                    _receiver_validator_cfg.sustained_threshold_per_hour
-                ),
+                sustained_threshold_hr=(_receiver_validator_cfg.sustained_threshold_per_hour),
             ),
         )
         await receiver.start()
@@ -1218,18 +1214,10 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # receiver counts its startup as its first cycle precisely so
             # this cannot happen; see OTLPReceiver.cycles_total.
             receiver_cycles = _count_or_zero(getattr(_otel_receiver, "cycles_total", 0))
-            receiver_batches = _count_or_zero(
-                getattr(_otel_receiver, "batches_total", 0)
-            )
-            receiver_errors = _count_or_zero(
-                getattr(_otel_receiver, "dlq_insert_failed_total", 0)
-            )
-            receiver_last_batch = _epoch_or_none(
-                getattr(_otel_receiver, "last_batch_at", None)
-            )
-            receiver_last_error = _epoch_or_none(
-                getattr(_otel_receiver, "last_error_at", None)
-            )
+            receiver_batches = _count_or_zero(getattr(_otel_receiver, "batches_total", 0))
+            receiver_errors = _count_or_zero(getattr(_otel_receiver, "dlq_insert_failed_total", 0))
+            receiver_last_batch = _epoch_or_none(getattr(_otel_receiver, "last_batch_at", None))
+            receiver_last_error = _epoch_or_none(getattr(_otel_receiver, "last_error_at", None))
             code_graphs_last_poll = (
                 getattr(_code_graph_ingester, "_last_poll_at", None)
                 if _code_graph_ingester is not None
@@ -1300,9 +1288,9 @@ def create_app(mode: Any | None = None) -> FastMCP:
                     # the truth.
                     from akosha.storage.span_query import SpanQuery
 
-                    mcp_tool_call_entities_count = await SpanQuery(
-                        hot_store
-                    ).count_by_task_class("mcp_tool_call")
+                    mcp_tool_call_entities_count = await SpanQuery(hot_store).count_by_task_class(
+                        "mcp_tool_call"
+                    )
             mcp_tool_call_state = HealthFeedState(
                 entities_count=mcp_tool_call_entities_count,
                 last_updated_timestamp=receiver_last_batch,
@@ -1439,9 +1427,9 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # retired; keeping the names would make a permanently-dead
             # producer look like the live one in the health payload.
             lt_dict["otel_receiver_running"] = receiver_running
-            lt_dict["otel_receiver_http_port"] = _count_or_zero(
-                getattr(_otel_receiver, "_http_port", 0)
-            ) or None
+            lt_dict["otel_receiver_http_port"] = (
+                _count_or_zero(getattr(_otel_receiver, "_http_port", 0)) or None
+            )
             lt_dict["otel_receiver_batches_total"] = receiver_batches
             lt_dict["otel_receiver_errors_total"] = receiver_errors
             lt_dict["source"] = (
@@ -1620,9 +1608,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         retention_task.cancel()
         canary_task.cancel()
         heartbeat_task.cancel()
-        await asyncio.gather(
-            retention_task, canary_task, heartbeat_task, return_exceptions=True
-        )
+        await asyncio.gather(retention_task, canary_task, heartbeat_task, return_exceptions=True)
         try:
             await receiver.stop()
         except Exception as exc:

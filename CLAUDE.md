@@ -292,10 +292,7 @@ On the existing `/metrics` route (`:8682`) — the receiver has **no port of
 its own**; `OTLPReceiver.PROMETHEUS_PORT = 9464` is dead code and 9464 is
 Alloy's `otelcol.exporter.prometheus` default.
 
-`akosha_otlp_{spans_received,spans_inserted,spans_deduped,spans_rejected,
-dlq_inserts,dlq_insert_failed,http_body_undecodable,retention_sweep_failed,
-dlq_rows_deleted,canary_writes_attempted,canary_writes_succeeded,
-canary_writes_failed,canary_writes_rejected,canary_rows_deleted}_total`, plus
+`akosha_otlp_{spans_received,spans_inserted,spans_deduped,spans_rejected, dlq_inserts,dlq_insert_failed,http_body_undecodable,retention_sweep_failed, dlq_rows_deleted,canary_writes_attempted,canary_writes_succeeded, canary_writes_failed,canary_writes_rejected,canary_rows_deleted}_total`, plus
 `akosha_otlp_sweep_{last_completed,first_started}_unix_nano`,
 `akosha_otlp_sweep_duration_seconds` and
 `akosha_otlp_canary_last_success_unix_nano`.

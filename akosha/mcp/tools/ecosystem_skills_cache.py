@@ -195,7 +195,7 @@ class EcosystemSkillsCache:
         If the temp file cannot be created at all, the write falls back
         to writing the destination directly. It is no longer atomic in
         that case -- a truncated cache is harmless, because the reader
-        treats an unparseable cache as empty -- but it keeps the write
+        treats an unparsable cache as empty -- but it keeps the write
         off the fixed-name sibling (``<path>.json.tmp``) that every
         writer of this cache shared, and that was a predictable path to
         plant a symlink on.
