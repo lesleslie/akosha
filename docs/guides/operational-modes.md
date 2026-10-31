@@ -521,9 +521,10 @@ For horizontal scaling:
 akosha start --mode=standard --port 8682 --instance-id akosha-1
 
 # Additional instances: use ports that don't collide with other
-# Bodai services (8683 = Dhara MCP, 8684 = fastblocks, 8685 = Dhara
-# storage, 8686 = Crackerjack Test WS, 8690+ = various WebSocket
-# channels). Pick unallocated slots in the 8687–8689 free band.
+# Bodai services (8676 = Crackerjack, 8678 = Session-Buddy,
+# 8680 = Mahavishnu, 8686 = Crackerjack Test WS, 8690+ = various
+# WebSocket channels). Pick unallocated slots in the 8683-8685 and
+# 8687-8689 free bands.
 # Instance 2
 akosha start --mode=standard --port 8687 --instance-id akosha-2
 

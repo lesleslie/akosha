@@ -400,7 +400,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - akosha: Add GitHub FUNDING.yml sponsor declaration
 - akosha: Drop unused deps + Python 3.16 ty deprecations
-- akosha: Remove Dhara imports (decommissioning)
+- akosha: Remove legacy storage-service imports (decommissioning)
 - deps: Bump mcp-common floor to >=0.28.0 for launcher migration (Phase 4)
 
 ## [0.18.0] - 2026-09-21
@@ -427,7 +427,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Build
 
-- deps: Drop dhara dep from runtime + creosote exclude (Phase 8 T12)
+- deps: Drop legacy storage dep from runtime + creosote exclude (Phase 8 T12)
 
 ## [0.17.5] - 2026-09-16
 
@@ -488,12 +488,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- akosha: Migrate to CommonMCPClient + delete DharaServiceRegistryClient (Phase 3 REQ-004)
+- akosha: Migrate to CommonMCPClient + delete legacy ServiceRegistryClient (Phase 3 REQ-004)
 - akosha: Migrate to mcp-common CommonMCPClient SDK
 
 ### Fixed
 
-- akosha: Append /mcp to DHARA_DEFAULT_URL defaults (Phase 2 REQ-005)
+- akosha: Append /mcp to the default registration URL (Phase 2 REQ-005)
 - Keep query_local_traces as Bodai-specific helper in akosha
 
 ### Documentation
@@ -512,16 +512,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **BREAKING (consumer-only, no published-API surface change): `_register_to_dhara_once` retry semantics.**
+- **BREAKING (consumer-only, no published-API surface change): `_register_component_once` retry semantics.**
   4xx responses now reach the generic `except Exception` branch (categorized as `"retry"`); only 5xx responses trigger the explicit `"give_up"` branch.
   The previous `httpx.HTTPStatusError` catch (covering both 4xx and 5xx) was replaced by `mcp_common.clients.common_mcp_client.MCPClientHTTPError`, which is 5xx-only.
-  Operational impact is rare — Dhara's `put` should not return 4xx in normal operation — but operators relying on 4xx-as-give-up behavior will see a categorization change. `MCPClientHTTPError` continues to be raised on 5xx with the original HTTP `status_code` attached.
+  Operational impact is rare — the registry's `put` should not return 4xx in normal operation — but operators relying on 4xx-as-give-up behavior will see a categorization change. `MCPClientHTTPError` continues to be raised on 5xx with the original HTTP `status_code` attached.
 
-- **BREAKING (consumer-only): `DharaServiceRegistryClient` class deleted.**
-  Akosha no longer instantiates the legacy REST-style client against Dhara.
+- **BREAKING (consumer-only): legacy `ServiceRegistryClient` class deleted.**
+  Akosha no longer instantiates the legacy REST-style registry client.
   The single production caller (mcp/tools/__init__.py:241) was migrated to `CommonMCPClient.call_tool("...")`.
   As a side effect, `_populate_async` no longer auto-wraps bare-string `get()` responses as `{"url": "..."}` — the new `mcp_common` transport returns strings as-is per the MCP spec.
-  Operators with bare-string records stored in Dhara's KV (no documented use case but possible historical data) should migrate those records to dict form before upgrading, or update consumers to handle string returns.
+  Operators with bare-string records stored in the registry's KV (no documented use case but possible historical data) should migrate those records to dict form before upgrading, or update consumers to handle string returns.
 
 - **Tests:** `tests/fixtures/mock_bodai_mcp.py:MockSessionBuddyMCP` rewritten to speak the streamable-HTTP transport that `CommonMCPClient` produces (POST `/mcp` JSON-RPC envelopes, GET `/mcp` SSE preamble, DELETE `/mcp` 204). Enables the REQ-009 cross-repo smoke test in `tests/integration/test_live_mcp_smoke.py` to run with the new transport.
 
@@ -571,7 +571,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Testing
 
-- mcp-phase0: Expect canonical /mcp-suffixed Dhara registration URL
+- mcp-phase0: Expect canonical /mcp-suffixed registration URL
 - mcp-server: Add parity tests for local_traces_ok
 - otel-ingester: Migrate coverage tests to POST contract
 
@@ -701,9 +701,9 @@ MED, 26 LOW). Reports at `AKOSHA_DOCS_AUDIT_2026-09-09.md` and
 ### Testing
 
 - akosha: Cover cold_store cleanup + adapter error paths (+5 tests)
-- akosha: Cover dhara_http_client lifecycle + parse tolerance (+12 tests)
+- akosha: Cover storage HTTP client lifecycle + parse tolerance (+12 tests)
 - akosha: Cover embedding_dim exception branches (+5 tests)
-- akosha: Cover fitness_analyzer trace fetch + Dhara write + DLQ paths (+10 tests)
+- akosha: Cover fitness_analyzer trace fetch + external write + DLQ paths (+10 tests)
 - akosha: Dedupe mock + cancel \_poll_task + close CodeGraphIngester (M5/M6/M7)
 - akosha: Drift test recognizes Wave 5 W0 group registration path
 - akosha: Exact-path match in mock fixtures; update unit tests to match
@@ -739,7 +739,7 @@ MED, 26 LOW). Reports at `AKOSHA_DOCS_AUDIT_2026-09-09.md` and
 - akosha: Orchestrator routes push vs poll (Phase 3 push subscriber)
 - akosha: Subscriber comment + settings knob + feature-tracking (Phase 4)
 - akosha: Thread backend+pg_url from settings into create_hot_store (Phase 1)
-- akosha: Wire DharaHttpClient into subscriber (Followup 4)
+- akosha: Wire the storage HTTP client into subscriber (Followup 4)
 - akosha: Wire HotStore into production bootstrap (Sub-plan A)
 - akosha: Wire search_all_systems to hot_store (Sub-plan C)
 
@@ -843,7 +843,7 @@ MED, 26 LOW). Reports at `AKOSHA_DOCS_AUDIT_2026-09-09.md` and
 - akosha: Sync port defaults (2026-08-19)
 - akosha: Sync version stamps (2026-08-19)
 - akosha: Test_mcp_tool_inventory.py — 3 tests
-- akosha: Wire fitness Dhara populate + profile subsets + W0 schema
+- akosha: Wire fitness external populate + profile subsets + W0 schema
 - docs+code(akosha): fix MCP-tool-hallucination audit findings (2026-08-19)
 
 ### Documentation

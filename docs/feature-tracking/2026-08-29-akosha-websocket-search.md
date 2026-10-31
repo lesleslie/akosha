@@ -3,7 +3,7 @@ built: 2026-08-29
 wired: 2026-08-29
 adopted: 2026-08-29
 phase: websocket-observability-v2-followup
-topic: dhara-to-hotstore-intake
+topic: websocket-to-hotstore-intake
 ---
 
 # Akosha WebSocket Invocations Search (consumer side of Mahavishnu's observability triple)
@@ -11,9 +11,9 @@ topic: dhara-to-hotstore-intake
 ## What
 
 `mcp__akosha__search_all_systems` now drives a real HotStore query over the
-Mahavishnu `websocket_tool_invocation/v1/*` Dhara audit corpus. The explicit
+Mahavishnu `websocket_tool_invocation/v1/*` audit corpus. The explicit
 mock that used to return `"Mock result for: {query}"` is gone. A
-`WebSocketInvocationsSubscriber` polls the Dhara prefix on a configurable
+`WebSocketInvocationsSubscriber` polls the audit prefix on a configurable
 interval (default 5s) and indexes each row as a `HotRecord` after embedding
 the content via the existing `EmbeddingService` (with deterministic fallback
 when the service is unavailable).
@@ -29,15 +29,15 @@ call that preserves the original response shape (`query`, `total_results`,
 
 Mahavishnu's WebSocket Tools Adoption plan (prior work in this session)
 already emits the observability triple for every `websocket_*` MCP tool
-invocation: one structured log line, one Dhara audit row under
+invocation: one structured log line, one audit row under
 `websocket_tool_invocation/v1/{timestamp_ms}`, and one OTel counter. The
 producer side is shipped; without a consumer, operators could see counters
 tick in dashboards but had no way to search historical invocations.
 
-A shape-3 consumer (semantic search across Dhara rows) was chosen over the
+A shape-3 consumer (semantic search across audit rows) was chosen over the
 other viable shapes because it requires the smallest code change and
 delivers operator value immediately on land: type a query, get ranked
-rows back with `system_id="mahavishnu"` and the original Dhara key as
+rows back with `system_id="mahavishnu"` and the original audit key as
 `conversation_id`.
 
 ## Plan
@@ -91,16 +91,16 @@ date so any future regression that removes the entry fails the gate.
       See **Serverless deployment notes** below for the operator
       walkthrough.
 - [ ] Sub-plan B's subscriber polls every 5s by default. Push-based
-      Dhara subscriptions would be lower-latency but require new
+      subscriptions would be lower-latency but require new
       infrastructure that doesn't exist yet. **Resolved** by Followup 3
       (push subscriber) below — `BodaiToolInvocationSubscriber` consumes
       the `bodai:events` Redis stream filtered to
       `topic="websocket_tool_invocation"` so rows reach HotStore in
       milliseconds. Plan: `/Users/les/Projects/mahavishnu/.claude/worktrees/cleanup-v2-plan-finalization/docs/plans/2026-08-29-push-subscriber.md`.
-- [ ] The `dhara_handle` argument is currently `None` in `main.py`, so
-      the subscriber no-ops in production today. **Resolved** by
-      Followup 4 (Dhara HTTP wiring) — the subscriber now calls the
-      real Dhara MCP `list_prefix` tool via `DharaHttpClient`, threaded
+- [ ] The subscriber had no production handle threaded through
+      `main.py`, so it no-opped in production. **Resolved** by
+      Followup 4 — the subscriber now calls the upstream MCP
+      `list_prefix` tool via a dedicated HTTP client, threaded
       into `akosha/main.py:start()`.
 - [ ] `search_all_systems` always queries `system_id="mahavishnu"` —
       the user-supplied `system_id` is intentionally ignored. This is
@@ -120,7 +120,7 @@ push subscription that lands envelopes in HotStore within milliseconds.
    (opt-in via `MAHAVISHNU_EVENTS_REDIS_URL`). Without this in the
    Mahavishnu deploy env, the `bodai:events` stream stays empty and
    Akosha's push subscriber idles. **Akosha transparently falls back
-   to the Dhara poll loop** when no envelopes arrive, so no rows are
+   to the poll loop** when no envelopes arrive, so no rows are
    lost during the rollout window.
 
 2. **A kosha Phase 2-4** ships (this commit series): the new

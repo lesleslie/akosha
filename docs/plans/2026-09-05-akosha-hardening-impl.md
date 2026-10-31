@@ -359,14 +359,14 @@ def mock_app() -> MagicMock:
     app._check_dependency_health = AsyncMock(
         return_value={
             "hot_store": {"ok": True},
-            "dhara": {"ok": False, "error": "connection refused"},
+            "cold_storage": {"ok": False, "error": "connection refused"},
             "websocket": {"ok": True},
         }
     )
     return app
 
 
-def test_health_returns_503_when_dhara_unreachable(mock_app: MagicMock) -> None:
+def test_health_returns_503_when_dep_unreachable(mock_app: MagicMock) -> None:
     """C2: /health must NOT lie — return 503 when any dep is down."""
     server = build_app(mock_app)
     client = TestClient(server)
@@ -374,14 +374,14 @@ def test_health_returns_503_when_dhara_unreachable(mock_app: MagicMock) -> None:
     assert response.status_code == 503
     body = response.json()
     assert body["status"] == "degraded"
-    assert body["checks"]["dhara"]["ok"] is False
+    assert body["checks"]["cold_storage"]["ok"] is False
 
 
 def test_health_returns_200_when_all_deps_ok(mock_app: MagicMock) -> None:
     mock_app._check_dependency_health = AsyncMock(
         return_value={
             "hot_store": {"ok": True},
-            "dhara": {"ok": True},
+            "cold_storage": {"ok": True},
             "websocket": {"ok": True},
         }
     )
@@ -403,11 +403,11 @@ Find the `AkoshaApplication` class and add after `close()`:
 
 ```python
 async def _check_dependency_health(self) -> dict[str, dict[str, Any]]:
-    """Probe HotStore, Dhara, WebSocket subscriber. Returns per-dep status dict."""
+    """Probe HotStore, cold storage, WebSocket subscriber. Returns per-dep status dict."""
     checks: dict[str, dict[str, Any]] = {}
     checks["hot_store"] = await self._check_hot_store()
-    if self._dhara_client is not None:
-        checks["dhara"] = await self._check_dhara()
+    if self._cold_storage is not None:
+        checks["cold_storage"] = await self._check_cold_storage()
     if self._ws_subscriber is not None:
         checks["websocket"] = {"ok": self._ws_subscriber.is_running()}
     return checks
@@ -423,9 +423,9 @@ async def _check_hot_store(self) -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
-async def _check_dhara(self) -> dict[str, Any]:
+async def _check_cold_storage(self) -> dict[str, Any]:
     try:
-        await self._dhara_client.ping()
+        await self._cold_storage.ping()
         return {"ok": True}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
@@ -464,7 +464,7 @@ cd /Users/les/Projects/akosha && git -c user.email='les@wedgwoodwebworks.com' -c
 git -c user.email='les@wedgwoodwebworks.com' -c user.name='les' commit -m "fix(akosha): /health now probes dependencies (was hardcoded OK)
 
 audit C2: /health and /healthz returned {'status': 'ok'} regardless of
-HotStore/Dhara/WebSocket state, defeating Kubernetes liveness probes.
+HotStore/cold-storage/WebSocket state, defeating Kubernetes liveness probes.
 Replace with _check_dependency_health() that returns 200 only when all
 deps pass, 503 + structured body otherwise. /healthz stays as process-
 liveness-only."
@@ -694,7 +694,7 @@ topic: akosha-hardening
 Three P0 critical bugs fixed and one M1 dependency hygiene item:
 
 1. **C1**: `ColdStore.export_batch()` no longer silent-data-loss — real upload via `storage_backend: "memory"|"s3"|"r2"` lifecycle.
-2. **C2**: `/health` HTTP route now probes HotStore/Dhara/WebSocket — returns 503 when degraded.
+2. **C2**: `/health` HTTP route now probes HotStore/cold-storage/WebSocket — returns 503 when degraded.
 3. **C3**: IPython admin shell five commands now return `{"status": "stub", ...}` instead of fake success.
 4. **M1**: `aiohttp>=3.12.14` declared in `pyproject.toml`.
 
@@ -1144,7 +1144,7 @@ async def test_compute_p99_latency_with_no_traces(analyzer: FitnessAnalyzer) -> 
 
 
 # ... 8 more tests covering: trace ingestion, sliding window, percentile
-# computation, anomaly threshold, persistence to Dhara, OTel hook,
+# computation, anomaly threshold, persistence to external storage, OTel hook,
 # empty-corpus behavior, malformed trace handling ...
 ```
 
@@ -1464,12 +1464,12 @@ async def test_cli_and_http_health_return_same_shape(monkeypatch: pytest.MonkeyP
     fake_app._check_dependency_health = AsyncMock(
         return_value={
             "hot_store": {"ok": True},
-            "dhara": {"ok": True},
+            "cold_storage": {"ok": True},
             "websocket": {"ok": False, "error": "subscriber not started"},
         }
     )
     cli_result = await _health_probe(fake_app)
-    assert cli_result["checks"].keys() == {"hot_store", "dhara", "websocket"}
+    assert cli_result["checks"].keys() == {"hot_store", "cold_storage", "websocket"}
     assert "status" in cli_result
 ```
 
@@ -1540,7 +1540,7 @@ Modules to focus on (from the audit):
 - `akosha/tools/mermaid_validator/renderer.py` (69%) — failure cases
 - `akosha/ingestion/code_graph_ingester.py` (75%) — incremental update paths
 - `akosha/mcp/tools/__init__.py` (77%) — registration edge cases
-- `akosha/storage/dhara_http_client.py` (79%) — retry paths
+- `akosha/storage/` HTTP client module (79%) — retry paths
 - `akosha/cli.py` (81%) — uncovered command paths
 - `akosha/storage/hot_store.py` (82%) — schema validation paths
 - `akosha/processing/embedding_dim.py` (82%) — edge cases

@@ -243,7 +243,7 @@ def register_fitness_group(app: FastMCP) -> None:
 
     Creates the analyzer, starts its periodic poll loop, and registers its
     tools. The analyzer keeps signals in memory only — the historical
-    Dhara-populate step was removed when Dhara was decommissioned.
+    external populate step was removed in 2026-09-26.
 
     R-6 replaced the per-component HTTP fan-out with ``SpanQuery.summary``
     over ``spans_substrate``. PR-A3 wired the two together: the analyzer

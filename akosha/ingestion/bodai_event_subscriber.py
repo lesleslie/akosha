@@ -3,10 +3,9 @@ r"""A kosha -> bodai:events Redis Streams subscriber (push mode).
 Plan: docs/plans/2026-08-29-push-subscriber.md Phase 2.
 
 Push subscriber for Mahavishnu's websocket tool invocations. The
-historical Dhara-poll fallback (5-second interval poll of
-``websocket_tool_invocation/v1/*``) was removed when Dhara was
-decommissioned; this Redis Streams subscription is now the sole
-ingestion path.
+historical poll fallback (5-second interval poll of
+``websocket_tool_invocation/v1/*``) was removed in 2026-09-26; this
+Redis Streams subscription is now the sole ingestion path.
 Mahavishnu's producer (commit 7b2c498c) ``xadd``\s envelopes onto the
 ``bodai:events`` stream; this subscriber consumes them, filters to
 ``topic == "websocket_tool_invocation"``, embeds each payload via the

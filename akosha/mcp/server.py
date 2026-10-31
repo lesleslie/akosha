@@ -1546,7 +1546,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
 
         # Phase 3 (REQ-RUNTIME-001 / Plan 1 Task 3.1): push the static
         # agent catalog to Oneiric as a fire-and-forget background task,
-        # mirroring the Dhara registration pattern at SB. The coroutine
+        # mirroring the registration pattern used by Session-Buddy. The coroutine
         # is fail-soft by contract (see ``oneiric_runtime.py``) so a
         # degraded Oneiric instance never blocks Akosha boot.
         global _oneiric_push_task

@@ -1,10 +1,9 @@
 """Skill metadata schema (Phase 1 of bodai-skill-agent-distribution plan).
 
-Per docs/plans/2026-09-14-dhara-mcp-decomposition-implementation.md
-Phase 10 task 4, the canonical skill schema now lives in
-``mcp_common.canonical_schemas.skill``. This module is a thin re-export
-shim that preserves the legacy ``SkillMetadata`` class name. New code
-should import directly from ``mcp_common.canonical_schemas``.
+Per the MCP decomposition Phase 10 task 4, the canonical skill schema
+now lives in ``mcp_common.canonical_schemas.skill``. This module is a
+thin re-export shim that preserves the legacy ``SkillMetadata`` class
+name. New code should import directly from ``mcp_common.canonical_schemas``.
 
 The previous version of this module carried an 18-field model with
 B-4 path-traversal allowlist validators (``server`` and ``name``),

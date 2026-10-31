@@ -10,7 +10,8 @@ Tests assert:
 * Tool is registered on a FastMCP app via ``register_ecosystem_skills``.
 * Tool name matches the picker-facing convention (``list_ecosystem_skills``).
 * Federation aggregates >=12 entries across the 4 mock servers (3 per
-  server — matches plan section 5 Phase 4 exit criteria, post-Dhara).
+  server — matches plan section 5 Phase 4 exit criteria, after the
+  2026-09-26 federation cleanup).
 * Response shape matches ``EcosystemSkillsResponse`` (data, errors,
   per_server_latency_ms, cache, pagination).
 * ``include_installed=False`` skips M-6 reconciliation.
@@ -157,11 +158,11 @@ class _DummyFastMCP:
 
 
 def _balanced_payloads() -> dict[str, list[dict[str, Any]]]:
-    """Return 3 skills per Bodai server (12 total after Dhara decommissioning).
+    """Return 3 skills per Bodai server (12 total in the current federation).
 
-    The historical count was 15 when Dhara was indexed (5 servers × 3
-    skills). After Dhara was decommissioned, the federation fans out to
-    4 servers, so the aggregate count drops to 12.
+    The historical count was 15 when a fifth server was indexed (5 servers,
+    3 skills each). Since the 2026-09-26 federation cleanup the federation
+    fans out to 4 servers, so the aggregate count drops to 12.
     """
     return {
         server.server_key: [
@@ -207,7 +208,7 @@ class TestFederationAggregation:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Plan section 5 Phase 4 exit criteria: >=12 entries (3+ per
-        component) after Dhara was decommissioned from the federation.
+        component) after the 2026-09-26 federation cleanup.
         """
         _mock_no_installed(monkeypatch)
         asyncio.run(self._aggregate_async(tmp_path))
@@ -263,8 +264,8 @@ class TestPagination:
 
     async def _paginate_async(self, tmp_path: Path) -> None:
         # Generate 24 skills across the 4 servers (6 per server).
-        # Federation was 5 servers (30 skills) before Dhara was
-        # decommissioned; now 4 servers (24 skills).
+        # Federation was 5 servers (30 skills) before the 2026-09-26
+        # cleanup; now 4 servers (24 skills).
         payloads = {
             server.server_key: [
                 _seed_metadata(server.server_key, f"{server.server_key}-skill-{i}")
@@ -395,7 +396,7 @@ class TestIncludeInstalled:
 
 def test_federation_server_count_is_4() -> None:
     """Federation fans out to 4 Bodai servers (mahavishnu, akosha,
-    session-buddy, crackerjack). The historical Dhara entry was
-    removed when Dhara was decommissioned on 2026-09-26.
+    session-buddy, crackerjack). The historical fifth entry was
+    removed on 2026-09-26.
     """
     assert len(FEDERATION_SERVERS) == 4

@@ -6,11 +6,11 @@ natural-language queries against that index.
 
 Indexing strategy (Phase 1, lightweight):
 
-* Seed a static capability catalog covering the 5 remaining Bodai
+* Seed a static capability catalog covering the 5 indexed Bodai
   components (mahavishnu, akosha, session-buddy, crackerjack, oneiric)
   with the high-signal tools, adapters, and error-handling conventions
-  per repo. The historical Dhara entries were removed when Dhara was
-  decommissioned.
+  per repo. Entries for the retired component set were removed in
+  2026-09-26.
 * Substring + token-overlap scoring keeps the tool usable without requiring the
   embedding service. The embedding service may be plugged in later for richer
   semantic matching (matches the pattern used by ``search_all_systems``).
@@ -229,11 +229,10 @@ _CAPABILITY_CATALOG: tuple[dict[str, Any], ...] = (
         "doc_hint": "session_buddy.utils.error_management",
         "tags": ["error", "database", "session-buddy"],
     },
-    # ---- dhara (decommissioned 2026-09-26) ----
-    # Dhara entries were removed from the catalog when Dhara was
-    # decommissioned (per user policy: "no core components or other
-    # repos should be importing from it"). The catalog now indexes only
-    # the five remaining Bodai components.
+    # ---- retired components (removed 2026-09-26) ----
+    # Entries for the retired component set were removed from the catalog
+    # in 2026-09-26. The catalog now indexes only the five components
+    # listed in ``BODAI_COMPONENT_KEYS``.
     # ---- crackerjack ----
     {
         "repo": "crackerjack",

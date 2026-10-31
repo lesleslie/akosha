@@ -4,10 +4,10 @@ This module provides analytics capabilities for detecting patterns, anomalies,
 and correlations across multiple Session-Buddy systems.
 
 Note: the historical ``ChangePointAnalytics`` (pytrendy-backed changepoint
-analysis over Dhara time-series data) was removed when Dhara was
-decommissioned. The pytrendy/pytrendy-backed changepoint surface is no
-longer available; the remaining :class:`TimeSeriesAnalytics` covers trend,
-anomaly, and correlation analysis for in-process time-series caches.
+analysis over KV-backed time-series data) was removed in 2026-09-26. The
+pytrendy-backed changepoint surface is no longer available; the remaining
+:class:`TimeSeriesAnalytics` covers trend, anomaly, and correlation analysis
+for in-process time-series caches.
 """
 
 from __future__ import annotations

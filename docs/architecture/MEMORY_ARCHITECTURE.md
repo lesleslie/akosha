@@ -1,7 +1,7 @@
 # Akosha Memory Architecture
 
 > **Status**: Living document. Updated whenever the storage schema, MCP surface, or integration contracts change.
-> **Audience**: Bodai ecosystem contributors, Claude Code users, and downstream consumers (Session-Buddy, Dhara, Mahavishnu, Crackerjack).
+> **Audience**: Bodai ecosystem contributors, Claude Code users, and downstream consumers (Session-Buddy, Mahavishnu, Crackerjack).
 > **Source of truth**: The runtime schema in `akosha/storage/models.py` and `akosha/storage/hot_store.py`, and the MCP tool implementations in `akosha/mcp/tools/`.
 
 Akosha is the **Seer / intelligence** component of the Bodai ecosystem. It
@@ -47,7 +47,7 @@ profile.
 | **Warm** (`WarmStore` / `PgvectorWarmStore`) | DuckDB on-disk at `${AKOSHA_DATA_PATH}/warm/warm.db` (resolved by `StoragePathResolver`) **or** pgvector (one collection per `ShardRouter` shard) when `AKOSHA__STORAGE__WARM__BACKEND=pgvector` | 7–90 days | DuckDB: `INT8[384]` (75% size reduction) + 3-sentence extractive summary. pgvector: `FLOAT[384]` (lossy INT8 round-trip via `metadata.quantized=true`) + summary | Compressed embeddings + summaries | `akosha/storage/warm_store.py`, `akosha/storage/pgvector_warm_store.py` |
 | **Cold** (`ColdStore`) | Parquet (snappy) → S3/R2 via Oneiric adapter (TODO; current code logs and unlinks) | 90+ days | MinHash fingerprint + single-sentence summary | Archived parquet batches | `akosha/storage/cold_store.py` |
 | **Code graphs** | DuckDB table inside `HotStore` (`code_graphs`) | Refreshed per commit | JSON graph blob | Per-repo AST snapshots | `HotStore.initialize_code_graphs_table` / `store_code_graph` |
-| **Analytics buffer** (`FitnessAnalyzer`) | Bounded in-process `deque(maxlen=1000)` | Until flushed | n/a | Per-(task_class, selector) `FitnessSignal` ready to write to Dhara | `akosha/processing/fitness_analyzer.py` |
+| **Analytics buffer** (`FitnessAnalyzer`) | Bounded in-process `deque(maxlen=1000)` | Until flushed | n/a | Per-(task_class, selector) `FitnessSignal` held in memory | `akosha/processing/fitness_analyzer.py` |
 | **Knowledge graph** (`KnowledgeGraphBuilder`) | In-process `dict` + `list` (no persistence yet) | Process lifetime | n/a | `GraphEntity` + `GraphEdge` extracted from conversations | `akosha/processing/knowledge_graph.py` |
 
 The `HotStore` is created via the `create_hot_store()` factory in
@@ -124,7 +124,7 @@ erDiagram
         string daily_metrics "JSON string"
     }
 
-    %% Fitness analyzer (in-process, writes to Dhara externally)
+    %% Fitness analyzer (in-process, signals held in memory)
     FitnessAnalyzer ||--o{ buffer_entries : "holds (deque maxlen=1000)"
     buffer_entries {
         string task_class
@@ -155,8 +155,8 @@ erDiagram
         string source_system
     }
 
-    %% External writes — FitnessAnalyzer pushes to Dhara KV
-    FitnessAnalyzer }|..|{ Dhara : "writes routing_fitness/{tc}/{selector}"
+    %% Fitness analyzer reads the spans substrate; signals stay in memory
+    FitnessAnalyzer }|..|{ HotStore : "reads spans_substrate"
 
     style HotStore fill:#dfd,stroke:#383
     style conversations fill:#dfd,stroke:#383
@@ -176,7 +176,7 @@ erDiagram
 | `HotStore.code_graphs` | `list_ingested_code_graphs`, `get_code_graph_details`, `find_similar_repositories`, `get_cross_repo_function_usage`, `search_code_patterns`, `get_code_problems`, `find_function_usage`, `analyze_imports` | Mahavishnu indexer via `IngestionWorker` (JSON payload pushed into `store_code_graph`) | Refreshed per commit; `INSERT OR REPLACE` keyed on `(repo_path, commit_hash)` |
 | `WarmStore.conversations` | (planned) warm-tier semantic recall; currently read indirectly via `get_migration_stats` | `AgingService._migrate_batch` only | 7–90 days; no eviction yet (warm→cold not implemented) |
 | `ColdStore` parquet batches | (planned) bulk recall via DuckDB external scan of S3 bucket | (planned) warm→cold exporter; current `export_batch` writes a temp Parquet then logs the S3 key — upload is TODO | 90+ days; partitioned by `system_id/YYYY/MM/DD` |
-| `FitnessAnalyzer` buffer | `run_fitness_analysis` (returns snapshot), `_flush_buffer` (writes to Dhara) | `_analyze_and_persist` (every `poll_interval` seconds; default 60) | Maxlen 1000 entries; DLQ after 3 consecutive Dhara write failures |
+| `FitnessAnalyzer` buffer | `run_fitness_analysis` (returns snapshot) | `_analyze_and_persist` (every `poll_interval` seconds; default 60) | Maxlen 1000 entries; signals are held in memory only |
 | `KnowledgeGraphBuilder.entities` / `.edges` | `query_knowledge_graph`, `find_path`, `get_graph_statistics` | `KnowledgeGraphBuilder.add_to_graph` (called after `extract_entities` + `extract_relationships` per conversation) | Process lifetime; no disk persistence yet |
 
 ### Path resolution
@@ -215,10 +215,10 @@ publishes analytics events onto the Bodai EventBridge.
 | `store_memory` | Hot | Session-Buddy HTTP push (push-based ingestion) | One row in `HotStore.conversations` via `HotRecord` |
 | `batch_store_memories` | Hot | Session-Buddy bulk sync | Up to 1000 rows in `HotStore.conversations` per call |
 | `publish_to_eventbridge` | Events | Akosha analytics paths (`/vishnu`, Conscious Agent) | One `EventEnvelope` on the Bodai EventBridge; topics: `pattern.detected`, `anomaly.detected`, `insight.generated`, `aggregation.completed` |
-| `run_fitness_analysis` (side effect) | Fitness | Manual trigger / dashboards | One flush of the `FitnessAnalyzer` buffer to Dhara at `routing_fitness/{task_class}/{selector}` |
-| `_register_component_to_dhara` (lifespan side effect) | Discovery | Akosha MCP server startup | `component_endpoint/akosha` key in Dhara KV; 5-minute heartbeat |
+| `run_fitness_analysis` (side effect) | Fitness | Manual trigger / dashboards | One analysis cycle over the `spans_substrate`; the resulting signals are returned in-memory |
+| `report_runtime_to_oneiric` (lifespan side effect) | Discovery | Akosha MCP server startup | Fire-and-forget push of the static agent catalog to Oneiric via `oneiric_report_runtime` |
 | `IngestionWorker._process_upload` (non-MCP side effect) | Hot | S3/R2 poller (cloud mode only) | Multiple rows + a `code_graphs` row from one uploaded Session-Buddy snapshot |
-| `_populate_component_endpoints_from_dhara` (startup side effect) | Discovery | Akosha MCP server startup | Populates `FitnessAnalyzer._component_endpoints` from `component_endpoint/{name}` keys |
+| `register_fitness_group` (startup side effect) | Fitness | Akosha MCP server startup | Populates `FitnessAnalyzer` with the `SpanQuery` over the shared HotStore and the `spans_substrate.declared_pairs` inventory |
 
 ### Gating and disable behavior
 
@@ -234,7 +234,7 @@ error — operators must attach an Oneiric `EventBridge` instance via
 `set_eventbridge_publisher()` to actually emit envelopes.
 
 `run_fitness_analysis` returns `{"status": "no_data"}` when no traces
-were collected in the cycle (no rows written to Dhara) and
+were collected in the cycle (no signals computed) and
 `{"status": "error", "error": "..."}` when the analyzer wasn't
 initialized.
 
@@ -251,11 +251,12 @@ The `discover_tools(query=...)` meta-tool is always registered. It
 returns `loaded_tools` vs `not_loaded_tools` for the active profile
 plus a `hint` to set `AKOSHA_TOOL_PROFILE=full`.
 
-### Phase 0 registration flow
+### Startup registration flow
 
-On startup the lifespan in `akosha/mcp/server.py` writes
-`component_endpoint/akosha` to Dhara so the other components'
-`FitnessAnalyzer` instances can discover Akosha as a polling target.
+On startup the lifespan in `akosha/mcp/server.py` pushes the static
+agent catalog to Oneiric as a fire-and-forget background task
+(`report_runtime_to_oneiric`). The push is fail-soft by contract, so a
+degraded Oneiric instance never blocks Akosha boot.
 This used to be implemented via a private-attribute poke
 (`app._mcp_server.lifespan = ...`) that FastMCP 3.x silently dropped;
 the lifespan now uses the public `lifespan=` constructor kwarg (see
@@ -269,7 +270,7 @@ sequenceDiagram
     participant EMB as EmbeddingService (mock-only)
     participant HS as HotStore (DuckDB or pgvector)
     participant KG as KnowledgeGraphBuilder
-    participant DH as Dhara (port 8683)
+    participant ON as Oneiric (MCP)
     participant FA as FitnessAnalyzer
 
     CLI->>LS: app.startup
@@ -279,18 +280,15 @@ sequenceDiagram
     LS->>KG: KnowledgeGraphBuilder()
     LS->>HS: create_hot_store() -> initialize()
     LS->>CLI: register_all_tools(...)
-    CLI->>DH: PUT component_endpoint/akosha = http://localhost:8682/mcp
-    Note over CLI,DH: 5 attempts exponential backoff, then 5-min heartbeat
+    CLI->>ON: oneiric_report_runtime (agent catalog)
+    Note over CLI,ON: fire-and-forget, failure never blocks boot
     Note over CLI,HS: search_all_systems currently returns a single mock record (Contract 5.2)
     LS->>FA: start() (background task every 60s)
-    LS->>DH: list_services / get component_endpoint/{name}
-    DH-->>FA: registered component URLs
 
-    Note over CLI,FA: Steady state: poll traces, write fitness to Dhara
+    Note over CLI,FA: Steady state: query the spans substrate, hold signals in memory
     loop every 60s
-        FA->>HS: query_local_traces(task_class)
+        FA->>HS: SpanQuery.summary(task_class, selector)
         FA->>FA: compute FitnessSignal
-        FA->>DH: PUT routing_fitness/{tc}/{selector}
     end
 ```
 
@@ -339,7 +337,6 @@ gracefully when the model isn't loaded.
 | `analyze_trends` | Linear regression over `add_metric` data | Direction + strength of one metric over `time_window_days` |
 | `detect_anomalies` | Z-score over the metric | Statistical outliers (configurable `threshold_std`) |
 | `correlate_systems` | Pearson correlation across systems | "Which systems move together?" |
-| `analyze_changepoints` | `ChangePointAnalytics` over Dhara time series (pytrendy) | Cliff / structural-break detection — registers only when `changepoint_analytics` is provided to `register_akosha_tools` |
 
 ### Knowledge graph
 
@@ -385,14 +382,14 @@ ______________________________________________________________________
 ## 4. Cross-Component Visibility
 
 What other components see in Akosha, and the reverse direction —
-Akosha is **read-mostly for everyone else** and writes fitness signals
-out to Dhara. The data-flow direction is the opposite of Session-Buddy's.
+Akosha is **read-mostly for everyone else** and publishes analytics
+events onto the Bodai EventBridge. The data-flow direction is the
+opposite of Session-Buddy's.
 
 | Consumer | Surface | What it reads from Akosha | What it writes to Akosha |
 |----------|---------|---------------------------|--------------------------|
 | **Session-Buddy** | `mcp__akosha__store_memory`, `mcp__akosha__batch_store_memories`, `mcp__akosha__publish_to_eventbridge` | (no read traffic in the canonical flow; SB reads its own reflections) | HotStore `conversations` rows pushed via the SB tools |
-| **Dhara** | (passive — Akosha writes keys) | (no read traffic; Dhara owns versioned snapshots) | Holds `component_endpoint/akosha` (Akosha writes), `routing_fitness/{tc}/{selector}` (FitnessAnalyzer writes) |
-| **Mahavishnu** | `mcp__akosha__search_all_systems`, `mcp__akosha__query_knowledge_graph`, `mcp__akosha__find_path`, `mcp__akosha__correlate_systems`, `mcp__akosha__analyze_changepoints` (when Dhara client wired) | HotStore `conversations` for semantic recall; FitnessAnalyzer reads `component_endpoint/*` from Dhara to discover poll targets | Sends `system_id` telemetry via the `publish_to_eventbridge` flow; otherwise read-only |
+| **Mahavishnu** | `mcp__akosha__search_all_systems`, `mcp__akosha__query_knowledge_graph`, `mcp__akosha__find_path`, `mcp__akosha__correlate_systems` | HotStore `conversations` for semantic recall; `FitnessAnalyzer` reads the `spans_substrate` for signal computation | Sends `system_id` telemetry via the `publish_to_eventbridge` flow; otherwise read-only |
 | **Crackerjack** | `mcp__akosha__search_code_patterns`, `find_function_usage`, `get_code_problems`, `analyze_imports`, `pycharm_health` | Code graphs in `HotStore.code_graphs` (indexer pushes them) | Indexer pushes rows via `store_code_graph` (called indirectly via `IngestionWorker`) |
 | **Oneiric** | Settings + adapter discovery | (config only — does not query data) | (config only) — provides `PgvectorAdapter` for `PgvectorHotStore` and `EventBridge` for `eventbridge_publisher` |
 | **Claude Code** | MCP client (`mcp__akosha__*`) | All read tools | All write tools (rare; usually via Session-Buddy) |
@@ -403,11 +400,11 @@ To avoid double-bookkeeping with neighbors, Akosha intentionally does
 **not** store:
 
 - **Raw reflection conversations** — those live in Session-Buddy; Akosha only holds aggregates or hot-tier copies (≤7 days).
-- **Pool / worker runtime state** — Dhara and Mahavishnu own that.
+- **Pool / worker runtime state** — Mahavishnu owns that.
 - **Crackerjack fix attempts** — Crackerjack owns them; Akosha reads metrics indirectly via OTel traces.
 - **LLM provider configuration / API keys** — Oneiric + env vars.
 - **Workspace graphs as primary source** — Mahavishnu owns the indexer; Akosha is the secondary index for cross-repo recall.
-- **Long-term KG state across restarts** — `KnowledgeGraphBuilder` is in-process; the canonical cross-system KG is replicated to Dhara / Session-Buddy.
+- **Long-term KG state across restarts** — `KnowledgeGraphBuilder` is in-process; the canonical cross-system KG is replicated to Session-Buddy.
 
 ______________________________________________________________________
 
@@ -427,13 +424,12 @@ own lifespan reference at `__init__` time. With the lifespan
 no-op'd, two failure modes surfaced:
 
 1. **MCP routing 404**: Claude Code's transport auto-detector fell back to REST-style `/mcp/tools/call` routing, which returned 404 because only `/mcp` is mounted.
-1. **Phase 0 registration never fired**: Akosha never wrote `component_endpoint/akosha` to Dhara, so `FitnessAnalyzer` could not discover Akosha as a polling target.
+1. **Startup registration never fired**: Akosha never pushed its agent catalog to Oneiric, so the runtime registry never learned about Akosha.
 
 **Contract**: `create_app()` MUST pass the lifespan via the public
 `lifespan=` kwarg to the `FastMCP(...)` constructor. Any code path that
-relies on `_register_component_to_dhara` running at startup (i.e.
-FitnessAnalyzer discovery) will fail silently if the lifespan is
-attached post-construction.
+relies on `report_runtime_to_oneiric` running at startup will fail
+silently if the lifespan is attached post-construction.
 
 **Regression test**: `tests/integration/test_mcp_integration.py::TestMCPIntegration::test_mcp_server_initialization`
 asserts `app._mcp_server is not None` and the tool-registration test
@@ -501,20 +497,22 @@ Oneiric `EventBridge`. The parallel in-memory recorder test
 `tests/integration/test_eventbridge_e2e.py::test_publish_pattern_detected_round_trips_through_transport`
 asserts the same shape via the public API.
 
-### Contract 5.4 — FitnessAnalyzer must register component endpoints before the first cycle
+### Contract 5.4 — FitnessAnalyzer must read the lifespan-owned substrate before the first cycle
 
-**Bug**: A pre-fix version of `_populate_component_endpoints_from_dhara`
+**Bug**: A pre-fix version of the fitness analyzer's startup path
 returned early if `asyncio.get_running_loop()` raised
 `RuntimeError` (no loop). The lifespan startup path runs before the
-loop is established in some test harnesses, so the component list
-ended up empty and `run_fitness_analysis` always returned
+loop is established in some test harnesses, so the poll loop never
+started and `run_fitness_analysis` always returned
 `{"status": "no_data"}` — masking real downstream failures.
 
-**Contract**: `_populate_component_endpoints_from_dhara(analyzer)`
-MUST fall back to `asyncio.run(...)` when no running loop is
-detected (`akosha/mcp/tools/__init__.py:205-213`). The function MUST
-also tolerate a missing Dhara (`registry.get` raises) without aborting
-startup; a warning is logged and `discovered` stays 0.
+**Contract**: `register_fitness_group` MUST build the analyzer against
+the lifespan-owned `HotStore` (via `_shared_store_only()`) and MUST NOT
+fall back to constructing a fresh store — a fresh in-memory DuckDB is a
+different database from the one the OTLP receiver writes spans into, so
+the analyzer would query an empty substrate every cycle. It MUST also
+tolerate a missing shared store (returns `None`) without aborting
+startup; the analyzer is then registered inert and logs why.
 
 **Regression test**: `tests/unit/test_mcp_tools_profiles.py` and
 `tests/integration/test_mcp_integration.py::TestMCPIntegration::test_tool_registration`
@@ -522,7 +520,7 @@ both verify that `register_fitness_tools` is reached under FULL
 profile and `init_fitness_analyzer` populates the analyzer. The
 `test_fitness_analyzer_status_empty` (in `tests/unit/test_fitness_*`)
 would catch a missing import path; if you add a regression for this
-contract, store it as `tests/integration/test_fitness_analyzer_discovery.py::test_falls_back_when_no_loop`.
+contract, store it as `tests/integration/test_fitness_analyzer_discovery.py::test_uses_lifespan_owned_substrate`.
 
 ### General contract test policy
 
@@ -740,8 +738,8 @@ ______________________________________________________________________
 Three diagrams are persisted with this document. Two are embedded
 above:
 
-1. **Schema map** (Section 1) — `erDiagram` of all three storage tiers, the in-process fitness buffer, and the knowledge graph; arrows show the `AgingService` hot→warm migration and the FitnessAnalyzer→Dhara write.
-1. **Phase 0 startup** (Section 2) — `sequenceDiagram` of the lifespan-initiated embedding/hot-store/tool registration, the Phase 0 Dhara write, and the steady-state 60-second fitness loop.
+1. **Schema map** (Section 1) — `erDiagram` of all three storage tiers, the in-process fitness buffer, and the knowledge graph; arrows show the `AgingService` hot→warm migration and the FitnessAnalyzer's read from the hot tier.
+1. **Startup** (Section 2) — `sequenceDiagram` of the lifespan-initiated embedding/hot-store/tool registration, the Oneiric runtime push, and the steady-state 60-second fitness loop.
 
 The third — **Cross-system data flow** — lives in the global Bodai
 docs at `bodai/docs/memory/INDEX.md` because it spans all five
@@ -813,8 +811,7 @@ export AKOSHA__STORAGE__WARM__PG_URL=postgresql://akosha:***@localhost:5432/akos
 | `find_similar_repositories` | 200-800 ms (fans out to N code graphs) | No |
 | `get_cross_repo_function_usage` | 100-500 ms | No |
 | `analyze_trends` / `detect_anomalies` / `correlate_systems` | 50-300 ms (in-process) | No |
-| `analyze_changepoints` (pytrendy) | 1-5 s (queries Dhara + scipy) | No |
-| `run_fitness_analysis` | 2-10 s (parallel HTTP polls + Dhara write) | Yes (60s cycle) |
+| `run_fitness_analysis` | 2-10 s (substrate query + signal computation) | Yes (60s cycle) |
 | `store_memory` / `batch_store_memories` | 5-20 ms per record | Yes (HTTP push from SB) |
 
 ### Failure modes
@@ -822,8 +819,8 @@ export AKOSHA__STORAGE__WARM__PG_URL=postgresql://akosha:***@localhost:5432/akos
 - **Hot store `:memory:` lost on restart**: `IngestionWorker` rebuilds it on next poll; expect ~1-2 minute cold-start.
 - **`pgvector` (warm tier) connection lost**: `PgvectorWarmStore` raises `RuntimeError` on every operation; `create_warm_store()` factory does not fall back to DuckDB automatically — operators must restart the MCP server with `AKOSHA__STORAGE__WARM__BACKEND=duckdb-ssd`. (pgvector migrated from the hot tier 2026-09-27.)
 - **Embedding model load fails**: `EmbeddingService.is_available()` returns False; downstream `mode` flag is `"fallback"`. `search_all_systems` will still return the mock result (see Contract 5.2).
-- **FitnessAnalyzer Dhara write fails**: DLQ after 3 attempts; signal is dropped, ERROR log emitted. Circuit breaker (if provided) protects downstream.
-- **Phase 0 Dhara write fails**: bounded exponential backoff (5 attempts, ~31s); heartbeat retries every 5 minutes. Akosha still starts up — `FitnessAnalyzer` simply cannot discover it.
+- **FitnessAnalyzer substrate query fails**: the cycle aborts, no signals are updated, and the previous `self._signals` snapshot is retained.
+- **Oneiric runtime push fails**: the background task logs the error and gives up; Akosha still starts up and the runtime registry simply does not learn about Akosha.
 - **Ingestion worker S3/R2 unavailable**: `IngestionWorker._discover_uploads` raises; logged, lifespan continues. Hot store is unreachable for new data until the adapter recovers.
 
 ______________________________________________________________________
@@ -837,7 +834,7 @@ ______________________________________________________________________
 - `akosha/mcp/tools/akosha_tools.py` — MCP read surface implementations (embeddings, search, analytics, graph).
 - `akosha/mcp/tools/session_buddy_tools.py` — `store_memory` / `batch_store_memories` push ingestion.
 - `akosha/mcp/tools/eventbridge_tools.py` — `publish_to_eventbridge` MCP wrapper.
-- `akosha/processing/fitness_analyzer.py` — FitnessAnalyzer (poll loop, buffer, Dhara writes).
+- `akosha/processing/fitness_analyzer.py` — FitnessAnalyzer (poll loop, buffer, in-memory signals).
 - `akosha/processing/knowledge_graph.py` — In-process KG with bidirectional BFS path finding.
 - `tests/integration/test_full_integration.py` — Canonical storage round-trip integration test.
 - `tests/integration/test_oneiric_transport_roundtrip.py` — Contract 5.3 regression: real EventBridge round-trip.

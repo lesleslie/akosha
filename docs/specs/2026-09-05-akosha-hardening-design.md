@@ -39,7 +39,7 @@ topic: convergence-control-plane
 
 1. **Refactoring for style/aesthetics** (no renaming, no module reorganization beyond what bug fixes require). The audit's systemic patterns get addressed through targeted bug fixes; broader refactoring is its own future plan.
 2. **Adding new features** beyond what's needed to make existing features work. No new MCP tools, no new storage backends beyond the S3/R2 adapter wiring, no new shell commands.
-3. **Cross-repo changes** (no Mahavishnu / Dhara / Session-Buddy / Crackerjack modifications). The live MCP backend wiring stays within Akosha's existing surface (uses `mcp-common.health.DependencyConfig` patterns already imported elsewhere).
+3. **Cross-repo changes** (no Mahavishnu / Session-Buddy / Crackerjack modifications). The live MCP backend wiring stays within Akosha's existing surface (uses `mcp-common.health.DependencyConfig` patterns already imported elsewhere).
 4. **Documentation overhauls.** Feature-tracking entries are added; the README and CLAUDE.md only change if a public-facing contract shifts (and there are none planned).
 5. **Performance optimization.** Test execution time and Akosha runtime are not measured or improved beyond what test additions naturally change.
 6. **Version bump beyond 0.14.3 → 0.15.0.** Final version bump is the last commit of Wave 5; intermediate waves stay at 0.14.x.
@@ -106,7 +106,7 @@ Of the last 100 commits, ~50% are "feature was incomplete when merged" fixes —
 
 1.1. **ColdStore real upload (C1).** Replace `akosha/storage/cold_store.py:183-205` `_upload_to_storage` with a real implementation using `oneiric.storage.S3StorageAdapter` (already available via `oneiric` dependency, already imported elsewhere). Add `__init__` config for `storage_backend` (`"s3" | "r2" | "memory"`, default `"memory"`), `bucket`, `endpoint_url`. Add `initialize()` that constructs the adapter from settings. Add `close()` that calls `adapter.close()`. The `"memory"` backend writes to a local directory (default `~/.akosha/cold-store/`) for development without cloud credentials.
 
-1.2. **/health real probe (C2).** Replace `akosha/mcp/server.py:419-432` `/health` and `/healthz` handlers with calls into `mcp_common.health.register_health_tools`-style probes: check `HotStore` connection, `Dhara` HTTP reachability (if `dhara_url` configured), and `WebSocket` subscriber state. Return 200 + `{"status": "ok", "checks": {...}}` only when all probes pass; return 503 + structured error otherwise. Use the existing `AkoshaApplication._check_dependency_health` (introduce it; pull from `cli.py:_health_probe`).
+1.2. **/health real probe (C2).** Replace `akosha/mcp/server.py:419-432` `/health` and `/healthz` handlers with calls into `mcp_common.health.register_health_tools`-style probes: check `HotStore` connection, `WebSocket` subscriber state, and the remaining data-feed states. Return 200 + `{"status": "ok", "checks": {...}}` only when all probes pass; return 503 + structured error otherwise. Use the existing `AkoshaApplication._check_dependency_health` (introduce it; pull from `cli.py:_health_probe`).
 
 1.3. **IPython shell stub surface (C3).** In `akosha/shell/adapter.py:115-261`, replace the five `TODO: Implement actual X logic` blocks. For each command, return `{"status": "stub", "command": "X", "message": "Not yet implemented; tracked in feature-tracking/..."}` until Wave 5 wires them. Operator sees "stub" status instead of fake "success".
 
@@ -120,7 +120,7 @@ Of the last 100 commits, ~50% are "feature was incomplete when merged" fixes —
 - **Returns to / updates**: Parquet files written to S3/R2/local backend via `oneiric.storage` adapter; `/health` body with structured `checks` dict; shell command responses with `status: "stub"`; test pass/fail markers; lockfile with pinned `aiohttp` floor.
 - **Demonstrable by**:
   - `pytest tests/unit/test_cold_store.py::test_export_batch_writes_to_local` passes (covers memory backend).
-  - `curl http://localhost:8682/health` returns `{"status": "degraded", "checks": {...}}` when Dhara is unreachable, `{"status": "ok", "checks": {...}}` when healthy.
+  - `curl http://localhost:8682/health` returns `{"status": "degraded", "checks": {...}}` when a probed dependency is unreachable, `{"status": "ok", "checks": {...}}` when healthy.
   - `akosha-shell` → `search("foo")` returns `{"status": "stub", ...}` instead of `{"status": "success", "count": 0, ...}`.
   - `pytest tests/unit/test_version_sync.py` exits 0.
   - `grep -r "import aiohttp" akosha/` shows every import site has a `[project.dependencies]` floor.
@@ -349,7 +349,7 @@ The standalone `AkoshaApplication` class is **not on the live MCP request path**
 - `cache_client`, `cold_storage` (`_initialize_mode_components` line 275)
 - `EventBridge` publisher (`_wire_eventbridge_publisher` line 451)
 - `hot_store` + `embedding_service.initialize()` (lines 175-204)
-- `DharaHttpClient` + `WebSocketInvocationsSubscriber` + optional `BodaiToolInvocationSubscriber` (lines 211-252)
+- `WebSocketInvocationsSubscriber` + optional `BodaiToolInvocationSubscriber` (lines 211-252)
 - Signal handlers + `await shutdown_event.wait()` (lines 254-273)
 
 But it does **not** wire the MCP-tool data feeds (`get_graph_statistics`, `query_local_traces`, `search_code_patterns`). The MCP server uses its own lifespan (`akosha/mcp/server.py::lifespan` lines 271-480) with its own fresh `hot_store`. The standalone `AkoshaApplication` is a separate entry point (used by the lite CLI tests, not by the MCP server).

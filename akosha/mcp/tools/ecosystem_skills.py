@@ -55,8 +55,8 @@ logger = logging.getLogger(__name__)
 # Hard-coded list of the 4 Bodai servers the federation tool fans out to.
 # Ports match the canonical Bodai ecosystem portmap (Crackerjack 8676,
 # Session-Buddy 8678, Mahavishnu 8680, AkoSHA 8682 — akosha self-fans to
-# port 8682 below). The historical Dhara entry on port 8683 was removed
-# when Dhara was decommissioned.
+# port 8682 below). The historical entry on port 8683 was removed in
+# 2026-09-26.
 #
 # The MCP transport is streamable-http. We POST to ``/mcp`` for the JSON-
 # RPC handshake per the FastMCP wire spec.

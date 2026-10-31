@@ -82,8 +82,8 @@ New + modified test files:
 | `tests/unit/ingestion/test_orchestrator_health.py` (new) | 8 | ping success, ping ConnectionError → degraded, KeyboardInterrupt propagates, no client, missing ping method, fallback mode, timestamp, last_mahavishnu_contact backwards compat |
 | `tests/unit/test_health_consistency.py` (new) | 5 | CLI degraded on config failure, HTTP 503 on probe failure, status field parity, no-probe default 503, no CLI module dependency |
 | `tests/unit/test_cold_store.py` (existing) | +5 tests | close() no-cleanup-attr path, upload failure path, write_parquet failure path |
-| `tests/unit/storage/test_dhara_http_client.py` (existing) | +12 tests | lifecycle (_ensure_client reuse), parse tolerance (empty content, malformed JSON, non-list parsed, missing items), HTTP 500 paths |
-| `tests/unit/processing/test_fitness_analyzer.py` (existing) | +10 tests | trace fetch fail-soft, Dhara write, DLQ happy/requeue/DLQ-after-3/CB, _run_loop with sub-second poll |
+| Storage HTTP client (since removed) | +12 tests | lifecycle (_ensure_client reuse), parse tolerance (empty content, malformed JSON, non-list parsed, missing items), HTTP 500 paths |
+| `tests/unit/processing/test_fitness_analyzer.py` (existing) | +10 tests | trace fetch fail-soft, external write, DLQ happy/requeue/DLQ-after-3/CB, _run_loop with sub-second poll |
 | `tests/unit/processing/test_embedding_dim.py` (existing) | +5 tests | dimension() raises → attribute fallback; non-int return; backend_name() raises |
 | `tests/test_aging_service_coverage.py` (existing) | flipped 1 | test_basic_quantization now asserts max-abs-normalized output |
 
@@ -130,8 +130,8 @@ Per task, all on local main (no PRs per bodai-pre-1.0-merge-policy):
 | `4d9ac1d` | M4 — CLI + HTTP /health parity |
 | `aa65d2e` | Pre-existing orphan-method bug fix + 3 test flips |
 | `93c364e` | embedding_dim exception branches (+5 tests) |
-| `194cd18` | dhara_http_client lifecycle + parse tolerance (+12 tests) |
-| `32400c0` | fitness_analyzer DLQ + Dhara write paths (+10 tests) |
+| `194cd18` | storage HTTP client lifecycle + parse tolerance (+12 tests) |
+| `32400c0` | fitness_analyzer DLQ + external write paths (+10 tests) |
 | `83b7b96` | cold_store cleanup + error paths (+5 tests) |
 | `d2f3082` | Coverage ratchet 87.62% → 89.0% |
 

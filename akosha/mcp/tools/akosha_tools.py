@@ -56,8 +56,8 @@ def register_akosha_tools(
     registration of all tool categories (embedding, search, analytics, graph, system).
 
     Note: the historical ``changepoint_analytics`` parameter and
-    ``analyze_changepoints`` tool were removed when Dhara was
-    decommissioned (they queried Dhara time-series data via pytrendy).
+    ``analyze_changepoints`` tool were removed in 2026-09-26 (they
+    queried KV-backed time-series data via pytrendy).
 
     Args:
         registry: FastMCPToolRegistry instance for tool registration
@@ -445,8 +445,8 @@ def register_analytics_tools(
     anomaly detection, and cross-system correlation analysis.
 
     Note: the historical ``analyze_changepoints`` tool (pytrendy-backed
-    changepoint detection over Dhara time-series data) was removed when
-    Dhara was decommissioned.
+    changepoint detection over KV-backed time-series data) was removed in
+    2026-09-26.
 
     Args:
         registry: FastMCP tool registry instance
@@ -944,8 +944,8 @@ def register_analytics_tools(
         }
 
     # The historical ``analyze_changepoints`` tool (pytrendy-backed
-    # changepoint detection over Dhara time-series data) was removed when
-    # Dhara was decommissioned.
+    # changepoint detection over KV-backed time-series data) was removed in
+    # 2026-09-26.
 
 
 def register_graph_tools(

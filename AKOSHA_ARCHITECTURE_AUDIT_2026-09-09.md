@@ -29,7 +29,7 @@ ______________________________________________________________________
 | **`akosha/observability/`** (5 files: tracing, prometheus_metrics, eventbridge_resolver, eventbridge_adapter, eventbridge_publisher, security_logging) | Real, NOT mentioned in `PROJECT_STRUCTURE.md`. | **MISSING FROM DOC** |
 | **`akosha/modes/` (base/lite/standard)** | Real, NOT mentioned in `PROJECT_STRUCTURE.md` or `ARCHITECTURE.md`. Operational modes are a first-class abstraction. | **MISSING FROM DOC** |
 | **`akosha/websocket/` (server/auth/tls_config)** | Real, NOT mentioned in `PROJECT_STRUCTURE.md`. `ARCHITECTURE.md` doesn't mention WebSocket at all (no port, no protocol, no event types). | **MISSING FROM DOC** |
-| **`akosha/shell/`, `akosha/alerting/`, `akosha/mcp/`, `akosha/security.py`, `akosha/config.py`, `akosha/main.py`, `akosha/cli.py`, `akosha/__main__.py`, `akosha/storage/{pgvector_hot_store,dhara_http_client,path_resolver,models}.py`, `akosha/ingestion/{otel,code_graph,bodai,websocket_invocations}_*.py`** | All real, all missing from `PROJECT_STRUCTURE.md`. | **MISSING FROM DOC** |
+| **`akosha/shell/`, `akosha/alerting/`, `akosha/mcp/`, `akosha/security.py`, `akosha/config.py`, `akosha/main.py`, `akosha/cli.py`, `akosha/__main__.py`, `akosha/storage/{pgvector_hot_store,path_resolver,models}.py`, `akosha/ingestion/{otel,code_graph,bodai,websocket_invocations}_*.py`** | All real, all missing from `PROJECT_STRUCTURE.md`. | **MISSING FROM DOC** |
 
 ______________________________________________________________________
 
@@ -138,7 +138,7 @@ ______________________________________________________________________
   - `akosha/websocket/` (3 files)
   - `akosha/shell/`, `akosha/alerting/`, `akosha/mcp/` (entire subdirs)
   - Top-level files: `akosha/main.py` (24KB), `akosha/cli.py` (19KB), `akosha/config.py` (17KB), `akosha/security.py` (18KB), `akosha/__main__.py`, `akosha/scripts/`
-  - Storage: `pgvector_hot_store.py`, `dhara_http_client.py`, `path_resolver.py`, `models.py`
+  - Storage: `pgvector_hot_store.py`, `path_resolver.py`, `models.py`
   - Ingestion: `bodai_event_subscriber.py`, `otel_ingester.py`, `code_graph_ingester.py`, `websocket_invocations_subscriber.py`
   - Processing: `analytics.py`, `embeddings.py`, `embedding_dim.py`, `fitness_analyzer.py`
   - Models: `akosha/models/schemas.py`

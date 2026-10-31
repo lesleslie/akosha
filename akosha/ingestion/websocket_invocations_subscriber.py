@@ -4,11 +4,11 @@ Plan: docs/plans/2026-08-29-push-subscriber.md Phase 3.
 
 The class wires the ``BodaiToolInvocationSubscriber`` (Redis Streams
 push) into the HotStore so ``mcp__akosha__search_all_systems`` can
-serve real results. The previous Dhara-poll fallback was removed
-when Dhara was decommissioned; the orchestrator now only drives the
-push path (which is the source of truth). When the push subscriber
-fails to start (Redis unavailable), the orchestrator simply stays
-not-running — there is no longer a poll fallback to degrade to.
+serve real results. The previous poll fallback was removed in
+2026-09-26; the orchestrator now only drives the push path (which is
+the source of truth). When the push subscriber fails to start (Redis
+unavailable), the orchestrator simply stays not-running — there is no
+longer a poll fallback to degrade to.
 
 The orchestrator's fail-soft contract mirrors
 ``BodaiToolInvocationSubscriber``: missing HotStore, schema version

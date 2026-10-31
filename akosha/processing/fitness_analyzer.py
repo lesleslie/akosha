@@ -15,10 +15,9 @@ sound in principle: the report's shape comes from configuration, not from
 traffic.
 
 Signals are returned in-memory (via :meth:`run_fitness_analysis`); the
-prior Dhara-backed persistence layer was removed when Dhara was
-decommissioned. Callers that need durable storage should subscribe to
-``run_fitness_analysis`` results or pipe the analyzer's output into
-their own storage layer.
+prior KV-backed persistence layer was removed in 2026-09-26. Callers that
+need durable storage should subscribe to ``run_fitness_analysis`` results or
+pipe the analyzer's output into their own storage layer.
 """
 
 from __future__ import annotations
@@ -56,8 +55,8 @@ class FitnessAnalyzer:
 
     Periodically polls known Bodai component endpoints for traces and
     computes aggregated fitness signals. Signals are kept in memory
-    only — the historical Dhara persistence layer was removed when
-    Dhara was decommissioned.
+    only — the historical KV-backed persistence layer was removed in
+    2026-09-26.
 
     Parameters:
         poll_interval_seconds: Interval between analysis runs (default 60 s)
@@ -141,9 +140,9 @@ class FitnessAnalyzer:
         silent pairs entirely. Here every declared pair produces a row, so
         ``samples == 0`` is a reportable state rather than an absence.
 
-        The historical Dhara write step was removed when Dhara was
-        decommissioned; signals are stored in ``self._signals`` and returned
-        in-memory via :meth:`run_fitness_analysis`.
+        The historical external write step was removed in 2026-09-26;
+        signals are stored in ``self._signals`` and returned in-memory via
+        :meth:`run_fitness_analysis`.
         """
         if self._span_query is None:
             logger.debug("FitnessAnalyzer: no SpanQuery configured; nothing to analyze")

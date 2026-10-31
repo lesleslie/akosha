@@ -33,8 +33,7 @@ async def _capture(profile: str) -> list[str]:
         if mod_name.startswith("akosha"):
             del sys.modules[mod_name]
 
-    # Disable actual Dhara registration during lifespan startup (best effort)
-    os.environ.setdefault("DHARA_MCP_URL", "http://127.0.0.1:1")
+    # Disable outbound calls to other servers during lifespan startup (best effort)
     os.environ.setdefault("AKOSHA_MCP_URL", "http://127.0.0.1:1/mcp")
 
     from fastmcp import FastMCP
