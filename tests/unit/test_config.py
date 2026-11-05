@@ -105,10 +105,19 @@ class TestColdStorageConfig:
         # below. Without clearing them the test measures the operator's
         # configuration, not the class default, and fails on any properly
         # configured dev box.
+        #
+        # The component-scoped ``AKOSHA__*`` variants take precedence over
+        # the substrate ones, and ``AKOSHA_COLD_REGION`` / the nested
+        # ``AKOSHA__STORAGE__COLD__REGION`` override the region default,
+        # so they are cleared too.
         for var in (
             "ONEIRIC__SUBSTRATE__COLD__BACKEND",
             "ONEIRIC__SUBSTRATE__COLD__BUCKET",
             "ONEIRIC__SUBSTRATE__COLD__PREFIX",
+            "AKOSHA__STORAGE__COLD__BACKEND",
+            "AKOSHA__STORAGE__COLD__BUCKET",
+            "AKOSHA__STORAGE__COLD__REGION",
+            "AKOSHA_COLD_REGION",
         ):
             monkeypatch.delenv(var, raising=False)
 
@@ -118,7 +127,11 @@ class TestColdStorageConfig:
         assert cfg.prefix == "akosha/"
         assert cfg.compression == "snappy"
         assert cfg.format == "parquet"
-        assert cfg.region == "us-west-2"
+        # "auto", not a concrete AWS region: Cloudflare R2 REQUIRES
+        # "auto" and rejects any other value. The previous default
+        # ("us-west-2") made the cold tier fail to authenticate against
+        # R2 whenever the layer that supplies "auto" was missing.
+        assert cfg.region == "auto"
 
     def test_substrate_env_overrides(self) -> None:
         """``ONEIRIC__SUBSTRATE__COLD__*`` overrides substrate defaults."""

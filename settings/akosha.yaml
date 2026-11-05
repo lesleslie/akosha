@@ -9,12 +9,24 @@ mode: standard
 
 # Storage configurations
 # 2026-09-27 audit: pgvector migrated from hot tier to warm tier. The
-# in-memory DuckDB store is the only hot-tier backend. Set warm.backend
+# DuckDB store is the only hot-tier backend. Set warm.backend
 # to "pgvector" and supply warm.pg_url to opt in to the pgvector warm
 # store (one collection per shard). See akosha/storage/pgvector_warm_store.py.
+#
+# DURABILITY (2026-11-05): the hot tier used to be `duckdb-memory` /
+# `:memory:`, which loses EVERY row on restart. That is what made the
+# knowledge graph permanently empty: the `conversations` table (the graph's
+# only source of rows) was wiped on every restart, and the in-memory graph
+# was rebuilt from an empty table.
+#
+# `duckdb-ssd` is the durable DuckDB variant the substrate already
+# supports. `path` is RELATIVE to the resolved storage base directory
+# (the XDG data dir, e.g. ~/Library/Application Support/akosha on macOS),
+# so the setting is portable across machines. An absolute path is used
+# as-is; `:memory:` still means "ephemeral".
 hot:
-  backend: duckdb-memory
-  path: ":memory:"
+  backend: duckdb-ssd
+  path: "hot/hot.db"
   write_ahead_log: true
 
 warm:
@@ -37,13 +49,23 @@ warm:
 #   cold.region — S3 region ("auto" for R2; real region for AWS S3)
 #   cold.format — file format (parquet)
 cold:
+  # `backend`, `bucket`, `prefix` and `compression` are SUBSTRATE-mapped:
+  # akosha/config.py:_strip_substrate_mapped removes them from the YAML
+  # before the config is built, so the lines below have NO runtime
+  # effect. Their values come from the substrate:
+  #   ONEIRIC__SUBSTRATE__COLD__BACKEND / _BUCKET / _PREFIX / _COMPRESSION
+  # or, for Akosha specifically, the component-scoped overrides:
+  #   AKOSHA__STORAGE__COLD__BACKEND / _BUCKET
+  # Keep the lines below for documentation only; do not rely on them.
   backend: local
   bucket: akosha-cold         # canonical cold-store bucket name for akosha
   prefix: conversations/
   format: parquet
-  # region intentionally omitted so per-deployment values from settings/local.yaml
-  # or AKOSHA_COLD_REGION win cleanly. R2 needs "auto", AWS S3 needs a real region
-  # (e.g. us-west-2), GCS ignores the field.
+  # region intentionally omitted so per-deployment values from
+  # ~/.config/akosha/local.yaml or AKOSHA_COLD_REGION win cleanly.
+  # R2 needs "auto", AWS S3 needs a real region (e.g. us-west-2),
+  # GCS ignores the field. The code default is "auto" (R2's default
+  # backend is R2).
 
 cache:
   backend: redis

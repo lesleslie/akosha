@@ -56,7 +56,10 @@ def patched_lifespan(monkeypatch: pytest.MonkeyPatch):
         lambda: graph_builder,
     )
     monkeypatch.setattr("akosha.storage.hot_store.HotStore", lambda database_path: hot_store)
-    monkeypatch.setattr("akosha.storage.create_hot_store", lambda: hot_store)
+    # The lifespan now passes the configured backend + database path so
+    # the durable DuckDB setting reaches the runtime; the double has to
+    # accept them.
+    monkeypatch.setattr("akosha.storage.create_hot_store", lambda **_kwargs: hot_store)
 
     # v7 PR-A3: substitute the OTLP receiver, for the same reason the
     # CodeGraphIngester is skipped below — this module asserts the lifespan's
@@ -80,6 +83,9 @@ def patched_lifespan(monkeypatch: pytest.MonkeyPatch):
     # the ingester with a fake implementation.
     monkeypatch.setenv("AKOSHA_SKIP_CODE_GRAPH_INGESTER", "1")
     monkeypatch.setenv("AKOSHA_SKIP_KG_REFRESH", "1")
+    # The lifespan now wires the Redis-backed event subscriber; keep it
+    # out of the unit-test path so no test reaches for a real Redis.
+    monkeypatch.setenv("AKOSHA_SKIP_EVENT_SUBSCRIBER", "1")
     # The OtelTraceIngester poller needs no skip env var. PR-A8 retired
     # AKOSHA_SKIP_OTEL_INGESTER -- it is read nowhere -- and the poller is
     # gated by ``otel.receiver.trace_ingester_poller``, which ships false.

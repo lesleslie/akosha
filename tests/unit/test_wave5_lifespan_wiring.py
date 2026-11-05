@@ -178,7 +178,12 @@ def lifespan_deps(monkeypatch: pytest.MonkeyPatch):
         lambda: analytics_service,
     )
     monkeypatch.setattr("akosha.storage.hot_store.HotStore", lambda database_path: hot_store)
-    monkeypatch.setattr("akosha.storage.create_hot_store", lambda: hot_store)
+    # The lifespan now passes the configured backend + database path, so
+    # the factory double has to accept them.
+    monkeypatch.setattr(
+        "akosha.storage.create_hot_store",
+        lambda **_kwargs: hot_store,
+    )
     monkeypatch.setattr(
         "akosha.observability.prometheus_metrics.generate_metrics",
         lambda: "metrics",
@@ -262,6 +267,9 @@ def lifespan_deps(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("AKOSHA_KG_REFRESH_SECONDS", "0.05")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("OTLP_ENDPOINT", "http://otel:4317")
+    # The lifespan now wires the Redis-backed event subscriber. Keep it
+    # out of the unit-test path so no test reaches for a real Redis.
+    monkeypatch.setenv("AKOSHA_SKIP_EVENT_SUBSCRIBER", "1")
 
     return {
         "embedding_service": embedding_service,
@@ -435,6 +443,13 @@ def _config_with_poller(enabled: bool) -> Any:
     class _Cfg:
         spans_substrate = real.spans_substrate
         resource_validator = real.resource_validator
+        # The lifespan reads the hot-tier backend + path so the durable
+        # DuckDB setting reaches the runtime.
+        hot = real.hot
+        # ...and the subscriber gates, so the event-subscriber wiring can
+        # be exercised without a live Redis.
+        websocket_invocations_subscriber = real.websocket_invocations_subscriber
+        bodai_tool_invocation_subscriber = real.bodai_tool_invocation_subscriber
         otel = OTelConfig(
             receiver=OTelReceiverConfig(
                 trace_ingester_poller=enabled,

@@ -14,15 +14,15 @@ from __future__ import annotations
 import contextlib
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from oneiric.adapters.vector.duckdb_hot_store import DuckdbHotStore
 
+from akosha.json_utils import coerce_json_object
 from akosha.processing.embedding_dim import resolve_embedding_dim
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import duckdb
 
 logger = logging.getLogger(__name__)
@@ -210,7 +210,17 @@ class HotStore(DuckdbHotStore):
         via a targeted filter, drop the failed index, and surface the
         akosha intent. Vector search uses brute-force
         ``array_cosine_similarity`` — no index required.
+
+        When the hot tier is configured with a FILE path (the durable
+        ``duckdb-ssd`` backend), the parent directory is created first —
+        DuckDB will not create it, and a missing directory surfaces as
+        an opaque ``IO Error: Cannot open file ... No such file or
+        directory`` at connect time.
         """
+        db_path = str(self.db_path)
+        if db_path and db_path != ":memory:":
+            parent = Path(db_path).expanduser().parent
+            parent.mkdir(parents=True, exist_ok=True)
 
         class _HnswFilter(logging.Filter):
             def filter(self, record: logging.LogRecord) -> bool:
@@ -247,6 +257,17 @@ class HotStore(DuckdbHotStore):
         Pushes attribute filters (task_class, time range) into the SQL
         WHERE clause rather than fetching all traces and filtering
         in Python. The HNSW index is NOT used for this query.
+
+        The ``metadata`` column is declared ``JSON`` in the substrate
+        DDL (``oneiric/adapters/vector/duckdb_hot_store.py``), and
+        DuckDB's Python client returns a ``JSON`` column as its raw
+        TEXT — not as a decoded Python object — whether the value was
+        bound as a dict or as a JSON string. Returning that text would
+        leak the column's storage type to every caller (the knowledge
+        graph refresh loop crashed on ``metadata.get(...)`` because of
+        it), so THE STORAGE BOUNDARY is where the decode happens:
+        ``metadata`` is normalised to a ``dict`` here, via the single
+        shared helper in :mod:`akosha.json_utils`.
         """
         async with self._lock:
             if not self.conn:
@@ -322,7 +343,7 @@ class HotStore(DuckdbHotStore):
                     "conversation_id": r[1],
                     "content": r[2],
                     "timestamp": r[3],
-                    "metadata": r[4],
+                    "metadata": coerce_json_object(r[4]),
                 }
                 for r in rows
             ]

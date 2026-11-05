@@ -261,35 +261,27 @@ class AkoshaApplication:
             self.warm_store = None
 
         # WebSocket invocations subscriber (BodaiToolInvocationSubscriber ->
-        # HotStore via Redis Streams push). Sub-plan B reads
-        # ``websocket_invocations_subscriber`` settings from
-        # ``settings/akosha.yaml``.
+        # HotStore via Redis Streams push).
+        #
+        # The construction goes through the SHARED helper
+        # (``akosha.ingestion.subscriber_wiring``) so this entry point and
+        # the MCP server's lifespan cannot drift apart — the drift is what
+        # left the MCP process (the only Akosha process that actually runs)
+        # with no producer for the ``conversations`` table at all.
         try:
-            from akosha.ingestion.bodai_event_subscriber import (
-                BodaiToolInvocationSubscriber,
-            )
-            from akosha.ingestion.websocket_invocations_subscriber import (
-                WebSocketInvocationsSubscriber,
+            from akosha.config import get_config
+            from akosha.ingestion.subscriber_wiring import (
+                build_event_subscribers,
+                start_event_subscriber,
             )
 
-            sub_cfg = self._read_subscriber_config()
-            if sub_cfg["enabled"]:
-                push_cfg = self._read_bodai_subscriber_config()
-                bodai_sub: BodaiToolInvocationSubscriber | None = None
-                if push_cfg["enabled"]:
-                    bodai_sub = BodaiToolInvocationSubscriber(
-                        redis_url=push_cfg["redis_url"],
-                        consumer_group=push_cfg["consumer_group"],
-                        hot_store=self.hot_store,
-                        xreadgroup_block_ms=push_cfg["xreadgroup_block_ms"],
-                        per_event_timeout_seconds=push_cfg["per_event_timeout_seconds"],
-                    )
-                self.websocket_invocations_subscriber = WebSocketInvocationsSubscriber(
-                    hot_store=self.hot_store,
-                    poll_interval_seconds=sub_cfg["poll_interval_seconds"],
-                    bodai_subscriber=bodai_sub,
-                )
-                await self.websocket_invocations_subscriber.start()
+            _cfg = get_config()
+            self.websocket_invocations_subscriber = build_event_subscribers(
+                self.hot_store,
+                websocket_cfg=_cfg.websocket_invocations_subscriber,
+                bodai_cfg=_cfg.bodai_tool_invocation_subscriber,
+            )
+            await start_event_subscriber(self.websocket_invocations_subscriber)
         except Exception as exc:
             logger.warning("WebSocketInvocationsSubscriber init failed: %s", exc)
             self.websocket_invocations_subscriber = None
@@ -348,40 +340,31 @@ class AkoshaApplication:
     def _read_subscriber_config() -> dict[str, Any]:
         """Read the ``websocket_invocations_subscriber`` block from settings.
 
-        Returns the parsed ``enabled`` and ``poll_interval_seconds``
-        values, with safe defaults when the block is missing or the
-        settings file is unreachable. ``self.cfg`` is intentionally not
-        used here because AkoshaApplication does not own a config
-        instance — the YAML file is the canonical source for these
-        subscriber toggles (see settings/akosha.yaml).
+        Reads through :func:`akosha.config.get_config` — the Oneiric
+        layered loader — so the operator's XDG overlay
+        (``~/.config/akosha/local.yaml``) is honoured.
 
-        The default path resolves from the akosha package layout: the
-        file lives at ``<repo>/settings/akosha.yaml``. ``parents[2]``
-        from ``akosha/main.py`` points at the akosha package root, which
-        is one level under the repo root where ``settings/`` lives.
+        This used to parse ``<repo>/settings/akosha.yaml`` directly,
+        which BYPASSED the layered loader entirely: the operator's
+        ``websocket_invocations_subscriber.enabled: true`` in the XDG
+        overlay had no effect at all, and the committed repo default
+        (``enabled: false``) was the only value that ever reached the
+        runtime.
         """
-        from pathlib import Path
+        from akosha.config import get_config
 
         try:
-            import yaml
-        except ImportError:
-            logger.warning("PyYAML unavailable; websocket_invocations_subscriber disabled")
+            sub = get_config().websocket_invocations_subscriber
+        except Exception as exc:
+            logger.warning(
+                "Could not load websocket_invocations_subscriber config (%s); "
+                "subscriber disabled",
+                exc,
+            )
             return {"enabled": False, "poll_interval_seconds": 5.0}
-
-        akosha_root = Path(__file__).resolve().parents[2]
-        settings_path = akosha_root / "settings" / "akosha.yaml"
-        if not settings_path.exists():
-            return {"enabled": False, "poll_interval_seconds": 5.0}
-        try:
-            with settings_path.open() as handle:
-                cfg = yaml.safe_load(handle) or {}
-        except (OSError, yaml.YAMLError) as exc:
-            logger.warning("Could not read %s (%s); subscriber disabled", settings_path, exc)
-            return {"enabled": False, "poll_interval_seconds": 5.0}
-        sub = cfg.get("websocket_invocations_subscriber") or {}
         return {
-            "enabled": bool(sub.get("enabled", False)),
-            "poll_interval_seconds": float(sub.get("poll_interval_seconds", 5)),
+            "enabled": bool(sub.enabled),
+            "poll_interval_seconds": float(sub.poll_interval_seconds),
         }
 
     @staticmethod
@@ -390,66 +373,54 @@ class AkoshaApplication:
 
         Plan: docs/plans/2026-08-29-push-subscriber.md Phase 3.
 
-        Returns safe defaults when the block is missing or the
-        settings file is unreachable — the push subscriber is opt-in
-        (default ``enabled=False``) so a missing YAML entry does not
-        silently enable it.
+        Reads through :func:`akosha.config.get_config` — the Oneiric
+        layered loader — so the operator's XDG overlay
+        (``~/.config/akosha/local.yaml``) is honoured. Like
+        :meth:`_read_subscriber_config`, this used to parse the repo
+        YAML directly and therefore ignored the overlay entirely.
         """
-        from pathlib import Path
+        from akosha.config import get_config
 
-        defaults: dict[str, Any] = {
-            "enabled": False,
-            "redis_url": "redis://localhost:6379/0",
-            "consumer_group": "akosha-tool-invocation-indexers",
-            "xreadgroup_block_ms": 1500,
-            "per_event_timeout_seconds": 30.0,
-        }
         try:
-            import yaml
-        except ImportError:
-            logger.warning("PyYAML unavailable; bodai_tool_invocation_subscriber disabled")
-            return defaults
-
-        akosha_root = Path(__file__).resolve().parents[2]
-        settings_path = akosha_root / "settings" / "akosha.yaml"
-        if not settings_path.exists():
-            return defaults
-        try:
-            with settings_path.open() as handle:
-                cfg = yaml.safe_load(handle) or {}
-        except (OSError, yaml.YAMLError) as exc:
+            sub = get_config().bodai_tool_invocation_subscriber
+        except Exception as exc:
             logger.warning(
-                "Could not read %s (%s); bodai subscriber disabled",
-                settings_path,
+                "Could not load bodai_tool_invocation_subscriber config (%s); "
+                "subscriber disabled",
                 exc,
             )
-            return defaults
-        sub = cfg.get("bodai_tool_invocation_subscriber") or {}
+            return {
+                "enabled": False,
+                "redis_url": "redis://localhost:6379/0",
+                "consumer_group": "akosha-tool-invocation-indexers",
+                "xreadgroup_block_ms": 1500,
+                "per_event_timeout_seconds": 30.0,
+            }
         return {
-            "enabled": bool(sub.get("enabled", defaults["enabled"])),
-            "redis_url": str(sub.get("redis_url", defaults["redis_url"])),
-            "consumer_group": str(sub.get("consumer_group", defaults["consumer_group"])),
-            "xreadgroup_block_ms": int(
-                sub.get("xreadgroup_block_ms", defaults["xreadgroup_block_ms"])
-            ),
-            "per_event_timeout_seconds": float(
-                sub.get(
-                    "per_event_timeout_seconds",
-                    defaults["per_event_timeout_seconds"],
-                )
-            ),
+            "enabled": bool(sub.enabled),
+            "redis_url": str(sub.redis_url),
+            "consumer_group": str(sub.consumer_group),
+            "xreadgroup_block_ms": int(sub.xreadgroup_block_ms),
+            "per_event_timeout_seconds": float(sub.per_event_timeout_seconds),
         }
 
     @staticmethod
     def _read_hot_store_config() -> dict[str, Any]:
         """Read the ``hot`` block from settings.
 
-        Mirrors the ``_read_subscriber_config`` and
-        ``_read_bodai_subscriber_config`` patterns: parse the YAML file
-        from ``<repo>/settings/akosha.yaml`` and return safe defaults
-        when the block is missing or the file is unreachable. Returns
-        only the keys ``create_hot_store`` cares about — ``backend``,
-        ``database_path``. Embedding dimension is resolved separately by
+        Reads through :func:`akosha.config.get_config` — the Oneiric
+        layered loader — so the operator's XDG overlay is honoured, and
+        so the ``path`` key is read under the name the config model
+        actually declares.
+
+        The previous implementation parsed the repo YAML directly AND
+        looked up ``hot.database_path`` — a key that does not exist in
+        ``settings/akosha.yaml`` (the block declares ``path``). The
+        lookup therefore ALWAYS missed and ALWAYS fell back to
+        ``":memory:"``, so the configured DuckDB backend and path never
+        reached the runtime.
+
+        Embedding dimension is resolved separately by
         :func:`akosha.processing.embedding_dim.resolve_embedding_dim`
         because it depends on the active embedding service at runtime.
 
@@ -458,38 +429,25 @@ class AkoshaApplication:
         legacy section name) still works as an alias for ``hot`` for
         backward compatibility — see ``_legacy_hot_block``.
         """
-        from pathlib import Path
+        from akosha.config import get_config
 
-        defaults: dict[str, Any] = {
-            "enabled": True,
-            "backend": "duckdb-memory",
-            "database_path": ":memory:",
-        }
         try:
-            import yaml
-        except ImportError:
-            logger.warning("PyYAML unavailable; hot_store defaults to duckdb-memory in-memory")
-            return defaults
-
-        akosha_root = Path(__file__).resolve().parents[2]
-        settings_path = akosha_root / "settings" / "akosha.yaml"
-        if not settings_path.exists():
-            return defaults
-        try:
-            with settings_path.open() as handle:
-                cfg = yaml.safe_load(handle) or {}
-        except (OSError, yaml.YAMLError) as exc:
+            hot = get_config().hot
+        except Exception as exc:
             logger.warning(
-                "Could not read %s (%s); hot_store defaults to duckdb-memory in-memory",
-                settings_path,
+                "Could not load hot-store config (%s); hot_store defaults to "
+                "duckdb-memory in-memory",
                 exc,
             )
-            return defaults
-        hot = cfg.get("hot") or cfg.get("hot_store") or {}
+            return {
+                "enabled": True,
+                "backend": "duckdb-memory",
+                "database_path": ":memory:",
+            }
         return {
-            "enabled": bool(hot.get("enabled", defaults["enabled"])),
-            "backend": str(hot.get("backend", defaults["backend"])),
-            "database_path": str(hot.get("database_path", defaults["database_path"])),
+            "enabled": True,
+            "backend": str(hot.backend),
+            "database_path": str(hot.path),
         }
 
     @staticmethod

@@ -167,6 +167,21 @@ class StoragePathResolver:
 
         return self.base_path / "wal"
 
+    def get_hot_store_path(self) -> Path:
+        """Get the durable hot-store database path.
+
+        The hot tier is DuckDB. With the ``duckdb-memory`` backend the
+        database is ``:memory:`` and every row is lost on restart; the
+        durable variant (``duckdb-ssd``) points at this file instead.
+
+        Returns:
+            Path to ``hot.db``
+        """
+        if override := os.getenv("AKOSHA_HOT_PATH"):
+            return Path(override)
+
+        return self.base_path / "hot" / "hot.db"
+
     def get_cold_store_cache_path(self) -> Path:
         """Get cold store local cache path.
 
@@ -224,6 +239,7 @@ class StoragePathResolver:
         directories = [
             self.get_warm_store_dir(),
             self.get_hot_store_wal_path(),
+            self.get_hot_store_path().parent,
             self.get_cold_store_cache_path(),
             self.get_config_dir(),
             self.get_cache_dir(),
