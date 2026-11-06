@@ -112,16 +112,16 @@ erDiagram
         timestamp uploaded_at
     }
 
-    %% Cold tier (Parquet to S3/R2; S3 upload is TODO)
-    WarmStore ||..o{ ColdStore : "promotes via future warm->cold service"
+    %% Cold tier (Parquet to S3/R2)
+    WarmStore ||..o{ ColdStore : "promotes via ColdExporter.export_expired"
     ColdStore ||--o{ parquet_batches : "exports"
     parquet_batches {
         string system_id
         string conversation_id
-        binary fingerprint "MinHash"
+        int[] fingerprint "MinHash signature"
         string ultra_summary
         timestamp timestamp
-        string daily_metrics "JSON string"
+        string metadata "JSON string"
     }
 
     %% Fitness analyzer (in-process, signals held in memory)
@@ -174,8 +174,8 @@ erDiagram
 |---------------|---------|------------|-------------------|
 | `HotStore.conversations` | `search_all_systems`, `query_local_traces`, `find_similar_repositories`, `get_cross_repo_function_usage` (via code graphs), PyCharm search fallback | `store_memory`, `batch_store_memories`, `IngestionWorker._process_upload`, `system_endpoint/` uploads | Aging pushes ≥7d records to warm; rows deleted from hot after warm insert |
 | `HotStore.code_graphs` | `list_ingested_code_graphs`, `get_code_graph_details`, `find_similar_repositories`, `get_cross_repo_function_usage`, `search_code_patterns`, `get_code_problems`, `find_function_usage`, `analyze_imports` | Mahavishnu indexer via `IngestionWorker` (JSON payload pushed into `store_code_graph`) | Refreshed per commit; `INSERT OR REPLACE` keyed on `(repo_path, commit_hash)` |
-| `WarmStore.conversations` | (planned) warm-tier semantic recall; currently read indirectly via `get_migration_stats` | `AgingService._migrate_batch` only | 7–90 days; no eviction yet (warm→cold not implemented) |
-| `ColdStore` parquet batches | (planned) bulk recall via DuckDB external scan of S3 bucket | (planned) warm→cold exporter; current `export_batch` writes a temp Parquet then logs the S3 key — upload is TODO | 90+ days; partitioned by `system_id/YYYY/MM/DD` |
+| `WarmStore.conversations` | (planned) warm-tier semantic recall; currently read indirectly via `get_migration_stats` | `AgingService._migrate_batch` (writes), `ColdExporter.export_expired` (reads, then evicts) | 7–90 days; aged out to the cold tier by the `akosha.cold_export` cron (`cold.age_threshold_days`, default 90) |
+| `ColdStore` parquet batches | (planned) bulk recall via DuckDB external scan of S3 bucket | `ColdExporter.export_expired` via `ColdStore.export_batch` — one Parquet object per `system_id/YYYY/MM/DD` partition, keyed under the configured `cold.prefix` | 90+ days; partitioned by `system_id/YYYY/MM/DD` |
 | `FitnessAnalyzer` buffer | `run_fitness_analysis` (returns snapshot) | `_analyze_and_persist` (every `poll_interval` seconds; default 60) | Maxlen 1000 entries; signals are held in memory only |
 | `KnowledgeGraphBuilder.entities` / `.edges` | `query_knowledge_graph`, `find_path`, `get_graph_statistics` | `KnowledgeGraphBuilder.add_to_graph` (called after `extract_entities` + `extract_relationships` per conversation) | Process lifetime; no disk persistence yet |
 

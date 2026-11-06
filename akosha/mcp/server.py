@@ -286,6 +286,15 @@ _aging_task: asyncio.Task[None] | None = None
 _aging_cycles: int = 0
 _aging_errors: int = 0
 _aging_last_run_at: float | None = None
+# Cold tier (F5): the warm->cold export cron. ``_cold_export_task`` is the
+# lifespan-owned background coroutine that periodically ages warm-tier
+# records into the cold tier as Parquet batches. Without it the cold tier
+# is reachable but not writable -- ``ColdStore.export_batch`` had no
+# production caller at all.
+_cold_export_task: asyncio.Task[None] | None = None
+_cold_export_cycles: int = 0
+_cold_export_errors: int = 0
+_cold_export_last_run_at: float | None = None
 # Phase 3 (REQ-RUNTIME-001): fire-and-forget Oneiric catalog push.
 # The coroutine is fail-soft by contract, but we still hold the Task
 # handle at module scope so the GC does not collect it before the
@@ -539,7 +548,10 @@ def create_app(mode: Any | None = None) -> FastMCP:
             _kg_refresh_last_error_at, \
             _aging_cycles, \
             _aging_errors, \
-            _aging_last_run_at
+            _aging_last_run_at, \
+            _cold_export_cycles, \
+            _cold_export_errors, \
+            _cold_export_last_run_at
 
         logger.info(f"{APP_NAME} v{APP_VERSION} starting up")
 
@@ -1047,6 +1059,10 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # optional in the same sense cold_storage is.
         # ------------------------------------------------------------------
         aging_service: Any | None = None
+        # The warm store the aging service writes into. It is ALSO the
+        # source the cold exporter reads from, so it is held here (not
+        # scoped to the aging block) for the cold-export wiring below.
+        aging_warm_store: Any | None = None
         # NB: ``_aging_cycles`` / ``_aging_errors`` / ``_aging_last_run_at``
         # are declared ``global`` at the top of this function. Python's
         # scope rules forbid a second ``global`` declaration after any
@@ -1159,6 +1175,90 @@ def create_app(mode: Any | None = None) -> FastMCP:
             except Exception as exc:
                 _aging_errors += 1
                 logger.warning("aging pre-warm failed (%s)", exc)
+
+        # ------------------------------------------------------------------
+        # Cold tier (F5): the warm->cold export cron.
+        # The cold tier is Parquet batches in object storage. Until this
+        # loop existed, ``ColdStore.export_batch`` -- the only producer of
+        # a cold object -- had no production caller, so the tier was
+        # reachable but not writable.
+        #
+        # The exporter reads the SAME warm store the aging service writes
+        # into: a second ``duckdb.connect()`` on the same file from the
+        # same process would fail on the file lock.
+        #
+        # It runs only when BOTH tiers exist. Lite mode has no cold store;
+        # ``AKOSHA_SKIP_AGING=1`` leaves no warm store. Either way the
+        # tier chain stops where the operator asked it to.
+        # ------------------------------------------------------------------
+        cold_exporter: Any | None = None
+        if cold_storage is not None and aging_warm_store is not None:
+            try:
+                from akosha.storage.cold_exporter import ColdExporter
+
+                cold_exporter = ColdExporter(
+                    warm_store=aging_warm_store,
+                    cold_store=cold_storage,
+                    age_threshold_days=get_config().cold.age_threshold_days,
+                )
+                logger.info(
+                    "ColdExporter initialized (threshold=%dd, backend=%s)",
+                    get_config().cold.age_threshold_days,
+                    type(cold_storage).__name__,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "ColdExporter init failed (%s); the cold tier will not be written "
+                    "until the next lifespan restart",
+                    exc,
+                )
+                cold_exporter = None
+
+        async def _cold_export_loop() -> None:
+            global _cold_export_cycles, _cold_export_errors, _cold_export_last_run_at
+            if cold_exporter is None:  # type guard for the type checker
+                return
+            try:
+                interval = float(os.getenv("AKOSHA_COLD_EXPORT_INTERVAL_SECONDS", "86400"))
+            except ValueError:
+                interval = 86400.0
+            while True:
+                try:
+                    _cold_export_cycles += 1
+                    stats = await cold_exporter.export_expired()
+                    _cold_export_last_run_at = time.time()
+                    logger.info(
+                        "cold export cycle=%d records=%d batches=%d bytes=%d errors=%d",
+                        _cold_export_cycles,
+                        stats.records_exported,
+                        stats.batches_exported,
+                        stats.bytes_exported,
+                        stats.errors,
+                    )
+                except asyncio.CancelledError:
+                    logger.info(
+                        "cold export loop cancelled after %d cycles (%d errors)",
+                        _cold_export_cycles,
+                        _cold_export_errors,
+                    )
+                    break
+                except Exception as exc:
+                    _cold_export_errors += 1
+                    _cold_export_last_run_at = time.time()
+                    logger.warning("cold export loop iteration failed (%s); will retry", exc)
+                await asyncio.sleep(interval)
+
+        if (
+            not _env_truthy("AKOSHA_SKIP_COLD_EXPORT")
+            and cold_exporter is not None
+            and not _env_truthy("AKOSHA_SKIP_AGING")
+        ):
+            global _cold_export_task
+            _cold_export_task = asyncio.create_task(_cold_export_loop(), name="akosha.cold_export")
+            logger.info(
+                "cold export task started (interval=%ss)",
+                os.getenv("AKOSHA_COLD_EXPORT_INTERVAL_SECONDS", "86400"),
+            )
 
         # ------------------------------------------------------------------
         # Phase 1.5 + Phase 1: load (or generate + persist) the signing
@@ -1787,6 +1887,14 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 await _aging_task
             _aging_task = None
 
+        # Cold tier (F5): cancel the warm->cold export cron before clearing
+        # state, mirroring the aging cron above.
+        if _cold_export_task is not None and not _cold_export_task.done():
+            _cold_export_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await _cold_export_task
+            _cold_export_task = None
+
         # Reset the per-feed cycle/error counters so the next create_app()
         # call starts from zero. Without this, the probe would carry stale
         # cycle counts across lifespans in tests. ``_kg_refresh_*`` and
@@ -1798,6 +1906,9 @@ def create_app(mode: Any | None = None) -> FastMCP:
         _aging_cycles = 0
         _aging_errors = 0
         _aging_last_run_at = None
+        _cold_export_cycles = 0
+        _cold_export_errors = 0
+        _cold_export_last_run_at = None
 
         clear_shared_services()
 

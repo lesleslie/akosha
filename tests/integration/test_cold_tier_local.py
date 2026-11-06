@@ -106,6 +106,10 @@ def test_standard_mode_cold_storage_forwards_s3_credentials() -> None:
     """StandardMode.initialize_cold_storage() must read cold-tier config from
     self.config (flat dict per BaseMode.__init__) and forward endpoint_url +
     credentials + region into S3StorageSettings.
+
+    The mode returns a ``ColdStore`` (it owns the object-key prefix and
+    builds the adapter), so the adapter is patched where ``ColdStore``
+    imports it.
     """
     import asyncio
     from unittest.mock import patch
@@ -117,6 +121,12 @@ def test_standard_mode_cold_storage_forwards_s3_credentials() -> None:
     class FakeS3StorageAdapter:
         def __init__(self, settings: Any) -> None:
             captured.append(settings.model_dump())
+
+        async def init(self) -> None:
+            pass
+
+        async def cleanup(self) -> None:
+            pass
 
     # Build the dict explicitly to mirror what load_config() would produce.
     mode = StandardMode(
@@ -133,8 +143,8 @@ def test_standard_mode_cold_storage_forwards_s3_credentials() -> None:
         }
     )
 
-    with patch("oneiric.adapters.storage.S3StorageAdapter", FakeS3StorageAdapter):
-        asyncio.run(mode.initialize_cold_storage())
+    with patch("akosha.storage.cold_store.S3StorageAdapter", FakeS3StorageAdapter):
+        store = asyncio.run(mode.initialize_cold_storage())
 
     assert len(captured) >= 1, "S3StorageAdapter was never constructed"
     settings = captured[0]
@@ -143,6 +153,11 @@ def test_standard_mode_cold_storage_forwards_s3_credentials() -> None:
     assert settings["region"] == "auto"
     assert settings["access_key_id"] == "AKIA_test"
     assert settings["secret_access_key"] == "secret_test"
+    # The prefix is not an adapter setting — it is the substrate's
+    # per-component key isolation, and it lives on the ColdStore that
+    # assembles the object key.
+    assert store is not None
+    assert store.prefix == "conversations/"
 
 
 def test_cold_tier_fake_gcs_round_trip(tmp_path_factory: pytest.TempPathFactory) -> None:

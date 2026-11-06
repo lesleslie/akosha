@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from akosha.modes.base import BaseMode, ModeConfig
@@ -58,6 +59,7 @@ def _resolve_cold_settings(fallback_config: dict[str, Any]) -> dict[str, Any]:
     flat_map = {
         "backend": "cold_storage_backend",
         "bucket": "cold_bucket",
+        "prefix": "cold_prefix",
         "region": "cold_region",
         "endpoint_url": "cold_endpoint_url",
         "access_key_id": "cold_access_key_id",
@@ -158,10 +160,11 @@ class StandardMode(BaseMode):
             return None
 
     async def initialize_cold_storage(self) -> Any:
-        """Initialize Oneiric cold storage with graceful fallback.
+        """Initialize the cold store with graceful fallback.
 
         Returns:
-            Storage adapter instance if available, None if disabled
+            A :class:`akosha.storage.cold_store.ColdStore` instance if
+            available, None if disabled.
 
         Note:
             If cloud storage is unavailable, logs a warning and
@@ -180,16 +183,18 @@ class StandardMode(BaseMode):
         So the cold tier always resolved to ``backend="local"``,
         ``bucket="akosha-cold-data"``, ``local_path="./data/cold"`` and
         never touched R2.
+
+        It used to return a bare oneiric storage ADAPTER and build the
+        adapter settings here, duplicating the construction that
+        :meth:`akosha.storage.cold_store.ColdStore.initialize` already
+        owns (and covering only two of the four backends). It now
+        returns the ``ColdStore`` itself: the prefix, the bucket and the
+        credentials then all reach the one object that assembles the
+        object key, so the configured prefix is actually applied to
+        every cold object.
         """
         try:
-            from oneiric.adapters.storage import (
-                LocalStorageAdapter,
-                LocalStorageSettings,
-                S3StorageAdapter,
-                S3StorageSettings,
-            )
-
-            from akosha.storage.cold_store import resolve_storage_backend
+            from akosha.storage.cold_store import ColdStore, resolve_storage_backend
 
             cold = _resolve_cold_settings(self.config)
             # "r2" is the substrate's declared cold backend, but no
@@ -216,37 +221,26 @@ class StandardMode(BaseMode):
             prefix = cold["prefix"]
 
             logger.info(
-                f"Standard mode: Initializing {backend} cold storage "
-                f"(bucket: {bucket}, prefix: {prefix})"
+                "Standard mode: Initializing %s cold storage (bucket: %s, prefix: %s)",
+                backend,
+                bucket,
+                prefix,
             )
 
-            # Create storage adapter based on backend type
-            if backend == "local":
-                settings = LocalStorageSettings(
-                    base_path=self.config.get("local_storage_path", "./data/cold"),
-                )
-                storage = LocalStorageAdapter(settings)
-            elif backend == "s3":
-                settings = S3StorageSettings(
-                    bucket=bucket,
-                    region=cold["region"],
-                    endpoint_url=cold["endpoint_url"],
-                    access_key_id=cold["access_key_id"],
-                    secret_access_key=cold["secret_access_key"],
-                )
-                storage = S3StorageAdapter(settings)
-            else:
-                logger.warning(
-                    f"Standard mode: Unsupported cold storage backend '{backend}', "
-                    f"falling back to local storage"
-                )
-                settings = LocalStorageSettings(
-                    base_path=self.config.get("local_storage_path", "./data/cold"),
-                )
-                storage = LocalStorageAdapter(settings)
+            store = ColdStore(
+                bucket=bucket,
+                prefix=prefix,
+                storage_backend=backend,
+                local_dir=self._cold_local_dir(),
+                region=cold["region"],
+                endpoint_url=cold["endpoint_url"],
+                access_key_id=cold["access_key_id"],
+                secret_access_key=cold["secret_access_key"],
+            )
+            await store.initialize()
 
-            logger.info(f"Standard mode: Cold storage initialized successfully ({backend})")
-            return storage
+            logger.info("Standard mode: Cold storage initialized successfully (%s)", backend)
+            return store
 
         except ImportError as e:
             logger.warning(
@@ -261,6 +255,21 @@ class StandardMode(BaseMode):
                 "Configure storage credentials or use local backend."
             )
             return None
+
+    def _cold_local_dir(self) -> Path:
+        """Resolve the local backend's root directory.
+
+        An explicit ``local_storage_path`` in the caller's config wins;
+        otherwise the storage path resolver's cold-cache path is used, so
+        the local backend writes to the same place the rest of the
+        storage tier writes to instead of a CWD-relative ``./data/cold``.
+        """
+        configured = self.config.get("local_storage_path")
+        if configured:
+            return Path(configured)
+        from akosha.storage.path_resolver import StoragePathResolver
+
+        return StoragePathResolver().get_cold_store_cache_path()
 
     @property
     def requires_external_services(self) -> bool:

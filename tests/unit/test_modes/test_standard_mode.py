@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import builtins
 import sys
+from pathlib import Path
 from types import ModuleType
 
 import pytest
 
 from akosha.modes.standard import StandardMode
+from akosha.storage.cold_store import ColdStore
 
 
 def test_standard_mode_config():
@@ -114,106 +116,78 @@ async def test_standard_mode_initialize_cold_storage_fallback():
 
 
 @pytest.mark.asyncio
-async def test_standard_mode_initialize_cold_storage_local_success(monkeypatch):
+async def test_standard_mode_initialize_cold_storage_local_success():
     """Test standard mode cold storage initialization with local backend."""
-
-    import oneiric.adapters.storage as storage_mod
-
-    class FakeLocalSettings:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
-    class FakeLocalAdapter:
-        def __init__(self, settings):
-            self.settings = settings
-
-    class FakeS3Settings:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
-    class FakeS3Adapter:
-        def __init__(self, settings):
-            self.settings = settings
-
-    monkeypatch.setattr(storage_mod, "LocalStorageSettings", FakeLocalSettings)
-    monkeypatch.setattr(storage_mod, "LocalStorageAdapter", FakeLocalAdapter)
-    monkeypatch.setattr(storage_mod, "S3StorageSettings", FakeS3Settings)
-    monkeypatch.setattr(storage_mod, "S3StorageAdapter", FakeS3Adapter)
-
     mode = StandardMode(config={"cold_storage_backend": "local", "local_storage_path": "/tmp/cold"})
 
     storage = await mode.initialize_cold_storage()
 
-    assert isinstance(storage, FakeLocalAdapter)
-    assert storage.settings.kwargs["base_path"] == "/tmp/cold"
+    assert isinstance(storage, ColdStore)
+    assert storage._storage_backend == "local"
+    assert storage._local_dir == Path("/tmp/cold")
 
 
 @pytest.mark.asyncio
-async def test_standard_mode_initialize_cold_storage_s3_success(monkeypatch):
+async def test_standard_mode_initialize_cold_storage_s3_success():
     """Test standard mode cold storage initialization with s3 backend."""
-
-    import oneiric.adapters.storage as storage_mod
-
-    class FakeLocalSettings:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
-    class FakeLocalAdapter:
-        def __init__(self, settings):
-            self.settings = settings
-
-    class FakeS3Settings:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
-    class FakeS3Adapter:
-        def __init__(self, settings):
-            self.settings = settings
-
-    monkeypatch.setattr(storage_mod, "LocalStorageSettings", FakeLocalSettings)
-    monkeypatch.setattr(storage_mod, "LocalStorageAdapter", FakeLocalAdapter)
-    monkeypatch.setattr(storage_mod, "S3StorageSettings", FakeS3Settings)
-    monkeypatch.setattr(storage_mod, "S3StorageAdapter", FakeS3Adapter)
-
     mode = StandardMode(config={"cold_storage_backend": "s3", "cold_bucket": "demo-bucket"})
 
     storage = await mode.initialize_cold_storage()
 
-    assert isinstance(storage, FakeS3Adapter)
-    assert storage.settings.kwargs["bucket"] == "demo-bucket"
+    assert isinstance(storage, ColdStore)
+    assert storage._storage_backend == "s3"
+    assert storage.bucket == "demo-bucket"
 
 
 @pytest.mark.asyncio
-async def test_standard_mode_initialize_cold_storage_unsupported_backend(monkeypatch):
+async def test_standard_mode_initialize_cold_storage_unsupported_backend():
     """Test standard mode cold storage fallback for unsupported backend."""
-    import oneiric.adapters.storage as storage_mod
-
-    class FakeLocalSettings:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
-    class FakeLocalAdapter:
-        def __init__(self, settings):
-            self.settings = settings
-
-    class FakeS3Settings:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
-    class FakeS3Adapter:
-        def __init__(self, settings):
-            self.settings = settings
-
-    monkeypatch.setattr(storage_mod, "LocalStorageSettings", FakeLocalSettings)
-    monkeypatch.setattr(storage_mod, "LocalStorageAdapter", FakeLocalAdapter)
-    monkeypatch.setattr(storage_mod, "S3StorageSettings", FakeS3Settings)
-    monkeypatch.setattr(storage_mod, "S3StorageAdapter", FakeS3Adapter)
-
     mode = StandardMode(config={"cold_storage_backend": "weird", "local_storage_path": "/tmp/cold"})
 
     storage = await mode.initialize_cold_storage()
-    assert isinstance(storage, FakeLocalAdapter)
-    assert storage.settings.kwargs["base_path"] == "/tmp/cold"
+
+    assert isinstance(storage, ColdStore)
+    assert storage._storage_backend == "local"
+    assert storage._local_dir == Path("/tmp/cold")
+
+
+@pytest.mark.asyncio
+async def test_standard_mode_cold_storage_carries_the_prefix():
+    """The configured prefix reaches the cold store that builds the key.
+
+    The prefix is the substrate's per-component isolation mechanism, and
+    no oneiric storage settings object has a ``prefix`` field -- the only
+    place it can live is the object that assembles the object key.
+    """
+    mode = StandardMode(config={"cold_storage_backend": "local", "local_storage_path": "/tmp/cold"})
+
+    storage = await mode.initialize_cold_storage()
+
+    assert isinstance(storage, ColdStore)
+    assert storage.prefix.endswith("/")
+
+
+@pytest.mark.asyncio
+async def test_standard_mode_cold_storage_honours_the_flat_prefix_key():
+    """A caller-supplied flat ``cold_prefix`` still wins.
+
+    The flat keys are the CLI's explicit ``--config`` form. The prefix
+    used to be read from them before the nested-``cold:``-block fix; it
+    has to keep working, because the prefix decides which key space in
+    the bucket Akosha writes to.
+    """
+    mode = StandardMode(
+        config={
+            "cold_storage_backend": "local",
+            "local_storage_path": "/tmp/cold",
+            "cold_prefix": "flat-prefix/",
+        }
+    )
+
+    storage = await mode.initialize_cold_storage()
+
+    assert isinstance(storage, ColdStore)
+    assert storage.prefix == "flat-prefix/"
 
 
 @pytest.mark.asyncio

@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 import numpy as np
 
+from akosha.json_utils import coerce_json_object
+
 if TYPE_CHECKING:
     from akosha.storage.hot_store import HotStore
     from akosha.storage.warm_store import WarmStore
@@ -69,7 +71,15 @@ class AgingService:
         """
         start_time = datetime.now(UTC)
         stats = MigrationStats(start_time=start_time)
-        cutoff_date = datetime.now(UTC) - timedelta(days=cutoff_days)
+        # Naive UTC, not an aware datetime: DuckDB ``TIMESTAMP`` columns
+        # store naive wall-clock values and the substrate's insert path
+        # normalises to naive UTC, but a tz-aware value bound as a query
+        # PARAMETER is shifted to the session's local time instead. An
+        # aware cutoff therefore compares against the stored value with
+        # the local UTC offset applied -- an eight-hour error in Pacific
+        # time, which is exactly the size of the boundary this cutoff
+        # draws.
+        cutoff_date = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=cutoff_days)
 
         scope = f"task_class={task_class} " if task_class else "all-task_classes "
         logger.info(f"Starting hot->warm migration for {scope}records older than {cutoff_date}")
@@ -317,7 +327,14 @@ class AgingService:
                 "content": row[2],
                 "embedding": row[3],
                 "timestamp": row[4],
-                "metadata": row[5],
+                # DuckDB returns a JSON column as TEXT, not as a mapping.
+                # ``WarmRecord.metadata`` is typed ``dict[str, Any]``, so
+                # the raw value raised a pydantic ValidationError inside
+                # ``_migrate_batch`` -- which swallowed it per batch. The
+                # migration reported ``errors=1`` in a log line and moved
+                # nothing, leaving the warm tier (and therefore the cold
+                # tier's only source) permanently empty.
+                "metadata": coerce_json_object(row[5]),
                 "content_hash": row[6],
             }
             for row in result

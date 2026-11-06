@@ -318,6 +318,11 @@ class ColdStorageConfig(BaseModel):
         anonymous_credentials: Use anonymous GCS credentials (fake-gcs-server only)
         access_key_id: S3 access key ID (Cloudflare R2 etc.)
         secret_access_key: S3 secret access key
+        age_threshold_days: Age at which a warm-tier record ages out to
+            the cold tier (default 90, the documented cold-tier boundary).
+            Akosha-local policy -- NOT substrate-mapped, so it is settable
+            in the nested ``cold:`` block and via
+            ``AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS``.
 
     Configuration can be set via:
     1. Environment variables (component-scoped, highest precedence for the
@@ -390,6 +395,19 @@ class ColdStorageConfig(BaseModel):
     anonymous_credentials: bool = False
     access_key_id: str | None = None
     secret_access_key: str | None = None
+    age_threshold_days: int = Field(
+        default=90,
+        description=(
+            "Age at which a warm-tier record ages out to the cold tier. "
+            "The documented cold tier starts at 90 days, and that is the "
+            "default. This is an Akosha-local policy, NOT a substrate "
+            "field: it is deliberately absent from "
+            "_SUBSTRATE_MAPPED_NESTED['cold'] so it survives the "
+            "substrate strip and can be set per component (in the "
+            "nested ``cold:`` block, or via "
+            "AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS)."
+        ),
+    )
 
     def __init__(self, **data: Any) -> None:
         # Honor nested env vars (preferred). Only fill fields not already
@@ -421,6 +439,7 @@ class ColdStorageConfig(BaseModel):
         _env_backend = os.getenv("AKOSHA__STORAGE__COLD__BACKEND", "")
         _env_bucket = os.getenv("AKOSHA__STORAGE__COLD__BUCKET", "")
         _env_prefix = os.getenv("AKOSHA__STORAGE__COLD__PREFIX", "")
+        _env_age_threshold_days = os.getenv("AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS", "")
         if _env_endpoint_url and "endpoint_url" not in data:
             data["endpoint_url"] = _env_endpoint_url
         if _env_project and "project" not in data:
@@ -439,6 +458,14 @@ class ColdStorageConfig(BaseModel):
             data["bucket"] = _env_bucket
         if _env_prefix and "prefix" not in data:
             data["prefix"] = _env_prefix
+        if _env_age_threshold_days and "age_threshold_days" not in data:
+            try:
+                data["age_threshold_days"] = int(_env_age_threshold_days)
+            except ValueError as exc:
+                raise ValueError(
+                    "AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS must be an integer, "
+                    f"got {_env_age_threshold_days!r}"
+                ) from exc
 
         # Flat legacy env vars (fallback only when nested form unset).
         # Matches the AKOSHA_COLD_* convention used in QUICKSTART.md and

@@ -48,6 +48,9 @@ warm:
 #   cold.access_key_id / cold.secret_access_key — S3 credentials (R2 etc.)
 #   cold.region — S3 region ("auto" for R2; real region for AWS S3)
 #   cold.format — file format (parquet)
+#   cold.age_threshold_days — age at which a warm record ages out to cold
+#     (default 90, the documented cold-tier boundary). NOT substrate-mapped:
+#     it is an Akosha-local policy, so this line DOES take effect.
 cold:
   # `backend`, `bucket`, `prefix` and `compression` are SUBSTRATE-mapped:
   # akosha/config.py:_strip_substrate_mapped removes them from the YAML
@@ -61,6 +64,9 @@ cold:
   bucket: akosha-cold         # canonical cold-store bucket name for akosha
   prefix: conversations/
   format: parquet
+  # Warm-tier age at which a record is exported to the cold tier.
+  # 90 days matches the documented cold tier ("Cold Tier (90+ days)").
+  age_threshold_days: 90
   # region intentionally omitted so per-deployment values from
   # ~/.config/akosha/local.yaml or AKOSHA_COLD_REGION win cleanly.
   # R2 needs "auto", AWS S3 needs a real region (e.g. us-west-2),

@@ -175,6 +175,16 @@ ON conversations (date_trunc('day', timestamp));
 - No embeddings (cost optimization)
 - S3 Standard/Infrequent Access storage
 
+**Writer**: `akosha/storage/cold_exporter.py::ColdExporter.export_expired`,
+driven by the `akosha.cold_export` cron in the MCP server lifespan
+(`AKOSHA_COLD_EXPORT_INTERVAL_SECONDS`, default daily; opt out with
+`AKOSHA_SKIP_COLD_EXPORT=1`). Records older than
+`cold.age_threshold_days` (default 90) are read from the warm tier,
+written as one Parquet object per `system_id/YYYY/MM/DD` partition, and
+then evicted from the warm tier. The object key carries the configured
+`cold.prefix`, which is the substrate's per-component isolation
+mechanism.
+
 **Schema** (PyArrow/Parquet):
 
 ```python
@@ -182,10 +192,10 @@ schema = pa.schema(
     [
         ("system_id", pa.string()),
         ("conversation_id", pa.string()),
-        ("fingerprint", pa.binary()),  # MinHash
+        ("fingerprint", pa.list_(pa.int32())),  # MinHash signature
         ("ultra_summary", pa.string()),  # 1-sentence summary
         ("timestamp", pa.timestamp("ns")),
-        ("daily_metrics", pa.string()),  # JSON metadata
+        ("metadata", pa.string()),  # JSON metadata
     ]
 )
 ```
@@ -344,7 +354,7 @@ flowchart TD
     G --> H[Vector Indexing]
     H --> I[Hot Store Insert]
     I --> J[Aging: Hot→Warm<br/>after 7 days]
-    J --> K[Aging: Warm→Cold<br/>after 90 days]
+    J --> K[Aging: Warm→Cold<br/>after cold.age_threshold_days<br/>(default 90)]
 ```
 
 ### Query Flow

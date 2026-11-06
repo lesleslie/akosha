@@ -69,6 +69,31 @@ def resolve_storage_backend(backend: str | None) -> StorageBackendName:
     )
 
 
+def _normalise_prefix(prefix: str) -> str:
+    """Normalise an object-key prefix so it always ends with ``"/"``.
+
+    The prefix is the substrate's per-component isolation mechanism: two
+    components that share a bucket but not a prefix must not overwrite
+    each other's objects. It is assembled into the key here
+    (``f"{prefix}{partition_path}/..."``), so a prefix the operator
+    wrote without its trailing slash would concatenate straight into the
+    partition and produce ``conversationssystem-001/...``.
+
+    Args:
+        prefix: The configured prefix. An empty prefix is left empty --
+            a store with no prefix writes at the bucket root.
+
+    Returns:
+        The prefix, with exactly one trailing ``"/"`` when non-empty.
+    """
+    cleaned = prefix.strip()
+    if not cleaned:
+        return ""
+    if cleaned.endswith("/"):
+        return cleaned
+    return f"{cleaned}/"
+
+
 class ColdStore:
     """Cold store with Parquet export to local/S3/GCS/Azure.
 
@@ -81,7 +106,7 @@ class ColdStore:
         bucket: str = "",
         prefix: str = "conversations/",
         *,
-        storage_backend: StorageBackendName = "s3",
+        storage_backend: str = "s3",
         local_dir: Path | None = None,
         # S3 / R2
         region: str | None = None,
@@ -102,7 +127,8 @@ class ColdStore:
             bucket: S3 or GCS bucket name. Required when ``storage_backend`` is
                 ``"s3"`` or ``"gcs"``; unused for ``"local"`` and ``"azure"``.
                 Kept positional/backwards-compatible with the prior signature.
-            prefix: Object key prefix prepended to every export.
+            prefix: Object key prefix prepended to every export. Normalised
+                to end with ``"/"`` (an empty prefix stays empty).
             storage_backend: One of ``"local"``, ``"s3"``, ``"gcs"``, ``"azure"``,
                 or the alias ``"r2"`` (which resolves to ``"s3"`` — R2 speaks
                 the S3 API; only the endpoint URL and ``region="auto"``
@@ -122,7 +148,7 @@ class ColdStore:
             account_url: Azure Blob account URL.
         """
         self.bucket = bucket
-        self.prefix = prefix
+        self.prefix = _normalise_prefix(prefix)
         # Resolve the alias HERE, at the adapter boundary, so no caller has
         # to know that "r2" is not an adapter name.
         self._storage_backend: StorageBackendName = resolve_storage_backend(storage_backend)
@@ -138,6 +164,15 @@ class ColdStore:
         self._account_url = account_url
         # Populated by ``initialize()``; remains None until then.
         self._storage_adapter: Any | None = None
+        # Cumulative size of the payloads this store has uploaded. The
+        # gauge that reports it lives in ``akosha.monitoring.metrics``;
+        # only this class knows the payload size.
+        self._bytes_exported = 0
+
+    @property
+    def bytes_exported(self) -> int:
+        """Cumulative number of bytes uploaded by this store."""
+        return self._bytes_exported
 
     async def export_batch(
         self,
@@ -333,6 +368,7 @@ class ColdStore:
                 backend,
                 object_key,
             )
+            self._bytes_exported += len(data)
 
             # Clean up temp file after successful upload.
             if temp_path.exists():

@@ -216,6 +216,41 @@ class TestColdStorageConfig:
         assert cfg.endpoint_url == "http://legacy:4443"
         assert cfg.region == "legacy-region"
 
+    def test_age_threshold_days_defaults_to_90(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The cold tier's age threshold defaults to the documented 90 days."""
+        from akosha.config import ColdStorageConfig
+
+        monkeypatch.delenv("AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS", raising=False)
+
+        cfg = ColdStorageConfig()
+        assert cfg.age_threshold_days == 90
+
+    def test_age_threshold_days_binds_env_var(self) -> None:
+        """``AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS`` overrides the default."""
+        from akosha.config import ColdStorageConfig
+
+        with patch.dict(
+            os.environ,
+            {"AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS": "30"},
+            clear=False,
+        ):
+            cfg = ColdStorageConfig()
+        assert cfg.age_threshold_days == 30
+
+    def test_age_threshold_days_rejects_a_non_integer(self) -> None:
+        """A malformed threshold fails loudly rather than silently defaulting."""
+        from akosha.config import ColdStorageConfig
+
+        with (
+            patch.dict(
+                os.environ,
+                {"AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS": "soon"},
+                clear=False,
+            ),
+            pytest.raises(ValueError, match="AGE_THRESHOLD_DAYS"),
+        ):
+            ColdStorageConfig()
+
 
 class TestCacheConfig:
     """Test CacheConfig model.
