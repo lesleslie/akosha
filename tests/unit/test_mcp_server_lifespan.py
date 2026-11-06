@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import json
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from akosha.mcp.server import APP_NAME, APP_VERSION, create_app
+from akosha.models import WarmRecord
 from tests._support.dummy_fastmcp import DummyFastMCP, make_fastmcp_factory
 
 
@@ -240,14 +245,22 @@ class ColdStoreDouble:
     The real ``ColdStore`` needs a oneiric adapter; this double carries
     only what the exporter touches, so the wiring test does not reach for
     a bucket.
+
+    ``export_batch`` mirrors the real keyword call site
+    (``export_batch(records=..., partition_path=...)``) exactly. The
+    parameter was previously named ``_records``, so a real exporter
+    calling it with ``records=`` raised ``TypeError`` -- swallowed by the
+    export loop, which made a broken export look like a healthy one.
     """
 
     def __init__(self) -> None:
         self.bytes_exported = 0
         self.exported: list[str] = []
+        self.exported_records = 0
 
-    async def export_batch(self, _records, partition_path: str) -> str:
+    async def export_batch(self, records, partition_path: str) -> str:
         self.exported.append(partition_path)
+        self.exported_records += len(records)
         return f"{partition_path}/batch.parquet"
 
 
@@ -317,3 +330,193 @@ async def test_cold_export_task_can_be_skipped(
     app = create_app(mode=ColdMode(ColdStoreDouble()))
     async with app._mcp_server.lifespan(app):
         assert server_mod._cold_export_task is None
+
+
+class TestColdExportWiring:
+    """The seams *inside* the cold-export wiring.
+
+    ``test_cold_export_task_is_wired`` above pins that the export cron
+    starts and that ``AKOSHA_SKIP_COLD_EXPORT=1`` suppresses it. What it
+    does NOT pin is the wiring within the lifespan: which age threshold
+    the exporter is built with, which warm store it reads, and whether
+    the loop actually drives the exporter rather than merely holding a
+    task handle.
+
+    Those are the seams F20 is about. A cold exporter pointed at the
+    wrong source, or built with a hard-coded threshold that happens to
+    match the shipped YAML, would be "wired" in the audit sense and dead
+    in the operational sense -- and no test would go red.
+    """
+
+    @staticmethod
+    def _install_recording_exporter(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+        """Record the exporter's construction without faking the exporter.
+
+        The recorder SUBCLASSES the real ``ColdExporter``, so the object
+        the lifespan builds is a working exporter over the lifespan's own
+        warm store. Only the constructor arguments and the call count are
+        captured.
+        """
+        from akosha.storage import cold_exporter as cold_exporter_mod
+
+        captured: dict[str, Any] = {"calls": 0}
+
+        class RecordingExporter(cold_exporter_mod.ColdExporter):
+            """The real exporter, with its construction and its loop recorded."""
+
+            def __init__(self, **kwargs: Any) -> None:
+                captured["kwargs"] = kwargs
+                super().__init__(**kwargs)
+                # The exporter's own state, so a wiring that is rewritten
+                # after the call is still visible to the assertions.
+                captured["exporter"] = self
+
+            async def export_expired(self, **kwargs: Any) -> Any:
+                captured["calls"] += 1
+                return await super().export_expired(**kwargs)
+
+        monkeypatch.setattr(cold_exporter_mod, "ColdExporter", RecordingExporter)
+        return captured
+
+    @staticmethod
+    def _install_recording_aging_service(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> list[Any]:
+        """Capture the warm store the aging service is given.
+
+        The real ``AgingService`` is replaced: it is not what this test
+        is about, and the real one would query the hot store double and
+        log a pre-warm failure on every run.
+        """
+        from akosha.storage import aging as aging_mod
+
+        warm_stores: list[Any] = []
+
+        class RecordingAgingService:
+            """Records the warm store the lifespan hands the aging service."""
+
+            def __init__(self, hot_store: Any = None, warm_store: Any = None, **_kw: Any):
+                self.hot_store = hot_store
+                self.warm_store = warm_store
+                warm_stores.append(warm_store)
+
+            async def migrate_hot_to_warm(self, **_kw: Any) -> Any:
+                return SimpleNamespace(records_migrated=0, errors=0)
+
+        monkeypatch.setattr(aging_mod, "AgingService", RecordingAgingService)
+        return warm_stores
+
+    @pytest.mark.asyncio
+    async def test_the_exporter_is_built_with_the_configured_age_threshold(
+        self,
+        fastmcp_factory: DummyFastMCP,
+        patched_lifespan,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path,
+    ) -> None:
+        """The threshold comes from the config, not from a literal.
+
+        The threshold drives IRREVERSIBLE eviction from the warm tier, so
+        a hard-coded default that happens to match the shipped YAML would
+        silently ignore the operator's setting. The value asserted here
+        (7) is deliberately different from the shipped default (90).
+        """
+        monkeypatch.setenv("AKOSHA_DATA_PATH", str(tmp_path))
+        monkeypatch.setenv("AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS", "7")
+        monkeypatch.setattr(
+            "akosha.observability.prometheus_metrics.generate_metrics", lambda: "metrics"
+        )
+        captured = self._install_recording_exporter(monkeypatch)
+
+        app = create_app(mode=ColdMode(ColdStoreDouble()))
+        async with app._mcp_server.lifespan(app):
+            assert "kwargs" in captured, "the lifespan never built a ColdExporter"
+            assert captured["kwargs"]["age_threshold_days"] == 7
+
+    @pytest.mark.asyncio
+    async def test_the_exporter_reads_the_warm_store_the_aging_service_writes_to(
+        self,
+        fastmcp_factory: DummyFastMCP,
+        patched_lifespan,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path,
+    ) -> None:
+        """The cold tier's only source is the warm tier the aging service fills.
+
+        The exporter MUST be handed the lifespan's own warm store: a
+        second ``duckdb.connect()`` on the same file from the same
+        process would fail on the file lock, and a different store would
+        be a different (empty) database.
+        """
+        monkeypatch.setenv("AKOSHA_DATA_PATH", str(tmp_path))
+        monkeypatch.setattr(
+            "akosha.observability.prometheus_metrics.generate_metrics", lambda: "metrics"
+        )
+        captured = self._install_recording_exporter(monkeypatch)
+        aging_warm_stores = self._install_recording_aging_service(monkeypatch)
+
+        cold_store = ColdStoreDouble()
+        app = create_app(mode=ColdMode(cold_store))
+        async with app._mcp_server.lifespan(app):
+            assert aging_warm_stores, "the lifespan never built an AgingService"
+            # What the lifespan passed...
+            assert captured["kwargs"]["warm_store"] is aging_warm_stores[0]
+            assert captured["kwargs"]["cold_store"] is cold_store
+            # ...and what the exporter actually ended up holding.
+            exporter = captured["exporter"]
+            assert exporter._warm_store is aging_warm_stores[0]
+            assert exporter._cold_store is cold_store
+
+    @pytest.mark.asyncio
+    async def test_the_export_loop_actually_moves_warm_rows_to_the_cold_tier(
+        self,
+        fastmcp_factory: DummyFastMCP,
+        patched_lifespan,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path,
+    ) -> None:
+        """A task handle existing is not the same as the task running.
+
+        The task can exist while the loop body never reaches the
+        exporter -- a renamed method, a bad await, a guard that skips
+        the call -- and the cold tier would sit empty every cycle. The
+        assertion is behavioural: a warm row that is past the configured
+        threshold actually reaches the cold store.
+        """
+        from akosha.mcp import server as server_mod
+
+        monkeypatch.setenv("AKOSHA_DATA_PATH", str(tmp_path))
+        monkeypatch.setenv("AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS", "7")
+        # A short interval so the loop runs again after the row lands.
+        monkeypatch.setenv("AKOSHA_COLD_EXPORT_INTERVAL_SECONDS", "0.05")
+        monkeypatch.setattr(
+            "akosha.observability.prometheus_metrics.generate_metrics", lambda: "metrics"
+        )
+        captured = self._install_recording_exporter(monkeypatch)
+        aging_warm_stores = self._install_recording_aging_service(monkeypatch)
+
+        cold_store = ColdStoreDouble()
+        app = create_app(mode=ColdMode(cold_store))
+        async with app._mcp_server.lifespan(app):
+            warm_store = aging_warm_stores[0]
+            await warm_store.insert(
+                WarmRecord(
+                    system_id="sys-1",
+                    conversation_id="conv-aged",
+                    embedding=[1] * 384,
+                    summary="First sentence. Second sentence.",
+                    timestamp=datetime.now(UTC) - timedelta(days=10),
+                    metadata={"task_class": "mcp_tool_call"},
+                )
+            )
+            for _ in range(100):
+                if cold_store.exported:
+                    break
+                await asyncio.sleep(0.02)
+
+            assert captured["calls"] >= 1, "the export loop never called the exporter"
+            assert server_mod._cold_export_cycles >= 1
+            # The 10-day-old row is past the configured 7-day threshold,
+            # so it reached the cold tier.
+            assert cold_store.exported, "the aged warm row never reached the cold tier"
+            assert cold_store.exported_records == 1
