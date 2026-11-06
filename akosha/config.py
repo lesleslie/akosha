@@ -397,6 +397,8 @@ class ColdStorageConfig(BaseModel):
     secret_access_key: str | None = None
     age_threshold_days: int = Field(
         default=90,
+        ge=1,
+        le=36500,
         description=(
             "Age at which a warm-tier record ages out to the cold tier. "
             "The documented cold tier starts at 90 days, and that is the "
@@ -405,7 +407,10 @@ class ColdStorageConfig(BaseModel):
             "_SUBSTRATE_MAPPED_NESTED['cold'] so it survives the "
             "substrate strip and can be set per component (in the "
             "nested ``cold:`` block, or via "
-            "AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS)."
+            "AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS). "
+            "Bounded to 1..36500 days: this threshold drives IRREVERSIBLE "
+            "eviction from the warm tier, so a zero or negative value "
+            "would age out the entire tier on the first cycle."
         ),
     )
 
@@ -458,7 +463,7 @@ class ColdStorageConfig(BaseModel):
             data["bucket"] = _env_bucket
         if _env_prefix and "prefix" not in data:
             data["prefix"] = _env_prefix
-        if _env_age_threshold_days and "age_threshold_days" not in data:
+        if _env_age_threshold_days:
             try:
                 data["age_threshold_days"] = int(_env_age_threshold_days)
             except ValueError as exc:

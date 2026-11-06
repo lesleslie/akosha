@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import tempfile
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -211,7 +212,17 @@ class ColdStore:
             table = self._records_to_arrow_table(records)
 
             # Step 2: Write to temporary Parquet file
-            parquet_key = f"{self.prefix}{partition_path}/batch_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.parquet"
+            # The batch name carries a uuid4 suffix, not just a second
+            # timestamp: two exports of the same partition within the same
+            # second would otherwise produce the SAME key, and the second
+            # upload would silently overwrite the first -- whose rows would
+            # then be evicted from the warm tier while absent from the
+            # surviving object.
+            batch_id = uuid.uuid4().hex[:12]
+            parquet_key = (
+                f"{self.prefix}{partition_path}/"
+                f"batch_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}_{batch_id}.parquet"
+            )
             temp_path = await self._write_parquet_file(table)
 
             # Step 3: Upload via configured backend

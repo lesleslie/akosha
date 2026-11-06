@@ -393,3 +393,87 @@ def test_threshold_default_matches_the_documented_90_days() -> None:
 
     assert DEFAULT_AGE_THRESHOLD_DAYS == 90
     assert timedelta(days=DEFAULT_AGE_THRESHOLD_DAYS).days == 90
+
+
+class TestResilience:
+    """One malformed row must not wedge the whole retention path.
+
+    The export runs from a periodic cron. If a single bad row aborted the
+    cycle before any partition was written, that row would be re-fetched
+    every cycle forever: the warm tier would grow without bound and the
+    cold tier would stay permanently empty.
+    """
+
+    async def test_a_malformed_row_does_not_stop_the_partition(
+        self,
+        tmp_path: Path,
+        cold_store: ColdStore,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        store = await _seed_warm_store(
+            tmp_path / "warm.db",
+            [_warm_record("conv-bad"), _warm_record("conv-good")],
+        )
+        try:
+            exporter = ColdExporter(warm_store=store, cold_store=cold_store)
+            original = exporter._to_cold_record
+
+            def exploding(row: dict[str, Any]) -> Any:
+                if row["conversation_id"] == "conv-bad":
+                    raise ValueError("malformed row")
+                return original(row)
+
+            monkeypatch.setattr(exporter, "_to_cold_record", exploding)
+
+            stats = await exporter.export_expired(now=NOW)
+
+            # The healthy row still made it out...
+            assert stats.records_exported == 1
+            assert len(_parquet_files(tmp_path / "cold")) == 1
+            # ...the bad one is counted...
+            assert stats.errors == 1
+            # ...and it stays in the warm tier.
+            remaining = store.conn.execute(
+                "SELECT conversation_id FROM conversations ORDER BY conversation_id"
+            ).fetchall()
+            assert [r[0] for r in remaining] == ["conv-bad"]
+        finally:
+            await store.close()
+
+    async def test_a_row_with_undecodable_metadata_is_not_evicted(
+        self,
+        tmp_path: Path,
+        cold_store: ColdStore,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A blob that did not decode must not be lost on the way to cold."""
+        store = await _seed_warm_store(tmp_path / "warm.db", [_warm_record("conv-1")])
+        try:
+            exporter = ColdExporter(warm_store=store, cold_store=cold_store)
+            original_fetch = exporter._fetch_expired_rows
+
+            def poisoned(cutoff: Any) -> list[dict[str, Any]]:
+                return [
+                    {**row, "metadata": {}, "metadata_ok": False}
+                    for row in original_fetch(cutoff)
+                ]
+
+            monkeypatch.setattr(exporter, "_fetch_expired_rows", poisoned)
+
+            stats = await exporter.export_expired(now=NOW)
+
+            assert stats.records_exported == 0
+            assert stats.errors == 1
+            # Nothing was evicted: the original metadata is still warm.
+            remaining = store.conn.execute(
+                "SELECT conversation_id FROM conversations"
+            ).fetchall()
+            assert [r[0] for r in remaining] == ["conv-1"]
+        finally:
+            await store.close()
+
+    def test_a_null_system_id_lands_in_a_well_formed_partition(self) -> None:
+        """A NULL system_id must not raise out of the partition builder."""
+        path = build_partition_path(None, OLD_TIMESTAMP)
+        assert path.startswith("_unknown/")
+        assert path.endswith("/2026/01/01")

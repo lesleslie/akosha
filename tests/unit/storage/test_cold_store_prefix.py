@@ -159,3 +159,23 @@ class TestColdStoreByteAccounting:
             assert store.bytes_exported > after_first
         finally:
             await store.close()
+
+    @pytest.mark.asyncio
+    async def test_two_exports_of_the_same_partition_get_distinct_keys(
+        self, tmp_path: Path
+    ) -> None:
+        """The batch name must be unique, not merely second-granular.
+
+        Two exports of the same partition within the same second would
+        otherwise produce the SAME key, and the second upload would
+        silently overwrite the first -- whose rows would then be evicted
+        from the warm tier while absent from the surviving object.
+        """
+        store = ColdStore(storage_backend="local", local_dir=tmp_path / "cold")
+        await store.initialize()
+        try:
+            first = await store.export_batch([_record("conv-1")], "sys-1/2026/01/01")
+            second = await store.export_batch([_record("conv-1")], "sys-1/2026/01/01")
+            assert first != second
+        finally:
+            await store.close()

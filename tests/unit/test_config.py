@@ -497,3 +497,40 @@ class TestEventBridgeConfig:
         assert cfg.enabled is False
         assert cfg.dry_run is True
         assert cfg.endpoint is None
+
+
+class TestColdStorageConfigAgeThreshold:
+    """The cold age threshold: precedence and bounds.
+
+    ``age_threshold_days`` drives IRREVERSIBLE eviction from the warm
+    tier, so both its precedence and its range are load-bearing.
+    """
+
+    def test_age_threshold_env_overrides_the_yaml_value(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The env var wins over the nested ``cold:`` block.
+
+        ``age_threshold_days`` is deliberately NOT substrate-mapped, so the
+        YAML value reaches the config intact. An ``"x" not in data`` guard
+        would therefore silently discard the operator's override — the
+        knob would look settable and do nothing.
+        """
+        from akosha.config import ColdStorageConfig
+
+        monkeypatch.setenv("AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS", "30")
+        cfg = ColdStorageConfig(age_threshold_days=90)
+        assert cfg.age_threshold_days == 30
+
+    def test_age_threshold_rejects_a_non_positive_value(self) -> None:
+        """Zero would age out the entire warm tier on the first cycle."""
+        from akosha.config import ColdStorageConfig
+
+        with pytest.raises(ValueError):
+            ColdStorageConfig(age_threshold_days=0)
+
+    def test_age_threshold_rejects_an_absurd_value(self) -> None:
+        from akosha.config import ColdStorageConfig
+
+        with pytest.raises(ValueError):
+            ColdStorageConfig(age_threshold_days=100_000)

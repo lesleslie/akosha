@@ -82,23 +82,66 @@ def _naive_utc(value: datetime) -> datetime:
     return value
 
 
-def _sanitise_component(value: str) -> str:
+def _sanitise_component(value: str | None) -> str:
     """Make a value safe to use as a single object-key path component.
 
     Args:
-        value: The raw component (a ``system_id``, in practice).
+        value: The raw component (a ``system_id``, in practice). May be
+            NULL or a non-string -- DuckDB columns carry no type
+            constraint at the storage layer, so a malformed row must not
+            raise out of the export loop.
 
     Returns:
         A component with no path separators in it. ``.`` and ``..`` are
-        replaced outright so no value can address a parent directory.
+        replaced outright so no value can address a parent directory. A
+        missing or non-string value becomes ``_unknown`` -- a stable
+        placeholder that keeps the row inside a well-formed partition
+        instead of aborting the whole cycle.
     """
+    if not isinstance(value, str):
+        return "_unknown"
     cleaned = value.strip().replace("\\", "_").replace("/", "_")
     if cleaned in ("", ".", ".."):
         return "_"
     return cleaned
 
 
-def build_partition_path(system_id: str, timestamp: datetime) -> str:
+def _decode_metadata(raw: Any) -> tuple[dict[str, Any], bool]:
+    """Decode a warm row's metadata blob.
+
+    Args:
+        raw: The column value as DuckDB returned it.
+
+    Returns:
+        The decoded mapping and whether it was preserved faithfully.
+
+    Notes:
+        ``coerce_json_object`` returns ``{}`` for every undecodable blob,
+        and ``{}`` is also the legitimate value for a row that simply
+        carries no metadata -- so its return value alone cannot tell
+        "absent" from "lost". The raw blob is re-checked here: a blob
+        that is present, is not the empty object, and does not decode to
+        a non-empty mapping was NOT preserved, and the row must not be
+        evicted -- the cold record would carry an empty mapping and the
+        original would be lost.
+    """
+    decoded = coerce_json_object(raw)
+    if not raw:
+        return decoded, True
+    if decoded:
+        return decoded, True
+    if isinstance(raw, (bytes, bytearray)):
+        text = raw.decode("utf-8", errors="replace")
+    elif isinstance(raw, str):
+        text = raw
+    else:
+        return decoded, True
+    # "{}" is a legitimately empty metadata mapping; "[]" and anything
+    # unparseable are shapes the cold record cannot represent.
+    return decoded, text.strip() in ("", "{}")
+
+
+def build_partition_path(system_id: str | None, timestamp: datetime) -> str:
     """Build the partition path for a cold object.
 
     The convention is ``system_id/YYYY/MM/DD``, taken from the record's own
@@ -253,7 +296,37 @@ class ColdExporter:
             return stats
 
         for partition_path, partition_rows in self._group_by_partition(rows).items():
-            records = [self._to_cold_record(row) for row in partition_rows]
+            records: list[ColdRecord] = []
+            evictable: list[str] = []
+            for row in partition_rows:
+                try:
+                    projected = self._to_cold_record(row)
+                except Exception:
+                    # One malformed row must not wedge the whole retention
+                    # path. It would be re-fetched every cycle and abort
+                    # the cycle before any partition is exported, so the
+                    # warm tier would grow without bound while the cold
+                    # tier stayed empty. Skip it, count it, and leave it
+                    # in the warm tier for diagnosis.
+                    stats.errors += 1
+                    logger.exception(
+                        "cold export: skipping malformed warm row "
+                        "(conversation_id=%r) - it stays in the warm tier",
+                        row.get("conversation_id"),
+                    )
+                    continue
+                if projected is None:
+                    stats.errors += 1
+                    logger.error(
+                        "cold export: skipping row whose metadata did not decode "
+                        "(conversation_id=%r) - it stays in the warm tier",
+                        row.get("conversation_id"),
+                    )
+                    continue
+                records.append(projected)
+                evictable.append(row["conversation_id"])
+            if not records:
+                continue
             try:
                 await self._cold_store.export_batch(
                     records=records,
@@ -267,7 +340,9 @@ class ColdExporter:
             stats.batches_exported += 1
             stats.partitions.append(partition_path)
             if self._evict_after_export:
-                evicted = self._evict([row["conversation_id"] for row in partition_rows])
+                # Only the rows that projected cleanly are evicted. A row
+                # that was skipped keeps its warm-tier copy.
+                evicted = self._evict(evictable)
                 stats.records_evicted += evicted
 
         stats.bytes_exported = self._cold_store.bytes_exported - bytes_before
@@ -308,17 +383,23 @@ class ColdExporter:
             """,
             [cutoff, self._batch_size],
         ).fetchall()
-        return [
-            {
-                "system_id": row[0],
-                "conversation_id": row[1],
-                "summary": row[2] or "",
-                "timestamp": row[3],
-                # DuckDB returns a JSON column as text, not as a mapping.
-                "metadata": coerce_json_object(row[4]),
-            }
-            for row in rows
-        ]
+        decoded: list[dict[str, Any]] = []
+        for row in rows:
+            # DuckDB returns a JSON column as text, not as a mapping.
+            metadata, metadata_ok = _decode_metadata(row[4])
+            decoded.append(
+                {
+                    "system_id": row[0],
+                    "conversation_id": row[1],
+                    "summary": row[2] or "",
+                    "timestamp": row[3],
+                    "metadata": metadata,
+                    # False when the blob was present but did not decode:
+                    # such a row is exported nowhere and evicted nowhere.
+                    "metadata_ok": metadata_ok,
+                }
+            )
+        return decoded
 
     @staticmethod
     def _group_by_partition(
@@ -332,11 +413,21 @@ class ColdExporter:
         return grouped
 
     @staticmethod
-    def _to_cold_record(row: dict[str, Any]) -> ColdRecord:
-        """Project a warm row onto the cold record shape."""
+    def _to_cold_record(row: dict[str, Any]) -> ColdRecord | None:
+        """Project a warm row onto the cold record shape.
+
+        Returns:
+            The cold record, or ``None`` when the row's metadata did not
+            survive the projection. Such a row is exported nowhere and
+            evicted nowhere: the cold record would carry an empty
+            mapping, and evicting the warm row would destroy the
+            original metadata.
+        """
+        if not row.get("metadata_ok", True):
+            return None
         summary = row["summary"]
         return ColdRecord(
-            system_id=row["system_id"],
+            system_id=_sanitise_component(row["system_id"]),
             conversation_id=row["conversation_id"],
             fingerprint=minhash_fingerprint(summary),
             ultra_summary=first_sentence(summary),
