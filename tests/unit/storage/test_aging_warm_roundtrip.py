@@ -16,7 +16,7 @@ operational sense, so this round trip is part of the cold write path.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -152,3 +152,112 @@ async def test_migration_is_idempotent_across_cutoffs(tmp_path: Path, cutoff_day
         assert stats.errors == 0
     finally:
         await warm.close()
+
+
+class _ExecuteSpy:
+    """Delegates to a DuckDB connection while recording the query parameters."""
+
+    def __init__(self, conn: Any) -> None:
+        self._conn = conn
+        self.calls: list[tuple[str, Any]] = []
+
+    def execute(self, sql: str, params: Any = None) -> Any:
+        """Record the call, then run it against the real connection."""
+        self.calls.append((sql, params))
+        return self._conn.execute(sql, params)
+
+    def __getattr__(self, name: str) -> Any:
+        """Everything else (executemany, close, ...) goes to the real connection."""
+        return getattr(self._conn, name)
+
+
+class TestNaiveUtcCutoff:
+    """The cutoff bound as a query parameter must be naive UTC.
+
+    DuckDB's ``TIMESTAMP`` columns hold naive wall-clock values, and the
+    storage layer writes naive UTC into them. A tz-AWARE datetime bound
+    as a query PARAMETER takes a different path: it is cast through the
+    session's ``TimeZone``, so on a Pacific host ``12:00+00:00`` becomes
+    ``04:00`` -- an eight-hour shift in the age boundary, which is the
+    size of the window the cutoff draws.
+
+    The session ``TimeZone`` is pinned to a fixed UTC+9 zone below so the
+    boundary is identical on every host. A UTC host cannot see the shift
+    at all and a Pacific host sees it in the opposite direction, so a
+    test that leaves the zone alone passes or fails depending on where
+    the run happens to land.
+    """
+
+    #: UTC+9 all year round -- a constant nine-hour shift, on every host.
+    SESSION_TIMEZONE = "Asia/Tokyo"
+
+    @staticmethod
+    def _pin_session_timezone(hot: HotStore) -> None:
+        """Pin the DuckDB session zone so the boundary is host-independent."""
+        hot.conn.execute(f"SET TimeZone='{TestNaiveUtcCutoff.SESSION_TIMEZONE}'")
+
+    async def test_the_cutoff_parameter_is_naive(self, tmp_path: Path) -> None:
+        """The value bound as the cutoff parameter carries no tzinfo."""
+        hot = await _seed_hot_store(_hot_record())
+        warm = WarmStore(database_path=tmp_path / "warm.db")
+        await warm.initialize()
+        service = AgingService(hot_store=hot, warm_store=warm)
+        try:
+            spy = _ExecuteSpy(hot.conn)
+            hot.conn = spy
+            await service.migrate_hot_to_warm(cutoff_days=7)
+
+            cutoffs = [params[0] for sql, params in spy.calls if "WHERE timestamp <" in sql]
+            assert cutoffs, "the cutoff query never ran"
+            assert all(cutoff.tzinfo is None for cutoff in cutoffs)
+        finally:
+            await warm.close()
+
+    async def test_a_record_younger_than_the_cutoff_is_not_aged_out(self, tmp_path: Path) -> None:
+        """The age boundary is the cutoff -- not the cutoff shifted by the session offset.
+
+        A tz-aware cutoff under the pinned UTC+9 session reaches nine
+        hours further into the future than it should, so a record that is
+        still inside its retention window would be aged out early and
+        deleted from the hot tier.
+        """
+        hot = HotStore(database_path=":memory:")
+        await hot.initialize()
+        self._pin_session_timezone(hot)
+        warm = WarmStore(database_path=tmp_path / "warm.db")
+        await warm.initialize()
+        now = datetime.now(UTC)
+        try:
+            # 6d20h old: still inside the 7-day window, but within the nine
+            # hours a shifted cutoff would reach into.
+            await hot.insert(
+                HotRecord(
+                    system_id="sys-1",
+                    conversation_id="conv-young",
+                    content="Still inside the window.",
+                    embedding=[0.1] * 384,
+                    timestamp=now - timedelta(days=6, hours=20),
+                    metadata={"task_class": "mcp_tool_call"},
+                )
+            )
+            # 7d4h old: comfortably past the cutoff, so it must migrate.
+            await hot.insert(
+                HotRecord(
+                    system_id="sys-1",
+                    conversation_id="conv-old",
+                    content="Past the cutoff.",
+                    embedding=[0.1] * 384,
+                    timestamp=now - timedelta(days=7, hours=4),
+                    metadata={"task_class": "mcp_tool_call"},
+                )
+            )
+
+            service = AgingService(hot_store=hot, warm_store=warm)
+            stats = await service.migrate_hot_to_warm(cutoff_days=7)
+
+            assert stats.errors == 0
+            assert stats.records_migrated == 1
+            remaining = hot.conn.execute("SELECT conversation_id FROM conversations").fetchall()
+            assert [row[0] for row in remaining] == ["conv-young"]
+        finally:
+            await warm.close()

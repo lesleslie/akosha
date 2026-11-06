@@ -522,6 +522,25 @@ class TestColdStorageConfigAgeThreshold:
         cfg = ColdStorageConfig(age_threshold_days=90)
         assert cfg.age_threshold_days == 30
 
+    def test_age_threshold_env_overrides_the_nested_config_block(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The env var wins on the path the operator actually uses.
+
+        ``get_config()`` builds ``AkoshaConfig`` from the YAML settings
+        tree, so the ``cold:`` block reaches ``ColdStorageConfig`` as a
+        NESTED model rather than as a directly-constructed one. A nested
+        model is validated by pydantic's core schema, which does not
+        necessarily run the model's custom ``__init__`` -- which is where
+        the env override lives. The nested path therefore needs its own
+        pin.
+        """
+        from akosha.config import AkoshaConfig
+
+        monkeypatch.setenv("AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS", "30")
+        cfg = AkoshaConfig(cold={"age_threshold_days": 90})
+        assert cfg.cold.age_threshold_days == 30
+
     def test_age_threshold_rejects_a_non_positive_value(self) -> None:
         """Zero would age out the entire warm tier on the first cycle."""
         from akosha.config import ColdStorageConfig

@@ -179,3 +179,38 @@ class TestColdStoreByteAccounting:
             assert first != second
         finally:
             await store.close()
+
+    @pytest.mark.asyncio
+    async def test_two_exports_in_the_same_second_get_distinct_keys(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The uniqueness does not depend on the wall clock advancing.
+
+        The test above compares two keys, but it cannot guarantee the two
+        exports landed in the same second -- that is left to scheduling
+        luck. Freezing the clock makes the precondition explicit, so the
+        second-granular timestamp alone can never be enough to separate
+        the two keys.
+        """
+        from akosha.storage import cold_store as csmod
+
+        class FrozenDateTime(datetime):
+            """A clock that never advances."""
+
+            @classmethod
+            def now(cls, _tz: object = None) -> datetime:
+                return cls(2026, 11, 5, 12, 0, 0)
+
+        monkeypatch.setattr(csmod, "datetime", FrozenDateTime)
+
+        store = ColdStore(storage_backend="local", local_dir=tmp_path / "cold")
+        await store.initialize()
+        try:
+            first = await store.export_batch([_record("conv-1")], "sys-1/2026/01/01")
+            second = await store.export_batch([_record("conv-2")], "sys-1/2026/01/01")
+            # The timestamp part of the name is byte-for-byte identical:
+            # only the uuid suffix separates the two keys.
+            assert first.rsplit("_", 1)[0] == second.rsplit("_", 1)[0]
+            assert first != second
+        finally:
+            await store.close()

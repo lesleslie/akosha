@@ -477,3 +477,57 @@ class TestResilience:
         path = build_partition_path(None, OLD_TIMESTAMP)
         assert path.startswith("_unknown/")
         assert path.endswith("/2026/01/01")
+
+
+class TestUndecodableMetadataEndToEnd:
+    """A metadata blob that does not survive the projection is lost nowhere.
+
+    ``_decode_metadata`` is the only thing that can tell "this row simply
+    carries no metadata" from "this row's metadata was lost" -- both
+    decode to an empty mapping. The test above injects ``metadata_ok``
+    directly, so it never exercises that detection.
+
+    This class drives the whole path with a REAL warm store and a REAL
+    cold store. The row's metadata column holds a JSON *array*: valid
+    JSON for DuckDB, but not the object ``ColdRecord.metadata`` can
+    carry, so the projection would drop it on the floor. The row must
+    survive the cycle untouched -- exported nowhere, evicted nowhere.
+    """
+
+    async def test_a_non_object_metadata_row_is_neither_exported_nor_evicted(
+        self, tmp_path: Path, cold_store: ColdStore
+    ) -> None:
+        """The undecodable row stays in the warm tier; its sibling moves."""
+        warm = await _seed_warm_store(tmp_path / "warm.db", [_warm_record("conv-good")])
+        try:
+            # A JSON array is valid in a JSON column but cannot be carried
+            # by ColdRecord.metadata, so the projection would lose it.
+            warm.conn.execute(
+                """
+                INSERT INTO conversations
+                    (system_id, conversation_id, uuid7_id, embedding, summary,
+                     timestamp, metadata)
+                VALUES ('sys-1', 'conv-array', 'id-array', ?, 'Summary.',
+                        ?, '[]'::JSON)
+                """,
+                [[1] * 384, OLD_TIMESTAMP],
+            )
+
+            exporter = ColdExporter(warm_store=warm, cold_store=cold_store)
+            stats = await exporter.export_expired(now=NOW)
+
+            # The healthy row moved...
+            assert stats.records_exported == 1
+            assert stats.records_evicted == 1
+            # ...the array row was counted, exported nowhere and evicted nowhere.
+            assert stats.errors == 1
+            remaining = warm.conn.execute("SELECT conversation_id FROM conversations").fetchall()
+            assert [row[0] for row in remaining] == ["conv-array"]
+
+            # The exported object holds only the healthy row.
+            files = _parquet_files(tmp_path / "cold")
+            assert len(files) == 1
+            table = pq.read_table(files[0])
+            assert table.to_pylist()[0]["conversation_id"] == "conv-good"
+        finally:
+            await warm.close()
