@@ -105,10 +105,20 @@ class TestColdStorageConfig:
         # below. Without clearing them the test measures the operator's
         # configuration, not the class default, and fails on any properly
         # configured dev box.
+        #
+        # The component-scoped ``AKOSHA__*`` variants take precedence over
+        # the substrate ones, and ``AKOSHA_COLD_REGION`` / the nested
+        # ``AKOSHA__STORAGE__COLD__REGION`` override the region default,
+        # so they are cleared too.
         for var in (
             "ONEIRIC__SUBSTRATE__COLD__BACKEND",
             "ONEIRIC__SUBSTRATE__COLD__BUCKET",
             "ONEIRIC__SUBSTRATE__COLD__PREFIX",
+            "AKOSHA__STORAGE__COLD__BACKEND",
+            "AKOSHA__STORAGE__COLD__BUCKET",
+            "AKOSHA__STORAGE__COLD__PREFIX",
+            "AKOSHA__STORAGE__COLD__REGION",
+            "AKOSHA_COLD_REGION",
         ):
             monkeypatch.delenv(var, raising=False)
 
@@ -118,11 +128,24 @@ class TestColdStorageConfig:
         assert cfg.prefix == "akosha/"
         assert cfg.compression == "snappy"
         assert cfg.format == "parquet"
-        assert cfg.region == "us-west-2"
+        # "auto", not a concrete AWS region: Cloudflare R2 REQUIRES
+        # "auto" and rejects any other value. The previous default
+        # ("us-west-2") made the cold tier fail to authenticate against
+        # R2 whenever the layer that supplies "auto" was missing.
+        assert cfg.region == "auto"
 
-    def test_substrate_env_overrides(self) -> None:
-        """``ONEIRIC__SUBSTRATE__COLD__*`` overrides substrate defaults."""
+    def test_substrate_env_overrides(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``ONEIRIC__SUBSTRATE__COLD__*`` overrides substrate defaults.
+
+        The component-scoped ``AKOSHA__STORAGE__COLD__*`` knobs outrank the
+        fleet-wide substrate values, so they are removed here to isolate the
+        substrate contract. Without this the outcome depends on whether the
+        host happens to export a component-scoped override.
+        """
         from akosha.config import ColdStorageConfig
+
+        for knob in ("BACKEND", "BUCKET", "PREFIX"):
+            monkeypatch.delenv(f"AKOSHA__STORAGE__COLD__{knob}", raising=False)
 
         with patch.dict(
             os.environ,
@@ -139,6 +162,30 @@ class TestColdStorageConfig:
         assert cfg.bucket == "my-bucket"
         assert cfg.prefix == "custom/"
         assert cfg.compression == "zstd"
+
+    def test_component_scoped_cold_env_outranks_substrate(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``AKOSHA__STORAGE__COLD__*`` beats the fleet-wide substrate value.
+
+        Each component owns its own key space inside its own bucket, so a
+        component-scoped override is more specific than the substrate's
+        fleet-wide default and must win over it.
+        """
+        from akosha.config import ColdStorageConfig
+
+        monkeypatch.delenv("AKOSHA__STORAGE__COLD__PREFIX", raising=False)
+
+        with patch.dict(
+            os.environ,
+            {
+                "ONEIRIC__SUBSTRATE__COLD__BUCKET": "fleet-bucket",
+                "AKOSHA__STORAGE__COLD__BUCKET": "akosha-bucket",
+            },
+            clear=False,
+        ):
+            cfg = ColdStorageConfig()
+        assert cfg.bucket == "akosha-bucket"
 
     def test_cold_storage_config_has_endpoint_url_field(self) -> None:
         """ColdStorageConfig exposes endpoint_url for fake-gcs-server / R2."""
@@ -201,6 +248,41 @@ class TestColdStorageConfig:
         cfg = ColdStorageConfig()
         assert cfg.endpoint_url == "http://legacy:4443"
         assert cfg.region == "legacy-region"
+
+    def test_age_threshold_days_defaults_to_90(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The cold tier's age threshold defaults to the documented 90 days."""
+        from akosha.config import ColdStorageConfig
+
+        monkeypatch.delenv("AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS", raising=False)
+
+        cfg = ColdStorageConfig()
+        assert cfg.age_threshold_days == 90
+
+    def test_age_threshold_days_binds_env_var(self) -> None:
+        """``AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS`` overrides the default."""
+        from akosha.config import ColdStorageConfig
+
+        with patch.dict(
+            os.environ,
+            {"AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS": "30"},
+            clear=False,
+        ):
+            cfg = ColdStorageConfig()
+        assert cfg.age_threshold_days == 30
+
+    def test_age_threshold_days_rejects_a_non_integer(self) -> None:
+        """A malformed threshold fails loudly rather than silently defaulting."""
+        from akosha.config import ColdStorageConfig
+
+        with (
+            patch.dict(
+                os.environ,
+                {"AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS": "soon"},
+                clear=False,
+            ),
+            pytest.raises(ValueError, match="AGE_THRESHOLD_DAYS"),
+        ):
+            ColdStorageConfig()
 
 
 class TestCacheConfig:
@@ -415,3 +497,40 @@ class TestEventBridgeConfig:
         assert cfg.enabled is False
         assert cfg.dry_run is True
         assert cfg.endpoint is None
+
+
+class TestColdStorageConfigAgeThreshold:
+    """The cold age threshold: precedence and bounds.
+
+    ``age_threshold_days`` drives IRREVERSIBLE eviction from the warm
+    tier, so both its precedence and its range are load-bearing.
+    """
+
+    def test_age_threshold_env_overrides_the_yaml_value(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The env var wins over the nested ``cold:`` block.
+
+        ``age_threshold_days`` is deliberately NOT substrate-mapped, so the
+        YAML value reaches the config intact. An ``"x" not in data`` guard
+        would therefore silently discard the operator's override — the
+        knob would look settable and do nothing.
+        """
+        from akosha.config import ColdStorageConfig
+
+        monkeypatch.setenv("AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS", "30")
+        cfg = ColdStorageConfig(age_threshold_days=90)
+        assert cfg.age_threshold_days == 30
+
+    def test_age_threshold_rejects_a_non_positive_value(self) -> None:
+        """Zero would age out the entire warm tier on the first cycle."""
+        from akosha.config import ColdStorageConfig
+
+        with pytest.raises(ValueError):
+            ColdStorageConfig(age_threshold_days=0)
+
+    def test_age_threshold_rejects_an_absurd_value(self) -> None:
+        from akosha.config import ColdStorageConfig
+
+        with pytest.raises(ValueError):
+            ColdStorageConfig(age_threshold_days=100_000)

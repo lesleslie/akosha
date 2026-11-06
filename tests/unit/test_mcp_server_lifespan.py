@@ -56,7 +56,10 @@ def patched_lifespan(monkeypatch: pytest.MonkeyPatch):
         lambda: graph_builder,
     )
     monkeypatch.setattr("akosha.storage.hot_store.HotStore", lambda database_path: hot_store)
-    monkeypatch.setattr("akosha.storage.create_hot_store", lambda: hot_store)
+    # The lifespan now passes the configured backend + database path so
+    # the durable DuckDB setting reaches the runtime; the double has to
+    # accept them.
+    monkeypatch.setattr("akosha.storage.create_hot_store", lambda **_kwargs: hot_store)
 
     # v7 PR-A3: substitute the OTLP receiver, for the same reason the
     # CodeGraphIngester is skipped below — this module asserts the lifespan's
@@ -80,6 +83,9 @@ def patched_lifespan(monkeypatch: pytest.MonkeyPatch):
     # the ingester with a fake implementation.
     monkeypatch.setenv("AKOSHA_SKIP_CODE_GRAPH_INGESTER", "1")
     monkeypatch.setenv("AKOSHA_SKIP_KG_REFRESH", "1")
+    # The lifespan now wires the Redis-backed event subscriber; keep it
+    # out of the unit-test path so no test reaches for a real Redis.
+    monkeypatch.setenv("AKOSHA_SKIP_EVENT_SUBSCRIBER", "1")
     # The OtelTraceIngester poller needs no skip env var. PR-A8 retired
     # AKOSHA_SKIP_OTEL_INGESTER -- it is read nowhere -- and the poller is
     # gated by ``otel.receiver.trace_ingester_poller``, which ships false.
@@ -226,3 +232,88 @@ async def test_create_app_lite_mode_and_auth_failure(
     with pytest.raises(RuntimeError, match="Authentication configuration failed"):
         async with app._mcp_server.lifespan(app):
             pass
+
+
+class ColdStoreDouble:
+    """Minimal stand-in for the cold store the lifespan wires up.
+
+    The real ``ColdStore`` needs a oneiric adapter; this double carries
+    only what the exporter touches, so the wiring test does not reach for
+    a bucket.
+    """
+
+    def __init__(self) -> None:
+        self.bytes_exported = 0
+        self.exported: list[str] = []
+
+    async def export_batch(self, _records, partition_path: str) -> str:
+        self.exported.append(partition_path)
+        return f"{partition_path}/batch.parquet"
+
+
+class ColdMode:
+    """A mode that hands the lifespan a cold store."""
+
+    requires_external_services = False
+
+    def __init__(self, cold_storage: object) -> None:
+        self._cold_storage = cold_storage
+
+    async def initialize_cache(self):
+        return None
+
+    async def initialize_cold_storage(self):
+        return self._cold_storage
+
+
+@pytest.mark.asyncio
+async def test_cold_export_task_is_wired(
+    fastmcp_factory: DummyFastMCP,
+    patched_lifespan,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """The lifespan starts the warm->cold export cron (F5).
+
+    Without it the cold tier is reachable but not writable:
+    ``ColdStore.export_batch`` had no production caller at all.
+    """
+    from akosha.mcp import server as server_mod
+
+    monkeypatch.setenv("AKOSHA_DATA_PATH", str(tmp_path))
+    monkeypatch.setenv("AKOSHA_COLD_EXPORT_INTERVAL_SECONDS", "3600")
+    monkeypatch.setattr(
+        "akosha.observability.prometheus_metrics.generate_metrics", lambda: "metrics"
+    )
+
+    cold_store = ColdStoreDouble()
+    app = create_app(mode=ColdMode(cold_store))
+    async with app._mcp_server.lifespan(app) as context:
+        assert context["cold_storage"] is cold_store
+        task = server_mod._cold_export_task
+        assert task is not None
+        assert task.get_name() == "akosha.cold_export"
+
+    # The task is cancelled and cleared on shutdown.
+    assert server_mod._cold_export_task is None
+
+
+@pytest.mark.asyncio
+async def test_cold_export_task_can_be_skipped(
+    fastmcp_factory: DummyFastMCP,
+    patched_lifespan,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """``AKOSHA_SKIP_COLD_EXPORT=1`` suppresses the export cron."""
+    from akosha.mcp import server as server_mod
+
+    monkeypatch.setenv("AKOSHA_DATA_PATH", str(tmp_path))
+    monkeypatch.setenv("AKOSHA_SKIP_COLD_EXPORT", "1")
+    monkeypatch.setattr(
+        "akosha.observability.prometheus_metrics.generate_metrics", lambda: "metrics"
+    )
+
+    app = create_app(mode=ColdMode(ColdStoreDouble()))
+    async with app._mcp_server.lifespan(app):
+        assert server_mod._cold_export_task is None

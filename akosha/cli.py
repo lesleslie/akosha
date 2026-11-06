@@ -261,8 +261,9 @@ app.add_typer(mcp_app, name="mcp")
 def shell(
     _ctx: typer.Context,
     mode: Annotated[
-        str, typer.Option("--mode", "-m", help="Operational mode (lite|standard)")
-    ] = "lite",
+        str | None,
+        typer.Option("--mode", "-m", help="Operational mode (lite|standard)"),
+    ] = None,
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Enable verbose output")] = False,
 ) -> None:
     """Launch Akosha admin shell for distributed intelligence operations.
@@ -277,12 +278,14 @@ def shell(
     Session tracking is automatically enabled via Session-Buddy MCP.
 
     Args:
-        mode: Operational mode (lite or standard)
+        mode: Operational mode (lite or standard). ``None`` means "use the
+            configured mode" (``get_config().mode``).
         verbose: Enable verbose logging
     """
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
+    mode = _resolve_mode(mode)
     logger.info(f"Initializing Akosha application in {mode} mode...")
 
     # Import only when needed to avoid import errors
@@ -392,12 +395,41 @@ def _configure_logging(verbose: bool) -> None:
     )
 
 
+def _resolve_mode(cli_mode: str | None) -> str:
+    """Resolve the operational mode: CLI flag > layered config > default.
+
+    The CLI flag used to default to the literal ``"lite"``, which meant the
+    configured mode (``mode: standard`` in ``settings/akosha.yaml`` and in
+    the operator's ``~/.config/akosha/local.yaml``) was never read:
+    ``AkoshaConfig.mode`` had no reader anywhere in the codebase. The
+    process therefore ran in lite mode regardless of what the operator
+    configured.
+
+    Precedence:
+      1. An explicit ``--mode`` on the command line.
+      2. ``get_config().mode`` — the Oneiric layered loader, so the XDG
+         overlay wins over the committed repo default.
+      3. The built-in default (``lite``).
+    """
+    if cli_mode:
+        return cli_mode
+    try:
+        from akosha.config import get_config
+
+        configured = (get_config().mode or "").strip()
+    except Exception as exc:
+        logger.warning("Could not read the configured mode (%s); falling back to lite", exc)
+        configured = ""
+    return configured or "lite"
+
+
 def _start_server(
     host: Annotated[str, typer.Option("--host", "-h", help="Host to bind to")] = "127.0.0.1",
     port: Annotated[int, typer.Option("--port", "-p", help="Port to bind to")] = DEFAULT_MCP_PORT,
     mode: Annotated[
-        str, typer.Option("--mode", "-m", help="Operational mode (lite|standard)")
-    ] = "lite",
+        str | None,
+        typer.Option("--mode", "-m", help="Operational mode (lite|standard)"),
+    ] = None,
     config: Annotated[str, typer.Option("--config", "-c", help="Path to configuration file")] = "",
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Enable verbose output")] = False,
 ) -> None:
@@ -413,9 +445,17 @@ def _start_server(
         lite: Zero external dependencies, in-memory only
         standard: Full production config with Redis and cloud storage
 
+    The mode is resolved as: an explicit ``--mode`` flag, else the
+    configured mode (``get_config().mode`` — the layered settings file,
+    with the operator's XDG overlay winning over the committed repo
+    default), else ``lite``.
+
     Examples:
-        # Start in lite mode (default)
+        # Start in the configured mode (settings/akosha.yaml -> standard)
         akosha start
+
+        # Force lite mode
+        akosha start --mode=lite
 
         # Start in standard mode with Redis
         akosha start --mode=standard
@@ -429,7 +469,8 @@ def _start_server(
     Args:
         host: Host to bind to
         port: Port to bind to
-        mode: Operational mode (lite or standard)
+        mode: Operational mode (lite or standard). ``None`` means "use the
+            configured mode".
         config: Path to custom configuration file
         verbose: Enable verbose logging
     """
@@ -439,6 +480,10 @@ def _start_server(
 
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
+
+    # Resolve the mode BEFORE validating it: the CLI flag may be absent,
+    # in which case the layered configuration decides.
+    mode = _resolve_mode(mode)
 
     # Validate mode
     valid_modes = ["lite", "standard"]
@@ -457,6 +502,17 @@ def _start_server(
     logger.info(f"✅ Akosha ready in {mode} mode")
     logger.info(f"   Mode: {mode_instance.mode_config.description}")
     logger.info(f"   External services required: {mode_instance.requires_external_services}")
+    if mode_instance.requires_external_services is False:
+        # A mode that disables external services also disables the
+        # producers that need them. Say so at startup, so an empty feed
+        # is never mistaken for "there is nothing to report".
+        logger.warning(
+            "Mode '%s' disables external services: the Redis-backed event "
+            "subscriber is NOT started, so the conversations table stays "
+            "empty and the knowledge graph stays empty. Use mode=standard "
+            "if those feeds matter.",
+            mode,
+        )
 
     # Trap G (cookbook gaps): vanilla FastMCP/uvicorn exits with
     # ``returncode=-15`` on SIGTERM, not 0. Install an explicit handler
@@ -491,7 +547,15 @@ def _start_server(
         launch(
             build_server=lambda: app,
             component_name="akosha",
-            secrets_path=Path("~/.config/secrets.env"),
+            # DEFECT D fix: the tilde in ``Path("~/.config/secrets.env")``
+            # is NOT expanded by pathlib, so ``Path("~/.config/secrets.env")
+            # .exists()`` was False and the launcher silently loaded ZERO
+            # secrets. The process therefore never saw
+            # ``AKOSHA__STORAGE__COLD__ACCESS_KEY_ID`` /
+            # ``_SECRET_ACCESS_KEY`` (or any other secret), which is why
+            # the Cloudflare R2 cold tier could never authenticate.
+            # ``Path.home() / ".config" / "secrets.env"`` is the real path.
+            secrets_path=Path.home() / ".config" / "secrets.env",
             settings_path=None,  # akosha has no fixed settings.yaml
             host=host,
             port=port,
@@ -505,12 +569,18 @@ def start(
     host: Annotated[str, typer.Option("--host", "-h", help="Host to bind to")] = "127.0.0.1",
     port: Annotated[int, typer.Option("--port", "-p", help="Port to bind to")] = DEFAULT_MCP_PORT,
     mode: Annotated[
-        str, typer.Option("--mode", "-m", help="Operational mode (lite|standard)")
-    ] = "lite",
+        str | None,
+        typer.Option("--mode", "-m", help="Operational mode (lite|standard)"),
+    ] = None,
     config: Annotated[str, typer.Option("--config", "-c", help="Path to configuration file")] = "",
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Enable verbose output")] = False,
 ) -> None:
-    """Start Akosha MCP server in the specified mode."""
+    """Start Akosha MCP server in the specified mode.
+
+    With no ``--mode`` flag the configured mode is used
+    (``get_config().mode`` — settings/akosha.yaml, overlaid by
+    ``~/.config/akosha/local.yaml``); the built-in default is ``lite``.
+    """
     _start_server(host=host, port=port, mode=mode, config=config, verbose=verbose)
 
 
@@ -519,12 +589,18 @@ def mcp_start(
     host: Annotated[str, typer.Option("--host", "-h", help="Host to bind to")] = "127.0.0.1",
     port: Annotated[int, typer.Option("--port", "-p", help="Port to bind to")] = DEFAULT_MCP_PORT,
     mode: Annotated[
-        str, typer.Option("--mode", "-m", help="Operational mode (lite|standard)")
-    ] = "lite",
+        str | None,
+        typer.Option("--mode", "-m", help="Operational mode (lite|standard)"),
+    ] = None,
     config: Annotated[str, typer.Option("--config", "-c", help="Path to configuration file")] = "",
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Enable verbose output")] = False,
 ) -> None:
-    """Start Akosha MCP server in the specified mode."""
+    """Start Akosha MCP server in the specified mode.
+
+    With no ``--mode`` flag the configured mode is used
+    (``get_config().mode`` — settings/akosha.yaml, overlaid by
+    ``~/.config/akosha/local.yaml``); the built-in default is ``lite``.
+    """
     _start_server(host=host, port=port, mode=mode, config=config, verbose=verbose)
 
 

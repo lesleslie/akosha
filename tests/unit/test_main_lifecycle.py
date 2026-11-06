@@ -131,145 +131,122 @@ def _noop_cm():
 
 
 # ---------------------------------------------------------------------------
-# _read_subscriber_config
+# _read_subscriber_config / _read_bodai_subscriber_config / _read_hot_store_config
+#
+# These three readers used to parse ``<repo>/settings/akosha.yaml``
+# DIRECTLY, which bypassed the Oneiric layered loader entirely. The
+# operator's XDG overlay (``~/.config/akosha/local.yaml``) therefore had
+# NO effect on them, and the repo defaults were the only values that
+# ever reached the runtime.
+#
+# They now read through ``get_config()`` — the layered loader — so the
+# tests below patch ``akosha.config.get_config`` and pin the NEW
+# contract: the values come from the config model, and the XDG overlay
+# wins because the loader applies it.
 # ---------------------------------------------------------------------------
+
+
+def _patch_config(monkeypatch: pytest.MonkeyPatch, **blocks: Any) -> None:
+    """Patch ``akosha.config.get_config`` with a config double.
+
+    Each keyword names a block on the double (``hot``,
+    ``websocket_invocations_subscriber``, ``bodai_tool_invocation_subscriber``).
+    """
+    from akosha.config import get_config as real_get_config
+
+    real = real_get_config()
+
+    class _Cfg:
+        pass
+
+    cfg = _Cfg()
+    for name, value in blocks.items():
+        setattr(cfg, name, value)
+    # Anything the caller did not override falls back to the real config.
+    for name in ("hot", "websocket_invocations_subscriber", "bodai_tool_invocation_subscriber"):
+        if not hasattr(cfg, name):
+            setattr(cfg, name, getattr(real, name))
+
+    monkeypatch.setattr("akosha.config.get_config", lambda: cfg)
 
 
 class TestReadSubscriberConfig:
-    """Pin the four branches of ``_read_subscriber_config``."""
+    """``_read_subscriber_config`` reads through the layered loader."""
 
-    def test_missing_pyyaml_returns_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """When PyYAML is unavailable, return defaults with ``enabled=False``."""
-        monkeypatch.setitem(sys.modules, "yaml", None)  # force ImportError
-        cfg = AkoshaApplication._read_subscriber_config()
-        assert cfg == {"enabled": False, "poll_interval_seconds": 5.0}
+    def test_reads_from_the_layered_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The values come from the config model, not from a YAML file."""
+        from akosha.config import WebSocketInvocationsSubscriberConfig
 
-    def test_missing_settings_file_returns_disabled(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """When the settings file does not exist, return defaults.
-
-        Patches ``pathlib.Path.resolve`` so ``Path(__file__).resolve().parents[2]``
-        resolves into our tmp dir, where no settings file lives.
-        """
-        import pathlib
-
-        original_resolve = pathlib.Path.resolve
-
-        def fake_resolve(self: Path) -> Path:
-            # For paths inside akosha/main.py, redirect into tmp_path.
-            if str(self).endswith("akosha/main.py"):
-                return tmp_path / "akosha" / "main.py"
-            return original_resolve(self)
-
-        monkeypatch.setattr(pathlib.Path, "resolve", fake_resolve)
-        cfg = AkoshaApplication._read_subscriber_config()
-        assert cfg == {"enabled": False, "poll_interval_seconds": 5.0}
-
-    def test_valid_yaml_with_block(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        """A valid YAML with the websocket_invocations_subscriber block is parsed.
-
-        The function computes ``akosha_root = Path(__file__).resolve().parents[2]``,
-        so we make the fake ``__file__`` 3 levels deep: ``tmp_path / "repo" /
-        "akosha" / "main.py"`` yields ``parents[2] == tmp_path``.
-        """
-        import pathlib
-
-        settings_dir = tmp_path / "settings"
-        settings_dir.mkdir()
-        settings_file = settings_dir / "akosha.yaml"
-        settings_file.write_text(
-            "websocket_invocations_subscriber:\n  enabled: true\n  poll_interval_seconds: 7.5\n"
+        _patch_config(
+            monkeypatch,
+            websocket_invocations_subscriber=WebSocketInvocationsSubscriberConfig(
+                enabled=True,
+                poll_interval_seconds=7.5,
+            ),
         )
-        original_resolve = pathlib.Path.resolve
-
-        def fake_resolve(self: Path) -> Path:
-            if str(self).endswith("akosha/main.py"):
-                return tmp_path / "repo" / "akosha" / "main.py"
-            return original_resolve(self)
-
-        monkeypatch.setattr(pathlib.Path, "resolve", fake_resolve)
         cfg = AkoshaApplication._read_subscriber_config()
         assert cfg == {"enabled": True, "poll_interval_seconds": 7.5}
 
-    def test_yaml_without_block_returns_defaults(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    def test_xdg_overlay_wins_over_the_repo_default(
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """YAML with no websocket_invocations_subscriber block returns disabled defaults."""
-        import pathlib
+        """The operator's overlay is what the reader sees.
 
-        settings_dir = tmp_path / "settings"
-        settings_dir.mkdir()
-        (settings_dir / "akosha.yaml").write_text("other_key: value\n")
-        original_resolve = pathlib.Path.resolve
+        This is the regression guard for the defect: the reader used to
+        parse ``<repo>/settings/akosha.yaml`` directly, so an overlay
+        that flipped ``enabled`` to true had no effect at all.
+        """
+        from akosha.config import WebSocketInvocationsSubscriberConfig
 
-        def fake_resolve(self: Path) -> Path:
-            if str(self).endswith("akosha/main.py"):
-                return tmp_path / "repo" / "akosha" / "main.py"
-            return original_resolve(self)
+        _patch_config(
+            monkeypatch,
+            websocket_invocations_subscriber=WebSocketInvocationsSubscriberConfig(
+                enabled=True,
+                poll_interval_seconds=5.0,
+            ),
+        )
+        cfg = AkoshaApplication._read_subscriber_config()
+        assert cfg["enabled"] is True
 
-        monkeypatch.setattr(pathlib.Path, "resolve", fake_resolve)
+    def test_disabled_block_is_reported_as_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A disabled block stays disabled."""
+        from akosha.config import WebSocketInvocationsSubscriberConfig
+
+        _patch_config(
+            monkeypatch,
+            websocket_invocations_subscriber=WebSocketInvocationsSubscriberConfig(enabled=False),
+        )
+        cfg = AkoshaApplication._read_subscriber_config()
+        assert cfg == {"enabled": False, "poll_interval_seconds": 5.0}
+
+    def test_config_failure_returns_disabled_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A broken config must not take the process down."""
+
+        def _boom() -> Any:
+            raise RuntimeError("config exploded")
+
+        monkeypatch.setattr("akosha.config.get_config", _boom)
         cfg = AkoshaApplication._read_subscriber_config()
         assert cfg == {"enabled": False, "poll_interval_seconds": 5.0}
 
 
-# ---------------------------------------------------------------------------
-# _read_bodai_subscriber_config
-# ---------------------------------------------------------------------------
-
-
 class TestReadBodaiSubscriberConfig:
-    """Pin the branches of ``_read_bodai_subscriber_config``."""
+    """``_read_bodai_subscriber_config`` reads through the layered loader."""
 
-    def test_missing_pyyaml_returns_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """No PyYAML → push subscriber disabled with safe defaults."""
-        monkeypatch.setitem(sys.modules, "yaml", None)
-        cfg = AkoshaApplication._read_bodai_subscriber_config()
-        assert cfg["enabled"] is False
-        assert cfg["redis_url"] == "redis://localhost:6379/0"
-        assert cfg["consumer_group"] == "akosha-tool-invocation-indexers"
-        assert cfg["xreadgroup_block_ms"] == 1500
-        assert cfg["per_event_timeout_seconds"] == 30.0
+    def test_reads_from_the_layered_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The values come from the config model, not from a YAML file."""
+        from akosha.config import BodaiToolInvocationSubscriberConfig
 
-    def test_missing_settings_file_returns_defaults(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """Missing settings file → defaults."""
-        import pathlib
-
-        original_resolve = pathlib.Path.resolve
-
-        def fake_resolve(self: Path) -> Path:
-            if str(self).endswith("akosha/main.py"):
-                return tmp_path / "akosha" / "main.py"
-            return original_resolve(self)
-
-        monkeypatch.setattr(pathlib.Path, "resolve", fake_resolve)
-        cfg = AkoshaApplication._read_bodai_subscriber_config()
-        assert cfg["enabled"] is False
-
-    def test_valid_yaml_with_block(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        """A valid YAML block is parsed into the typed config."""
-        import pathlib
-
-        settings_dir = tmp_path / "settings"
-        settings_dir.mkdir()
-        (settings_dir / "akosha.yaml").write_text(
-            "bodai_tool_invocation_subscriber:\n"
-            "  enabled: true\n"
-            "  redis_url: 'redis://example:6379/1'\n"
-            "  consumer_group: 'my-group'\n"
-            "  xreadgroup_block_ms: 500\n"
-            "  per_event_timeout_seconds: 5.0\n"
+        _patch_config(
+            monkeypatch,
+            bodai_tool_invocation_subscriber=BodaiToolInvocationSubscriberConfig(
+                enabled=True,
+                redis_url="redis://example:6379/1",
+                consumer_group="my-group",
+                xreadgroup_block_ms=500,
+                per_event_timeout_seconds=5.0,
+            ),
         )
-        original_resolve = pathlib.Path.resolve
-
-        def fake_resolve(self: Path) -> Path:
-            if str(self).endswith("akosha/main.py"):
-                return tmp_path / "repo" / "akosha" / "main.py"
-            return original_resolve(self)
-
-        monkeypatch.setattr(pathlib.Path, "resolve", fake_resolve)
         cfg = AkoshaApplication._read_bodai_subscriber_config()
         assert cfg == {
             "enabled": True,
@@ -279,69 +256,71 @@ class TestReadBodaiSubscriberConfig:
             "per_event_timeout_seconds": 5.0,
         }
 
+    def test_config_failure_returns_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A broken config falls back to safe, disabled defaults."""
 
-# ---------------------------------------------------------------------------
-# _read_hot_store_config
-# ---------------------------------------------------------------------------
+        def _boom() -> Any:
+            raise RuntimeError("config exploded")
+
+        monkeypatch.setattr("akosha.config.get_config", _boom)
+        cfg = AkoshaApplication._read_bodai_subscriber_config()
+        assert cfg["enabled"] is False
+        assert cfg["redis_url"] == "redis://localhost:6379/0"
+        assert cfg["consumer_group"] == "akosha-tool-invocation-indexers"
+        assert cfg["xreadgroup_block_ms"] == 1500
+        assert cfg["per_event_timeout_seconds"] == 30.0
 
 
 class TestReadHotStoreConfig:
-    """Pin the branches of ``_read_hot_store_config``."""
+    """``_read_hot_store_config`` reads through the layered loader.
 
-    def test_missing_pyyaml_returns_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """No PyYAML → duckdb-memory in-memory defaults.
+    The old implementation looked up ``hot.database_path`` — a key no
+    YAML declares (the block declares ``path``) — so the lookup ALWAYS
+    missed and the hot tier was ALWAYS ``:memory:``.
+    """
 
-        NOTE (2026-09-27): ``pg_url`` removed from the hot-tier config when
-        pgvector migrated to the warm tier — assert it's NOT in the dict.
-        """
-        monkeypatch.setitem(sys.modules, "yaml", None)
-        cfg = AkoshaApplication._read_hot_store_config()
-        assert cfg["backend"] == "duckdb-memory"
-        assert cfg["database_path"] == ":memory:"
-        assert cfg["enabled"] is True
-        assert "pg_url" not in cfg
+    def test_reads_path_from_the_layered_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The ``path`` key is read under the name the config declares."""
+        from akosha.config import HotStorageConfig
 
-    def test_missing_settings_file_returns_defaults(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """Missing settings file → defaults."""
-        import pathlib
-
-        original_resolve = pathlib.Path.resolve
-
-        def fake_resolve(self: Path) -> Path:
-            if str(self).endswith("akosha/main.py"):
-                return tmp_path / "akosha" / "main.py"
-            return original_resolve(self)
-
-        monkeypatch.setattr(pathlib.Path, "resolve", fake_resolve)
-        cfg = AkoshaApplication._read_hot_store_config()
-        assert cfg["backend"] == "duckdb-memory"
-
-    def test_valid_yaml_duckdb_ssd(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        """A valid YAML with duckdb-ssd backend is parsed (pgvector migrated to warm tier 2026-09-27)."""
-        import pathlib
-
-        settings_dir = tmp_path / "settings"
-        settings_dir.mkdir()
-        (settings_dir / "akosha.yaml").write_text(
-            "hot:\n  enabled: true\n  backend: duckdb-ssd\n"
-            "  database_path: '/tmp/akosha-hot.db'\n"
+        _patch_config(
+            monkeypatch,
+            hot=HotStorageConfig(backend="duckdb-ssd", path="/tmp/akosha-hot.db"),
         )
-        original_resolve = pathlib.Path.resolve
-
-        def fake_resolve(self: Path) -> Path:
-            if str(self).endswith("akosha/main.py"):
-                return tmp_path / "repo" / "akosha" / "main.py"
-            return original_resolve(self)
-
-        monkeypatch.setattr(pathlib.Path, "resolve", fake_resolve)
         cfg = AkoshaApplication._read_hot_store_config()
         assert cfg["backend"] == "duckdb-ssd"
         assert cfg["database_path"] == "/tmp/akosha-hot.db"
+        assert cfg["enabled"] is True
         # pg_url was removed from the hot tier config 2026-09-27 — assert
         # it's not present (the new factory signature accepts no pg_url).
         assert "pg_url" not in cfg
+
+    def test_durable_backend_reaches_the_runtime(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The durable DuckDB variant is what the reader reports.
+
+        Regression guard: with ``duckdb-memory`` the hot tier lost every
+        row on restart, which is what kept the knowledge graph empty.
+        """
+        from akosha.config import HotStorageConfig
+
+        _patch_config(
+            monkeypatch,
+            hot=HotStorageConfig(backend="duckdb-ssd", path="hot/hot.db"),
+        )
+        cfg = AkoshaApplication._read_hot_store_config()
+        assert cfg["backend"] == "duckdb-ssd"
+        assert cfg["database_path"].endswith("hot/hot.db")
+
+    def test_config_failure_returns_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A broken config falls back to the in-memory defaults."""
+
+        def _boom() -> Any:
+            raise RuntimeError("config exploded")
+
+        monkeypatch.setattr("akosha.config.get_config", _boom)
+        cfg = AkoshaApplication._read_hot_store_config()
+        assert cfg["backend"] == "duckdb-memory"
+        assert cfg["database_path"] == ":memory:"
 
 
 # ---------------------------------------------------------------------------

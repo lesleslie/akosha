@@ -1,6 +1,6 @@
 # Plan Index
 
-_Regenerated 2026-11-01 by `crackerjack.tools.plan_index_sync` (phase)._
+_Regenerated 2026-11-06 by `crackerjack.tools.plan_index_sync` (phase)._
 
 ### Docs: adr
 
@@ -17,6 +17,7 @@ _Regenerated 2026-11-01 by `crackerjack.tools.plan_index_sync` (phase)._
 | [`docs/plans/2026-09-27-pyproject-single-source-of-truth.md`](2026-09-27-pyproject-single-source-of-truth.md) | 2026-09-27 | `active` | `canonical` | `version-source-of-truth` | Pyproject as Single Source of Truth for Version Strings |
 | [`docs/plans/2026-09-28-cold-store-gcs-endpoint-url-wiring.md`](2026-09-28-cold-store-gcs-endpoint-url-wiring.md) | 2026-09-28 | `draft` | `implementation` | `cold-store-wiring` | ColdStore GCS Branch — Missing endpoint_url Wiring (TICKET) |
 | [`docs/plans/2026-10-05-lazy-warm-shard-init.md`](2026-10-05-lazy-warm-shard-init.md) | 2026-10-05 | `draft` | `implementation` | `warm-tier-storage` | Plan — Lazy initialization of PgvectorWarmStore shards |
+| [`docs/plans/2026-11-05-akosha-cold-write-path.md`](2026-11-05-akosha-cold-write-path.md) | 2026-11-05 | `active` | `implementation` | `cold-write-path` | Cold tier write path — implementation plan |
 
 ### Docs: specs
 
@@ -24,6 +25,7 @@ _Regenerated 2026-11-01 by `crackerjack.tools.plan_index_sync` (phase)._
 |---|---|---|---|---|---|
 | [`docs/specs/2026-09-05-akosha-hardening-design.md`](../specs/2026-09-05-akosha-hardening-design.md) | 2026-09-05 | `complete` | `implementation` | `convergence-control-plane` | Akosha Comprehensive Hardening — Design Spec |
 | [`docs/specs/2026-09-27-cold-tier-fake-gcs-design.md`](../specs/2026-09-27-cold-tier-fake-gcs-design.md) | 2026-09-27 | `active` | `implementation` | `cold-tier-fake-gcs` | Cold Tier: fake-gcs-server default + Cloudflare R2 for local XDG |
+| [`docs/specs/2026-11-05-akosha-cold-write-path-design.md`](../specs/2026-11-05-akosha-cold-write-path-design.md) | 2026-11-05 | `active` | `implementation` | `cold-write-path` | Akosha cold tier — the write path that does not exist |
 
 ### .claude/decisions
 
@@ -40,11 +42,12 @@ _Regenerated 2026-11-01 by `crackerjack.tools.plan_index_sync` (phase)._
 
 ## Lifecycle × Role Distribution
 
-| Role \\ Lifecycle | draft | active | partial | shipped | complete | Total |
+| Role \ Lifecycle | draft | active | partial | shipped | complete | Total |
 |---|---|---|---|---|---|---|
 | `canonical` | · | 2 | · | · | · | **2** |
-| `implementation` | 4 | 2 | · | · | 1 | **7** |
+| `implementation` | 4 | 4 | · | · | 1 | **9** |
 | `umbrella` | · | · | · | · | · | **0** |
 | `historical` | · | · | · | · | · | **0** |
 | `superseded` | · | · | · | · | · | **0** |
-| **Total** | **4** | **4** | **·** | **·** | **1** | **9** |
+| **Total** | **4** | **6** | **·** | **·** | **1** | **11** |
+

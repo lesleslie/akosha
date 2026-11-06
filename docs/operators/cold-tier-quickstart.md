@@ -56,26 +56,34 @@ or the Cloudflare dashboard — fake-gcs just needs a directory to exist.)
 
 ### Configure akosha
 
-In `settings/local.yaml` (gitignored) or `~/.config/akosha/local.yaml`:
+In `~/.config/akosha/local.yaml` (the XDG overlay — gitignored, and the
+layer that actually reaches the runtime):
 
 ```yaml
 cold:
-  backend: gcs
-  bucket: akosha-cold-data
-  prefix: conversations/
+  # NOTE: `backend`, `bucket`, `prefix` and `compression` are
+  # SUBSTRATE-mapped: Akosha strips them from the YAML and takes their
+  # runtime value from the substrate. A `cold.backend:` line here has
+  # NO effect. Use the env vars below (or the substrate env vars) to
+  # choose the backend and bucket.
   format: parquet
   endpoint_url: http://127.0.0.1:4443
   project: local-dev
   region: us-west-2  # unused for gcs; kept for parity
 ```
 
-Or via env vars (preferred for CI):
+Choose the backend and bucket with env vars (preferred for CI):
 
 ```bash
 export AKOSHA__STORAGE__COLD__BACKEND=gcs
+export AKOSHA__STORAGE__COLD__BUCKET=akosha-cold-data
 export AKOSHA__STORAGE__COLD__ENDPOINT_URL=http://127.0.0.1:4443
 export AKOSHA__STORAGE__COLD__PROJECT=local-dev
 ```
+
+The fleet-wide equivalent is `ONEIRIC__SUBSTRATE__COLD__BACKEND` /
+`ONEIRIC__SUBSTRATE__COLD__BUCKET`. The component-scoped
+`AKOSHA__STORAGE__COLD__*` form wins for Akosha when both are set.
 
 ### Reset dev data
 
@@ -110,16 +118,29 @@ Copy the **Access Key ID** and **Secret Access Key**.
 
 ### Step 3: Configure akosha
 
-In `settings/local.yaml` (gitignored):
+In `~/.config/akosha/local.yaml` (the XDG overlay — gitignored, and the
+layer that actually reaches the runtime):
 
 ```yaml
 cold:
-  backend: s3
-  bucket: akosha-cold-data  # your bucket name
-  prefix: conversations/
+  # `backend`, `bucket`, `prefix` and `compression` are SUBSTRATE-mapped:
+  # Akosha strips them from the YAML and takes their runtime value from
+  # the substrate. A `cold.backend:` line here has NO effect. Use the env
+  # vars below to choose the backend and bucket.
   format: parquet
   region: auto  # R2 mandatory
   endpoint_url: https://<YOUR_ACCOUNT_ID>.r2.cloudflarestorage.com
+```
+
+Choose the backend and bucket with env vars:
+
+```bash
+# `r2` is accepted and is translated to the S3 adapter at the adapter
+# boundary (R2 speaks the S3 API; only the endpoint and region differ).
+export AKOSHA__STORAGE__COLD__BACKEND=r2
+export AKOSHA__STORAGE__COLD__BUCKET=akosha-cold-data  # your bucket name
+export AKOSHA__STORAGE__COLD__ENDPOINT_URL=https://<YOUR_ACCOUNT_ID>.r2.cloudflarestorage.com
+export AKOSHA__STORAGE__COLD__REGION=auto
 ```
 
 Set credentials via env vars (preferred — keep `local.yaml` out of git):
@@ -128,6 +149,11 @@ Set credentials via env vars (preferred — keep `local.yaml` out of git):
 export AKOSHA__STORAGE__COLD__ACCESS_KEY_ID=<your-access-key-id>
 export AKOSHA__STORAGE__COLD__SECRET_ACCESS_KEY=<your-secret-access-key>
 ```
+
+R2 does NOT authenticate against the AWS default credential chain, so
+the explicit keys are mandatory. Put them in `~/.config/secrets.env`
+(the MCP launcher merges that file into the process environment) rather
+than in a tracked file.
 
 ### Step 4: Credential rotation
 

@@ -9,6 +9,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid7
 
+from akosha.json_utils import coerce_json_object
+
 
 def make_id() -> str:
     """Generate a UUID7 identifier (32 lowercase hex chars).
@@ -118,8 +120,16 @@ class KnowledgeGraphBuilder:
                 )
             )
 
-        # Extract user entities from metadata
-        metadata = conversation.get("metadata", {})
+        # Extract user entities from metadata.
+        #
+        # ``metadata`` arrives either as a dict (the storage boundary
+        # decodes the DuckDB ``JSON`` column for us — see
+        # ``akosha/json_utils.py``) or, when a caller hands this method a
+        # raw row straight off DuckDB, as the JSON TEXT that DuckDB
+        # returns for a ``JSON`` column. ``coerce_json_object`` handles
+        # both shapes, so a text blob can never raise
+        # ``AttributeError: 'str' object has no attribute 'get'`` here.
+        metadata = coerce_json_object(conversation.get("metadata"))
         user_id = metadata.get("user_id")
         if user_id:
             entities.append(

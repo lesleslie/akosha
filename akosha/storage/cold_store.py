@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import tempfile
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -25,6 +26,74 @@ logger = logging.getLogger(__name__)
 
 StorageBackendName = Literal["local", "s3", "gcs", "azure"]
 
+#: Backend-name aliases resolved at the adapter boundary.
+#:
+#: Cloudflare R2 speaks the S3 API — the only differences are a custom
+#: ``endpoint_url`` and ``region="auto"``. Oneiric's substrate declares
+#: ``cold__backend`` as a Literal that includes ``"r2"``
+#: (``oneiric/core/substrate_settings.py``), and R2 is its DEFAULT, but
+#: NO storage adapter implements the name ``"r2"``: the adapter set is
+#: ``local`` / ``s3`` / ``gcs`` / ``azure``. Passing ``"r2"`` straight
+#: through raises ``ValueError: Unknown storage backend: r2`` inside
+#: :meth:`ColdStore.initialize`. The translation therefore happens HERE,
+#: at the boundary where a configured name becomes an adapter name.
+_BACKEND_ALIASES: dict[str, StorageBackendName] = {
+    "r2": "s3",
+}
+
+
+def resolve_storage_backend(backend: str | None) -> StorageBackendName:
+    """Translate a configured cold-tier backend name into an adapter name.
+
+    Args:
+        backend: The configured name, e.g. ``"r2"``, ``"s3"``, ``"local"``.
+            ``None`` / empty falls back to ``"s3"`` (the substrate's
+            R2-equivalent default).
+
+    Returns:
+        A name the oneiric storage adapters actually implement.
+
+    Raises:
+        ValueError: When the name is not a known backend (after alias
+            resolution). An unknown backend must fail loudly rather than
+            silently degrade to local storage.
+    """
+    name = (backend or "s3").strip().lower()
+    resolved = _BACKEND_ALIASES.get(name)
+    if resolved is not None:
+        return resolved
+    if name in ("local", "s3", "gcs", "azure"):
+        return name  # type: ignore[return-value]
+    raise ValueError(
+        f"Unknown cold-storage backend: {backend!r}. "
+        f"Known backends: {', '.join(sorted({'local', 's3', 'gcs', 'azure', *_BACKEND_ALIASES}))}."
+    )
+
+
+def _normalise_prefix(prefix: str) -> str:
+    """Normalise an object-key prefix so it always ends with ``"/"``.
+
+    The prefix is the substrate's per-component isolation mechanism: two
+    components that share a bucket but not a prefix must not overwrite
+    each other's objects. It is assembled into the key here
+    (``f"{prefix}{partition_path}/..."``), so a prefix the operator
+    wrote without its trailing slash would concatenate straight into the
+    partition and produce ``conversationssystem-001/...``.
+
+    Args:
+        prefix: The configured prefix. An empty prefix is left empty --
+            a store with no prefix writes at the bucket root.
+
+    Returns:
+        The prefix, with exactly one trailing ``"/"`` when non-empty.
+    """
+    cleaned = prefix.strip()
+    if not cleaned:
+        return ""
+    if cleaned.endswith("/"):
+        return cleaned
+    return f"{cleaned}/"
+
 
 class ColdStore:
     """Cold store with Parquet export to local/S3/GCS/Azure.
@@ -38,7 +107,7 @@ class ColdStore:
         bucket: str = "",
         prefix: str = "conversations/",
         *,
-        storage_backend: StorageBackendName = "s3",
+        storage_backend: str = "s3",
         local_dir: Path | None = None,
         # S3 / R2
         region: str | None = None,
@@ -59,12 +128,17 @@ class ColdStore:
             bucket: S3 or GCS bucket name. Required when ``storage_backend`` is
                 ``"s3"`` or ``"gcs"``; unused for ``"local"`` and ``"azure"``.
                 Kept positional/backwards-compatible with the prior signature.
-            prefix: Object key prefix prepended to every export.
-            storage_backend: One of ``"local"``, ``"s3"``, ``"gcs"``, ``"azure"``.
-                ``"s3"`` is the default to preserve historical behavior.
+            prefix: Object key prefix prepended to every export. Normalised
+                to end with ``"/"`` (an empty prefix stays empty).
+            storage_backend: One of ``"local"``, ``"s3"``, ``"gcs"``, ``"azure"``,
+                or the alias ``"r2"`` (which resolves to ``"s3"`` — R2 speaks
+                the S3 API; only the endpoint URL and ``region="auto"``
+                differ). ``"s3"`` is the default to preserve historical
+                behavior.
             local_dir: Filesystem root for the ``"local"`` backend. Defaults to
                 ``~/.akosha/cold-store`` when unset.
-            region: S3 region (``s3`` backend only).
+            region: S3 region (``s3`` backend only). Cloudflare R2 requires
+                ``"auto"``.
             endpoint_url: S3 endpoint URL (use R2's endpoint for Cloudflare R2).
             access_key_id: S3 access key ID (``s3`` only; required for Cloudflare R2).
             secret_access_key: S3 secret access key (``s3`` only; required for Cloudflare R2).
@@ -75,8 +149,10 @@ class ColdStore:
             account_url: Azure Blob account URL.
         """
         self.bucket = bucket
-        self.prefix = prefix
-        self._storage_backend: StorageBackendName = storage_backend
+        self.prefix = _normalise_prefix(prefix)
+        # Resolve the alias HERE, at the adapter boundary, so no caller has
+        # to know that "r2" is not an adapter name.
+        self._storage_backend: StorageBackendName = resolve_storage_backend(storage_backend)
         self._local_dir: Path = local_dir or Path.home() / ".akosha" / "cold-store"
         self._region = region
         self._endpoint_url = endpoint_url
@@ -89,6 +165,15 @@ class ColdStore:
         self._account_url = account_url
         # Populated by ``initialize()``; remains None until then.
         self._storage_adapter: Any | None = None
+        # Cumulative size of the payloads this store has uploaded. The
+        # gauge that reports it lives in ``akosha.monitoring.metrics``;
+        # only this class knows the payload size.
+        self._bytes_exported = 0
+
+    @property
+    def bytes_exported(self) -> int:
+        """Cumulative number of bytes uploaded by this store."""
+        return self._bytes_exported
 
     async def export_batch(
         self,
@@ -127,7 +212,17 @@ class ColdStore:
             table = self._records_to_arrow_table(records)
 
             # Step 2: Write to temporary Parquet file
-            parquet_key = f"{self.prefix}{partition_path}/batch_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.parquet"
+            # The batch name carries a uuid4 suffix, not just a second
+            # timestamp: two exports of the same partition within the same
+            # second would otherwise produce the SAME key, and the second
+            # upload would silently overwrite the first -- whose rows would
+            # then be evicted from the warm tier while absent from the
+            # surviving object.
+            batch_id = uuid.uuid4().hex[:12]
+            parquet_key = (
+                f"{self.prefix}{partition_path}/"
+                f"batch_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}_{batch_id}.parquet"
+            )
             temp_path = await self._write_parquet_file(table)
 
             # Step 3: Upload via configured backend
@@ -284,6 +379,7 @@ class ColdStore:
                 backend,
                 object_key,
             )
+            self._bytes_exported += len(data)
 
             # Clean up temp file after successful upload.
             if temp_path.exists():

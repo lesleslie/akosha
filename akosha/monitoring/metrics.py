@@ -105,7 +105,7 @@ warm_store_record_count = Gauge(
 
 cold_store_size_bytes = Gauge(
     "akosha_cold_store_size_bytes",
-    "Total size of cold store (Parquet files) in bytes",
+    "Bytes of Parquet data written to the cold store by this process",
 )
 
 migration_records_total = Counter(

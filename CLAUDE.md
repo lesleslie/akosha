@@ -163,8 +163,9 @@ pytest -v --tb=short
 - **hot_store.py**: DuckDB in-memory for recent data
 - **warm_store.py**: DuckDB on-disk for historical data
 - **cold_store.py**: Oneiric-based Parquet export for archival
+- **cold_exporter.py**: Warm→Cold aging service (the cold tier's write path)
 - **sharding.py**: Consistent hashing router (256 shards)
-- **aging.py**: Hot→Warm→Cold tier migration service
+- **aging.py**: Hot→Warm tier migration service
 
 ### Ingestion Pipeline (`akosha/ingestion/`)
 

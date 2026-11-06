@@ -132,6 +132,31 @@ def _strip_substrate_mapped(data: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _resolve_hot_store_path(raw_path: str, resolver: Any) -> str:
+    """Resolve the configured hot-store path to an absolute DuckDB path.
+
+    Rules:
+
+    - ``":memory:"`` (or an empty value) stays ``":memory:"`` — the
+      in-memory DuckDB backend. Nothing to resolve.
+    - An absolute path is returned unchanged.
+    - A relative path is resolved against the storage BASE directory
+      (``<XDG data dir>/akosha``), so a setting like ``hot/hot.db`` is
+      portable across machines instead of depending on the process CWD.
+
+    The storage base directory is the same one the warm tier uses
+    (``StoragePathResolver.get_warm_store_path``), so the hot and warm
+    tiers live side by side under one root.
+    """
+    text = (raw_path or "").strip()
+    if not text or text == ":memory:":
+        return ":memory:"
+    candidate = Path(text).expanduser()
+    if candidate.is_absolute():
+        return str(candidate)
+    return str(resolver.base_path / candidate)
+
+
 class HotStorageConfig(BaseModel):
     """Hot storage configuration.
 
@@ -153,6 +178,14 @@ class HotStorageConfig(BaseModel):
     Migrate any ``backend=pgvector`` hot-tier configs to warm-tier:
     ``AKOSHA__STORAGE__WARM__BACKEND=pgvector`` and
     ``AKOSHA__STORAGE__WARM__PG_URL=<your_dsn>``.
+
+    DURABILITY: ``duckdb-memory`` (``:memory:``) loses every row on
+    restart. The durable variant is ``duckdb-ssd`` with a FILE path —
+    the hot tier then survives a restart, so the ``conversations`` table
+    (and therefore the knowledge graph's source rows) is not wiped on
+    every deploy. A relative ``path`` is resolved against the storage
+    base directory (XDG data dir) so the setting is portable across
+    machines; an absolute path is used as-is.
     """
 
     backend: str = Field(
@@ -164,7 +197,11 @@ class HotStorageConfig(BaseModel):
     )
     path: str = Field(
         default=":memory:",
-        description="DuckDB database path for OTel ingester (':memory:' for in-memory)",
+        description=(
+            "DuckDB database path for the hot tier. ':memory:' for the "
+            "in-memory backend; a file path (absolute, or relative to the "
+            "storage base directory) for the durable 'duckdb-ssd' backend."
+        ),
     )
     write_ahead_log: bool = Field(default=True)
     wal_path: Path | None = None  # Will be resolved by model_validator
@@ -178,16 +215,17 @@ class HotStorageConfig(BaseModel):
 
     @model_validator(mode="after")
     def resolve_paths(self) -> HotStorageConfig:
-        """Resolve WAL path using StoragePathResolver."""
-        if self.wal_path is None:
-            # Imported here, not at module scope: the resolver lives in
-            # ``akosha.storage``, which drags in ``akosha.storage.aging``
-            # and therefore numpy. Importing the config module must not
-            # pay for the storage stack.
-            from akosha.storage.path_resolver import StoragePathResolver
+        """Resolve the database path and WAL path using StoragePathResolver."""
+        # Imported here, not at module scope: the resolver lives in
+        # ``akosha.storage``, which drags in ``akosha.storage.aging``
+        # and therefore numpy. Importing the config module must not
+        # pay for the storage stack.
+        from akosha.storage.path_resolver import StoragePathResolver
 
-            resolver = StoragePathResolver()
+        resolver = StoragePathResolver()
+        if self.wal_path is None:
             self.wal_path = resolver.get_hot_store_wal_path()
+        self.path = _resolve_hot_store_path(self.path, resolver)
         return self
 
 
@@ -280,22 +318,58 @@ class ColdStorageConfig(BaseModel):
         anonymous_credentials: Use anonymous GCS credentials (fake-gcs-server only)
         access_key_id: S3 access key ID (Cloudflare R2 etc.)
         secret_access_key: S3 secret access key
+        age_threshold_days: Age at which a warm-tier record ages out to
+            the cold tier (default 90, the documented cold-tier boundary).
+            Akosha-local policy -- NOT substrate-mapped, so it is settable
+            in the nested ``cold:`` block and via
+            ``AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS``.
 
     Configuration can be set via:
-    1. settings/akosha.yaml under cold
-    2. settings/local.yaml (gitignored)
-    3. Environment variables (substrate, primary):
-       ONEIRIC__SUBSTRATE__COLD__BACKEND, ONEIRIC__SUBSTRATE__COLD__BUCKET,
-       ONEIRIC__SUBSTRATE__COLD__PREFIX, ONEIRIC__SUBSTRATE__COLD__COMPRESSION
-    4. Environment variables (legacy, one-release fallback):
+    1. Environment variables (component-scoped, highest precedence for the
+       backend, bucket and prefix):
+       AKOSHA__STORAGE__COLD__BACKEND,
+       AKOSHA__STORAGE__COLD__BUCKET,
+       AKOSHA__STORAGE__COLD__PREFIX,
        AKOSHA__STORAGE__COLD__ENDPOINT_URL,
        AKOSHA__STORAGE__COLD__PROJECT,
        AKOSHA__STORAGE__COLD__ANONYMOUS_CREDENTIALS,
        AKOSHA__STORAGE__COLD__ACCESS_KEY_ID,
        AKOSHA__STORAGE__COLD__SECRET_ACCESS_KEY,
-       AKOSHA__STORAGE__COLD__REGION,
-       AKOSHA_COLD_BACKEND, AKOSHA_COLD_BUCKET, AKOSHA_COLD_ENDPOINT,
-       AKOSHA_COLD_REGION.
+       AKOSHA__STORAGE__COLD__REGION.
+    2. Environment variables (substrate, fleet-wide):
+       ONEIRIC__SUBSTRATE__COLD__BACKEND, ONEIRIC__SUBSTRATE__COLD__BUCKET,
+       ONEIRIC__SUBSTRATE__COLD__PREFIX, ONEIRIC__SUBSTRATE__COLD__COMPRESSION
+    3. The operator's XDG overlay, ~/.config/akosha/local.yaml, under the
+       ``cold:`` block — for the NON-substrate-mapped keys only
+       (``region``, ``endpoint_url``, ``format``, ``project``, ...).
+    4. The committed repo defaults, settings/akosha.yaml.
+
+    PER-COMPONENT BUCKETS: each component that has a cold tier owns its
+    OWN bucket, so the bucket name and the key prefix are component
+    settings, not fleet settings. The substrate's fleet-wide
+    ``ONEIRIC__SUBSTRATE__COLD__BUCKET`` / ``_PREFIX`` remain as
+    fleet-wide DEFAULTS for a component that has not overridden them,
+    but they must not be set to one component's values: the prefix is
+    the substrate's isolation mechanism, and it is only settable
+    fleet-wide, so two components sharing a bucket would share a prefix
+    and overwrite each other's objects. See
+    ``docs/decisions/2026-11-05-per-component-cold-storage-buckets.md``
+    in the mahavishnu repo.
+
+    IMPORTANT — the YAML ``cold:`` block is NOT the source of truth for
+    ``backend`` / ``bucket`` / ``prefix`` / ``compression``:
+    ``_strip_substrate_mapped`` removes those four keys from the YAML
+    data before the config is built, because the substrate owns them.
+    A ``cold.backend:`` line in either YAML file therefore has NO effect
+    (it is stripped silently). Use ``AKOSHA__STORAGE__COLD__BACKEND`` or
+    ``ONEIRIC__SUBSTRATE__COLD__BACKEND`` to choose the backend.
+
+    BACKEND NAMES: ``r2`` (Cloudflare) is the substrate's default and is
+    accepted; it is translated to the ``s3`` adapter at the adapter
+    boundary because R2 speaks the S3 API (see
+    :func:`akosha.storage.cold_store.resolve_storage_backend`). R2
+    additionally requires ``region="auto"`` and explicit credentials —
+    the AWS default credential chain does NOT authenticate against R2.
     """
 
     backend: str = Field(default_factory=lambda: _substrate_field("cold__backend"))
@@ -303,12 +377,42 @@ class ColdStorageConfig(BaseModel):
     prefix: str = Field(default_factory=lambda: _substrate_field("cold__prefix"))
     compression: str = Field(default_factory=lambda: _substrate_field("cold__compression"))
     format: str = "parquet"
-    region: str | None = Field(default_factory=lambda: os.getenv("AKOSHA_COLD_REGION", "us-west-2"))
+    region: str | None = Field(
+        default_factory=lambda: os.getenv("AKOSHA_COLD_REGION", "auto"),
+        description=(
+            "Cloud region. The default is 'auto' — Cloudflare R2 REQUIRES "
+            "'auto' and rejects any other value. 'auto' is also accepted by "
+            "the S3-compatible gateways the fleet uses. An operator on a "
+            "real AWS region sets it explicitly (AKOSHA_COLD_REGION or "
+            "AKOSHA__STORAGE__COLD__REGION). The previous default "
+            "('us-west-2') was wrong for R2: it made the cold tier fail to "
+            "authenticate against the bucket whenever the XDG layer that "
+            "supplies 'auto' was missing."
+        ),
+    )
     endpoint_url: str | None = None
     project: str | None = None
     anonymous_credentials: bool = False
     access_key_id: str | None = None
     secret_access_key: str | None = None
+    age_threshold_days: int = Field(
+        default=90,
+        ge=1,
+        le=36500,
+        description=(
+            "Age at which a warm-tier record ages out to the cold tier. "
+            "The documented cold tier starts at 90 days, and that is the "
+            "default. This is an Akosha-local policy, NOT a substrate "
+            "field: it is deliberately absent from "
+            "_SUBSTRATE_MAPPED_NESTED['cold'] so it survives the "
+            "substrate strip and can be set per component (in the "
+            "nested ``cold:`` block, or via "
+            "AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS). "
+            "Bounded to 1..36500 days: this threshold drives IRREVERSIBLE "
+            "eviction from the warm tier, so a zero or negative value "
+            "would age out the entire tier on the first cycle."
+        ),
+    )
 
     def __init__(self, **data: Any) -> None:
         # Honor nested env vars (preferred). Only fill fields not already
@@ -319,6 +423,28 @@ class ColdStorageConfig(BaseModel):
         _env_access_key = os.getenv("AKOSHA__STORAGE__COLD__ACCESS_KEY_ID", "")
         _env_secret_key = os.getenv("AKOSHA__STORAGE__COLD__SECRET_ACCESS_KEY", "")
         _env_region = os.getenv("AKOSHA__STORAGE__COLD__REGION", "")
+        # DEFECT C fix: ``backend`` and ``bucket`` are SUBSTRATE-mapped, so
+        # ``_strip_substrate_mapped`` removes them from the YAML data and
+        # ``data`` never carries them. That left
+        # ``AKOSHA__STORAGE__COLD__BACKEND`` / ``_BUCKET`` as documented
+        # but UNREAD knobs. They are component-scoped (Akosha-specific)
+        # overrides, so they take precedence over the fleet-wide substrate
+        # values, exactly like the other ``AKOSHA__STORAGE__COLD__*`` knobs
+        # in this block.
+        #
+        # ``_PREFIX`` was the one substrate-mapped field with NO
+        # component-scoped override. That is what made the substrate's
+        # shared-bucket design unusable: the substrate isolates
+        # per-component data by prefix, but the prefix was only settable
+        # through the FLEET-WIDE ``ONEIRIC__SUBSTRATE__COLD__PREFIX``,
+        # so every component that read the substrate got the same
+        # prefix. With a component-scoped prefix, each component owns
+        # its own key space inside its own bucket and the fleet-wide
+        # prefix stops being a cross-component contract.
+        _env_backend = os.getenv("AKOSHA__STORAGE__COLD__BACKEND", "")
+        _env_bucket = os.getenv("AKOSHA__STORAGE__COLD__BUCKET", "")
+        _env_prefix = os.getenv("AKOSHA__STORAGE__COLD__PREFIX", "")
+        _env_age_threshold_days = os.getenv("AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS", "")
         if _env_endpoint_url and "endpoint_url" not in data:
             data["endpoint_url"] = _env_endpoint_url
         if _env_project and "project" not in data:
@@ -331,6 +457,20 @@ class ColdStorageConfig(BaseModel):
             data["secret_access_key"] = _env_secret_key
         if _env_region and "region" not in data:
             data["region"] = _env_region
+        if _env_backend and "backend" not in data:
+            data["backend"] = _env_backend
+        if _env_bucket and "bucket" not in data:
+            data["bucket"] = _env_bucket
+        if _env_prefix and "prefix" not in data:
+            data["prefix"] = _env_prefix
+        if _env_age_threshold_days:
+            try:
+                data["age_threshold_days"] = int(_env_age_threshold_days)
+            except ValueError as exc:
+                raise ValueError(
+                    "AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS must be an integer, "
+                    f"got {_env_age_threshold_days!r}"
+                ) from exc
 
         # Flat legacy env vars (fallback only when nested form unset).
         # Matches the AKOSHA_COLD_* convention used in QUICKSTART.md and
@@ -567,6 +707,78 @@ class OTelReceiverConfig(BaseModel):
     )
 
 
+class WebSocketInvocationsSubscriberConfig(BaseModel):
+    """Settings for the ``websocket_invocations_subscriber`` block.
+
+    This block gates the orchestrator that turns Mahavishnu's websocket
+    tool-invocation rows into HotStore records. It is the ONLY producer
+    of the ``conversations`` table that the knowledge-graph refresh loop
+    reads, so when it is off the graph stays empty.
+
+    Declared on ``AkoshaConfig`` so it survives ``get_config()`` — that
+    function drops any key that is not an ``AkoshaConfig`` field, and it
+    drops it SILENTLY. Before this model existed, the operator's
+    ``~/.config/akosha/local.yaml`` overlay
+    (``websocket_invocations_subscriber.enabled: true``) was read by
+    Oneiric's layered loader and then thrown away by ``get_config()``,
+    so the repo default (``enabled: false``) was the only thing that
+    ever reached the runtime.
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Run the websocket-invocations subscriber. Off by default; flip "
+            "to true (in the XDG overlay) to ingest Mahavishnu tool-call "
+            "rows into the hot tier."
+        ),
+    )
+    poll_interval_seconds: float = Field(
+        default=5.0,
+        description="Reserved for compatibility with the retired poll path.",
+    )
+
+
+class BodaiToolInvocationSubscriberConfig(BaseModel):
+    """Settings for the ``bodai_tool_invocation_subscriber`` block.
+
+    The Redis-Streams push path: ``bodai:events`` ->
+    ``BodaiToolInvocationSubscriber`` -> ``hot_store.insert``. This is
+    the ingestion path that actually populates the ``conversations``
+    table in the MCP process; without it the knowledge graph has no
+    source rows at all.
+
+    Same declaration rationale as
+    :class:`WebSocketInvocationsSubscriberConfig`: an undeclared block
+    is dropped from ``get_config()`` without a log line.
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Run the Redis-Streams subscriber. Off by default; flip to true "
+            "(in the XDG overlay) once Mahavishnu's producer is publishing "
+            "to the ``bodai:events`` stream."
+        ),
+    )
+    redis_url: str = Field(
+        default="redis://localhost:6379/0",
+        description="Redis connection string for the bodai:events stream.",
+    )
+    consumer_group: str = Field(
+        default="akosha-tool-invocation-indexers",
+        description="Redis-Streams consumer group name.",
+    )
+    xreadgroup_block_ms: int = Field(
+        default=1500,
+        description="Block timeout passed to XREADGROUP.",
+    )
+    per_event_timeout_seconds: float = Field(
+        default=30.0,
+        description="Per-message decode + embed + insert timeout.",
+    )
+
+
 class OTelConfig(BaseModel):
     """Top-level ``otel:`` block. v7 §11.4.
 
@@ -638,6 +850,23 @@ class AkoshaConfig(OneiricMCPConfig):  # type: ignore[reportUntypedBaseClass]
             "Resource-attribute validator settings (§13.2). Lives here rather "
             "than under otel.receiver because it configures the receiver's "
             "ingest path, not the receiver's listener."
+        ),
+    )
+    websocket_invocations_subscriber: WebSocketInvocationsSubscriberConfig = Field(
+        default_factory=WebSocketInvocationsSubscriberConfig,
+        description=(
+            "Websocket-invocations subscriber gate. Declared here because "
+            "get_config drops any key absent from AkoshaConfig.model_fields, "
+            "silently — which is how the operator's XDG overlay "
+            "(~/.config/akosha/local.yaml) went unread."
+        ),
+    )
+    bodai_tool_invocation_subscriber: BodaiToolInvocationSubscriberConfig = Field(
+        default_factory=BodaiToolInvocationSubscriberConfig,
+        description=(
+            "Redis-Streams (bodai:events) subscriber gate — the ONLY producer "
+            "of the conversations table in the MCP process. Same declaration "
+            "rationale as websocket_invocations_subscriber."
         ),
     )
 

@@ -260,6 +260,15 @@ _shared_otel_receiver: Any | None = None
 # a reference to the instance so we can call ``stop()`` on shutdown.
 _code_graph_ingester: Any | None = None
 _otel_trace_ingester: Any | None = None
+# The lifespan-owned event-subscriber stack (Redis-Streams ``bodai:events``
+# -> HotStore). This is the ONLY producer of the ``conversations`` table in
+# the MCP process, and therefore the only source of rows for the
+# knowledge-graph refresh loop. Held at module scope so the shutdown path
+# can stop it deterministically and the /health probe can report whether a
+# producer is actually running.
+_event_subscriber: Any | None = None
+_event_subscriber_running: bool = False
+_event_subscriber_enabled: bool = False
 _kg_refresh_task: asyncio.Task[None] | None = None
 _kg_refresh_cycles: int = 0
 _kg_refresh_errors: int = 0
@@ -277,6 +286,15 @@ _aging_task: asyncio.Task[None] | None = None
 _aging_cycles: int = 0
 _aging_errors: int = 0
 _aging_last_run_at: float | None = None
+# Cold tier (F5): the warm->cold export cron. ``_cold_export_task`` is the
+# lifespan-owned background coroutine that periodically ages warm-tier
+# records into the cold tier as Parquet batches. Without it the cold tier
+# is reachable but not writable -- ``ColdStore.export_batch`` had no
+# production caller at all.
+_cold_export_task: asyncio.Task[None] | None = None
+_cold_export_cycles: int = 0
+_cold_export_errors: int = 0
+_cold_export_last_run_at: float | None = None
 # Phase 3 (REQ-RUNTIME-001): fire-and-forget Oneiric catalog push.
 # The coroutine is fail-soft by contract, but we still hold the Task
 # handle at module scope so the GC does not collect it before the
@@ -530,7 +548,10 @@ def create_app(mode: Any | None = None) -> FastMCP:
             _kg_refresh_last_error_at, \
             _aging_cycles, \
             _aging_errors, \
-            _aging_last_run_at
+            _aging_last_run_at, \
+            _cold_export_cycles, \
+            _cold_export_errors, \
+            _cold_export_last_run_at
 
         logger.info(f"{APP_NAME} v{APP_VERSION} starting up")
 
@@ -620,11 +641,27 @@ def create_app(mode: Any | None = None) -> FastMCP:
             analytics_service = None
 
         # Initialize hot store using factory (Task 1.1a: wire PgvectorHotStore)
-        hot_store = create_hot_store()
+        #
+        # The backend + database path come from the layered config
+        # (``hot.backend`` / ``hot.path`` in settings/akosha.yaml, overlaid
+        # by ~/.config/akosha/local.yaml). The previous call was
+        # ``create_hot_store()`` with no arguments, which always produced
+        # the DEFAULT in-memory DuckDB (``:memory:``) — so the
+        # ``conversations`` table lost every row on restart, and the
+        # configured backend never reached the runtime at all.
+        from akosha.config import get_config
+
+        _hot_cfg = get_config().hot
+        hot_store = create_hot_store(
+            backend=_hot_cfg.backend,
+            database_path=_hot_cfg.path,
+        )
         await hot_store.initialize()
         logger.info(
-            "Hot store initialized (%s)",
+            "Hot store initialized (%s, backend=%s, path=%s)",
             type(hot_store).__name__,
+            _hot_cfg.backend,
+            _hot_cfg.path,
         )
 
         # ------------------------------------------------------------------
@@ -650,7 +687,6 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # ------------------------------------------------------------------
         stop_event = asyncio.Event()
         global _lifespan_spans_config
-        from akosha.config import get_config
 
         _lifespan_spans_config = get_config().spans_substrate
         _receiver_validator_cfg = get_config().resource_validator
@@ -711,6 +747,34 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # ------------------------------------------------------------------
         set_shared_hot_store(hot_store)
 
+        # ------------------------------------------------------------------
+        # Wave 5: publish the lifespan-owned KnowledgeGraphBuilder so the
+        # ``register_akosha_group`` wrapper reuses it. Construct it once
+        # here so the periodic-refresh task (below) can write into the same
+        # instance the tools read from via ``get_graph_statistics``.
+        #
+        # ORDERING IS LOAD-BEARING — this MUST stay BEFORE
+        # ``_apply_tool_profile``. The tool groups are registered (and
+        # their closures capture the builder) during that call, and
+        # ``akosha/mcp/tools/group_registers.py`` resolves the builder via
+        # ``_get_shared_kg_builder() or KnowledgeGraphBuilder()``. When the
+        # shared builder is published afterwards, the registration-time
+        # lookup returns ``None`` and the OR-fallback captures an ORPHAN
+        # instance; the refresh task then writes into the lifespan's
+        # instance while ``get_graph_statistics`` / ``get_neighbors`` read
+        # the orphan — which is why the tool returned
+        # ``{"total_entities": 0, ...}`` forever even though the refresh
+        # loop had rows.
+        #
+        # This mirrors the HotStore ordering above exactly: both singletons
+        # must be published before the tool closures capture them.
+        # ------------------------------------------------------------------
+        from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
+
+        kg_builder = KnowledgeGraphBuilder()
+        set_shared_kg_builder(kg_builder)
+        logger.info("Knowledge graph builder initialised (Wave 5)")
+
         await _apply_tool_profile(
             server,
             profile_env_var="AKOSHA_TOOL_PROFILE",
@@ -722,18 +786,6 @@ def create_app(mode: Any | None = None) -> FastMCP:
             discovery_fn=None,
             yaml_loader=None,
         )
-
-        # ------------------------------------------------------------------
-        # Wave 5: publish the lifespan-owned KnowledgeGraphBuilder so the
-        # ``register_akosha_group`` wrapper reuses it. Construct it once
-        # here so the periodic-refresh task (below) can write into the same
-        # instance the tools read from via ``get_graph_statistics``.
-        # ------------------------------------------------------------------
-        from akosha.processing.knowledge_graph import KnowledgeGraphBuilder
-
-        kg_builder = KnowledgeGraphBuilder()
-        set_shared_kg_builder(kg_builder)
-        logger.info("Knowledge graph builder initialised (Wave 5)")
 
         # ------------------------------------------------------------------
         # Wave 5: start the CodeGraphIngester so ingested code graphs land in
@@ -770,6 +822,58 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 _code_graph_ingester = None
         else:
             logger.debug("CodeGraphIngester skipped via AKOSHA_SKIP_CODE_GRAPH_INGESTER")
+
+        # ------------------------------------------------------------------
+        # Start the event-subscriber stack: the ONLY producer of the
+        # ``conversations`` table in this process.
+        #
+        # This mirrors the wiring in ``akosha/main.py`` (the standalone
+        # FastAPI application) and uses the SAME helper module
+        # (``akosha.ingestion.subscriber_wiring``) so the two entry points
+        # cannot drift apart again.
+        #
+        # Before this, the subscriber existed ONLY in the standalone
+        # FastAPI app. The only Akosha process that actually runs is
+        # ``python -m akosha mcp start``, so the MCP process had NO
+        # producer: the kg_refresh loop read an empty ``conversations``
+        # table every cycle and the knowledge graph stayed empty forever.
+        #
+        # Config comes from the layered loader (``get_config()``), so the
+        # operator's ``~/.config/akosha/local.yaml`` overlay is honoured.
+        # The subscriber fails soft — an unreachable Redis leaves it
+        # not-running rather than taking the process down.
+        # ------------------------------------------------------------------
+        global _event_subscriber, _event_subscriber_running, _event_subscriber_enabled
+        try:
+            from akosha.ingestion.subscriber_wiring import (
+                build_event_subscribers,
+                start_event_subscriber,
+            )
+
+            _app_cfg = get_config()
+            _event_subscriber_enabled = _app_cfg.websocket_invocations_subscriber.enabled
+            if is_lite_mode:
+                # Lite mode means "zero external dependencies"; Redis is an
+                # external dependency. Skip the producer, and say so — an
+                # empty feed caused by the mode must never be presented as
+                # a healthy empty feed.
+                logger.warning(
+                    "Lite mode disables external services: the Redis-backed "
+                    "event subscriber is NOT started, so the conversations "
+                    "table stays empty and the knowledge graph stays empty. "
+                    "Run in standard mode if those feeds matter.",
+                )
+            else:
+                _event_subscriber = build_event_subscribers(
+                    hot_store,
+                    websocket_cfg=_app_cfg.websocket_invocations_subscriber,
+                    bodai_cfg=_app_cfg.bodai_tool_invocation_subscriber,
+                )
+                _event_subscriber_running = await start_event_subscriber(_event_subscriber)
+        except Exception as exc:
+            logger.warning("Event subscriber wiring failed (%s)", exc)
+            _event_subscriber = None
+            _event_subscriber_running = False
 
         # ------------------------------------------------------------------
         # Wave 6: start the OtelTraceIngester so spans from an OTLP/HTTP
@@ -897,7 +1001,14 @@ def create_app(mode: Any | None = None) -> FastMCP:
                         except Exception as exc:
                             _kg_refresh_errors += 1
                             _kg_refresh_last_error_at = time.time()
-                            logger.debug("kg_builder per-row extract failed (%s)", exc)
+                            # WARNING, not DEBUG: this used to be swallowed
+                            # at DEBUG, which is why a per-row AttributeError
+                            # (metadata arriving as a JSON string) produced
+                            # 4850 consecutive "entities=0 edges=0" cycles
+                            # with nothing in the log at LOG_LEVEL=INFO.
+                            # A row that cannot be extracted is a broken
+                            # feed, not a debug detail.
+                            logger.warning("kg_builder per-row extract failed (%s)", exc)
                     if rows:
                         logger.info(
                             "kg_refresh: cycle=%d rows=%d entities=%d edges=%d",
@@ -948,6 +1059,10 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # optional in the same sense cold_storage is.
         # ------------------------------------------------------------------
         aging_service: Any | None = None
+        # The warm store the aging service writes into. It is ALSO the
+        # source the cold exporter reads from, so it is held here (not
+        # scoped to the aging block) for the cold-export wiring below.
+        aging_warm_store: Any | None = None
         # NB: ``_aging_cycles`` / ``_aging_errors`` / ``_aging_last_run_at``
         # are declared ``global`` at the top of this function. Python's
         # scope rules forbid a second ``global`` declaration after any
@@ -1060,6 +1175,90 @@ def create_app(mode: Any | None = None) -> FastMCP:
             except Exception as exc:
                 _aging_errors += 1
                 logger.warning("aging pre-warm failed (%s)", exc)
+
+        # ------------------------------------------------------------------
+        # Cold tier (F5): the warm->cold export cron.
+        # The cold tier is Parquet batches in object storage. Until this
+        # loop existed, ``ColdStore.export_batch`` -- the only producer of
+        # a cold object -- had no production caller, so the tier was
+        # reachable but not writable.
+        #
+        # The exporter reads the SAME warm store the aging service writes
+        # into: a second ``duckdb.connect()`` on the same file from the
+        # same process would fail on the file lock.
+        #
+        # It runs only when BOTH tiers exist. Lite mode has no cold store;
+        # ``AKOSHA_SKIP_AGING=1`` leaves no warm store. Either way the
+        # tier chain stops where the operator asked it to.
+        # ------------------------------------------------------------------
+        cold_exporter: Any | None = None
+        if cold_storage is not None and aging_warm_store is not None:
+            try:
+                from akosha.storage.cold_exporter import ColdExporter
+
+                cold_exporter = ColdExporter(
+                    warm_store=aging_warm_store,
+                    cold_store=cold_storage,
+                    age_threshold_days=get_config().cold.age_threshold_days,
+                )
+                logger.info(
+                    "ColdExporter initialized (threshold=%dd, backend=%s)",
+                    get_config().cold.age_threshold_days,
+                    type(cold_storage).__name__,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "ColdExporter init failed (%s); the cold tier will not be written "
+                    "until the next lifespan restart",
+                    exc,
+                )
+                cold_exporter = None
+
+        async def _cold_export_loop() -> None:
+            global _cold_export_cycles, _cold_export_errors, _cold_export_last_run_at
+            if cold_exporter is None:  # type guard for the type checker
+                return
+            try:
+                interval = float(os.getenv("AKOSHA_COLD_EXPORT_INTERVAL_SECONDS", "86400"))
+            except ValueError:
+                interval = 86400.0
+            while True:
+                try:
+                    _cold_export_cycles += 1
+                    stats = await cold_exporter.export_expired()
+                    _cold_export_last_run_at = time.time()
+                    logger.info(
+                        "cold export cycle=%d records=%d batches=%d bytes=%d errors=%d",
+                        _cold_export_cycles,
+                        stats.records_exported,
+                        stats.batches_exported,
+                        stats.bytes_exported,
+                        stats.errors,
+                    )
+                except asyncio.CancelledError:
+                    logger.info(
+                        "cold export loop cancelled after %d cycles (%d errors)",
+                        _cold_export_cycles,
+                        _cold_export_errors,
+                    )
+                    break
+                except Exception as exc:
+                    _cold_export_errors += 1
+                    _cold_export_last_run_at = time.time()
+                    logger.warning("cold export loop iteration failed (%s); will retry", exc)
+                await asyncio.sleep(interval)
+
+        if (
+            not _env_truthy("AKOSHA_SKIP_COLD_EXPORT")
+            and cold_exporter is not None
+            and not _env_truthy("AKOSHA_SKIP_AGING")
+        ):
+            global _cold_export_task
+            _cold_export_task = asyncio.create_task(_cold_export_loop(), name="akosha.cold_export")
+            logger.info(
+                "cold export task started (interval=%ss)",
+                os.getenv("AKOSHA_COLD_EXPORT_INTERVAL_SECONDS", "86400"),
+            )
 
         # ------------------------------------------------------------------
         # Phase 1.5 + Phase 1: load (or generate + persist) the signing
@@ -1417,6 +1616,13 @@ def create_app(mode: Any | None = None) -> FastMCP:
             kg_dict = _feed_dict("knowledge_graph_feed", knowledge_graph_state)
             kg_dict["edges_count"] = kg_edges_count
             kg_dict["refresh_task_running"] = kg_running
+            # The graph has exactly one producer (kg_refresh) and exactly
+            # one SOURCE of rows (the event subscriber writing the
+            # ``conversations`` table). Surfacing the source producer's
+            # state here is what stops an empty graph from reading as
+            # "nothing to see" when the truth is "nothing is producing".
+            kg_dict["source_producer_running"] = _event_subscriber_running
+            kg_dict["source_producer"] = "event_subscriber (Redis bodai:events -> conversations)"
             checks["knowledge_graph_feed"] = kg_dict
 
             lt_dict = _feed_dict("local_traces_feed", local_traces_state)
@@ -1432,6 +1638,13 @@ def create_app(mode: Any | None = None) -> FastMCP:
             )
             lt_dict["otel_receiver_batches_total"] = receiver_batches
             lt_dict["otel_receiver_errors_total"] = receiver_errors
+            # The ``conversations`` table is written ONLY by the event
+            # subscriber. When it is not running, the table is empty and
+            # ``feed_populated`` is False — an empty feed, not a healthy
+            # one. Report the producer so the difference is visible.
+            lt_dict["event_subscriber_running"] = _event_subscriber_running
+            lt_dict["event_subscriber_enabled"] = _event_subscriber_enabled
+            lt_dict["operational_mode"] = "lite" if is_lite_mode else "standard"
             lt_dict["source"] = (
                 "hot_store.query_traces (populated via kg_refresh) + "
                 "spans_substrate (populated by the OTLP receiver)"
@@ -1643,6 +1856,19 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 logger.warning("OtelTraceIngester stop failed: %s", exc)
             _otel_trace_ingester = None
 
+        # Stop the event subscriber AFTER the readers (kg_refresh) and the
+        # other writers, so it cannot write into a hot store that is
+        # already being torn down.
+        if _event_subscriber is not None:
+            try:
+                from akosha.ingestion.subscriber_wiring import stop_event_subscriber
+
+                await stop_event_subscriber(_event_subscriber)
+            except Exception as exc:
+                logger.warning("Event subscriber stop failed: %s", exc)
+            _event_subscriber = None
+        _event_subscriber_running = False
+
         # REQ-MS-002: close the analytics SQLite connection so the
         # write-through cache's durable backing flushes cleanly. Order
         # matters only relative to the telemetry shutdown below — the
@@ -1661,6 +1887,14 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 await _aging_task
             _aging_task = None
 
+        # Cold tier (F5): cancel the warm->cold export cron before clearing
+        # state, mirroring the aging cron above.
+        if _cold_export_task is not None and not _cold_export_task.done():
+            _cold_export_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await _cold_export_task
+            _cold_export_task = None
+
         # Reset the per-feed cycle/error counters so the next create_app()
         # call starts from zero. Without this, the probe would carry stale
         # cycle counts across lifespans in tests. ``_kg_refresh_*`` and
@@ -1672,6 +1906,9 @@ def create_app(mode: Any | None = None) -> FastMCP:
         _aging_cycles = 0
         _aging_errors = 0
         _aging_last_run_at = None
+        _cold_export_cycles = 0
+        _cold_export_errors = 0
+        _cold_export_last_run_at = None
 
         clear_shared_services()
 
