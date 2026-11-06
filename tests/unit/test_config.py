@@ -134,9 +134,18 @@ class TestColdStorageConfig:
         # R2 whenever the layer that supplies "auto" was missing.
         assert cfg.region == "auto"
 
-    def test_substrate_env_overrides(self) -> None:
-        """``ONEIRIC__SUBSTRATE__COLD__*`` overrides substrate defaults."""
+    def test_substrate_env_overrides(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``ONEIRIC__SUBSTRATE__COLD__*`` overrides substrate defaults.
+
+        The component-scoped ``AKOSHA__STORAGE__COLD__*`` knobs outrank the
+        fleet-wide substrate values, so they are removed here to isolate the
+        substrate contract. Without this the outcome depends on whether the
+        host happens to export a component-scoped override.
+        """
         from akosha.config import ColdStorageConfig
+
+        for knob in ("BACKEND", "BUCKET", "PREFIX"):
+            monkeypatch.delenv(f"AKOSHA__STORAGE__COLD__{knob}", raising=False)
 
         with patch.dict(
             os.environ,
@@ -153,6 +162,30 @@ class TestColdStorageConfig:
         assert cfg.bucket == "my-bucket"
         assert cfg.prefix == "custom/"
         assert cfg.compression == "zstd"
+
+    def test_component_scoped_cold_env_outranks_substrate(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``AKOSHA__STORAGE__COLD__*`` beats the fleet-wide substrate value.
+
+        Each component owns its own key space inside its own bucket, so a
+        component-scoped override is more specific than the substrate's
+        fleet-wide default and must win over it.
+        """
+        from akosha.config import ColdStorageConfig
+
+        monkeypatch.delenv("AKOSHA__STORAGE__COLD__PREFIX", raising=False)
+
+        with patch.dict(
+            os.environ,
+            {
+                "ONEIRIC__SUBSTRATE__COLD__BUCKET": "fleet-bucket",
+                "AKOSHA__STORAGE__COLD__BUCKET": "akosha-bucket",
+            },
+            clear=False,
+        ):
+            cfg = ColdStorageConfig()
+        assert cfg.bucket == "akosha-bucket"
 
     def test_cold_storage_config_has_endpoint_url_field(self) -> None:
         """ColdStorageConfig exposes endpoint_url for fake-gcs-server / R2."""
