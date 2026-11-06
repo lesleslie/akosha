@@ -116,6 +116,7 @@ class TestColdStorageConfig:
             "ONEIRIC__SUBSTRATE__COLD__PREFIX",
             "AKOSHA__STORAGE__COLD__BACKEND",
             "AKOSHA__STORAGE__COLD__BUCKET",
+            "AKOSHA__STORAGE__COLD__PREFIX",
             "AKOSHA__STORAGE__COLD__REGION",
             "AKOSHA_COLD_REGION",
         ):

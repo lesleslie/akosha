@@ -321,9 +321,10 @@ class ColdStorageConfig(BaseModel):
 
     Configuration can be set via:
     1. Environment variables (component-scoped, highest precedence for the
-       backend and bucket):
+       backend, bucket and prefix):
        AKOSHA__STORAGE__COLD__BACKEND,
        AKOSHA__STORAGE__COLD__BUCKET,
+       AKOSHA__STORAGE__COLD__PREFIX,
        AKOSHA__STORAGE__COLD__ENDPOINT_URL,
        AKOSHA__STORAGE__COLD__PROJECT,
        AKOSHA__STORAGE__COLD__ANONYMOUS_CREDENTIALS,
@@ -337,6 +338,18 @@ class ColdStorageConfig(BaseModel):
        ``cold:`` block — for the NON-substrate-mapped keys only
        (``region``, ``endpoint_url``, ``format``, ``project``, ...).
     4. The committed repo defaults, settings/akosha.yaml.
+
+    PER-COMPONENT BUCKETS: each component that has a cold tier owns its
+    OWN bucket, so the bucket name and the key prefix are component
+    settings, not fleet settings. The substrate's fleet-wide
+    ``ONEIRIC__SUBSTRATE__COLD__BUCKET`` / ``_PREFIX`` remain as
+    fleet-wide DEFAULTS for a component that has not overridden them,
+    but they must not be set to one component's values: the prefix is
+    the substrate's isolation mechanism, and it is only settable
+    fleet-wide, so two components sharing a bucket would share a prefix
+    and overwrite each other's objects. See
+    ``docs/decisions/2026-11-05-per-component-cold-storage-buckets.md``
+    in the mahavishnu repo.
 
     IMPORTANT — the YAML ``cold:`` block is NOT the source of truth for
     ``backend`` / ``bucket`` / ``prefix`` / ``compression``:
@@ -395,8 +408,19 @@ class ColdStorageConfig(BaseModel):
         # overrides, so they take precedence over the fleet-wide substrate
         # values, exactly like the other ``AKOSHA__STORAGE__COLD__*`` knobs
         # in this block.
+        #
+        # ``_PREFIX`` was the one substrate-mapped field with NO
+        # component-scoped override. That is what made the substrate's
+        # shared-bucket design unusable: the substrate isolates
+        # per-component data by prefix, but the prefix was only settable
+        # through the FLEET-WIDE ``ONEIRIC__SUBSTRATE__COLD__PREFIX``,
+        # so every component that read the substrate got the same
+        # prefix. With a component-scoped prefix, each component owns
+        # its own key space inside its own bucket and the fleet-wide
+        # prefix stops being a cross-component contract.
         _env_backend = os.getenv("AKOSHA__STORAGE__COLD__BACKEND", "")
         _env_bucket = os.getenv("AKOSHA__STORAGE__COLD__BUCKET", "")
+        _env_prefix = os.getenv("AKOSHA__STORAGE__COLD__PREFIX", "")
         if _env_endpoint_url and "endpoint_url" not in data:
             data["endpoint_url"] = _env_endpoint_url
         if _env_project and "project" not in data:
@@ -413,6 +437,8 @@ class ColdStorageConfig(BaseModel):
             data["backend"] = _env_backend
         if _env_bucket and "bucket" not in data:
             data["bucket"] = _env_bucket
+        if _env_prefix and "prefix" not in data:
+            data["prefix"] = _env_prefix
 
         # Flat legacy env vars (fallback only when nested form unset).
         # Matches the AKOSHA_COLD_* convention used in QUICKSTART.md and
