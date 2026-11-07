@@ -201,6 +201,21 @@ class CanaryEmitter:
 
         # Inserted nothing, inserted more than one, or the row was
         # quarantined. The write path is not doing what it should.
+        error_message = str(result.get("error_message", "") or "")
+        if error_message:
+            # The batch was answered — the receiver did not raise — but the
+            # substrate write failed underneath it. Before the receiver
+            # wrapped that insert, the exception escaped and the canary saw
+            # the exception type; now the canary sees the message. The
+            # reason has to be carried here, or a substrate outage would be
+            # filed as "unexpected_result", which names no cause at all.
+            self._record_failure("substrate_write_failed")
+            logger.warning(
+                "akosha.canary.substrate_write_failed detail=%s",
+                error_message,
+            )
+            return "failed"
+
         self._record_failure("unexpected_result")
         logger.warning(
             "akosha.canary.unexpected_result inserted=%s deduped=%s rejected=%s",

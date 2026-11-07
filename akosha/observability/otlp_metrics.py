@@ -43,6 +43,18 @@ spans_deduped_total: Counter = Counter(
     registry=_REGISTRY,
 )
 
+spans_insert_failed_total: Counter = Counter(
+    name="akosha_otlp_spans_insert_failed_total",
+    documentation=(
+        "Span batches whose write to spans_substrate raised. Non-zero means "
+        "spans were accepted off the wire and then dropped: the export was "
+        "answered with partial_success, so the producer will not retry them, "
+        "and the rows are gone. This is the trace-side twin of "
+        "akosha_otlp_metrics_insert_failed_total."
+    ),
+    registry=_REGISTRY,
+)
+
 spans_rejected_total: Counter = Counter(
     name="akosha_otlp_spans_rejected_total",
     documentation=(
@@ -359,6 +371,7 @@ __all__ = [
     "metrics_substrate_ready",
     "retention_sweep_failed_total",
     "spans_deduped_total",
+    "spans_insert_failed_total",
     "spans_inserted_total",
     "spans_received_total",
     "spans_rejected_total",

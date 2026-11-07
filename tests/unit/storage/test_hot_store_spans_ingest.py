@@ -91,7 +91,12 @@ async def test_the_receiver_reaches_the_substrate_writer(
     receiver = OTLPReceiver(store, grpc_port=0, http_port=0)
     result = await receiver._handle_batch(request)
 
-    assert result == {"inserted": 1, "deduped": 0, "rejected": 0}
+    assert result == {
+        "inserted": 1,
+        "deduped": 0,
+        "rejected": 0,
+        "error_message": "",
+    }
     rows = store.conn.execute(  # type: ignore[union-attr]
         "SELECT span_id, service_name FROM spans_substrate"
     ).fetchall()

@@ -170,6 +170,12 @@ class OTLPReceiver:
         self.rows_deduped_total = 0
         self.rows_rejected_total = 0
         self.dlq_insert_failed_total = 0
+        # Batches whose substrate write raised. Distinct from
+        # ``dlq_insert_failed_total``: that is the quarantine write
+        # failing (the bad rows are lost), this is the STORE write
+        # failing (the good rows are lost). Both mean data loss, and an
+        # operator reading only one of them would miss half the outage.
+        self.rows_insert_failed_total = 0
         # Ingestion-cycle bookkeeping for the /health feed. ``batches_total``
         # is the receiver's analogue of the retired poller's ``_cycles_total``:
         # a monotonically increasing count of ingest cycles, which is what the
@@ -431,12 +437,18 @@ class OTLPReceiver:
                 return RowValidationError(field="attributes", reason="json", value=str(exc))
         return None
 
-    async def _handle_batch(self, batch: Any) -> dict[str, int]:
+    async def _handle_batch(self, batch: Any) -> dict[str, Any]:
         """Validate every row; INSERT the good ones; quarantine the bad.
 
         Per §15, a DLQ failure must NOT abort the batch: good rows still land,
         and the DLQ error is counted so the heartbeat watcher can surface it.
         The DLQ write is therefore wrapped, and the counters move either way.
+
+        The substrate write is wrapped for the same reason and for one more:
+        an exception escaping the servicer makes gRPC answer UNKNOWN, and the
+        producer drops the ENTIRE batch — every span in it, not just the one
+        that failed. The rows are lost either way; what wrapping changes is
+        whether the loss takes the producer's retry budget with it.
         """
         spans = _extract_spans(batch).copy()
         self.batches_total += 1
@@ -467,8 +479,31 @@ class OTLPReceiver:
                 bad.append((error, span))
 
         inserted, deduped = (0, 0)
+        insert_error = ""
         if good:
-            inserted, deduped = await self._hot_store.insert_spans_substrate(good)
+            try:
+                inserted, deduped = await self._hot_store.insert_spans_substrate(good)
+            except Exception as exc:
+                # The write failed, so the rows are gone. What must NOT
+                # happen is the exception escaping: gRPC answers UNKNOWN and
+                # the producer drops the whole batch — every span in it, not
+                # just the one that failed. The DLQ write below is wrapped
+                # for exactly this reason (§15), and the metric path's
+                # insert is wrapped for the same reason.
+                #
+                # The failure is REPORTED, not swallowed. A
+                # ``partial_success`` with an empty ``error_message`` says
+                # "nothing to report" while the receiver is in fact throwing
+                # the data away, and the producer has no way to tell the two
+                # apart. ``rejected_spans`` deliberately stays at the
+                # VALIDATION rejections: the two failure modes have
+                # different remedies, and conflating them would make the
+                # counter stop meaning "this field failed to validate".
+                self.rows_insert_failed_total += 1
+                self.last_error_at = time.time()
+                otlp_metrics.spans_insert_failed_total.inc()
+                insert_error = f"spans substrate write failed: {exc}"
+                logger.exception("akosha.otlp_receiver.insert_failed rows=%s", len(good))
 
         if bad:
             await self._dlq_insert(bad)
@@ -486,9 +521,14 @@ class OTLPReceiver:
         # names the defect.
         for field, count in _count_by_field(bad).items():
             otlp_metrics.spans_rejected_total.labels(field=field).inc(count)
-        return {"inserted": inserted, "deduped": deduped, "rejected": len(bad)}
+        return {
+            "inserted": inserted,
+            "deduped": deduped,
+            "rejected": len(bad),
+            "error_message": insert_error,
+        }
 
-    async def _handle_http(self, body: bytes) -> dict[str, int]:
+    async def _handle_http(self, body: bytes) -> dict[str, Any]:
         """Decode an OTLP/HTTP protobuf body and run it through the batch path.
 
         An undecodable body returns the same counts-with-zero-rejected shape as
@@ -1177,7 +1217,11 @@ class _TraceServiceServicer:
         return trace_service_pb2.ExportTraceServiceResponse(
             partial_success=trace_service_pb2.ExportTracePartialSuccess(
                 rejected_spans=result["rejected"],
-                error_message="",
+                # Non-empty only when the substrate write failed: the
+                # export was answered, but the rows were lost. An empty
+                # message next to a non-zero ``rejected_spans`` is the
+                # normal validation-rejection shape and stays as it was.
+                error_message=result.get("error_message", ""),
             )
         )
 

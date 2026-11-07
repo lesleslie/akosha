@@ -20,7 +20,11 @@ from opentelemetry.proto.common.v1 import common_pb2
 from opentelemetry.proto.resource.v1 import resource_pb2
 from opentelemetry.proto.trace.v1 import trace_pb2
 
-from akosha.observability.otlp_receiver import OTLPReceiver, RowValidationError
+from akosha.observability.otlp_receiver import (
+    OTLPReceiver,
+    RowValidationError,
+    _TraceServiceServicer,
+)
 from akosha.storage.hot_store import HotStore
 
 
@@ -176,7 +180,12 @@ def test_unserializable_attributes_are_rejected(receiver: OTLPReceiver) -> None:
 
 async def test_a_valid_span_lands_in_the_substrate(receiver: OTLPReceiver) -> None:
     result = await receiver._handle_batch(_request())
-    assert result == {"inserted": 1, "deduped": 0, "rejected": 0}
+    assert result == {
+        "inserted": 1,
+        "deduped": 0,
+        "rejected": 0,
+        "error_message": "",
+    }
     rows = _stored(receiver, "SELECT span_id, service_name, span_name FROM spans_substrate")
     assert len(rows) == 1
     assert rows[0][1] == "mahavishnu"
@@ -202,7 +211,12 @@ async def test_replaying_the_same_request_is_a_dedup(receiver: OTLPReceiver) -> 
     request = _request()
     assert (await receiver._handle_batch(request))["inserted"] == 1
     second = await receiver._handle_batch(request)
-    assert second == {"inserted": 0, "deduped": 1, "rejected": 0}
+    assert second == {
+        "inserted": 0,
+        "deduped": 1,
+        "rejected": 0,
+        "error_message": "",
+    }
     assert len(_stored(receiver, "SELECT 1 FROM spans_substrate")) == 1
 
 
@@ -578,10 +592,95 @@ async def test_a_dlq_failure_still_advances_the_rejected_counter(
     assert receiver.dlq_insert_failed_total == 1
 
 
+async def test_a_substrate_write_failure_does_not_escape_the_batch(
+    receiver: OTLPReceiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The store write is wrapped for the same reason the DLQ write is.
+
+    A locked or full substrate would otherwise turn the store write into a
+    batch-wide exception. The exception escapes the servicer, gRPC answers
+    UNKNOWN, and the producer drops the WHOLE batch -- every span in it,
+    not just the ones that failed. The rows are lost either way; what
+    wrapping changes is whether the loss takes the producer's retry budget
+    with it.
+    """
+
+    async def _boom(_rows: list[dict[str, Any]]) -> tuple[int, int]:
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(receiver._hot_store, "insert_spans_substrate", _boom)
+
+    result = await receiver._handle_batch(_request())
+    assert result["inserted"] == 0
+    assert result["error_message"], "the producer must be told the rows were lost"
+    assert receiver.rows_insert_failed_total == 1
+
+
+async def test_a_failed_store_write_still_quarantines_the_bad_rows(
+    receiver: OTLPReceiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The quarantine write is DOWNSTREAM of the store write.
+
+    One failure must not skip the other. If the store write raised out of
+    the batch, the DLQ write below it never ran, and the evidence for why
+    the good rows were rejected was lost alongside them.
+    """
+
+    async def _boom(_rows: list[dict[str, Any]]) -> tuple[int, int]:
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(receiver._hot_store, "insert_spans_substrate", _boom)
+
+    result = await receiver._handle_batch(_mixed_request())
+    assert result["rejected"] == 1
+    assert result["error_message"]
+    assert len(_stored(receiver, "SELECT 1 FROM _dlq_rows")) == 1
+
+
+async def test_the_trace_servicer_reports_a_store_write_failure(
+    receiver: OTLPReceiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A lost batch must not reach the producer as a clean export.
+
+    ``rejected_spans`` deliberately stays at the VALIDATION rejections: the
+    two failure modes have different remedies, and conflating them would
+    stop the counter meaning "this field failed to validate". The store
+    write failure rides in ``error_message`` instead -- an empty message
+    beside a successful export says "nothing to report" while the receiver
+    is in fact throwing the data away.
+    """
+
+    async def _boom(_rows: list[dict[str, Any]]) -> tuple[int, int]:
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(receiver._hot_store, "insert_spans_substrate", _boom)
+
+    response = await _TraceServiceServicer(receiver).Export(_request(), None)
+    assert response.partial_success.rejected_spans == 0
+    assert "spans substrate write failed" in response.partial_success.error_message
+
+
+async def test_a_clean_export_still_reports_an_empty_error_message(
+    receiver: OTLPReceiver,
+) -> None:
+    """The new error_message must not leak into the normal path.
+
+    A producer that reads a non-empty error_message logs it. If every
+    successful export carried one, the signal that actually matters -- the
+    substrate outage -- would be buried in routine noise.
+    """
+    response = await _TraceServiceServicer(receiver).Export(_request(), None)
+    assert response.partial_success.rejected_spans == 0
+    assert response.partial_success.error_message == ""
+
+
 async def test_an_empty_export_is_a_noop(receiver: OTLPReceiver) -> None:
     empty = trace_service_pb2.ExportTraceServiceRequest()
     assert await receiver._handle_batch(empty) == {
-        "inserted": 0, "deduped": 0, "rejected": 0,
+        "inserted": 0,
+        "deduped": 0,
+        "rejected": 0,
+        "error_message": "",
     }
 
 
