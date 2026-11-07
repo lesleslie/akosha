@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.0] - 2026-11-07
+
+### Added
+
+- config: Let Akosha own its cold prefix
+- Give the cold tier a write path (F5)
+- observability: Accept OTLP metrics on :4317 and expose them on :8682
+
+### Fixed
+
+- Address the security review of the cold write path
+- akosha: Populate the knowledge graph and point the cold tier at R2
+- docs: Quote the mermaid label that carries parentheses
+- observability: Wrap the span substrate write so a DuckDB failure cannot drop the batch
+
+### Documentation
+
+- Design the cold tier write path (F5)
+- plans: Regenerate the plan index for the cold write path
+
+### Testing
+
+- cold: Isolate the substrate contract and pin the component-scoped precedence
+- Pin the cold-export lifespan wiring
+- storage: Pin the naive-UTC cutoff and the undecodable-metadata row
+
+### Internal
+
+- envrc: Keep component configuration out of the direnv hook
+- gitignore: Ignore the Understand-Anything knowledge graph
+
 ## [Unreleased]
 
 ### Internal

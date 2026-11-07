@@ -137,7 +137,7 @@ def _decode_metadata(raw: Any) -> tuple[dict[str, Any], bool]:
     else:
         return decoded, True
     # "{}" is a legitimately empty metadata mapping; "[]" and anything
-    # unparseable are shapes the cold record cannot represent.
+    # unparsable are shapes the cold record cannot represent.
     return decoded, text.strip() in ("", "{}")
 
 

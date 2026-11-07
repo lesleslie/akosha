@@ -51,6 +51,12 @@ warm:
 #   cold.age_threshold_days — age at which a warm record ages out to cold
 #     (default 90, the documented cold-tier boundary). NOT substrate-mapped:
 #     it is an Akosha-local policy, so this line DOES take effect.
+#
+# The component-scoped env vars (AKOSHA__STORAGE__COLD__*) are the TOP
+# layer of the config stack: one set in the environment overrides the
+# value below. Same for the flat legacy forms (AKOSHA_COLD_ENDPOINT,
+# AKOSHA_COLD_REGION), which apply only when their nested counterpart
+# is unset.
 cold:
   # `backend`, `bucket`, `prefix` and `compression` are SUBSTRATE-mapped:
   # akosha/config.py:_strip_substrate_mapped removes them from the YAML
@@ -66,6 +72,7 @@ cold:
   format: parquet
   # Warm-tier age at which a record is exported to the cold tier.
   # 90 days matches the documented cold tier ("Cold Tier (90+ days)").
+  # Overridable per deployment via AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS.
   age_threshold_days: 90
   # region intentionally omitted so per-deployment values from
   # ~/.config/akosha/local.yaml or AKOSHA_COLD_REGION win cleanly.

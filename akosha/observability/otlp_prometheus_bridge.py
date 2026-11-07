@@ -265,8 +265,7 @@ def label_signature(labelnames: tuple[str, ...]) -> str:
     across processes and restarts (``hash()`` is salted per interpreter),
     so it is a digest of the joined key names.
     """
-    digest = hashlib.blake2b("\x00".join(labelnames).encode("utf-8"), digest_size=4)
-    return digest.hexdigest()
+    return hashlib.blake2b("\x00".join(labelnames).encode("utf-8"), digest_size=4).hexdigest()
 
 
 class OTLPPrometheusBridge:
@@ -357,27 +356,11 @@ class OTLPPrometheusBridge:
             return False
 
         instrument_name = self._instrument_name(base_name, factory, labelnames)
-        cached = self._unsupported.get(instrument_name)
-        if cached is not None:
-            self._drop(cached, metric_name)
-            return False
-
-        family = self._families.get(instrument_name)
+        family = self._lookup_family(
+            instrument_name, factory, family_kind, labelnames, boundaries, point, metric_name
+        )
         if family is None:
-            if len(self._families) >= self._max_families:
-                self._drop("family_cap", metric_name)
-                return False
-            family, reason = self._create_family(
-                instrument_name, factory, family_kind, labelnames, boundaries, point
-            )
-            if family is None:
-                if reason == "instrument_conflict":
-                    # Permanent: the name is held by an instrument that
-                    # cannot serve this point.
-                    self._unsupported[instrument_name] = reason
-                self._drop(reason, metric_name)
-                return False
-            self._families[instrument_name] = family
+            return False
 
         cap_reason = self._record_resource(point)
         if cap_reason:
@@ -385,27 +368,19 @@ class OTLPPrometheusBridge:
             return False
 
         key = tuple(labels[label] for label in family.labelnames)
-        state = family.series.get(key)
+        state = self._series_state(family, key, point, metric_name)
         if state is None:
-            if len(family.series) >= self._max_series:
-                self._drop("cardinality", metric_name)
-                return False
-            state = {}
-            if family.adopted:
-                self._seed_adopted_baseline(family, point, state)
-            family.series[key] = state
+            return False
 
-        identity: tuple[int, str] | None = None
-        if str(point.get("temporality") or "cumulative") == "delta":
-            identity = self._point_identity(point)
-            if state.get("last_delta_identity") == identity:
-                # A replay of a delta point. The substrate treats the
-                # repeat as a no-op — the point's identity is already
-                # stored — so the bridge must not add the increment a
-                # second time. The two halves of the same handler have to
-                # agree about what a replay is.
-                self._drop("replay", metric_name)
-                return False
+        identity = self._delta_identity(point)
+        if identity is not None and state.get("last_delta_identity") == identity:
+            # A replay of a delta point. The substrate treats the
+            # repeat as a no-op — the point's identity is already
+            # stored — so the bridge must not add the increment a
+            # second time. The two halves of the same handler have to
+            # agree about what a replay is.
+            self._drop("replay", metric_name)
+            return False
 
         try:
             exposed = self._apply(family, state, point)
@@ -422,6 +397,81 @@ class OTLPPrometheusBridge:
         return True
 
     # ── internals ────────────────────────────────────────────────────────
+
+    def _lookup_family(
+        self,
+        instrument_name: str,
+        factory: Any,
+        family_kind: str,
+        labelnames: tuple[str, ...],
+        boundaries: tuple[float, ...] | None,
+        point: Mapping[str, Any],
+        metric_name: str,
+    ) -> _Family | None:
+        """The family for an instrument name, creating it when allowed.
+
+        Returns the family, or ``None`` when the point was dropped. The
+        drop reason is recorded here, so the caller only has to know
+        whether the point made it.
+        """
+        cached = self._unsupported.get(instrument_name)
+        if cached is not None:
+            self._drop(cached, metric_name)
+            return None
+
+        family = self._families.get(instrument_name)
+        if family is not None:
+            return family
+
+        if len(self._families) >= self._max_families:
+            self._drop("family_cap", metric_name)
+            return None
+
+        family, reason = self._create_family(
+            instrument_name, factory, family_kind, labelnames, boundaries, point
+        )
+        if family is None:
+            if reason == "instrument_conflict":
+                # Permanent: the name is held by an instrument that
+                # cannot serve this point.
+                self._unsupported[instrument_name] = reason
+            self._drop(reason, metric_name)
+            return None
+        self._families[instrument_name] = family
+        return family
+
+    def _series_state(
+        self,
+        family: _Family,
+        key: tuple[str, ...],
+        point: Mapping[str, Any],
+        metric_name: str,
+    ) -> dict[str, Any] | None:
+        """The state for one series, created when the cap allows.
+
+        Returns the state, or ``None`` when the point was dropped.
+        """
+        state = family.series.get(key)
+        if state is not None:
+            return state
+        if len(family.series) >= self._max_series:
+            self._drop("cardinality", metric_name)
+            return None
+        state = {}
+        if family.adopted:
+            self._seed_adopted_baseline(family, point, state)
+        family.series[key] = state
+        return state
+
+    def _delta_identity(self, point: Mapping[str, Any]) -> tuple[int, str] | None:
+        """The identity of a delta point, or ``None`` for a cumulative one.
+
+        A cumulative point carries an absolute total and needs no
+        identity — only the delta path can replay the same point twice.
+        """
+        if str(point.get("temporality") or "cumulative") != "delta":
+            return None
+        return self._point_identity(point)
 
     def _instrument_kind(
         self,
@@ -739,7 +789,7 @@ class OTLPPrometheusBridge:
             # the counter path applies in ``_delta`` — a value that went
             # backwards is re-baselined, not clamped to zero. Clamping
             # would discard this whole interval's observations for ever.
-            delta_counts = list(counts)
+            delta_counts = counts.copy()
             delta_sum = reported_sum
         else:
             delta_counts = [
@@ -756,7 +806,7 @@ class OTLPPrometheusBridge:
             )
         ]
         accumulated_sum = float(state.get("accumulated_sum") or 0.0) + delta_sum
-        state["counts"] = list(counts)
+        state["counts"] = counts.copy()
         state["sum"] = reported_sum
         state["accumulated_counts"] = accumulated
         state["accumulated_sum"] = accumulated_sum
@@ -856,7 +906,7 @@ class OTLPPrometheusBridge:
             total = float(child._sum.get())
             state["counts"] = counts
             state["sum"] = total
-            state["accumulated_counts"] = list(counts)
+            state["accumulated_counts"] = counts.copy()
             state["accumulated_sum"] = total
         elif family.kind == "summary":
             state["count"] = float(child._count.get())

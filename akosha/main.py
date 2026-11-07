@@ -357,14 +357,13 @@ class AkoshaApplication:
             sub = get_config().websocket_invocations_subscriber
         except Exception as exc:
             logger.warning(
-                "Could not load websocket_invocations_subscriber config (%s); "
-                "subscriber disabled",
+                "Could not load websocket_invocations_subscriber config (%s); subscriber disabled",
                 exc,
             )
             return {"enabled": False, "poll_interval_seconds": 5.0}
         return {
-            "enabled": bool(sub.enabled),
-            "poll_interval_seconds": float(sub.poll_interval_seconds),
+            "enabled": sub.enabled,
+            "poll_interval_seconds": sub.poll_interval_seconds,
         }
 
     @staticmethod
@@ -385,8 +384,7 @@ class AkoshaApplication:
             sub = get_config().bodai_tool_invocation_subscriber
         except Exception as exc:
             logger.warning(
-                "Could not load bodai_tool_invocation_subscriber config (%s); "
-                "subscriber disabled",
+                "Could not load bodai_tool_invocation_subscriber config (%s); subscriber disabled",
                 exc,
             )
             return {
@@ -397,11 +395,11 @@ class AkoshaApplication:
                 "per_event_timeout_seconds": 30.0,
             }
         return {
-            "enabled": bool(sub.enabled),
-            "redis_url": str(sub.redis_url),
-            "consumer_group": str(sub.consumer_group),
-            "xreadgroup_block_ms": int(sub.xreadgroup_block_ms),
-            "per_event_timeout_seconds": float(sub.per_event_timeout_seconds),
+            "enabled": sub.enabled,
+            "redis_url": sub.redis_url,
+            "consumer_group": sub.consumer_group,
+            "xreadgroup_block_ms": sub.xreadgroup_block_ms,
+            "per_event_timeout_seconds": sub.per_event_timeout_seconds,
         }
 
     @staticmethod
@@ -446,8 +444,8 @@ class AkoshaApplication:
             }
         return {
             "enabled": True,
-            "backend": str(hot.backend),
-            "database_path": str(hot.path),
+            "backend": hot.backend,
+            "database_path": hot.path,
         }
 
     @staticmethod

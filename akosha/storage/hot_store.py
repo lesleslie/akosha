@@ -15,15 +15,12 @@ import contextlib
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from oneiric.adapters.vector.duckdb_hot_store import DuckdbHotStore
 
 from akosha.json_utils import coerce_json_object
 from akosha.processing.embedding_dim import resolve_embedding_dim
-
-if TYPE_CHECKING:
-    import duckdb
 
 logger = logging.getLogger(__name__)
 
@@ -353,10 +350,21 @@ class HotStore(DuckdbHotStore):
         async with self._lock:
             if not self.conn:
                 raise RuntimeError("Hot store not initialized")
-            self._create_code_graphs_schema(self.conn)
+            self._create_code_graphs_schema()
 
-    def _create_code_graphs_schema(self, conn: duckdb.DuckDBPyConnection) -> None:
-        """Idempotent CREATE TABLE + indexes for the code_graphs table."""
+    def _create_code_graphs_schema(self) -> None:
+        """Idempotent CREATE TABLE + indexes for the code_graphs table.
+
+        The connection is the substrate's ``self.conn`` — a lock-
+        serialized WRAPPER around the DuckDB connection, not a raw
+        ``DuckDBPyConnection``. Reaching for the raw connection here
+        would bypass the serialization the substrate installs for
+        exactly this reason (a caller that uses ``conn.execute``
+        directly).
+        """
+        conn = self.conn
+        if conn is None:
+            raise RuntimeError("Hot store not initialized")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS code_graphs (
                 repo_path VARCHAR,

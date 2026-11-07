@@ -34,9 +34,9 @@ from akosha.mcp.server import _metrics_feed_state
 from akosha.observability.otlp_receiver import OTLPReceiver
 from akosha.storage.hot_store import HotStore
 
-# The lifespan fixtures are IMPORTED rather than re-declared: they are the
+# The lifespan fixtures are IMPORTED rather than redeclared: they are the
 # ones ``tests/unit/test_mcp_server_lifespan.py`` uses, and pytest resolves
-# an imported fixture like any other. Re-declaring them here would be a
+# an imported fixture like any other. Redeclaring them here would be a
 # second copy of a 90-line fixture that has to track the real lifespan.
 from tests.unit.test_mcp_server_lifespan import (  # noqa: F401
     fastmcp_factory,

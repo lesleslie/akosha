@@ -148,7 +148,7 @@ def _resolve_hot_store_path(raw_path: str, resolver: Any) -> str:
     (``StoragePathResolver.get_warm_store_path``), so the hot and warm
     tiers live side by side under one root.
     """
-    text = (raw_path or "").strip()
+    text = raw_path.strip()
     if not text or text == ":memory:":
         return ":memory:"
     candidate = Path(text).expanduser()
@@ -298,6 +298,93 @@ class WarmStorageConfig(BaseModel):
         return self
 
 
+# Component-scoped cold-tier overrides. These outrank the fleet-wide
+# substrate values (``ONEIRIC__SUBSTRATE__COLD__*``) because each
+# component owns its own key space inside its own bucket.
+#
+# ``backend``, ``bucket`` and ``prefix`` are SUBSTRATE-mapped, so
+# ``_strip_substrate_mapped`` removes them from the YAML data and
+# ``data`` never carries them. That left
+# ``AKOSHA__STORAGE__COLD__BACKEND`` / ``_BUCKET`` / ``_PREFIX`` as
+# documented but UNREAD knobs. They are component-scoped (Akosha-specific)
+# overrides, so they take precedence over the fleet-wide substrate
+# values, exactly like the other ``AKOSHA__STORAGE__COLD__*`` knobs.
+#
+# ``_PREFIX`` was the one substrate-mapped field with NO component-scoped
+# override. That is what made the substrate's shared-bucket design
+# unusable: the substrate isolates per-component data by prefix, but the
+# prefix was only settable through the FLEET-WIDE
+# ``ONEIRIC__SUBSTRATE__COLD__PREFIX``, so every component that read the
+# substrate got the same prefix. With a component-scoped prefix, each
+# component owns its own key space inside its own bucket and the
+# fleet-wide prefix stops being a cross-component contract.
+_COLD_NESTED_ENV: tuple[tuple[str, str], ...] = (
+    ("AKOSHA__STORAGE__COLD__ENDPOINT_URL", "endpoint_url"),
+    ("AKOSHA__STORAGE__COLD__PROJECT", "project"),
+    ("AKOSHA__STORAGE__COLD__ACCESS_KEY_ID", "access_key_id"),
+    ("AKOSHA__STORAGE__COLD__SECRET_ACCESS_KEY", "secret_access_key"),
+    ("AKOSHA__STORAGE__COLD__REGION", "region"),
+    ("AKOSHA__STORAGE__COLD__BACKEND", "backend"),
+    ("AKOSHA__STORAGE__COLD__BUCKET", "bucket"),
+    ("AKOSHA__STORAGE__COLD__PREFIX", "prefix"),
+)
+
+# Flat legacy env vars — the FALLBACK for the nested form. Each entry is
+# (legacy var, nested var, config key): the legacy var applies only when
+# its nested counterpart is unset. Matches the AKOSHA_COLD_* convention
+# used in QUICKSTART.md and older settings/local.yaml files.
+_COLD_LEGACY_ENV: tuple[tuple[str, str, str], ...] = (
+    ("AKOSHA_COLD_ENDPOINT", "AKOSHA__STORAGE__COLD__ENDPOINT_URL", "endpoint_url"),
+    ("AKOSHA_COLD_REGION", "AKOSHA__STORAGE__COLD__REGION", "region"),
+)
+
+
+def _apply_cold_env_overrides(data: dict[str, Any]) -> None:
+    """Apply the component-scoped cold env vars.
+
+    The environment is the TOP layer of the config stack (see the module
+    docstring's loading order), so a var set here overrides whatever the
+    operator's ``cold:`` block resolved to.
+
+    Only ``backend``, ``bucket``, ``prefix`` and ``compression`` are
+    substrate-mapped; every other field's YAML value reaches ``data``
+    intact. A ``"<key>" not in data`` guard would therefore silently
+    discard the operator's override — the knob would look settable and
+    do nothing.
+    """
+    for env_name, key in _COLD_NESTED_ENV:
+        value = os.getenv(env_name, "")
+        if value:
+            data[key] = value
+
+    anonymous = os.getenv("AKOSHA__STORAGE__COLD__ANONYMOUS_CREDENTIALS", "")
+    if anonymous:
+        data["anonymous_credentials"] = anonymous.lower() in ("true", "1", "yes")
+
+    raw_age = os.getenv("AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS", "")
+    if raw_age:
+        try:
+            data["age_threshold_days"] = int(raw_age)
+        except ValueError as exc:
+            raise ValueError(
+                f"AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS must be an integer, got {raw_age!r}"
+            ) from exc
+
+
+def _apply_cold_legacy_env_overrides(data: dict[str, Any]) -> None:
+    """Apply the flat legacy cold env vars.
+
+    These are the FALLBACK for the nested form, so they apply only when
+    their nested counterpart is unset.
+    """
+    for legacy_name, nested_name, key in _COLD_LEGACY_ENV:
+        if os.getenv(nested_name, ""):
+            continue
+        value = os.getenv(legacy_name, "")
+        if value:
+            data[key] = value
+
+
 class ColdStorageConfig(BaseModel):
     """Cold storage configuration.
 
@@ -324,9 +411,9 @@ class ColdStorageConfig(BaseModel):
             in the nested ``cold:`` block and via
             ``AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS``.
 
-    Configuration can be set via:
-    1. Environment variables (component-scoped, highest precedence for the
-       backend, bucket and prefix):
+    Configuration can be set via, in DECREASING precedence:
+    1. Environment variables (component-scoped — HIGHEST precedence; a var
+       set here overrides the ``cold:`` block below):
        AKOSHA__STORAGE__COLD__BACKEND,
        AKOSHA__STORAGE__COLD__BUCKET,
        AKOSHA__STORAGE__COLD__PREFIX,
@@ -335,7 +422,11 @@ class ColdStorageConfig(BaseModel):
        AKOSHA__STORAGE__COLD__ANONYMOUS_CREDENTIALS,
        AKOSHA__STORAGE__COLD__ACCESS_KEY_ID,
        AKOSHA__STORAGE__COLD__SECRET_ACCESS_KEY,
-       AKOSHA__STORAGE__COLD__REGION.
+       AKOSHA__STORAGE__COLD__REGION,
+       AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS.
+       The flat legacy forms (``AKOSHA_COLD_ENDPOINT``,
+       ``AKOSHA_COLD_REGION``) are the FALLBACK for the nested form: they
+       apply only when their nested counterpart is unset.
     2. Environment variables (substrate, fleet-wide):
        ONEIRIC__SUBSTRATE__COLD__BACKEND, ONEIRIC__SUBSTRATE__COLD__BUCKET,
        ONEIRIC__SUBSTRATE__COLD__PREFIX, ONEIRIC__SUBSTRATE__COLD__COMPRESSION
@@ -415,75 +506,12 @@ class ColdStorageConfig(BaseModel):
     )
 
     def __init__(self, **data: Any) -> None:
-        # Honor nested env vars (preferred). Only fill fields not already
-        # explicitly passed via ``data``.
-        _env_endpoint_url = os.getenv("AKOSHA__STORAGE__COLD__ENDPOINT_URL", "")
-        _env_project = os.getenv("AKOSHA__STORAGE__COLD__PROJECT", "")
-        _env_anon = os.getenv("AKOSHA__STORAGE__COLD__ANONYMOUS_CREDENTIALS", "")
-        _env_access_key = os.getenv("AKOSHA__STORAGE__COLD__ACCESS_KEY_ID", "")
-        _env_secret_key = os.getenv("AKOSHA__STORAGE__COLD__SECRET_ACCESS_KEY", "")
-        _env_region = os.getenv("AKOSHA__STORAGE__COLD__REGION", "")
-        # DEFECT C fix: ``backend`` and ``bucket`` are SUBSTRATE-mapped, so
-        # ``_strip_substrate_mapped`` removes them from the YAML data and
-        # ``data`` never carries them. That left
-        # ``AKOSHA__STORAGE__COLD__BACKEND`` / ``_BUCKET`` as documented
-        # but UNREAD knobs. They are component-scoped (Akosha-specific)
-        # overrides, so they take precedence over the fleet-wide substrate
-        # values, exactly like the other ``AKOSHA__STORAGE__COLD__*`` knobs
-        # in this block.
-        #
-        # ``_PREFIX`` was the one substrate-mapped field with NO
-        # component-scoped override. That is what made the substrate's
-        # shared-bucket design unusable: the substrate isolates
-        # per-component data by prefix, but the prefix was only settable
-        # through the FLEET-WIDE ``ONEIRIC__SUBSTRATE__COLD__PREFIX``,
-        # so every component that read the substrate got the same
-        # prefix. With a component-scoped prefix, each component owns
-        # its own key space inside its own bucket and the fleet-wide
-        # prefix stops being a cross-component contract.
-        _env_backend = os.getenv("AKOSHA__STORAGE__COLD__BACKEND", "")
-        _env_bucket = os.getenv("AKOSHA__STORAGE__COLD__BUCKET", "")
-        _env_prefix = os.getenv("AKOSHA__STORAGE__COLD__PREFIX", "")
-        _env_age_threshold_days = os.getenv("AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS", "")
-        if _env_endpoint_url and "endpoint_url" not in data:
-            data["endpoint_url"] = _env_endpoint_url
-        if _env_project and "project" not in data:
-            data["project"] = _env_project
-        if _env_anon and "anonymous_credentials" not in data:
-            data["anonymous_credentials"] = _env_anon.lower() in ("true", "1", "yes")
-        if _env_access_key and "access_key_id" not in data:
-            data["access_key_id"] = _env_access_key
-        if _env_secret_key and "secret_access_key" not in data:
-            data["secret_access_key"] = _env_secret_key
-        if _env_region and "region" not in data:
-            data["region"] = _env_region
-        if _env_backend and "backend" not in data:
-            data["backend"] = _env_backend
-        if _env_bucket and "bucket" not in data:
-            data["bucket"] = _env_bucket
-        if _env_prefix and "prefix" not in data:
-            data["prefix"] = _env_prefix
-        if _env_age_threshold_days:
-            try:
-                data["age_threshold_days"] = int(_env_age_threshold_days)
-            except ValueError as exc:
-                raise ValueError(
-                    "AKOSHA__STORAGE__COLD__AGE_THRESHOLD_DAYS must be an integer, "
-                    f"got {_env_age_threshold_days!r}"
-                ) from exc
-
+        # Nested component-scoped env vars (preferred form). The
+        # environment is the top layer of the config stack, so these
+        # override whatever ``data`` resolved to.
+        _apply_cold_env_overrides(data)
         # Flat legacy env vars (fallback only when nested form unset).
-        # Matches the AKOSHA_COLD_* convention used in QUICKSTART.md and
-        # older settings/local.yaml files.
-        if "endpoint_url" not in data:
-            _legacy_endpoint = os.getenv("AKOSHA_COLD_ENDPOINT", "")
-            if _legacy_endpoint:
-                data["endpoint_url"] = _legacy_endpoint
-        if "region" not in data:
-            _legacy_region = os.getenv("AKOSHA_COLD_REGION", "")
-            if _legacy_region:
-                data["region"] = _legacy_region
-
+        _apply_cold_legacy_env_overrides(data)
         super().__init__(**data)
 
 

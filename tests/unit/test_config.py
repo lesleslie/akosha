@@ -194,9 +194,27 @@ class TestColdStorageConfig:
         cfg = ColdStorageConfig(endpoint_url="http://127.0.0.1:4443")
         assert cfg.endpoint_url == "http://127.0.0.1:4443"
 
-    def test_cold_storage_config_has_s3_credential_fields(self) -> None:
-        """ColdStorageConfig exposes access_key_id + secret_access_key for S3 backends."""
+    def test_cold_storage_config_has_s3_credential_fields(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ColdStorageConfig exposes access_key_id + secret_access_key for S3 backends.
+
+        The machine's own cold-tier env vars are cleared first: this host
+        exports real R2 credentials, and the component-scoped env vars are
+        the TOP layer of the config stack (see ``ColdStorageConfig``), so
+        an ambient ``AKOSHA__STORAGE__COLD__ACCESS_KEY_ID`` would
+        otherwise override the values passed here. This test measures the
+        MODEL's fields, not the operator's configuration.
+        """
         from akosha.config import ColdStorageConfig
+
+        for var in (
+            "AKOSHA__STORAGE__COLD__ACCESS_KEY_ID",
+            "AKOSHA__STORAGE__COLD__SECRET_ACCESS_KEY",
+            "AKOSHA__STORAGE__COLD__REGION",
+            "AKOSHA__STORAGE__COLD__ENDPOINT_URL",
+        ):
+            monkeypatch.delenv(var, raising=False)
 
         cfg = ColdStorageConfig(
             access_key_id="AKIA_test",
@@ -248,6 +266,60 @@ class TestColdStorageConfig:
         cfg = ColdStorageConfig()
         assert cfg.endpoint_url == "http://legacy:4443"
         assert cfg.region == "legacy-region"
+
+    def test_cold_env_overrides_an_explicit_value(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A component-scoped env var beats an explicitly-passed value.
+
+        ``endpoint_url`` is NOT substrate-mapped, so the operator's
+        ``cold:`` value reaches the config intact. A ``"endpoint_url"
+        not in data`` guard would therefore silently discard the
+        operator's override — the knob would look settable and do
+        nothing.
+        """
+        from akosha.config import ColdStorageConfig
+
+        monkeypatch.setenv("AKOSHA__STORAGE__COLD__ENDPOINT_URL", "http://from-env:4443")
+        cfg = ColdStorageConfig(endpoint_url="http://from-config:4443")
+        assert cfg.endpoint_url == "http://from-env:4443"
+
+    def test_cold_env_overrides_the_nested_config_block(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The env var wins on the path the operator actually uses.
+
+        ``get_config()`` builds ``AkoshaConfig`` from the YAML settings
+        tree, so the ``cold:`` block reaches ``ColdStorageConfig`` as a
+        NESTED model rather than as a directly-constructed one.
+        """
+        from akosha.config import AkoshaConfig
+
+        monkeypatch.setenv("AKOSHA__STORAGE__COLD__ENDPOINT_URL", "http://from-env:4443")
+        cfg = AkoshaConfig(cold={"endpoint_url": "http://from-config:4443"})
+        assert cfg.cold.endpoint_url == "http://from-env:4443"
+
+    def test_nested_cold_env_outranks_the_flat_legacy_form(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The nested form wins; the flat form is only its fallback."""
+        from akosha.config import ColdStorageConfig
+
+        monkeypatch.setenv("AKOSHA__STORAGE__COLD__ENDPOINT_URL", "http://nested:4443")
+        monkeypatch.setenv("AKOSHA_COLD_ENDPOINT", "http://legacy:4443")
+        cfg = ColdStorageConfig()
+        assert cfg.endpoint_url == "http://nested:4443"
+
+    def test_flat_legacy_cold_env_beats_the_config_value(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The flat form is a fallback for the nested form, not for the config."""
+        from akosha.config import ColdStorageConfig
+
+        monkeypatch.delenv("AKOSHA__STORAGE__COLD__ENDPOINT_URL", raising=False)
+        monkeypatch.setenv("AKOSHA_COLD_ENDPOINT", "http://legacy:4443")
+        cfg = ColdStorageConfig(endpoint_url="http://from-config:4443")
+        assert cfg.endpoint_url == "http://legacy:4443"
 
     def test_age_threshold_days_defaults_to_90(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The cold tier's age threshold defaults to the documented 90 days."""

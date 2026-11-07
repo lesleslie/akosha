@@ -692,7 +692,7 @@ class OTLPReceiver:
             await self._metrics_dlq_insert(bad)
 
         exported = 0
-        dropped_before = dict(self._prometheus_bridge.dropped_by_reason)
+        dropped_before = self._prometheus_bridge.dropped_by_reason.copy()
         for point in good:
             try:
                 if self._prometheus_bridge.export(point):
@@ -1372,7 +1372,7 @@ def _resource_payload(
     otherwise be dropped on the floor. They land under ``otel.scope``,
     beside the resource attributes they were published with.
     """
-    payload = dict(resource_attrs)
+    payload = resource_attrs.copy()
     scope_payload: dict[str, Any] = {}
     if scope_version:
         scope_payload["version"] = scope_version
