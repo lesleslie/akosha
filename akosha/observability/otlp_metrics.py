@@ -190,6 +190,151 @@ canary_rows_deleted_total: Counter = Counter(
     registry=_REGISTRY,
 )
 
+# ── metric ingest counters (plan Phase 2) ────────────────────────────────
+#
+# The metric receiver is a SEPARATE path from the span receiver: it walks
+# ``resource_metrics → scope_metrics → metrics → data points`` instead of
+# ``resource_spans → scope_spans → spans``, and it writes to
+# ``metrics_substrate`` instead of ``spans_substrate``. The counters live
+# here rather than beside the span ones because they are the same receiver's
+# Prometheus surface, and an operator reading ``/metrics`` should find both
+# in one place.
+
+metrics_received_total: Counter = Counter(
+    name="akosha_otlp_metrics_received_total",
+    documentation=(
+        "Metric data points accepted off the wire, before validation. "
+        "Counts POINTS, not exports: a producer's histogram arrives as "
+        "one point with a bucket ladder, and an operator asking 'how much "
+        "came in' means the points."
+    ),
+    registry=_REGISTRY,
+)
+
+metrics_rejected_total: Counter = Counter(
+    name="akosha_otlp_metrics_rejected_total",
+    documentation=(
+        "Metric data points quarantined to _dlq_rows by validation, "
+        "labelled by the field that failed. Labelled for the same reason "
+        "the span counter is: an unlabelled count is undiagnosable, and "
+        "the hot store is :memory: so the DLQ table is not queryable from "
+        "outside the process. Cardinality is bounded -- the labels are "
+        "field names, not values. Sum it for a total: "
+        "sum(akosha_otlp_metrics_rejected_total)."
+    ),
+    labelnames=["field"],
+    registry=_REGISTRY,
+)
+
+metrics_inserted_total: Counter = Counter(
+    name="akosha_otlp_metrics_inserted_total",
+    documentation="Metric rows written to metrics_substrate",
+    registry=_REGISTRY,
+)
+
+metrics_deduped_total: Counter = Counter(
+    name="akosha_otlp_metrics_deduped_total",
+    documentation=(
+        "Metric rows skipped because the point's identity -- service, "
+        "scope, metric, timestamp and attributes -- was already stored. "
+        "A replay is a no-op, not an error."
+    ),
+    registry=_REGISTRY,
+)
+
+metrics_batches_total: Counter = Counter(
+    name="akosha_otlp_metrics_batches_total",
+    documentation=(
+        "OTLP metric export requests received. Counts EXPORTS, not points: "
+        "one request carries many data points. This is the signal that "
+        "separates 'no metric export ever arrived' from 'exports arrived "
+        "and every point was rejected' -- the span path's batch counter "
+        "is read by the health feed for the same reason, and this one is "
+        "read by the metrics feed."
+    ),
+    registry=_REGISTRY,
+)
+
+metrics_insert_failed_total: Counter = Counter(
+    name="akosha_otlp_metrics_insert_failed_total",
+    documentation=(
+        "Metric batches whose substrate write raised, labelled by the "
+        "reason. Non-zero means received points are being dropped on the "
+        "floor -- the batch still answers, but nothing was stored. The "
+        "reason label is what makes the failure actionable: "
+        "'substrate_unavailable' means the metrics substrate itself is "
+        "missing or unusable (the oneiric dependency gap, or a table "
+        "that was never created) and NOTHING can be persisted, while "
+        "'write_failed' means the substrate is there and this particular "
+        "write failed. Without the label the two are indistinguishable, "
+        "and the first is an operator-actionable outage while the second "
+        "is usually transient."
+    ),
+    labelnames=["reason"],
+    registry=_REGISTRY,
+)
+
+metrics_substrate_ready: Gauge = Gauge(
+    name="akosha_otlp_metrics_substrate_ready",
+    documentation=(
+        "1 when the metrics substrate can be written to, 0 when it "
+        "cannot (or has not been probed yet). 0 means the receiver is "
+        "accepting metric exports and exposing them on /metrics, but "
+        "persisting NOTHING -- the points reach the Prometheus registry "
+        "and are thrown away by the durable write. It is a gauge rather "
+        "than a counter because the state is current, not cumulative."
+    ),
+    registry=_REGISTRY,
+)
+
+metrics_points_exported_total: Counter = Counter(
+    name="akosha_otlp_metrics_points_exported_total",
+    documentation=(
+        "Metric data points converted into prometheus_client instruments "
+        "on the shared registry. This is the count of points VISIBLE on "
+        "the /metrics route; a point that was stored but not exposed "
+        "(cardinality cap, divergent buckets) is counted by "
+        "metrics_exposure_dropped_total instead."
+    ),
+    registry=_REGISTRY,
+)
+
+metrics_exposure_dropped_total: Counter = Counter(
+    name="akosha_otlp_metrics_exposure_dropped_total",
+    documentation=(
+        "Metric data points that were NOT exposed on the Prometheus "
+        "registry, labelled by the reason. The reasons are: "
+        "'cardinality' (the per-family label-value cap was reached), "
+        "'family_cap' (the number of metric families hit its cap), "
+        "'label_keys' (the point's attribute key set does not match the "
+        "family's), 'bucket_divergence' (the histogram layout differs "
+        "from the instrument's), 'unsupported' (the point cannot be "
+        "represented as a Prometheus instrument at all), "
+        "'instrument_conflict' (the name is already registered as a "
+        "different kind of instrument), 'replay' (the point is a replay "
+        "of one already applied), 'target_info_cap' / "
+        "'scope_info_cap' (the resource/scope metadata caps were "
+        "reached), and 'expose_failed' (the write raised). A separate "
+        "counter rather than a label on the rejection counter: the point "
+        "IS in the substrate, so counting it as rejected would tell a "
+        "producer its data was thrown away when it was not."
+    ),
+    labelnames=["reason"],
+    registry=_REGISTRY,
+)
+
+metrics_rows_deleted_total: Counter = Counter(
+    name="akosha_otlp_metrics_rows_deleted_total",
+    documentation=(
+        "Rows removed from metrics_substrate by the retention sweep. "
+        "The metrics table ages out on the same horizon as "
+        "spans_substrate: it is a sibling table in the same substrate "
+        "file, and a table that is not swept is a table that grows "
+        "without bound."
+    ),
+    registry=_REGISTRY,
+)
+
 
 __all__ = [
     "canary_last_success_unix_nano",
@@ -202,6 +347,16 @@ __all__ = [
     "dlq_inserts_total",
     "dlq_rows_deleted_total",
     "http_body_undecodable_total",
+    "metrics_batches_total",
+    "metrics_deduped_total",
+    "metrics_exposure_dropped_total",
+    "metrics_insert_failed_total",
+    "metrics_inserted_total",
+    "metrics_points_exported_total",
+    "metrics_received_total",
+    "metrics_rejected_total",
+    "metrics_rows_deleted_total",
+    "metrics_substrate_ready",
     "retention_sweep_failed_total",
     "spans_deduped_total",
     "spans_inserted_total",

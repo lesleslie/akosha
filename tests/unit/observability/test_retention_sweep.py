@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from contextlib import suppress
 from datetime import datetime
 from typing import Any
 
@@ -43,7 +44,7 @@ def receiver(store: HotStore) -> OTLPReceiver:
 
 def _insert_span(store: HotStore, span_id: bytes, *, received_ns: int, start_ns: int) -> None:
     """Insert one row directly so the test controls the retention columns."""
-    store.conn.execute(
+    _conn(store).execute(
         f"INSERT INTO {store.spans_substrate_table} "
         "(span_id, trace_id, service_name, service_namespace, span_name, "
         "start_time_unix_nano, end_time_unix_nano, received_at_unix_nano, "
@@ -64,8 +65,19 @@ def _insert_span(store: HotStore, span_id: bytes, *, received_ns: int, start_ns:
     )
 
 
+def _conn(store: HotStore) -> Any:
+    """The store's DuckDB connection, asserted open.
+
+    The connection is typed optional because the substrate may be closed;
+    every use here is in a test that has just initialised the store.
+    """
+    conn = store.conn
+    assert conn is not None
+    return conn
+
+
 def _count(store: HotStore, table: str) -> int:
-    return store.conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    return _conn(store).execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
 
 # ── the cardinal rule ────────────────────────────────────────────────────
@@ -109,9 +121,7 @@ def test_a_genuinely_old_span_is_deleted(receiver: OTLPReceiver, store: HotStore
 # ── §8.1 DLQ retention ───────────────────────────────────────────────────
 
 
-def test_dlq_rows_older_than_24h_are_swept(
-    receiver: OTLPReceiver, store: HotStore
-) -> None:
+def test_dlq_rows_older_than_24h_are_swept(receiver: OTLPReceiver, store: HotStore) -> None:
     """§8.1. Quarantined rows are evidence, not history — a day is enough.
 
     The 1h row must survive: if the sweep used the substrate's 30-day window
@@ -120,7 +130,7 @@ def test_dlq_rows_older_than_24h_are_swept(
     """
     now = time.time_ns()
     for i, age_h in enumerate((1, 25, 100)):
-        store.conn.execute(
+        _conn(store).execute(
             f"INSERT INTO {store.dlq_rows_table} "
             "(reason, field, row_json, span_id, rejected_at) VALUES (?, ?, ?, ?, ?)",
             [
@@ -141,13 +151,89 @@ def test_dlq_rows_older_than_24h_are_swept(
     assert _count(store, store.dlq_rows_table) == 1
 
 
+# ── the metric path's substrate ───────────────────────────────────────────
+
+
+def test_metrics_substrate_is_swept_on_the_same_horizon(
+    receiver: OTLPReceiver, store: HotStore
+) -> None:
+    """The metric table ages out like the span table beside it.
+
+    ``metrics_substrate`` is a table in the SAME substrate file as
+    ``spans_substrate``, and a table that is not swept is a table that
+    grows without bound: ~575 bytes a row, so ~39 MB a day at 50
+    instruments on a 60s interval, in the file whose sibling table IS
+    swept at 30 days.
+
+    The filter is on ``inserted_at``. Phase 1 gave the table that column
+    and no epoch-nanos one, and the schema lives in oneiric — which the
+    receiver cannot change. The cardinal rule still holds: ``inserted_at``
+    is stamped by the DATABASE's clock, not the producer's, so a producer
+    with a skewed clock still cannot drive deletion of rows that just
+    arrived. That is the same reasoning the DLQ sweep's ``rejected_at``
+    uses.
+    """
+    _conn(store).execute(
+        f"INSERT INTO {store.metrics_substrate_table} "
+        "(ts, service_name, service_namespace, scope_name, metric_name, "
+        "data_type, attributes, resource, inserted_at) VALUES "
+        "(1, 'svc', '', 'sc', 'm.old', 'sum', '{}', '{}', "
+        "CURRENT_TIMESTAMP - INTERVAL '40 days'), "
+        "(2, 'svc', '', 'sc', 'm.new', 'sum', '{}', '{}', CURRENT_TIMESTAMP)"
+    )
+
+    deleted = receiver._sweep_table(
+        store.metrics_substrate_table,
+        "WHERE inserted_at < CURRENT_TIMESTAMP - (? * INTERVAL '1 day')",
+        [30],
+        label="metrics_substrate",
+    )
+
+    assert deleted == 1
+    rows = _conn(store).execute("SELECT metric_name FROM metrics_substrate").fetchall()
+    assert [row[0] for row in rows] == ["m.new"]
+
+
+async def test_the_sweep_loop_sweeps_the_metric_table(
+    receiver: OTLPReceiver, store: HotStore
+) -> None:
+    """The LOOP sweeps the metric table, not just the helper.
+
+    ``_sweep_table`` is the primitive; the sweep LOOP is what calls it on
+    a cadence. A metric table that the loop never reaches is a metric
+    table that grows for ever, and the primitive's own test would not
+    notice — so the wiring is pinned here.
+    """
+    _conn(store).execute(
+        f"INSERT INTO {store.metrics_substrate_table} "
+        "(ts, service_name, service_namespace, scope_name, metric_name, "
+        "data_type, attributes, resource, inserted_at) VALUES "
+        "(1, 'svc', '', 'sc', 'm.old', 'sum', '{}', '{}', "
+        "CURRENT_TIMESTAMP - INTERVAL '40 days')"
+    )
+    stop_event = asyncio.Event()
+    task = asyncio.create_task(receiver.run_retention_sweep(stop_event))
+    try:
+        # An operator request makes the sweep run now instead of after the
+        # interval; the requested path skips the random jitter.
+        receiver.request_retention_sweep()
+        for _ in range(200):
+            await asyncio.sleep(0.05)
+            if _count(store, store.metrics_substrate_table) == 0:
+                break
+        assert _count(store, store.metrics_substrate_table) == 0
+    finally:
+        stop_event.set()
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
 # ── failure is not zero ──────────────────────────────────────────────────
 
 
-def test_a_failing_sweep_reports_none_not_zero(
-    receiver: OTLPReceiver, store: HotStore
-) -> None:
-    """"Deleted nothing" and "could not run" must not look alike.
+def test_a_failing_sweep_reports_none_not_zero(receiver: OTLPReceiver, store: HotStore) -> None:
+    """ "Deleted nothing" and "could not run" must not look alike.
 
     Collapsing them is how a sweep that has been broken for weeks keeps
     reporting itself healthy — there is nothing to alert on.
@@ -186,8 +272,7 @@ def _span_request(
 ) -> Any:
     def kv(pairs: list[tuple[str, str]]) -> list[Any]:
         return [
-            common_pb2.KeyValue(key=k, value=common_pb2.AnyValue(string_value=v))
-            for k, v in pairs
+            common_pb2.KeyValue(key=k, value=common_pb2.AnyValue(string_value=v)) for k, v in pairs
         ]
 
     return trace_service_pb2.ExportTraceServiceRequest(
@@ -300,9 +385,7 @@ async def test_a_rejected_batch_names_the_failing_field(receiver: OTLPReceiver) 
     """
     before = _sample_value("service_name")
 
-    await receiver._handle_batch(
-        _span_request(b"\x0e" * 8, resource_attrs=[], span_attrs=[])
-    )
+    await receiver._handle_batch(_span_request(b"\x0e" * 8, resource_attrs=[], span_attrs=[]))
 
     after = _sample_value("service_name")
     assert after == before + 1

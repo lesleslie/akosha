@@ -69,7 +69,7 @@ APP_VERSION: Final[str] = __version__
 # block + the cast can be deleted in one PR.
 # ---------------------------------------------------------------------------
 if TYPE_CHECKING:
-    from mcp_common.health.feed import ReasonCode, StatusValue
+    from mcp_common.health.feed import HealthFeedState, ReasonCode, StatusValue
 
     class FeedSnapshot(TypedDict):
         """Per-feed verdict inside :data:`HealthSnapshot.checks`."""
@@ -429,6 +429,65 @@ def _count_or_zero(value: Any) -> int:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return 0
     return max(0, int(value))
+
+
+async def _metrics_feed_state(receiver: Any, hot_store: Any) -> HealthFeedState:
+    """The metric path's /health feed state, read from live producer state.
+
+    The metric path had NO feed of its own, and that was the gap: a
+    metrics receiver that accepts exports, exposes them on /metrics and
+    stores NOTHING left /health reporting green. The operator saw a live
+    series on the Prometheus route and a healthy health check, and the
+    durable substrate was empty.
+
+    ``entities_count`` counts the DURABLE rows, not the exposed series: the
+    substrate is the ground truth, and the Prometheus exposure is a
+    separate path that can succeed while the substrate is broken. That is
+    exactly the case this feed has to catch, so it must not read the
+    exposure.
+
+    The cycle count is the metric path's OWN, not the receiver's span
+    cycle count: this feed reports the metric path, and a feed whose cycle
+    count came from another path could look alive while the metric path
+    had never run. The receiver counts its startup as its first cycle, so a
+    receiver that has simply not been exported to yet reports
+    ``cycles_total >= 1`` with ``entities_count == 0`` — WARMING UP, not
+    DEGRADED. A degraded feed is a 503, and the launchd wrapper polls
+    /health with ``curl -fsS``, so a feed that flapped to degraded on
+    every cold start would make the wrapper kill the server it was
+    supposed to start.
+    """
+    from mcp_common.health.feed import HealthFeedState
+
+    entities_count = 0
+    with suppress(Exception):
+        if isinstance(hot_store, HotStore):
+            from akosha.storage.metrics_query import count_metrics_points
+
+            entities_count = await count_metrics_points(hot_store)
+    running = receiver is not None
+    cycles_total = _count_or_zero(getattr(receiver, "metrics_cycles_total", 0))
+    errors_total = _count_or_zero(getattr(receiver, "metrics_rejected_total", 0)) + _count_or_zero(
+        getattr(receiver, "metrics_insert_failed_total", 0)
+    )
+    last_updated = _epoch_or_none(getattr(receiver, "metrics_last_batch_at", None))
+    last_error = _epoch_or_none(getattr(receiver, "metrics_last_error_at", None))
+    # An unusable substrate is an ONGOING error, not a past one: the feed
+    # has to stay degraded for as long as the substrate is broken, even
+    # when the last failure was minutes ago and no export has arrived
+    # since. The receiver's readiness flag is the live reading; a past
+    # timestamp alone would decay out of the halflife and read as healthy
+    # again.
+    if receiver is not None and not bool(getattr(receiver, "metrics_substrate_ready", True)):
+        last_error = time.time()
+    return HealthFeedState(
+        entities_count=entities_count,
+        last_updated_timestamp=last_updated,
+        cycles_total=cycles_total,
+        errors_total=errors_total,
+        last_error_at=last_error,
+        ingester_running=running,
+    )
 
 
 def _resolve_skills_signer_key_path() -> Path:
@@ -1519,6 +1578,11 @@ def create_app(mode: Any | None = None) -> FastMCP:
                     ingester_running=False,
                 )
 
+            # The METRIC path's own feed. See ``_metrics_feed_state`` for
+            # why it exists and what each of its fields means.
+            metrics_receiver = get_shared_otel_receiver()
+            metrics_state = await _metrics_feed_state(metrics_receiver, hot_store)
+
             # Phase 2 (REQ-FEED-003): the AgingService cron migrates
             # records from hot to warm; the feed's ``entities_count`` is
             # the count of mcp_tool_call rows still in the hot store
@@ -1555,6 +1619,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
                     "mcp_tool_call_feed": mcp_tool_call_state,
                     "aging_feed": aging_state,
                     "skills_signer": skills_signer_state,
+                    "metrics_feed": metrics_state,
                 },
                 halflife_seconds=halflife_seconds,
             )
@@ -1691,6 +1756,22 @@ def create_app(mode: Any | None = None) -> FastMCP:
             else:
                 ss_dict["error"] = "signer feed state not initialized; awaiting lifespan"
             checks["skills_signer"] = ss_dict
+
+            # The metric path's per-feed dict. ``substrate_ready`` is the
+            # field an operator reads first: it says whether the durable
+            # write is happening, which is the question the exposed series
+            # cannot answer — a series on /metrics is visible whether or
+            # not anything backs it.
+            ms_dict = _feed_dict("metrics_feed", metrics_state)
+            ms_dict["source"] = "metrics_substrate (written by the OTLP MetricsService receiver)"
+            ms_dict["otel_receiver_running"] = metrics_state.ingester_running
+            ms_dict["substrate_ready"] = bool(
+                getattr(metrics_receiver, "metrics_substrate_ready", True)
+            )
+            ms_dict["batches_total"] = _count_or_zero(
+                getattr(metrics_receiver, "metrics_batches_total", 0)
+            )
+            checks["metrics_feed"] = ms_dict
 
             # ----------------------------------------------------------
             # Infrastructure checks (not data feeds — kept inline).

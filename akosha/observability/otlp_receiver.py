@@ -41,6 +41,7 @@ import asyncio
 import base64
 import json
 import logging
+import math
 import random
 import time
 from contextlib import suppress
@@ -51,6 +52,7 @@ from oneiric.core.lifecycle import LifecycleError
 
 from akosha.observability import otlp_metrics
 from akosha.observability.canary_watcher import CANARY_SERVICE_NAME
+from akosha.observability.otlp_prometheus_bridge import OTLPPrometheusBridge
 from akosha.observability.resource_validator import ResourceAttributeValidator
 
 if TYPE_CHECKING:
@@ -108,6 +110,40 @@ class OTLPReceiver:
             "STATUS_CODE_ERROR",
         }
     }
+
+    # The metric path's required set is deliberately SMALLER than the span
+    # path's, and the difference is load-bearing rather than an oversight:
+    # ``service.namespace`` is NOT required for a metric point.
+    #
+    # oneiric's ``OTLPObservabilityAdapter`` builds its Resource with
+    # ``service.name``, ``deployment.environment`` and (optionally)
+    # ``service.version`` — and NO namespace at all
+    # (``oneiric/adapters/monitoring/otlp.py``). Requiring a namespace
+    # would quarantine every metric oneiric sends, which is the whole of
+    # REQ-M07's second producer: the export would answer "accepted, zero
+    # points stored", and nothing would say why.
+    #
+    # The namespace is still stored — as the empty string when the producer
+    # declares none. An empty string says "not declared", which is a
+    # different fact from "unknown", and it keeps the substrate's NOT NULL
+    # constraint satisfied without inventing a value.
+    METRICS_REQUIRED_FIELDS = frozenset(
+        {
+            "service_name",
+            "metric_name",
+            "ts",
+            "data_type",
+        }
+    )
+    METRICS_DATA_TYPES = frozenset(
+        {
+            "sum",
+            "gauge",
+            "histogram",
+            "exponential_histogram",
+            "summary",
+        }
+    )
 
     def __init__(
         self,
@@ -181,6 +217,52 @@ class OTLPReceiver:
         # the settings: if the settings changed since boot, the running
         # receiver's interval is the one the operator is waiting out.
         self.sweep_interval_s: int | None = None
+        # The metric path's Prometheus bridge. One per receiver: the
+        # temporality state it keeps is per series, and a restarted
+        # receiver re-baselines instead of adding a stale delta to
+        # whatever the previous receiver left in the shared registry.
+        self._prometheus_bridge = OTLPPrometheusBridge()
+        # In-process counters for the metric path, mirroring the span
+        # path's idiom: the in-process source of truth, mirrored into the
+        # registry at the same call sites so the two cannot drift. The
+        # tests read THESE; the registry carries the same numbers for
+        # operators.
+        self.metrics_batches_total = 0
+        self.metrics_received_total = 0
+        self.metrics_inserted_total = 0
+        self.metrics_deduped_total = 0
+        self.metrics_rejected_total = 0
+        self.metrics_points_exported_total = 0
+        self.metrics_insert_failed_total = 0
+        # The metric path's HEALTH cycle count, kept apart from
+        # ``metrics_batches_total`` for the same reason the span path keeps
+        # ``cycles_total`` apart from ``batches_total``: the batch count is
+        # zero until a producer actually exports, and a /health feed whose
+        # cycle count sits at zero from boot is DEGRADED — a 503 that makes
+        # the launchd wrapper kill the server it just started. The startup
+        # counts as the first cycle, so a receiver that has simply not been
+        # exported to yet reads as WARMING UP, not broken.
+        self.metrics_cycles_total = 0
+        # When a metric batch was last processed, and when the metric path
+        # last failed to write. The health feed reads both.
+        self.metrics_last_batch_at: float | None = None
+        self.metrics_last_error_at: float | None = None
+        # Whether the metrics substrate can be written to, and why not when
+        # it cannot. ``None`` means "not probed yet".
+        #
+        # The probe is a BIND-TIME check that does NOT raise. The trace
+        # receiver asserts ``spans_substrate`` because a trace receiver
+        # without a substrate stores nothing and there is no second
+        # service on the port to keep working. The metric path is
+        # different: the MetricsService rides the SAME gRPC server as the
+        # TraceService, so failing the bind because a METRICS dependency
+        # is missing would take the TRACE path down with it — and would
+        # break every deployment that has not yet upgraded oneiric. The
+        # metric path therefore degrades: it keeps serving, keeps
+        # exposing to Prometheus, and says loudly that the durable write
+        # is not happening.
+        self._metrics_substrate_ready: bool | None = None
+        self._metrics_substrate_detail: str = ""
 
     # ── lifecycle ───────────────────────────────────────────────────────
 
@@ -191,13 +273,29 @@ class OTLPReceiver:
         shape. A receiver that binds happily against an absent table looks
         healthy — it accepts connections, returns 200s, and stores nothing —
         and the only symptom is a read path that quietly returns empty forever.
+
+        The METRICS substrate is probed but NOT asserted, and the asymmetry is
+        deliberate. The MetricsService rides the same gRPC server as the
+        TraceService, so raising here would take the trace path down with it
+        — and would break every deployment whose oneiric predates Phase 1's
+        ``insert_metrics_substrate``. The metric path degrades instead: it
+        keeps serving, keeps exposing to Prometheus, reports the substrate as
+        unusable on ``/metrics`` and in the export's ``partial_success``, and
+        the operator sees a 503 from ``/health`` rather than a green check
+        over a metric that is thrown away.
         """
         if not await self._hot_store.table_exists(self._hot_store.spans_substrate_table):
             raise LifecycleError("spans_substrate_missing")
 
+        await self._refresh_substrate_readiness(force=True)
+
         await self._start_grpc()
         await self._start_http()
         self.receiver_started_total += 1
+        # The metric path's first cycle: the receiver is up and serving the
+        # MetricsService, which is what the health feed's cycle count has to
+        # answer. It does NOT mean a metric has been stored.
+        self.metrics_cycles_total += 1
         # The startup cycle is complete: the substrate was asserted and both
         # listeners are bound. See ``cycles_total`` in ``__init__`` for why
         # this has to be counted.
@@ -209,7 +307,7 @@ class OTLPReceiver:
         )
 
     async def _start_grpc(self) -> None:
-        """Bind the OTLP/gRPC TraceService.
+        """Bind the OTLP/gRPC TraceService and MetricsService.
 
         Imports are local to this method so that importing this module — which
         the lifespan does unconditionally — does not drag in gRPC and the proto
@@ -217,6 +315,9 @@ class OTLPReceiver:
         boot, not as an ImportError during collection of an unrelated test.
         """
         import grpc  # type: ignore[import-not-found]
+        from opentelemetry.proto.collector.metrics.v1 import (  # type: ignore[import-not-found]
+            metrics_service_pb2_grpc,
+        )
         from opentelemetry.proto.collector.trace.v1 import (  # type: ignore[import-not-found]
             trace_service_pb2_grpc,
         )
@@ -224,6 +325,17 @@ class OTLPReceiver:
         self._grpc_server = grpc.aio.server()
         trace_service_pb2_grpc.add_TraceServiceServicer_to_server(
             _TraceServiceServicer(self), self._grpc_server
+        )
+        # The MetricsService rides the SAME server on the SAME port.
+        #
+        # One endpoint serving both signals is not a convenience, it is the
+        # requirement: oneiric's ``OTLPObservabilityAdapter`` sends traces
+        # and metrics to one endpoint (the plan's Finding 10), so a receiver
+        # that serves only one of the two cannot satisfy that producer at
+        # all. Splitting the endpoint would mean a second mechanism to
+        # maintain for the same problem.
+        metrics_service_pb2_grpc.add_MetricsServiceServicer_to_server(
+            _MetricsServiceServicer(self), self._grpc_server
         )
         self._grpc_server.add_insecure_port(f"127.0.0.1:{self._grpc_port}")
         await self._grpc_server.start()
@@ -430,6 +542,320 @@ class OTLPReceiver:
                 bad[0][0].reason if bad else "unknown",
                 exc,
             )
+
+    # ── metric ingest path (plan Phase 2) ───────────────────────────────
+    #
+    # Deliberately PARALLEL to the span path above, not a branch of it.
+    # ``_handle_batch`` walks ResourceSpans and writes spans_substrate; the
+    # trace servicer's behaviour must not change because a second service
+    # was added to the same port. Every rule the span path follows is
+    # restated here rather than shared, because sharing the code would
+    # couple the two paths' futures: a change to the span batch would
+    # silently change the metric batch.
+
+    async def _handle_metrics_batch(self, request: Any) -> dict[str, Any]:
+        """Validate, persist, and expose every data point in an export.
+
+        The same three rules the span path follows, restated:
+
+        1. A point that fails validation is quarantined and the batch
+           continues. It is counted in ``rejected_data_points``, so a
+           producer reading the response can see that something was
+           dropped without the export failing.
+        2. A DLQ failure does not abort the batch.
+        3. No exception escapes the servicer: gRPC would answer UNKNOWN
+           and the producer would drop the ENTIRE batch — up to 512 spans'
+           worth of telemetry from a single export.
+
+        The returned dict also carries ``error_message``: the description a
+        producer reads when something went wrong. An OTLP ``partial_success``
+        with an empty message says "nothing to report" while the receiver
+        is in fact throwing the data away — which is the failure this
+        whole path exists to make visible.
+        """
+        # The walk is wrapped even though every per-point conversion inside
+        # it is already guarded: an exception escaping the servicer makes
+        # gRPC answer UNKNOWN, and the producer drops the ENTIRE batch —
+        # every point in it, not just the one that failed. An export that
+        # cannot be walked at all is therefore reported as empty, loudly,
+        # rather than as an RPC failure.
+        try:
+            points = _extract_metric_points(request)
+        except Exception:
+            logger.exception("akosha.otlp_metrics.extract_failed")
+            points = []
+        self.metrics_batches_total += 1
+        self.metrics_cycles_total += 1
+        self.metrics_received_total += len(points)
+        otlp_metrics.metrics_batches_total.inc()
+        otlp_metrics.metrics_received_total.inc(len(points))
+
+        good: list[dict[str, Any]] = []
+        bad: list[tuple[RowValidationError, dict[str, Any]]] = []
+        for point in points:
+            error = self.pre_validate_metric(point)
+            if error is None:
+                good.append(point)
+            else:
+                bad.append((error, point))
+
+        inserted, deduped = (0, 0)
+        problems: list[str] = []
+        if good:
+            ready, detail = await self._refresh_substrate_readiness()
+            if not ready:
+                # The substrate cannot take the write. The points are NOT
+                # lost from the Prometheus exposure — they are still
+                # rendered on /metrics — but nothing durable backs them.
+                # The producer is told, the operator is told, and the
+                # export still succeeds: failing the RPC would make the
+                # producer drop the batch, and the trace path on the same
+                # port must not go down with it.
+                self.metrics_insert_failed_total += 1
+                otlp_metrics.metrics_insert_failed_total.labels(
+                    reason="substrate_unavailable"
+                ).inc()
+                self.metrics_last_error_at = time.time()
+                problems.append(f"metrics substrate unavailable: {detail}")
+                logger.error(
+                    "akosha.otlp_metrics.substrate_unavailable rows=%s detail=%s",
+                    len(good),
+                    detail,
+                )
+            else:
+                try:
+                    inserted, deduped = await self._hot_store.insert_metrics_substrate(good)
+                except Exception:
+                    # A substrate failure must not answer UNKNOWN. The
+                    # producer would drop the whole batch, and the points
+                    # that would have landed are gone with it. The failure
+                    # is counted so an operator can see it, and the export
+                    # still answers.
+                    #
+                    # The readiness is re-probed here: a table that was
+                    # dropped after boot reads as "the substrate is gone",
+                    # which is a different fault from "this write failed"
+                    # and has a different remedy.
+                    still_ready, detail = await self._refresh_substrate_readiness(force=True)
+                    reason = "write_failed" if still_ready else "substrate_unavailable"
+                    self.metrics_insert_failed_total += 1
+                    otlp_metrics.metrics_insert_failed_total.labels(reason=reason).inc()
+                    self.metrics_last_error_at = time.time()
+                    problems.append(
+                        f"metrics substrate unavailable: {detail}"
+                        if reason == "substrate_unavailable"
+                        else "metrics substrate write failed"
+                    )
+                    logger.exception("akosha.otlp_metrics.insert_failed rows=%s", len(good))
+
+        if bad:
+            await self._metrics_dlq_insert(bad)
+
+        exported = 0
+        dropped_before = dict(self._prometheus_bridge.dropped_by_reason)
+        for point in good:
+            try:
+                if self._prometheus_bridge.export(point):
+                    exported += 1
+            except Exception:
+                # One unexposable point must not take the export down with
+                # it. The point is already in the substrate; losing the
+                # EXPOSURE is bad, losing the batch is worse.
+                logger.exception(
+                    "akosha.otlp_metrics.expose_raised metric=%s",
+                    point.get("metric_name"),
+                )
+
+        self.metrics_inserted_total += inserted
+        self.metrics_deduped_total += deduped
+        self.metrics_rejected_total += len(bad)
+        self.metrics_points_exported_total += exported
+        self.metrics_last_batch_at = time.time()
+        otlp_metrics.metrics_inserted_total.inc(inserted)
+        otlp_metrics.metrics_deduped_total.inc(deduped)
+        otlp_metrics.metrics_points_exported_total.inc(exported)
+        # Tally by field before incrementing, for the same reason the span
+        # path does: "139 rejected" is unactionable, and the hot store is
+        # :memory: so the DLQ table cannot be queried from outside.
+        for field, count in _count_by_field(bad).items():
+            otlp_metrics.metrics_rejected_total.labels(field=field).inc(count)
+        for reason, count in self._dropped_since(dropped_before).items():
+            otlp_metrics.metrics_exposure_dropped_total.labels(reason=reason).inc(count)
+        if bad:
+            problems.append(
+                f"{len(bad)} data point(s) rejected: "
+                + ", ".join(f"{field}x{count}" for field, count in _count_by_field(bad).items())
+            )
+        return {
+            "received": len(points),
+            "inserted": inserted,
+            "deduped": deduped,
+            "rejected": len(bad),
+            "exported": exported,
+            "error_message": "; ".join(problems),
+        }
+
+    @property
+    def metrics_substrate_ready(self) -> bool:
+        """Whether the metrics substrate can be written to.
+
+        ``False`` only when the substrate has been positively determined to
+        be unusable; ``True`` before the first probe, because "not known
+        yet" is not "known broken". The health feed reads this: a metrics
+        path that cannot persist is DEGRADED, not healthy.
+        """
+        return self._metrics_substrate_ready is not False
+
+    async def _refresh_substrate_readiness(self, force: bool = False) -> tuple[bool, str]:
+        """Whether the metrics substrate can be written to, and why not.
+
+        The probe checks BOTH halves of the dependency:
+
+        * the ``insert_metrics_substrate`` primitive, which exists only on a
+          oneiric that carries Phase 1, and
+        * the ``metrics_substrate`` table, which only exists once that
+          oneiric's DDL has run.
+
+        Either one missing means nothing can be persisted, and the two have
+        different causes: a missing primitive is a dependency gap (the
+        installed oneiric predates the release), a missing table is a
+        substrate that was never initialised.
+
+        The result is cached — the probe costs a query — and refreshed
+        whenever a write fails, so a table dropped after boot is noticed.
+        The gauge is published on the shared registry, so the state is on
+        ``/metrics`` whether or not anybody is reading the logs.
+        """
+        if not force and self._metrics_substrate_ready is not None:
+            return (self._metrics_substrate_ready, self._metrics_substrate_detail)
+
+        detail = ""
+        ready = True
+        if not hasattr(self._hot_store, "insert_metrics_substrate"):
+            ready = False
+            detail = (
+                "the hot store has no insert_metrics_substrate primitive "
+                "(the installed oneiric predates the release that carries it)"
+            )
+        else:
+            table = getattr(self._hot_store, "metrics_substrate_table", "metrics_substrate")
+            try:
+                exists = await self._hot_store.table_exists(table)
+            except Exception as exc:
+                exists = False
+                detail = f"the substrate table probe raised: {exc}"
+            if not exists and not detail:
+                ready = False
+                detail = f"the {table} table does not exist"
+
+        self._metrics_substrate_ready = ready
+        self._metrics_substrate_detail = detail
+        otlp_metrics.metrics_substrate_ready.set(1 if ready else 0)
+        if not ready:
+            logger.error(
+                "akosha.otlp_metrics.substrate_unavailable detail=%s "
+                "(metric exports are accepted and exposed on /metrics, but "
+                "NOT persisted)",
+                detail,
+            )
+        return (ready, detail)
+
+    def pre_validate_metric(self, point: dict[str, Any]) -> RowValidationError | None:
+        """Return a :class:`RowValidationError` if the point is unacceptable.
+
+        The metric counterpart of :meth:`pre_validate`, with the metric
+        path's own rules:
+
+        * ``METRICS_REQUIRED_FIELDS`` must be neither NULL nor empty.
+        * ``data_type`` must be one of the five the substrate's CHECK
+          constraint allows.
+        * ``ts`` must be a positive epoch-nanosecond timestamp. A point
+          with no timestamp cannot be placed on a time series, and the
+          substrate's identity includes it — a point at ``ts=0`` would
+          collide with every other point at ``ts=0``.
+        * ``attributes`` must serialize to JSON.
+        * The numeric payload must be finite. A NaN in a DOUBLE column
+          poisons every aggregate DuckDB computes over the column, and
+          Prometheus cannot render one either.
+        """
+        # Checked FIRST, for the same reason the span path checks it
+        # first: a point that could not be rendered is reported as
+        # unrenderable, not as a missing required field.
+        render_error = point.get("_render_error")
+        if render_error:
+            return RowValidationError(field="metric", reason="unrenderable", value=render_error)
+        for name in sorted(self.METRICS_REQUIRED_FIELDS):
+            value = point.get(name)
+            if value is None or value == "":
+                return RowValidationError(field=name, reason="not_null")
+        timestamp = point.get("ts")
+        if not isinstance(timestamp, int) or timestamp <= 0:
+            return RowValidationError(field="ts", reason="not_positive", value=timestamp)
+        data_type = point.get("data_type")
+        if data_type not in self.METRICS_DATA_TYPES:
+            return RowValidationError(field="data_type", reason="enum", value=data_type)
+        attributes = point.get("attributes")
+        if attributes is not None:
+            try:
+                json.dumps(attributes)
+            except (TypeError, ValueError) as exc:
+                return RowValidationError(field="attributes", reason="json", value=str(exc))
+        for field in ("value_sum", "value_min", "value_max"):
+            value = point.get(field)
+            if value is None:
+                continue
+            try:
+                finite = math.isfinite(float(value))
+            except TypeError, ValueError:
+                finite = False
+            if not finite:
+                return RowValidationError(field=field, reason="not_finite", value=value)
+        return None
+
+    async def _metrics_dlq_insert(
+        self,
+        bad: list[tuple[RowValidationError, dict[str, Any]]],
+    ) -> None:
+        """Write rejected metric points to ``_dlq_rows``.
+
+        Same discipline as the span DLQ: the write is wrapped, so a DLQ
+        outage cannot abort a batch that carried good points. The DLQ
+        table has no metric-specific columns, so the point's identity
+        travels in ``row_json`` — the substrate's projection ignores the
+        row's extra keys, and the DLQ row is the evidence.
+        """
+        rows = [
+            {
+                "reason": error.reason,
+                "field": error.field,
+                "row_json": json.dumps(point, default=str),
+                "trace_id": None,
+                "span_id": None,
+            }
+            for error, point in bad
+        ]
+        try:
+            await self._hot_store.insert_dlq_rows(rows)
+            otlp_metrics.dlq_inserts_total.inc(len(rows))
+        except Exception as exc:
+            self.dlq_insert_failed_total += 1
+            self.last_error_at = time.time()
+            otlp_metrics.dlq_insert_failed_total.inc()
+            logger.error(
+                "akosha.otlp_metrics.dlq_write_failed rows=%s reason=%s exc=%s",
+                len(rows),
+                bad[0][0].reason if bad else "unknown",
+                exc,
+            )
+
+    def _dropped_since(self, before: dict[str, int]) -> dict[str, int]:
+        """The bridge's exposure drops since ``before`` was snapshotted."""
+        current = self._prometheus_bridge.dropped_by_reason
+        return {
+            reason: count - before.get(reason, 0)
+            for reason, count in current.items()
+            if count - before.get(reason, 0) > 0
+        }
 
     # ── lifespan tasks ──────────────────────────────────────────────────
 
@@ -641,6 +1067,43 @@ class OTLPReceiver:
             elif dlq_deleted > 0:
                 otlp_metrics.dlq_rows_deleted_total.inc(dlq_deleted)
 
+            # ``metrics_substrate`` ages out on the SAME horizon as
+            # ``spans_substrate``: it is a sibling table in the same
+            # substrate file, and a table that is not swept is a table
+            # that grows without bound (~575 bytes a row, so ~39 MB a day
+            # at 50 instruments on a 60s interval). The horizon is the
+            # SAME ``retention_days`` setting, not a second constant.
+            #
+            # The column is ``inserted_at``, NOT an epoch-nanos column.
+            # Phase 1 gave the table ``inserted_at TIMESTAMP NOT NULL
+            # DEFAULT CURRENT_TIMESTAMP`` and no ``received_at_unix_nano``,
+            # and the schema lives in oneiric — the receiver cannot add a
+            # column to a table it does not own. The cardinal rule (§15)
+            # still holds: ``inserted_at`` is stamped by the DATABASE's
+            # clock, not by the producer's, so a producer with a skewed
+            # clock still cannot drive deletion of rows that just
+            # arrived. That is the same reasoning the DLQ sweep's
+            # ``rejected_at`` uses.
+            #
+            # The sweep is skipped when the metrics substrate is not
+            # usable: there is no table to sweep, and a delete against a
+            # missing table would report a sweep failure every cycle.
+            metrics_deleted = 0
+            metrics_table = getattr(self._hot_store, "metrics_substrate_table", None)
+            if metrics_table is not None:
+                ready, _detail = await self._refresh_substrate_readiness()
+                if ready:
+                    metrics_deleted = self._sweep_table(
+                        metrics_table,
+                        "WHERE inserted_at < CURRENT_TIMESTAMP - (? * INTERVAL '1 day')",
+                        [cfg.retention_days],
+                        label="metrics_substrate",
+                    )
+                    if metrics_deleted is None:
+                        clean = False
+                    elif metrics_deleted > 0:
+                        otlp_metrics.metrics_rows_deleted_total.inc(metrics_deleted)
+
             # 0 means "the last cycle did not finish cleanly". first_started is
             # never reset — that pair is how an operator tells "sweep failed"
             # from "sweep has never run" (runbook §11.1.6).
@@ -648,10 +1111,11 @@ class OTLPReceiver:
             otlp_metrics.sweep_duration_seconds.observe((time.time_ns() - sweep_started) / 1e9)
             logger.info(
                 "akosha.retention_sweep_complete cutoff_unix_nano=%s spans_deleted=%s "
-                "dlq_deleted=%s clean=%s",
+                "dlq_deleted=%s metrics_deleted=%s clean=%s",
                 cutoff_ns,
                 deleted,
                 dlq_deleted,
+                metrics_deleted,
                 clean,
             )
 
@@ -718,6 +1182,54 @@ class _TraceServiceServicer:
         )
 
 
+class _MetricsServiceServicer:
+    """gRPC servicer bridging MetricsService.Export to ``_handle_metrics_batch``.
+
+    The twin of :class:`_TraceServiceServicer`, and deliberately a separate
+    class rather than a mode flag on the trace one: the trace servicer's
+    behaviour must not change because a second service was added to the
+    same port, and a flag is exactly the kind of coupling that makes the
+    two paths' futures inseparable.
+
+    Module-level for the same reason the trace servicer is: gRPC's
+    ``add_MetricsServiceServicer_to_server`` expects a type and
+    instantiates it against a generated base class that must be imported
+    from the proto stubs. Subclassing that inside ``start()`` would mean
+    building a class per bind.
+    """
+
+    def __init__(self, receiver: OTLPReceiver) -> None:
+        self._receiver = receiver
+
+    async def Export(self, request: Any, _context: Any) -> Any:
+        """Return an ``ExportMetricsServiceResponse``.
+
+        The counts ride on ``partial_success.rejected_data_points`` rather
+        than the response body because that is the only place the OTLP
+        protobuf carries them, and a producer reading them is the signal
+        that a validation regression is visible from outside the process.
+
+        ``partial_success`` is set ONLY when there is something to report.
+        The OTLP spec says a fully successful export MUST NOT carry it: a
+        producer that learns to expect the field learns to ignore it, and
+        an always-present empty ``partial_success`` is exactly the shape a
+        "the receiver is throwing your data away" message would have if it
+        were always empty. The OTel Python SDK tolerates its absence.
+        """
+        from opentelemetry.proto.collector.metrics.v1 import (  # type: ignore[import-not-found]
+            metrics_service_pb2,
+        )
+
+        result = await self._receiver._handle_metrics_batch(request)
+        response = metrics_service_pb2.ExportMetricsServiceResponse()
+        rejected = int(result["rejected"])
+        message = str(result.get("error_message") or "")
+        if rejected or message:
+            response.partial_success.rejected_data_points = rejected
+            response.partial_success.error_message = message
+        return response
+
+
 # ── helpers ──────────────────────────────────────────────────────────────
 
 
@@ -735,6 +1247,481 @@ def _count_by_field(
         key = error.field or "unknown"
         counts[key] = counts.get(key, 0) + 1
     return counts
+
+
+# ── metric helpers (plan Phase 2) ─────────────────────────────────────────
+
+#: ``AggregationTemporality`` enum values. UNSPECIFIED is treated as
+#: cumulative: the OTel SDKs report cumulative for cumulative instruments,
+#: and reading an unspecified temporality as delta would double-count
+#: every export.
+_AGGREGATION_TEMPORALITY_DELTA = 1
+
+
+@dataclass(frozen=True)
+class _MetricContext:
+    """The identity every data point in one scope inherits.
+
+    OTLP puts the service identity on the RESOURCE and the scope identity
+    on the SCOPE, so both are read once per scope and carried into every
+    point's row. Reading ``service.name`` off a data point would find
+    nothing — a NumberDataPoint has no resource field at all — and every
+    metric in the system would be attributed to a nameless service, which
+    is the same mistake the span path's mapping was written to avoid.
+    """
+
+    service_name: str
+    service_namespace: str
+    scope_name: str
+    scope_version: str
+    resource: dict[str, Any]
+
+
+def _extract_metric_points(request: Any) -> list[dict[str, Any]]:
+    """Yield substrate rows from an ``ExportMetricsServiceRequest``.
+
+    Walks ``resource_metrics → scope_metrics → metrics → data points``.
+
+    A data point that cannot be rendered becomes a stand-in row carrying
+    ``_render_error``, exactly as the span path does for an unrenderable
+    span: one bad point must not fail the whole Export RPC, because gRPC
+    would answer UNKNOWN and the producer would drop the ENTIRE batch.
+    """
+    points: list[dict[str, Any]] = []
+    for resource_metrics in getattr(request, "resource_metrics", None) or []:
+        resource_attrs = {
+            _attr_key(a): _attr_value(a)
+            for a in getattr(resource_metrics.resource, "attributes", None) or []
+        }
+        service_name = str(resource_attrs.get("service.name") or "")
+        service_namespace = str(resource_attrs.get("service.namespace") or "")
+        for scope_metrics in getattr(resource_metrics, "scope_metrics", None) or []:
+            scope = getattr(scope_metrics, "scope", None)
+            scope_name = str(getattr(scope, "name", "") or "")
+            scope_version = str(getattr(scope, "version", "") or "")
+            scope_attrs = {
+                _attr_key(a): _attr_value(a) for a in getattr(scope, "attributes", None) or []
+            }
+            context = _MetricContext(
+                service_name=service_name,
+                service_namespace=service_namespace,
+                scope_name=scope_name,
+                scope_version=scope_version,
+                resource=_resource_payload(resource_attrs, scope_version, scope_attrs),
+            )
+            for metric in getattr(scope_metrics, "metrics", None) or []:
+                points.extend(_metric_point_rows(metric, context))
+    return points
+
+
+def _resource_payload(
+    resource_attrs: dict[str, Any],
+    scope_version: str,
+    scope_attrs: dict[str, Any],
+) -> dict[str, Any]:
+    """The resource JSON a metric row carries.
+
+    The substrate stores the resource but keeps it OUT of the point's
+    identity — the identity is the series plus the instant — which makes
+    the column the right home for the scope's metadata: the schema has no
+    scope column of its own, so a scope's version and attributes would
+    otherwise be dropped on the floor. They land under ``otel.scope``,
+    beside the resource attributes they were published with.
+    """
+    payload = dict(resource_attrs)
+    scope_payload: dict[str, Any] = {}
+    if scope_version:
+        scope_payload["version"] = scope_version
+    if scope_attrs:
+        scope_payload["attributes"] = scope_attrs
+    if scope_payload:
+        payload["otel.scope"] = scope_payload
+    return payload
+
+
+def _metric_point_rows(metric: Any, context: _MetricContext) -> list[dict[str, Any]]:
+    """Map one OTLP Metric onto substrate rows.
+
+    OTLP has no explicit type tag: the type is whichever of sum / gauge /
+    histogram / exponential_histogram / summary is SET on the Metric, and
+    a Metric with none of them set carries no data point at all.
+    """
+    metric_name = str(getattr(metric, "name", "") or "")
+    description = str(getattr(metric, "description", "") or "")
+    unit = str(getattr(metric, "unit", "") or "")
+    if metric.HasField("sum"):
+        return _number_rows(
+            metric.sum.data_points,
+            context,
+            metric_name=metric_name,
+            description=description,
+            unit=unit,
+            data_type="sum",
+            is_monotonic=bool(metric.sum.is_monotonic),
+            temporality=_temporality_name(metric.sum.aggregation_temporality),
+        )
+    if metric.HasField("gauge"):
+        return _number_rows(
+            metric.gauge.data_points,
+            context,
+            metric_name=metric_name,
+            description=description,
+            unit=unit,
+            data_type="gauge",
+            is_monotonic=None,
+            temporality="cumulative",
+        )
+    if metric.HasField("histogram"):
+        return _histogram_rows(
+            metric.histogram.data_points,
+            context,
+            metric_name=metric_name,
+            description=description,
+            unit=unit,
+            temporality=_temporality_name(metric.histogram.aggregation_temporality),
+        )
+    if metric.HasField("exponential_histogram"):
+        return _exponential_histogram_rows(
+            metric.exponential_histogram.data_points,
+            context,
+            metric_name=metric_name,
+            description=description,
+            unit=unit,
+            temporality=_temporality_name(metric.exponential_histogram.aggregation_temporality),
+        )
+    if metric.HasField("summary"):
+        return _summary_rows(
+            metric.summary.data_points,
+            context,
+            metric_name=metric_name,
+            description=description,
+            unit=unit,
+        )
+    return []
+
+
+def _number_rows(
+    data_points: Any,
+    context: _MetricContext,
+    *,
+    metric_name: str,
+    description: str,
+    unit: str,
+    data_type: str,
+    is_monotonic: bool | None,
+    temporality: str,
+) -> list[dict[str, Any]]:
+    """Rows for a sum or a gauge.
+
+    A sum/gauge point is ONE sample, so ``value_sum`` is the sample,
+    ``value_count`` is 1, and min and max are the sample itself.
+    """
+    rows: list[dict[str, Any]] = []
+    for data_point in data_points or []:
+        try:
+            value = _number_value(data_point)
+            row = _base_metric_row(
+                context,
+                metric_name=metric_name,
+                data_type=data_type,
+                description=description,
+                unit=unit,
+                attributes=_point_attributes(data_point),
+                timestamp=_point_timestamp(data_point),
+                temporality=temporality,
+            )
+        except Exception as exc:
+            rows.append(_unrenderable_metric_row(metric_name, context, exc))
+            continue
+        row["value_sum"] = value
+        row["value_count"] = 1
+        row["value_min"] = value
+        row["value_max"] = value
+        # ``is_monotonic`` is meaningful only for a sum and stays NULL for
+        # every other type: "not applicable" and "false" are different
+        # facts, and a gauge is not a non-monotonic sum.
+        row["is_monotonic"] = is_monotonic if data_type == "sum" else None
+        rows.append(row)
+    return rows
+
+
+def _histogram_rows(
+    data_points: Any,
+    context: _MetricContext,
+    *,
+    metric_name: str,
+    description: str,
+    unit: str,
+    temporality: str,
+) -> list[dict[str, Any]]:
+    """Rows for an explicit-bucket histogram.
+
+    The bucket boundaries travel in ``buckets_json``: the summary
+    statistics do not determine them, so a stored histogram would not be
+    reconstructible without them.
+    """
+    rows: list[dict[str, Any]] = []
+    for data_point in data_points or []:
+        try:
+            row = _base_metric_row(
+                context,
+                metric_name=metric_name,
+                data_type="histogram",
+                description=description,
+                unit=unit,
+                attributes=_point_attributes(data_point),
+                timestamp=_point_timestamp(data_point),
+                temporality=temporality,
+            )
+            row["value_sum"] = float(data_point.sum)
+            row["value_count"] = int(data_point.count)
+            row["value_min"] = _optional_float(data_point, "min")
+            row["value_max"] = _optional_float(data_point, "max")
+            row["buckets_json"] = {
+                "explicit_bounds": [float(bound) for bound in data_point.explicit_bounds],
+                "bucket_counts": [int(count) for count in data_point.bucket_counts],
+            }
+        except Exception as exc:
+            rows.append(_unrenderable_metric_row(metric_name, context, exc))
+            continue
+        rows.append(row)
+    return rows
+
+
+def _exponential_histogram_rows(
+    data_points: Any,
+    context: _MetricContext,
+    *,
+    metric_name: str,
+    description: str,
+    unit: str,
+    temporality: str,
+) -> list[dict[str, Any]]:
+    """Rows for an exponential histogram.
+
+    The scale/offset layout is stored verbatim rather than flattened into
+    explicit bounds: the exponential buckets are the producer's own
+    encoding, and re-expressing them as explicit bounds would lose the
+    scale that makes them compact.
+    """
+    rows: list[dict[str, Any]] = []
+    for data_point in data_points or []:
+        try:
+            row = _base_metric_row(
+                context,
+                metric_name=metric_name,
+                data_type="exponential_histogram",
+                description=description,
+                unit=unit,
+                attributes=_point_attributes(data_point),
+                timestamp=_point_timestamp(data_point),
+                temporality=temporality,
+            )
+            row["value_sum"] = float(data_point.sum)
+            row["value_count"] = int(data_point.count)
+            row["value_min"] = _optional_float(data_point, "min")
+            row["value_max"] = _optional_float(data_point, "max")
+            row["buckets_json"] = {
+                "scale": int(data_point.scale),
+                "zero_count": int(data_point.zero_count),
+                "zero_threshold": float(data_point.zero_threshold),
+                "positive": {
+                    "offset": int(data_point.positive.offset),
+                    "bucket_counts": [int(count) for count in data_point.positive.bucket_counts],
+                },
+                "negative": {
+                    "offset": int(data_point.negative.offset),
+                    "bucket_counts": [int(count) for count in data_point.negative.bucket_counts],
+                },
+            }
+        except Exception as exc:
+            rows.append(_unrenderable_metric_row(metric_name, context, exc))
+            continue
+        rows.append(row)
+    return rows
+
+
+def _summary_rows(
+    data_points: Any,
+    context: _MetricContext,
+    *,
+    metric_name: str,
+    description: str,
+    unit: str,
+) -> list[dict[str, Any]]:
+    """Rows for a summary.
+
+    A summary's quantile values have no column: the substrate's
+    ``buckets_json`` is reserved for the two histogram types, and inventing
+    a use for it would make the column mean two different things. The
+    count and the sum are stored; the quantiles are exposed in Prometheus
+    only as far as ``prometheus_client``'s Summary supports them, which
+    is not at all.
+    """
+    rows: list[dict[str, Any]] = []
+    for data_point in data_points or []:
+        try:
+            row = _base_metric_row(
+                context,
+                metric_name=metric_name,
+                data_type="summary",
+                description=description,
+                unit=unit,
+                attributes=_point_attributes(data_point),
+                timestamp=_point_timestamp(data_point),
+                temporality="cumulative",
+            )
+            row["value_sum"] = float(data_point.sum)
+            row["value_count"] = int(data_point.count)
+        except Exception as exc:
+            rows.append(_unrenderable_metric_row(metric_name, context, exc))
+            continue
+        rows.append(row)
+    return rows
+
+
+def _base_metric_row(
+    context: _MetricContext,
+    *,
+    metric_name: str,
+    data_type: str,
+    description: str,
+    unit: str,
+    attributes: dict[str, Any],
+    timestamp: int,
+    temporality: str,
+) -> dict[str, Any]:
+    """The substrate row shared by every metric data point.
+
+    The dict carries two keys beyond the substrate's column list —
+    ``temporality`` and ``scope_version`` — which the substrate's
+    projection ignores (it reads the column list, not the row's keys) and
+    the Prometheus bridge needs. The DLQ's ``row_json`` keeps them, so a
+    quarantined point is still diagnosable.
+
+    ``attributes`` and ``resource`` are passed as DICTS, never as
+    pre-serialized JSON. The substrate canonicalizes them itself (sorted
+    keys, compact separators) and DuckDB compares a JSON column inside a
+    UNIQUE constraint **as text**: a pre-serialized string in the
+    producer's own key order would make the same point look like two, and
+    the same metric would be stored twice.
+    """
+    return {
+        "ts": timestamp,
+        "service_name": context.service_name,
+        "service_namespace": context.service_namespace,
+        "scope_name": context.scope_name,
+        "metric_name": metric_name,
+        "data_type": data_type,
+        "unit": unit or None,
+        "description": description or None,
+        "value_sum": None,
+        "value_count": None,
+        "value_min": None,
+        "value_max": None,
+        # OTLP does not carry a sum of squares, and one cannot be derived
+        # from the bucket boundaries without guessing where inside each
+        # bucket the observations fell. NULL says "not known"; a fabricated
+        # number would poison every variance computed over the column.
+        "value_sum_of_squares": None,
+        "is_monotonic": None,
+        "buckets_json": None,
+        "attributes": attributes,
+        "resource": context.resource,
+        "temporality": temporality,
+        "scope_version": context.scope_version,
+    }
+
+
+def _unrenderable_metric_row(
+    metric_name: str,
+    context: _MetricContext,
+    exc: Exception,
+) -> dict[str, Any]:
+    """A stand-in row for a metric point that could not be rendered.
+
+    Carries the point's identity so the DLQ row can be correlated with the
+    producer's logs, and ``_render_error`` so validation reports the real
+    reason rather than a misleading ``not_null`` on a field the point may
+    well have had.
+    """
+    row = _base_metric_row(
+        context,
+        metric_name=metric_name,
+        data_type="unknown",
+        description="",
+        unit="",
+        attributes={},
+        timestamp=0,
+        temporality="cumulative",
+    )
+    row["_render_error"] = f"{type(exc).__name__}: {exc}"
+    return row
+
+
+def _number_value(data_point: Any) -> float:
+    """The sample a NumberDataPoint carries.
+
+    ``as_double`` and ``as_int`` are a oneof: exactly one is set. proto3
+    gives an unset oneof member its default (0.0 / 0), so reading a
+    member directly would turn "unset" into "a real zero".
+
+    An unset value RAISES rather than falling back to a default. Every
+    other render failure in this path becomes a stand-in row carrying
+    ``_render_error``, which validation quarantines and the DLQ records;
+    a fabricated zero would be indistinguishable from a real measurement
+    of 0.0 — the one value a producer is most likely to have meant
+    something else by.
+    """
+    which = data_point.WhichOneof("value")
+    if which == "as_int":
+        return float(data_point.as_int)
+    if which == "as_double":
+        return float(data_point.as_double)
+    raise ValueError("NumberDataPoint carries neither as_int nor as_double")
+
+
+def _point_timestamp(data_point: Any) -> int:
+    """The point's timestamp, in epoch NANOSECONDS.
+
+    ``time_unix_nano`` is the instant the sample describes;
+    ``start_time_unix_nano`` is the start of the aggregation interval and
+    is only a fallback. NANOSECONDS, not milliseconds: the sibling
+    ``spans_substrate`` table stores ``start_time_unix_nano`` in the same
+    DuckDB file, and two time units in one substrate is a silent trap —
+    every read path that compares the two would be off by a factor of a
+    million.
+    """
+    stamp = int(getattr(data_point, "time_unix_nano", 0) or 0)
+    if stamp:
+        return stamp
+    return int(getattr(data_point, "start_time_unix_nano", 0) or 0)
+
+
+def _point_attributes(data_point: Any) -> dict[str, Any]:
+    """The data point's attributes, unwrapped to plain Python."""
+    return {
+        _attr_key(attribute): _attr_value(attribute)
+        for attribute in getattr(data_point, "attributes", None) or []
+    }
+
+
+def _optional_float(data_point: Any, field: str) -> float | None:
+    """An optional proto3 double, or None when the producer did not set it."""
+    if not data_point.HasField(field):
+        return None
+    return float(getattr(data_point, field))
+
+
+def _temporality_name(temporality: Any) -> str:
+    """``cumulative`` or ``delta`` for an aggregation temporality enum."""
+    try:
+        value = int(temporality)
+    except TypeError, ValueError:
+        return "cumulative"
+    if value == _AGGREGATION_TEMPORALITY_DELTA:
+        return "delta"
+    return "cumulative"
 
 
 def _extract_spans(batch: Any) -> list[dict[str, Any]]:
