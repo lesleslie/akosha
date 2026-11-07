@@ -354,7 +354,7 @@ flowchart TD
     G --> H[Vector Indexing]
     H --> I[Hot Store Insert]
     I --> J[Aging: Hot→Warm<br/>after 7 days]
-    J --> K[Aging: Warm→Cold<br/>after cold.age_threshold_days<br/>(default 90)]
+    J --> K["Aging: Warm→Cold<br/>after cold.age_threshold_days<br/>(default 90)"]
 ```
 
 ### Query Flow
