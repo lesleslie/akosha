@@ -42,6 +42,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - tests: Pin the cold-export lifespan wiring — the configured age threshold, the warm store the exporter reads, and an export loop that actually moves rows
 
+### Build
+
+- deps: Add a 7-day dependency cooldown with CVE and tooling carve-outs
+
 ## [0.26.1] - 2026-11-01
 
 ### Changed
