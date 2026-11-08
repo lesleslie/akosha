@@ -74,6 +74,30 @@ text = "BSD-3-CLAUSE"
 # 1.5.6, and -1 is a number, so nothing raises.
 prerelease = "allow"
 
+# The repo-wide `prerelease = "allow"` above exists for duckdb, not for
+# every package: it lets akosha track the same 2.1.0.dev* build oneiric
+# resolves, so the shared substrate behaves identically in both repos.
+#
+# It also lets uv adopt a redis PRE-RELEASE, and that is how redis
+# 8.2.0b1 reached this repo and turned seven tests in
+# tests/unit/ingestion/test_bodai_event_subscriber.py red. redis 8.2.0b1
+# changed `deprecated_args` to close over the builtin
+# `dict_keys.isdisjoint` method descriptor, and fakeredis discovers
+# deprecated arguments by walking that closure -- dereferencing
+# `method.__closure__` on every callable it finds, which raises
+# AttributeError on a method descriptor. fakeredis 2.40.0 is the newest
+# release, so the guard has to land upstream.
+#
+# The 7-day cooldown below already excludes a beta published in the last
+# week, but it is a ROLLING window: once the beta is more than 7 days old
+# and no stable release has superseded it, a routine `uv lock` would
+# adopt it again. This targeted policy is the only thing that says "redis
+# takes no pre-releases, ever" -- duckdb keeps the repo-wide allowance.
+#
+# Drop this override once fakeredis ships the fix:
+# https://github.com/cunla/fakeredis-py/issues
+prerelease-package = { redis = "disallow" }
+
 # 7-day dependency cooldown. A package published minutes ago has had no
 # time to be flagged, and a rolling window keeps a fresh compromise from
 # being adopted by a routine `uv lock`. This is the fleet standard --

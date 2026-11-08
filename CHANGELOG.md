@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Build
 
 - deps: Add a 7-day dependency cooldown with CVE and tooling carve-outs
+- deps: Hold redis on a stable release so fakeredis can construct its client
 
 ## [0.26.1] - 2026-11-01
 
