@@ -29,34 +29,42 @@ def register_otel_query_tools(
 
     @app.tool(name="query_local_traces")
     async def query_local_traces(
+        task_class: str,
         system_id: str | None = None,
         start_time: str | None = None,
         end_time: str | None = None,
-        task_class: str | None = None,
         limit: int = 100,
         dry_run: bool = False,
     ) -> list[dict[str, Any]]:
-        """Query OTel traces by system_id and optional attribute filters.
+        """Query OTel traces for a task class from the fleet trace store.
 
-        Fetches traces for a given system_id within an optional time range,
-        and optionally filtered by task.class attribute. Uses HotStore
-        search_similar with dummy embedding + threshold=0 (attribute-based
-        filtering, HNSW not used).
+        Fetches traces for a given task_class within an optional absolute
+        ISO8601 time range, and optionally filtered by source system. Do NOT
+        use to fetch one trace by id — use `get_otel_trace` on Mahavishnu for
+        that. Returns a list of trace records; an empty list means no trace
+        matched the filter, or the store was unreachable, so an empty result
+        does not distinguish "no matches" from "query failed". Pass
+        ``system_id`` to restrict the search to one source system, or omit it
+        to query across all systems. Set `dry_run` to get the raw stored
+        metadata instead of the bulky `content` blob; that mode clamps
+        `limit` to 20 and keeps your `system_id` and `task_class` filters in
+        force. Side effect: none; reads the trace store only.
 
         Args:
-            system_id: Source system identifier (e.g., 'mahavishnu', 'akosha').
-                Pass ``None`` (or omit) to query across ALL systems — useful
-                for diagnostic probes when the stored system_id is unknown
-                or doesn't match the caller's expectation.
+            task_class: Task classification tag to filter on (e.g. "code_generation")
+            system_id: Optional source system identifier (e.g., 'mahavishnu').
+                Pass ``None`` (or omit, or pass "" or "*") to query across ALL
+                systems — useful for diagnostic probes when the stored
+                system_id is unknown or doesn't match the caller's expectation.
             start_time: ISO8601 start time (optional)
             end_time: ISO8601 end time (optional)
-            task_class: Task classification tag to filter on (optional)
             limit: Maximum number of traces to return (default 100)
-            dry_run: When True, bypasses BOTH the system_id and task_class
-                SQL filters and returns raw metadata so operators can
-                inspect the actual JSON shape stored in the conversations
-                table. Diagnostic only — strips the bulky ``content`` blob
-                and clamps ``limit`` to 20 so a wide probe stays readable.
+            dry_run: When True, returns the raw stored metadata instead of
+                the bulky ``content`` blob so operators can inspect the
+                actual JSON shape held in the conversations table. The
+                ``system_id`` and ``task_class`` filters stay in force —
+                this flag changes the output shape, not the scope. Clamps
+                ``limit`` to 20 so a wide probe stays readable.
 
         Returns:
             List of trace records matching the filter criteria. When
@@ -64,15 +72,21 @@ def register_otel_query_tools(
             (with ``attributes.task_class`` etc.) and omit the bulky
             ``content`` blob so the operator can read the structure.
         """
+        # Implements: REQ-MCPTD-003
+        if not task_class or not isinstance(task_class, str):
+            logger.error("query_local_traces: task_class must be a non-empty string")
+            return []
+
         try:
-            # When dry_run is set, force system_id=None AND task_class=None
-            # so the no-filter SQL path runs (where_clause = "1=1") and we
-            # can see every row's metadata. Also clamp the limit so a wide
-            # probe doesn't drag back thousands of records.
-            effective_system_id: str | None = (
-                None if (dry_run or system_id in (None, "", "*")) else system_id
-            )
-            effective_task_class: str | None = None if dry_run else task_class
+            # ``dry_run`` is a *shape* switch, not a scope switch: it returns
+            # the raw stored metadata instead of the bulky content blob and
+            # clamps the limit so a wide probe stays readable. It deliberately
+            # does NOT disable the caller's filters -- a caller-supplied flag
+            # that switches off scoping is an escape hatch on a public tool.
+            # To inspect rows outside a filter, omit ``system_id`` (or pass
+            # "*"), which is the documented all-systems query.
+            effective_system_id: str | None = None if system_id in (None, "", "*") else system_id
+            effective_task_class: str | None = task_class
             effective_limit = min(limit, 20) if dry_run else limit
 
             # Use query_traces for SQL-native attribute filtering (Phase 1.2)

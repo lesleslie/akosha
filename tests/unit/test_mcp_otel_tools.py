@@ -99,7 +99,7 @@ class TestQueryLocalTracesSuccess:
     ) -> None:
         """An empty HotStore result must produce an empty list (not raise)."""
         hot_store.query_traces = AsyncMock(return_value=[])
-        result = await tool(system_id="akosha")
+        result = await tool(task_class="code_generation", system_id="akosha")
         assert result == []
 
     @pytest.mark.asyncio
@@ -118,13 +118,12 @@ class TestQueryLocalTracesSuccess:
             "extra_field": "ignored",
         }
         hot_store.query_traces = AsyncMock(return_value=[input_row])
-        result = await tool(system_id="akosha")
+        result = await tool(task_class="code_generation", system_id="akosha")
         assert len(result) == 1
         row = result[0]
-        # ``system_id`` is part of the projection because the ``dry_run`` path
-        # skips the system_id SQL filter (see otel_tools.py), so a row can come
-        # back belonging to a system the caller never named. Without the field
-        # an unscoped row is unattributable.
+        # ``system_id`` is part of the projection so a row stays attributable
+        # to its source system — the caller may have queried every system by
+        # omitting the filter.
         assert row == {
             "system_id": "akosha",
             "conversation_id": "conv-123",
@@ -148,7 +147,7 @@ class TestQueryLocalTracesSuccess:
             "metadata": {},
         }
         hot_store.query_traces = AsyncMock(return_value=[input_row])
-        result = await tool(system_id="akosha")
+        result = await tool(task_class="code_generation", system_id="akosha")
         assert result[0]["timestamp"] == ""
 
     @pytest.mark.asyncio
@@ -163,7 +162,7 @@ class TestQueryLocalTracesSuccess:
             # metadata is absent
         }
         hot_store.query_traces = AsyncMock(return_value=[input_row])
-        result = await tool(system_id="akosha")
+        result = await tool(task_class="code_generation", system_id="akosha")
         assert result[0]["metadata"] == {}
 
     @pytest.mark.asyncio
@@ -191,9 +190,69 @@ class TestQueryLocalTracesSuccess:
     async def test_default_limit_is_100(self, tool: Any, hot_store: AsyncMock) -> None:
         """When the caller omits ``limit``, the tool forwards ``limit=100``."""
         hot_store.query_traces = AsyncMock(return_value=[])
-        await tool(system_id="akosha")
+        await tool(task_class="code_generation", system_id="akosha")
         call_kwargs = hot_store.query_traces.await_args.kwargs
         assert call_kwargs["limit"] == 100
+
+
+class TestQueryLocalTracesDryRun:
+    """``dry_run`` is a shape switch, never a scope switch.
+
+    This tool is unauthenticated, so the caller's filters are the only scope
+    it has. A regression that restores ``dry_run`` disabling them would
+    silently widen every query on a public tool — and would pass every other
+    test in this file, so it needs its own.
+    """
+
+    @pytest.fixture
+    def hot_store(self) -> AsyncMock:
+        return AsyncMock()
+
+    @pytest.fixture
+    def tool(self, hot_store: AsyncMock) -> Any:
+        app = _FakeApp()
+        register_otel_query_tools(app=app, hot_store=hot_store)
+        return app.tools["query_local_traces"]
+
+    @pytest.mark.asyncio
+    async def test_dry_run_keeps_filters_and_clamps_limit(
+        self, tool: Any, hot_store: AsyncMock
+    ) -> None:
+        """``dry_run`` changes the output shape; the filters stay in force."""
+        hot_store.query_traces = AsyncMock(return_value=[])
+        await tool(
+            task_class="code_generation",
+            system_id="akosha",
+            limit=500,
+            dry_run=True,
+        )
+        call_kwargs = hot_store.query_traces.await_args.kwargs
+        assert call_kwargs["system_id"] == "akosha"
+        assert call_kwargs["task_class"] == "code_generation"
+        assert call_kwargs["limit"] == 20
+
+    @pytest.mark.asyncio
+    async def test_dry_run_omits_the_bulky_content_blob(
+        self, tool: Any, hot_store: AsyncMock
+    ) -> None:
+        """``dry_run`` drops ``content`` so a wide probe stays readable."""
+        hot_store.query_traces = AsyncMock(
+            return_value=[
+                {
+                    "system_id": "akosha",
+                    "conversation_id": "conv-1",
+                    "content": "the bulky blob",
+                    "timestamp": "2026-09-06T04:00:00Z",
+                    "metadata": {"trace_id": "abc"},
+                }
+            ]
+        )
+        result = await tool(
+            task_class="code_generation", system_id="akosha", dry_run=True
+        )
+        assert len(result) == 1
+        assert "content" not in result[0]
+        assert result[0]["metadata"] == {"trace_id": "abc"}
 
 
 class TestQueryLocalTracesError:
@@ -212,7 +271,7 @@ class TestQueryLocalTracesError:
     @pytest.mark.asyncio
     async def test_returns_empty_list_on_runtime_error(self, tool_with_failing_store: Any) -> None:
         """The tool must not propagate RuntimeError; it returns ``[]`` instead."""
-        result = await tool_with_failing_store(system_id="akosha")
+        result = await tool_with_failing_store(task_class="code_generation", system_id="akosha")
         assert result == []
 
     @pytest.mark.asyncio
@@ -221,7 +280,7 @@ class TestQueryLocalTracesError:
     ) -> None:
         """On error, the tool logs at exception level so the traceback is captured."""
         with caplog.at_level(logging.ERROR, logger="akosha.mcp.tools.otel_tools"):
-            result = await tool_with_failing_store(system_id="akosha")
+            result = await tool_with_failing_store(task_class="code_generation", system_id="akosha")
         assert result == []
         assert any(rec.levelno == logging.ERROR for rec in caplog.records)
         assert any("Error querying traces" in rec.message for rec in caplog.records)
@@ -235,5 +294,5 @@ class TestQueryLocalTracesError:
         )
         register_otel_query_tools(app=app, hot_store=mock_store)
         tool = app.tools["query_local_traces"]
-        result = await tool(system_id="akosha")
+        result = await tool(task_class="code_generation", system_id="akosha")
         assert result == []

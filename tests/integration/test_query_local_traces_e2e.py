@@ -119,6 +119,7 @@ async def test_query_local_traces_returns_seeded_record(
     # "non-empty results" against a real HotStore.
     tool_fn = registry._tools["query_local_traces"]
     result = await tool_fn(
+        task_class="CODE_GENERATION",
         system_id="akosha",
         limit=10,
     )

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -76,11 +77,19 @@ async def query_local_traces(
         Bodai-specific. See plan §4.4 of
         ``docs/plans/2026-09-14-common-mcp-client-transport-unification.md``.
     """
+    # The wire contract is an absolute ISO8601 window (see the
+    # ``query_local_traces`` tool on every server that exposes it); the
+    # relative window is a client-side convenience, so convert here rather
+    # than widening the tool's parameter set. One ``now()`` for both ends,
+    # so the window is exactly ``time_range_minutes`` wide.
+    window_end = datetime.now(UTC)
+    window_start = window_end - timedelta(minutes=time_range_minutes)
     result = await client.call_tool(
         "query_local_traces",
         {
             "task_class": task_class,
-            "time_range_minutes": time_range_minutes,
+            "start_time": window_start.isoformat(),
+            "end_time": window_end.isoformat(),
         },
     )
     payload = extract_mcp_payload(result)

@@ -961,19 +961,34 @@ def register_pycharm_tools(
     @registry.register(
         ToolMetadata(
             name="pycharm_health",
-            description="Check health status of PyCharm MCP integration",
+            description=(
+                "Report whether the PyCharm MCP integration is reachable. "
+                'Returns a dict with `status` ("success" or "error"), '
+                "`healthy` (bool), and `details` holding "
+                "`pycharm_mcp_available`, `circuit_breaker_open`, "
+                "`failure_count` and `cache_size`. Do NOT use to diagnose a "
+                "specific file — use `get_code_problems` for that; this tool "
+                'reports connection state only. `status` is "error" and '
+                "`message` carries the reason when the probe itself raised; a "
+                "reachable-but-unhealthy integration still reports "
+                '`status` "success" with `healthy` false. Side effect: '
+                "none; probes the connection only."
+            ),
             category=ToolCategory.SYSTEM,
         )
     )
     async def pycharm_health() -> dict[str, Any]:
-        """Check health status of PyCharm MCP integration.
+        """Report whether the PyCharm MCP integration is reachable.
 
         Returns diagnostic information about the PyCharm integration
         including availability, circuit breaker state, and cache status.
+        Do NOT use to diagnose a specific file — use `get_code_problems` for
+        that; this tool reports connection state only.
 
         Returns:
             Dict with health status and diagnostic information
         """
+        # Implements: REQ-MCPTD-001
         try:
             adapter_health = await adapter.health_check()
 
