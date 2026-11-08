@@ -125,7 +125,7 @@ async def test_the_operator_ask_actually_removes_the_expired_rows(
     set_shared_otel_receiver(receiver)
     app = _FakeApp()
     register_otel_retention_tools(app)
-    tool = app.tools["force_retention_sweep"]
+    tool = app.tools["akosha_force_retention_sweep"]
 
     stop_event = asyncio.Event()
     task = asyncio.create_task(receiver.run_retention_sweep(stop_event))
@@ -164,7 +164,7 @@ async def test_the_tool_returns_before_the_sweep_finishes(
     set_shared_otel_receiver(receiver)
     app = _FakeApp()
     register_otel_retention_tools(app)
-    tool = app.tools["force_retention_sweep"]
+    tool = app.tools["akosha_force_retention_sweep"]
 
     try:
         result = await tool()

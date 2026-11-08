@@ -48,7 +48,7 @@ class SignerFeedState:
     Attributes:
         manifest: the :class:`PubkeyManifest` published in ``/health``.
         signer: the :class:`SkillsSigner` for producing Phase 1
-            ``get_skill`` / ``get_agent`` response signatures.
+            ``akosha_get_skill`` / ``akosha_get_agent`` response signatures.
         last_updated_timestamp: unix timestamp of the most recent update
             (initial creation or last :meth:`record_cycle`).
         cycles_total: count of successful feed update cycles since startup.
@@ -126,7 +126,7 @@ __all__ = [
 # Module-level singleton (Phase 1 helper surface).
 #
 # The lifespan populates this after constructing the SignerFeedState, so
-# Phase 1 ``list_skills`` / ``get_skill`` MCP tools can read the signer
+# Phase 1 ``akosha_list_skills`` / ``akosha_get_skill`` MCP tools can read the signer
 # without taking it as a function parameter. The other Bodai servers
 # (mahavishnu / session-buddy / crackerjack) use the same module-level
 # pattern with their own state classes; Phase 2's installer reads

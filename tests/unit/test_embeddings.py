@@ -138,7 +138,7 @@ class TestEmbeddingService:
         """The public methods should lazily initialize an unprepared service.
 
         After the migration to oneiric, the lazy-init path is exercised
-        by ``generate_embedding`` itself — if the chain hasn't been
+        by ``akosha_generate_embedding`` itself — if the chain hasn't been
         awaited, the first encode triggers ``initialize``.
         """
         service = EmbeddingService()

@@ -1,6 +1,6 @@
 """Regression tests for the empty knowledge-graph feed.
 
-Four independent defects kept ``mcp__akosha__get_graph_statistics``
+Four independent defects kept ``mcp__akosha__akosha_get_graph_statistics``
 returning ``{"total_entities": 0, "total_edges": 0, "entity_types": {},
 "edge_types": {}}`` forever:
 
@@ -184,7 +184,7 @@ class TestSharedBuilderInstance:
     @pytest.mark.asyncio
     async def test_the_tool_reads_what_the_writer_wrote(self) -> None:
         """End-to-end: an entity added to the shared builder shows up in
-        ``get_graph_statistics``.
+        ``akosha_get_graph_statistics``.
 
         This is the R1 regression guard. It drives the REAL tool
         registration (``register_graph_tools``), then writes into the
@@ -210,7 +210,7 @@ class TestSharedBuilderInstance:
             source_system="akosha-mcp",
         )
 
-        get_statistics = registry._tools["get_graph_statistics"].coroutine
+        get_statistics = registry._tools["akosha_get_graph_statistics"].coroutine
         stats = await get_statistics()
         assert stats["total_entities"] == 1
         assert stats["entity_types"] == {"system": 1}

@@ -1,6 +1,6 @@
 """Phase 1 server-published skills tools (Phase 1 of bodai-skill-agent-distribution).
 
-Exposes the ``mcp__akosha__list_skills`` and ``mcp__akosha__get_skill``
+Exposes the ``mcp__akosha__akosha_list_skills`` and ``mcp__akosha__akosha_get_skill``
 tools that advertise the server-defined skills to Phase 2's installer and the
 Claude Code picker. Skills live as markdown bodies under
 ``akosha/mcp/skills_catalog/<name>.md``; this module reads them at request time
@@ -8,7 +8,7 @@ and signs the metadata via the lifespan-owned :class:`SkillsSigner`.
 
 Security gates (per plan §11):
 
-- **B-1** — every ``get_skill`` response carries an ed25519 signature over the
+- **B-1** — every ``akosha_get_skill`` response carries an ed25519 signature over the
   canonicalized metadata (the Phase 2 installer verifies this before any write
   to ``~/.claude/skills/``).
 - **B-4** — path-traversal allowlist ``^[a-z0-9][a-z0-9._-]{0,62}$`` is enforced
@@ -22,7 +22,7 @@ Non-goals:
 
 - Body content is loaded at request time (L-6). No session-start pre-load.
 - The 3 starter skills ship as static markdown files in ``skills_catalog/``;
-  Phase 4's federation layer (``mcp__akosha__list_ecosystem_skills``) is what
+  Phase 4's federation layer (``mcp__akosha__akosha_list_ecosystem_skills``) is what
   exposes them alongside the other 4 servers' catalogs.
 """
 
@@ -78,12 +78,12 @@ _STATIC_SKILLS: list[dict[str, Any]] = [
             "`/akosha:search-insights` or selects this Skill from the picker "
             "to run hybrid semantic + lexical search across the indexed "
             "Bodai memory corpus. Do not auto-trigger. Routes through "
-            "`mcp__akosha__search_all_systems` to find semantically "
+            "`mcp__akosha__akosha_search_all_systems` to find semantically "
             "similar reflections across all ingested systems."
         ),
-        "tool_refs": ["mcp__akosha__search_all_systems"],
+        "tool_refs": ["mcp__akosha__akosha_search_all_systems"],
         "allowed_tools": [
-            "mcp__akosha__search_all_systems",
+            "mcp__akosha__akosha_search_all_systems",
             "Read",
             "Bash(echo:*)",
         ],
@@ -98,12 +98,12 @@ _STATIC_SKILLS: list[dict[str, Any]] = [
             "`/akosha:detect-anomalies` or selects this Skill from the picker "
             "to surface statistical outliers in Bodai system metrics. "
             "Do not auto-trigger. Routes through "
-            "`mcp__akosha__detect_anomalies` with a configurable "
+            "`mcp__akosha__akosha_detect_anomalies` with a configurable "
             "standard-deviation threshold."
         ),
-        "tool_refs": ["mcp__akosha__detect_anomalies"],
+        "tool_refs": ["mcp__akosha__akosha_detect_anomalies"],
         "allowed_tools": [
-            "mcp__akosha__detect_anomalies",
+            "mcp__akosha__akosha_detect_anomalies",
             "Read",
         ],
         "dependencies": [],
@@ -117,12 +117,12 @@ _STATIC_SKILLS: list[dict[str, Any]] = [
             "`/akosha:fitness-analyzer` or selects this Skill from the picker "
             "to compute rolling fitness signals (failure_rate, p99 latency) "
             "for the Bodai routing feedback loop. Do not auto-trigger. Routes "
-            "through `mcp__akosha__run_fitness_analysis`."
+            "through `mcp__akosha__akosha_run_fitness_analysis`."
         ),
-        "tool_refs": ["mcp__akosha__run_fitness_analysis"],
+        "tool_refs": ["mcp__akosha__akosha_run_fitness_analysis"],
         "allowed_tools": [
-            "mcp__akosha__run_fitness_analysis",
-            "mcp__akosha__get_fitness_analyzer_status",
+            "mcp__akosha__akosha_run_fitness_analysis",
+            "mcp__akosha__akosha_get_fitness_analyzer_status",
             "Read",
         ],
         "dependencies": [],
@@ -231,7 +231,7 @@ def register_skill_tools(app: FastMCP) -> None:
     error envelope rather than raising.
     """
 
-    @app.tool(name="list_skills")
+    @app.tool(name="akosha_list_skills")
     async def akosha_list_skills() -> list[dict[str, Any]]:
         """Return metadata for skills this server publishes.
 
@@ -255,13 +255,13 @@ def register_skill_tools(app: FastMCP) -> None:
                 metadata = _build_unsigned_metadata(entry["name"])
             except (FileNotFoundError, ValidationError, KeyError) as exc:
                 logger.exception(
-                    "list_skills: failed to build metadata for %s: %s", entry["name"], exc
+                    "akosha_list_skills: failed to build metadata for %s: %s", entry["name"], exc
                 )
                 continue
             out.append(metadata.model_dump(mode="json"))
         return out
 
-    @app.tool(name="get_skill")
+    @app.tool(name="akosha_get_skill")
     async def akosha_get_skill(name: str) -> dict[str, Any]:
         """Return the signed metadata + body for one skill.
 

@@ -314,12 +314,12 @@ class TestAuthenticationMiddleware:
         assert "search" in self.middleware.protected_categories
         assert "analytics" in self.middleware.protected_categories
         assert "graph" in self.middleware.protected_categories
-        assert "search_all_systems" in self.middleware.protected_tools
+        assert "akosha_search_all_systems" in self.middleware.protected_tools
 
     def test_is_tool_protected_by_name(self):
         """Test checking if tool is protected by name."""
-        assert self.middleware.is_tool_protected("search_all_systems") is True
-        assert self.middleware.is_tool_protected("get_system_metrics") is True
+        assert self.middleware.is_tool_protected("akosha_search_all_systems") is True
+        assert self.middleware.is_tool_protected("akosha_get_system_metrics") is True
         assert self.middleware.is_tool_protected("unknown_tool") is False
 
     def test_is_tool_protected_by_category(self):
@@ -335,7 +335,7 @@ class TestAuthenticationMiddleware:
             protected_tools={"custom_tool_1", "custom_tool_2"}
         )
         assert custom_middleware.is_tool_protected("custom_tool_1") is True
-        assert custom_middleware.is_tool_protected("search_all_systems") is False
+        assert custom_middleware.is_tool_protected("akosha_search_all_systems") is False
 
     @pytest.mark.asyncio
     async def test_authenticate_request_allows_unprotected_tool(self):
@@ -361,7 +361,7 @@ class TestAuthenticationMiddleware:
         mock_context.headers = {"Authorization": f"Bearer {test_token}"}
 
         result = await self.middleware.authenticate_request(
-            tool_name="search_all_systems",
+            tool_name="akosha_search_all_systems",
             tool_category="search",
             context=mock_context,
         )
@@ -377,7 +377,7 @@ class TestAuthenticationMiddleware:
 
         with pytest.raises(InvalidTokenError):
             await self.middleware.authenticate_request(
-                tool_name="search_all_systems",
+                tool_name="akosha_search_all_systems",
                 tool_category="search",
                 context=mock_context,
             )
@@ -392,7 +392,7 @@ class TestAuthenticationMiddleware:
 
         with pytest.raises(MissingTokenError):
             await self.middleware.authenticate_request(
-                tool_name="search_all_systems",
+                tool_name="akosha_search_all_systems",
                 tool_category="search",
                 context=mock_context,
             )
@@ -455,14 +455,14 @@ class TestSetupInstructions:
     def test_setup_instructions_lists_protected_tools(self):
         """Test that setup instructions list all protected tools."""
         instructions = setup_authentication_instructions()
-        assert "- `search_all_systems`" in instructions
-        assert "- `get_system_metrics`" in instructions
-        assert "- `analyze_trends`" in instructions
-        assert "- `detect_anomalies`" in instructions
-        assert "- `correlate_systems`" in instructions
-        assert "- `query_knowledge_graph`" in instructions
-        assert "- `find_path`" in instructions
-        assert "- `get_graph_statistics`" in instructions
+        assert "- `akosha_search_all_systems`" in instructions
+        assert "- `akosha_get_system_metrics`" in instructions
+        assert "- `akosha_analyze_trends`" in instructions
+        assert "- `akosha_detect_anomalies`" in instructions
+        assert "- `akosha_correlate_systems`" in instructions
+        assert "- `akosha_query_knowledge_graph`" in instructions
+        assert "- `akosha_find_path`" in instructions
+        assert "- `akosha_get_graph_statistics`" in instructions
 
 
 class TestGetApiToken:

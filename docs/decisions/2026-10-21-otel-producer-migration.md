@@ -18,7 +18,7 @@ than a set of instructions anyone can follow end-to-end today.
 
 Producers today export OpenTelemetry spans over OTLP to a collector. The
 substrate wants them in `spans_substrate`, a DuckDB table in akosha, read back
-through the `search_spans` / `spans_summary` MCP tools. Migration means
+through the `akosha_search_spans` / `akosha_spans_summary` MCP tools. Migration means
 repointing one exporter and restarting the producer.
 
 ## Preconditions — none of these are met yet
@@ -31,14 +31,14 @@ repointing one exporter and restarting the producer.
 | `spans_substrate` DDL | PR-0a | `oneiric/adapters/vector/duckdb_hot_store.py` |
 | OTLP receiver (gRPC :4317 / HTTP :4318) | PR-A3 | `akosha/observability/otlp_receiver.py` |
 
-Until both land, `search_spans` returns `[]` no matter what any producer does.
+Until both land, `akosha_search_spans` returns `[]` no matter what any producer does.
 
 **Ports :4317 and :4318 are already taken.** `lsof` shows **Grafana Alloy**
 (PID 942) holding both on 127.0.0.1. This is the trap in this migration: the
 receiver's intended ports are occupied by a collector that *accepts* OTLP and
 writes to Grafana's own backend. Repointing mahavishnu at :4317 today would
 **succeed at the TCP level, send every span into Alloy, and leave
-`spans_summary` still returning zeros.** An operator would conclude the
+`akosha_spans_summary` still returning zeros.** An operator would conclude the
 substrate is broken. It is not — it has no writer. Settle the port before
 anything else: the receiver moves, Alloy moves, or Alloy is repointed.
 
@@ -46,7 +46,7 @@ anything else: the receiver moves, Alloy moves, or Alloy is repointed.
 `ObservabilityConfig.tool_enrichment_enabled` defaults `False`
 (`mahavishnu/core/config.py:1435-1444`), so the enrichment middleware that
 attaches `selector`, `task_class`, `outcome`, and `duration_ms` is off. Without
-it, `spans_summary` matches on a NULL pair and returns
+it, `akosha_spans_summary` matches on a NULL pair and returns
 `latency_p99_ms: None` forever. **Turn enrichment on as part of the migration,
 or the aggregate is hollow** — and a NULL-pair aggregate is exactly the
 false-negative §5.7 warns about.
@@ -67,7 +67,7 @@ not a repoint back.
 **1. Baseline first.** Record what the tool returns *before* changing anything:
 
 ```bash
-akosha call search_spans --service_name mahavishnu
+akosha call akosha_search_spans --service_name mahavishnu
 ```
 
 Non-empty means a producer already has a path you did not know about — stop
@@ -102,7 +102,7 @@ export MAHAVISHNU_OBSERVABILITY__OTLP_ENDPOINT=http://localhost:4317
 > live path is `ObservabilityConfig.otlp_endpoint` via the env var above.
 > Editing the YAML would appear to work and change nothing.
 
-**3. Verify — at the FULL profile.** `search_spans` and `spans_summary` are
+**3. Verify — at the FULL profile.** `akosha_search_spans` and `akosha_spans_summary` are
 FULL-profile-only tools. Under `AKOSHA_TOOL_PROFILE=standard` they are absent
 from the tool list and the check "fails" against an empty registry rather than
 empty data. Set `AKOSHA_TOOL_PROFILE=full` before verifying.
@@ -111,10 +111,10 @@ What "working" looks like:
 
 ```bash
 # rows arrive, with the operator-facing service name — not just a row count
-akosha call search_spans --service_name mahavishnu --limit 5
+akosha call akosha_search_spans --service_name mahavishnu --limit 5
 
 # and the pair aggregate is real, not a NULL-pair zero
-akosha call spans_summary --task_class mcp_tool_call --cutoff_unix_nano <now-1h>
+akosha call akosha_spans_summary --task_class mcp_tool_call --cutoff_unix_nano <now-1h>
 ```
 
 Confirm **the service name an operator would recognise**. A count of 40 rows
@@ -133,7 +133,7 @@ restart; the old path is a config line away and nothing else.
 
 ## Until a producer repoints, empty is correct
 
-`search_spans` returning `[]` and `spans_summary` returning zeros is the
+`akosha_search_spans` returning `[]` and `akosha_spans_summary` returning zeros is the
 designed state, not a fault. The receiver creates the DDL
 (`_ensure_operational_tables`); until it runs, no table exists, and
 `SpanQuery` returns empty rather than raising. Do not add a workaround to make
@@ -151,7 +151,7 @@ currently producing coverage that a migration would narrow. **`FitnessAnalyzer.a
 has zero call sites fleet-wide.** Both construction sites
 (`akosha/mcp/tools/group_registers.py:246`, `akosha/mcp/tools/__init__.py:170`)
 call `FitnessAnalyzer()` with no arguments, so `_component_endpoints` is empty,
-`_analyze_and_persist` short-circuits, and `run_fitness_analysis` returns `{}`
+`_analyze_and_persist` short-circuits, and `akosha_run_fitness_analysis` returns `{}`
 every cycle. The poll loop still starts and burns a 60-second timer doing
 nothing.
 

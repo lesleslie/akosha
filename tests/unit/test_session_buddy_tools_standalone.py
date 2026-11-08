@@ -15,7 +15,7 @@ def _make_registry_and_capture():
 
     The real registry.register(metadata) returns a decorator. We need the
     decorator to be an identity function so that the original async functions
-    are preserved in closures (e.g. batch_store captures store_memory).
+    are preserved in closures (e.g. batch_store captures akosha_store_memory).
     """
     registry = MagicMock()
     captured = []
@@ -46,25 +46,25 @@ class TestSessionBuddyToolsRegistration:
         assert mock_registry.register.call_count == 2
         assert len(captured) == 2
 
-        # First tool should be store_memory
+        # First tool should be akosha_store_memory
         first_call = mock_registry.register.call_args_list[0]
         metadata = first_call[0][0]
         store_func = captured[0]
-        assert metadata.name == "store_memory"
+        assert metadata.name == "akosha_store_memory"
         assert "Store a memory" in metadata.description
         assert hasattr(store_func, "__code__")
 
-        # Second tool should be batch_store_memories
+        # Second tool should be akosha_batch_store_memories
         second_call = mock_registry.register.call_args_list[1]
         metadata = second_call[0][0]
         batch_func = captured[1]
-        assert metadata.name == "batch_store_memories"
+        assert metadata.name == "akosha_batch_store_memories"
         assert "Store multiple memories" in metadata.description
         assert hasattr(batch_func, "__code__")
 
 
 class TestStoreMemoryLogic:
-    """Test the store_memory function logic."""
+    """Test the akosha_store_memory function logic."""
 
     @pytest.mark.asyncio
     async def test_store_memory_validation(self):
@@ -207,7 +207,7 @@ class TestStoreMemoryLogic:
 
 
 class TestBatchStoreMemoriesLogic:
-    """Test the batch_store_memories function logic."""
+    """Test the akosha_batch_store_memories function logic."""
 
     @pytest.mark.asyncio
     async def test_batch_validation_logic(self):

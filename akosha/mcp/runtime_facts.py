@@ -42,13 +42,13 @@ logger = logging.getLogger(__name__)
 
 
 class RuntimeFactsBuilder:
-    """Enumerate the static agent catalog into the legacy ``list_agents`` wire shape.
+    """Enumerate the static agent catalog into the legacy ``akosha_list_agents`` wire shape.
 
     The returned ``list[dict[str, Any]]`` matches the canonical wire shape
     served by the pre-Phase-3 inline ``akosha_list_agents`` MCP tool
     body. The Oneiric envelope is NOT constructed in this builder; it
     lives in :mod:`akosha.mcp.oneiric_runtime` so the two surfaces
-    (MCP ``list_agents`` vs Oneiric push) can evolve independently.
+    (MCP ``akosha_list_agents`` vs Oneiric push) can evolve independently.
 
     The builder is intentionally pure-introspection: ``build_all`` does
     not ``await`` anything and never makes network I/O. Body loading is
@@ -93,7 +93,7 @@ class RuntimeFactsBuilder:
                 metadata = _build_unsigned_metadata(entry["name"])
             except (FileNotFoundError, ValidationError, KeyError) as exc:
                 logger.exception(
-                    "list_agents: failed to build metadata for %s: %s",
+                    "akosha_list_agents: failed to build metadata for %s: %s",
                     entry["name"],
                     exc,
                 )

@@ -84,8 +84,8 @@ class TestMissingTokenError:
         assert "Bearer token" in str(err)
 
     def test_custom_details(self):
-        err = MissingTokenError({"tool": "search_all_systems", "reason": "no_context_or_token"})
-        assert err.details["tool"] == "search_all_systems"
+        err = MissingTokenError({"tool": "akosha_search_all_systems", "reason": "no_context_or_token"})
+        assert err.details["tool"] == "akosha_search_all_systems"
         assert err.details["reason"] == "no_context_or_token"
 
     def test_to_dict_includes_error_type(self):
@@ -460,7 +460,7 @@ class TestValidateDirectToken:
     def test_error_message_contains_func_name(self):
         with patch.dict(os.environ, {"AKOSHA_API_TOKEN": "good"}):
             with pytest.raises(InvalidTokenError):
-                _validate_direct_token("bad", "search_all_systems")
+                _validate_direct_token("bad", "akosha_search_all_systems")
 
 
 # ---------------------------------------------------------------------------
@@ -910,14 +910,14 @@ class TestSetupAuthenticationInstructions:
     def test_lists_all_protected_tools(self):
         instructions = setup_authentication_instructions()
         for tool in [
-            "search_all_systems",
-            "get_system_metrics",
-            "analyze_trends",
-            "detect_anomalies",
-            "correlate_systems",
-            "query_knowledge_graph",
-            "find_path",
-            "get_graph_statistics",
+            "akosha_search_all_systems",
+            "akosha_get_system_metrics",
+            "akosha_analyze_trends",
+            "akosha_detect_anomalies",
+            "akosha_correlate_systems",
+            "akosha_query_knowledge_graph",
+            "akosha_find_path",
+            "akosha_get_graph_statistics",
         ]:
             assert f"- `{tool}`" in instructions
 
@@ -954,14 +954,14 @@ class TestAuthenticationMiddleware:
 
     def test_default_protected_tools(self):
         mw = AuthenticationMiddleware()
-        assert "search_all_systems" in mw.protected_tools
-        assert "get_system_metrics" in mw.protected_tools
-        assert "analyze_trends" in mw.protected_tools
-        assert "detect_anomalies" in mw.protected_tools
-        assert "correlate_systems" in mw.protected_tools
-        assert "query_knowledge_graph" in mw.protected_tools
-        assert "find_path" in mw.protected_tools
-        assert "get_graph_statistics" in mw.protected_tools
+        assert "akosha_search_all_systems" in mw.protected_tools
+        assert "akosha_get_system_metrics" in mw.protected_tools
+        assert "akosha_analyze_trends" in mw.protected_tools
+        assert "akosha_detect_anomalies" in mw.protected_tools
+        assert "akosha_correlate_systems" in mw.protected_tools
+        assert "akosha_query_knowledge_graph" in mw.protected_tools
+        assert "akosha_find_path" in mw.protected_tools
+        assert "akosha_get_graph_statistics" in mw.protected_tools
         assert len(mw.protected_tools) == 8
 
     def test_custom_categories(self):
@@ -972,7 +972,7 @@ class TestAuthenticationMiddleware:
     def test_custom_tools(self):
         mw = AuthenticationMiddleware(protected_tools={"my_tool"})
         assert "my_tool" in mw.protected_tools
-        assert "search_all_systems" not in mw.protected_tools
+        assert "akosha_search_all_systems" not in mw.protected_tools
 
     def test_empty_sets_still_get_defaults(self):
         """Empty set is falsy, so `or` falls through to defaults."""
@@ -983,8 +983,8 @@ class TestAuthenticationMiddleware:
 
     def test_is_tool_protected_by_name(self):
         mw = AuthenticationMiddleware()
-        assert mw.is_tool_protected("search_all_systems") is True
-        assert mw.is_tool_protected("get_system_metrics") is True
+        assert mw.is_tool_protected("akosha_search_all_systems") is True
+        assert mw.is_tool_protected("akosha_get_system_metrics") is True
 
     def test_is_tool_protected_by_category(self):
         mw = AuthenticationMiddleware()
@@ -1008,7 +1008,7 @@ class TestAuthenticationMiddleware:
             os.environ.pop("AKOSHA_API_TOKEN", None)
             os.environ["AKOSHA_AUTH_ENABLED"] = "false"
             mw = AuthenticationMiddleware()
-            result = await mw.authenticate_request("search_all_systems", "search")
+            result = await mw.authenticate_request("akosha_search_all_systems", "search")
             assert result is True
 
     @pytest.mark.asyncio
@@ -1025,7 +1025,7 @@ class TestAuthenticationMiddleware:
             ctx = MagicMock()
             ctx.headers = {"Authorization": "Bearer secret"}
             mw = AuthenticationMiddleware()
-            result = await mw.authenticate_request("search_all_systems", "search", ctx)
+            result = await mw.authenticate_request("akosha_search_all_systems", "search", ctx)
             assert result is True
 
     @pytest.mark.asyncio
@@ -1035,8 +1035,8 @@ class TestAuthenticationMiddleware:
             ctx.headers = {}
             mw = AuthenticationMiddleware()
             with pytest.raises(MissingTokenError) as exc_info:
-                await mw.authenticate_request("search_all_systems", "search", ctx)
-            assert exc_info.value.details["tool"] == "search_all_systems"
+                await mw.authenticate_request("akosha_search_all_systems", "search", ctx)
+            assert exc_info.value.details["tool"] == "akosha_search_all_systems"
             assert exc_info.value.details["category"] == "search"
 
     @pytest.mark.asyncio
@@ -1046,7 +1046,7 @@ class TestAuthenticationMiddleware:
             ctx.headers = {"Authorization": "Bearer wrong"}
             mw = AuthenticationMiddleware()
             with pytest.raises(InvalidTokenError) as exc_info:
-                await mw.authenticate_request("search_all_systems", "search", ctx)
+                await mw.authenticate_request("akosha_search_all_systems", "search", ctx)
             assert exc_info.value.details["reason"] == "token_validation_failed"
 
     @pytest.mark.asyncio
@@ -1054,7 +1054,7 @@ class TestAuthenticationMiddleware:
         with patch.dict(os.environ, {"AKOSHA_API_TOKEN": "secret"}):
             mw = AuthenticationMiddleware()
             with pytest.raises(MissingTokenError):
-                await mw.authenticate_request("search_all_systems", "search", None)
+                await mw.authenticate_request("akosha_search_all_systems", "search", None)
 
     @pytest.mark.asyncio
     async def test_authenticate_request_no_category_in_details(self):
@@ -1064,7 +1064,7 @@ class TestAuthenticationMiddleware:
             ctx.headers = {}
             mw = AuthenticationMiddleware()
             with pytest.raises(MissingTokenError) as exc_info:
-                await mw.authenticate_request("search_all_systems", None, ctx)
+                await mw.authenticate_request("akosha_search_all_systems", None, ctx)
             assert exc_info.value.details["category"] is None
 
     @pytest.mark.asyncio
@@ -1074,4 +1074,4 @@ class TestAuthenticationMiddleware:
             ctx = MagicMock(spec=[])
             mw = AuthenticationMiddleware()
             with pytest.raises(MissingTokenError):
-                await mw.authenticate_request("search_all_systems", "search", ctx)
+                await mw.authenticate_request("akosha_search_all_systems", "search", ctx)

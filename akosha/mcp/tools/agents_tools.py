@@ -1,7 +1,7 @@
 """Phase 3 server-published agents tools (Phase 3 of bodai-skill-agent-distribution).
 
-Exposes the ``mcp__akosha__list_agents`` and
-``mcp__akosha__get_agent`` tools that advertise the
+Exposes the ``mcp__akosha__akosha_list_agents`` and
+``mcp__akosha__akosha_get_agent`` tools that advertise the
 server-defined specialist agents to the Phase 3 installer and the
 Claude Code picker. Agents live as markdown bodies under
 ``akosha/mcp/tools/agents/<name>.md``.
@@ -18,7 +18,7 @@ and the signing function (canonicalization via akosha's local
 
 Security gates (per plan §11):
 
-- **B-1** — every ``get_agent`` response carries an ed25519 signature
+- **B-1** — every ``akosha_get_agent`` response carries an ed25519 signature
   over the canonicalized metadata. The Phase 3 installer verifies
   this before any write to ``~/.claude/agents/akosha-<name>.md``.
 - **B-4** — the path-traversal allowlist
@@ -26,7 +26,7 @@ Security gates (per plan §11):
   ``mcp_common.canonical_schemas._validators.NAME_OR_SERVER_RE``;
   the factory enforces it at the API boundary. The per-server
   regex copy that used to live here is gone.
-- **B-6** — ``get_agent`` returns ``body == system_prompt``. The
+- **B-6** — ``akosha_get_agent`` returns ``body == system_prompt``. The
   factory computes ``content_hash`` from the stripped body and
   the schema's body-integrity model_validator asserts the hash
   matches the system_prompt bytes.
@@ -87,23 +87,23 @@ _STATIC_AGENTS: list[dict[str, Any]] = [
             "Use proactively for cross-system intelligence questions: "
             "semantic search across the indexed Bodai corpus, anomaly "
             "detection, knowledge-graph correlation. Routes through "
-            "mcp__akosha__search_all_systems, "
-            "mcp__akosha__detect_anomalies, "
-            "mcp__akosha__correlate_systems, and "
-            "mcp__akosha__query_knowledge_graph."
+            "mcp__akosha__akosha_search_all_systems, "
+            "mcp__akosha__akosha_detect_anomalies, "
+            "mcp__akosha__akosha_correlate_systems, and "
+            "mcp__akosha__akosha_query_knowledge_graph."
         ),
         "model": "opus",
         "tools": [
-            "mcp__akosha__search_all_systems",
-            "mcp__akosha__detect_anomalies",
-            "mcp__akosha__analyze_trends",
-            "mcp__akosha__correlate_systems",
-            "mcp__akosha__query_knowledge_graph",
+            "mcp__akosha__akosha_search_all_systems",
+            "mcp__akosha__akosha_detect_anomalies",
+            "mcp__akosha__akosha_analyze_trends",
+            "mcp__akosha__akosha_correlate_systems",
+            "mcp__akosha__akosha_query_knowledge_graph",
             "Read",
         ],
         "tool_refs": [
-            "mcp__akosha__search_all_systems",
-            "mcp__akosha__detect_anomalies",
+            "mcp__akosha__akosha_search_all_systems",
+            "mcp__akosha__akosha_detect_anomalies",
         ],
         "dependencies": [],
         "category": "memory-aggregation",
@@ -121,16 +121,16 @@ _STATIC_AGENTS: list[dict[str, Any]] = [
             "Use this agent for focused semantic search across ONE "
             'named Bodai system (e.g. "find anything in session-buddy '
             'about migration"). Narrower than akosha-specialist — '
-            "routes through mcp__akosha__search_all_systems "
+            "routes through mcp__akosha__akosha_search_all_systems "
             "with a system_id filter."
         ),
         "model": "sonnet",
         "tools": [
-            "mcp__akosha__search_all_systems",
+            "mcp__akosha__akosha_search_all_systems",
             "Read",
         ],
         "tool_refs": [
-            "mcp__akosha__search_all_systems",
+            "mcp__akosha__akosha_search_all_systems",
         ],
         "dependencies": ["akosha-specialist"],
         "category": "memory-aggregation",
@@ -147,22 +147,22 @@ _STATIC_AGENTS: list[dict[str, Any]] = [
         "description": (
             "Use this agent for recurring-pattern and trending-anomaly "
             "questions across the Bodai component fleet. Routes through "
-            "mcp__akosha__detect_anomalies, "
-            "mcp__akosha__analyze_trends, and "
-            "mcp__akosha__correlate_systems."
+            "mcp__akosha__akosha_detect_anomalies, "
+            "mcp__akosha__akosha_analyze_trends, and "
+            "mcp__akosha__akosha_correlate_systems."
         ),
         "model": "opus",
         "tools": [
-            "mcp__akosha__detect_anomalies",
-            "mcp__akosha__analyze_trends",
-            "mcp__akosha__correlate_systems",
-            "mcp__akosha__run_fitness_analysis",
+            "mcp__akosha__akosha_detect_anomalies",
+            "mcp__akosha__akosha_analyze_trends",
+            "mcp__akosha__akosha_correlate_systems",
+            "mcp__akosha__akosha_run_fitness_analysis",
             "Read",
         ],
         "tool_refs": [
-            "mcp__akosha__detect_anomalies",
-            "mcp__akosha__analyze_trends",
-            "mcp__akosha__correlate_systems",
+            "mcp__akosha__akosha_detect_anomalies",
+            "mcp__akosha__akosha_analyze_trends",
+            "mcp__akosha__akosha_correlate_systems",
         ],
         "dependencies": ["akosha-specialist"],
         "category": "analytics",
@@ -317,8 +317,8 @@ def _sign(metadata: AgentCanonicalSchema) -> AgentCanonicalSchema:
 def _on_call() -> None:
     """B-7: bump ``SignerFeedState.cycles_total`` on every tool call.
 
-    The factory invokes this at the start of every list_agents and
-    get_agent call so the four mandatory feed signals stay
+    The factory invokes this at the start of every akosha_list_agents and
+    akosha_get_agent call so the four mandatory feed signals stay
     accurate. No-op if the signer feed state isn't initialized
     yet (matches the pre-refactor behavior).
     """
@@ -333,7 +333,7 @@ def _on_call() -> None:
 
 
 def register_agents_tools(app: FastMCP) -> None:
-    """Register ``list_agents`` and ``get_agent`` MCP tools.
+    """Register ``akosha_list_agents`` and ``akosha_get_agent`` MCP tools.
 
     Idempotent at module level (the static catalog is loaded once
     at import). Calling this twice is safe — FastMCP's
@@ -352,9 +352,11 @@ def register_agents_tools(app: FastMCP) -> None:
         body_loader=_body_loader,
         sign=_sign,
         on_call=_on_call,
-        # tool_name_prefix="" preserves akosha's existing wire names
-        # "list_agents" and "get_agent" (no prefix). The hook and
-        # any in-flight clients expect the unprefixed names.
+        # tool_name_prefix carries the component prefix required by the
+        # fleet-wide naming convention: the wire names become
+        # "akosha_list_agents" and "akosha_get_agent". Every other Bodai
+        # server passes the same "<server_key>_" prefix.
+        tool_name_prefix=f"{_SERVER_KEY}_",
     )(app)
 
 

@@ -1,6 +1,6 @@
 """Fitness analysis tools for Akosha MCP server.
 
-Provides the run_fitness_analysis MCP tool that triggers the FitnessAnalyzer
+Provides the akosha_run_fitness_analysis MCP tool that triggers the FitnessAnalyzer
 on demand, computing and persisting routing fitness signals for the Bodai
 feedback loop.
 """
@@ -39,8 +39,8 @@ def register_fitness_tools(app: Any) -> None:
         app: FastMCP application
     """
 
-    @app.tool(name="run_fitness_analysis")
-    async def run_fitness_analysis() -> dict[str, Any]:
+    @app.tool(name="akosha_run_fitness_analysis")
+    async def akosha_run_fitness_analysis() -> dict[str, Any]:
         """Manually trigger one fitness analysis cycle.
 
         Polls all registered Bodai component endpoints for OTel traces,
@@ -89,14 +89,14 @@ def register_fitness_tools(app: Any) -> None:
             }
 
         except Exception as exc:
-            logger.exception("run_fitness_analysis failed: %s", exc)
+            logger.exception("akosha_run_fitness_analysis failed: %s", exc)
             return {
                 "status": "error",
                 "error": str(exc),
             }
 
-    @app.tool(name="get_fitness_analyzer_status")
-    async def get_fitness_analyzer_status() -> dict[str, Any]:
+    @app.tool(name="akosha_get_fitness_analyzer_status")
+    async def akosha_get_fitness_analyzer_status() -> dict[str, Any]:
         """Get the current status of the fitness analyzer.
 
         Returns:

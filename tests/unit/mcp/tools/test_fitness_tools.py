@@ -1,4 +1,4 @@
-"""Tests for ``akosha.mcp.tools.fitness_tools`` — the run_fitness_analysis MCP tool.
+"""Tests for ``akosha.mcp.tools.fitness_tools`` — the akosha_run_fitness_analysis MCP tool.
 
 Audit found this module at 0% coverage. The tool has three observable
 states worth pinning:
@@ -7,7 +7,7 @@ states worth pinning:
 - Analysis cycle produces signals → ``status=completed`` with
   task_classes / selectors_per_class / total_signals
 
-Plus the side-channel ``get_fitness_analyzer_status`` tool.
+Plus the side-channel ``akosha_get_fitness_analyzer_status`` tool.
 """
 
 from __future__ import annotations
@@ -78,12 +78,12 @@ class FakeApp:
 def test_register_fitness_tools_registers_two_tools() -> None:
     app = FakeApp()
     register_fitness_tools(app)  # type: ignore[arg-type]
-    assert "run_fitness_analysis" in app.tools
-    assert "get_fitness_analyzer_status" in app.tools
+    assert "akosha_run_fitness_analysis" in app.tools
+    assert "akosha_get_fitness_analyzer_status" in app.tools
 
 
 # ---------------------------------------------------------------------------
-# run_fitness_analysis — error paths
+# akosha_run_fitness_analysis — error paths
 # ---------------------------------------------------------------------------
 
 
@@ -91,13 +91,13 @@ def test_register_fitness_tools_registers_two_tools() -> None:
 async def test_run_fitness_analysis_returns_error_when_analyzer_not_initialized() -> None:
     app = FakeApp()
     register_fitness_tools(app)  # type: ignore[arg-type]
-    result = await app.tools["run_fitness_analysis"]()
+    result = await app.tools["akosha_run_fitness_analysis"]()
     assert result["status"] == "error"
     assert "FitnessAnalyzer not initialized" in result["error"]
 
 
 # ---------------------------------------------------------------------------
-# run_fitness_analysis — no_data path
+# akosha_run_fitness_analysis — no_data path
 # ---------------------------------------------------------------------------
 
 
@@ -110,13 +110,13 @@ async def test_run_fitness_analysis_returns_no_data_when_no_signals() -> None:
     app = FakeApp()
     register_fitness_tools(app)  # type: ignore[arg-type]
 
-    result = await app.tools["run_fitness_analysis"]()
+    result = await app.tools["akosha_run_fitness_analysis"]()
     assert result["status"] == "no_data"
     assert "No traces collected" in result["message"]
 
 
 # ---------------------------------------------------------------------------
-# run_fitness_analysis — completed path
+# akosha_run_fitness_analysis — completed path
 # ---------------------------------------------------------------------------
 
 
@@ -134,7 +134,7 @@ async def test_run_fitness_analysis_returns_completed_with_signal_summary() -> N
 
     app = FakeApp()
     register_fitness_tools(app)  # type: ignore[arg-type]
-    result = await app.tools["run_fitness_analysis"]()
+    result = await app.tools["akosha_run_fitness_analysis"]()
 
     assert result["status"] == "completed"
     assert set(result["task_classes"]) == {"code_generation", "reasoning"}
@@ -154,14 +154,14 @@ async def test_run_fitness_analysis_catches_internal_exceptions() -> None:
 
     app = FakeApp()
     register_fitness_tools(app)  # type: ignore[arg-type]
-    result = await app.tools["run_fitness_analysis"]()
+    result = await app.tools["akosha_run_fitness_analysis"]()
 
     assert result["status"] == "error"
     assert "dfeed exploded" in result["error"]
 
 
 # ---------------------------------------------------------------------------
-# get_fitness_analyzer_status
+# akosha_get_fitness_analyzer_status
 # ---------------------------------------------------------------------------
 
 
@@ -169,7 +169,7 @@ async def test_run_fitness_analysis_catches_internal_exceptions() -> None:
 async def test_get_fitness_analyzer_status_returns_defaults_when_not_initialized() -> None:
     app = FakeApp()
     register_fitness_tools(app)  # type: ignore[arg-type]
-    result = await app.tools["get_fitness_analyzer_status"]()
+    result = await app.tools["akosha_get_fitness_analyzer_status"]()
     assert result == {
         "running": False,
         "component_endpoints": [],
@@ -187,7 +187,7 @@ async def test_get_fitness_analyzer_status_returns_state_when_initialized() -> N
 
     app = FakeApp()
     register_fitness_tools(app)  # type: ignore[arg-type]
-    result = await app.tools["get_fitness_analyzer_status"]()
+    result = await app.tools["akosha_get_fitness_analyzer_status"]()
 
     assert result["running"] is True
     assert result["component_endpoints"] == [("akosha", "http://akosha:8682/mcp")]

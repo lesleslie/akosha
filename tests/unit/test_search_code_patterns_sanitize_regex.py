@@ -1,7 +1,7 @@
-"""Regression test for the ``search_code_patterns`` ReDoS mitigation gap.
+"""Regression test for the ``akosha_search_code_patterns`` ReDoS mitigation gap.
 
 REQ-CROSS-001-SEC-2: The pre-flight length cap (1600 chars) at the
-top of ``search_code_patterns`` is a coarse filter; the real
+top of ``akosha_search_code_patterns`` is a coarse filter; the real
 defense-in-depth is the existing ``PyCharmMCPAdapter._sanitize_regex``
 helper, which (1) caps at 500 chars, (2) blocklists the six
 catastrophic-backtracking nesting patterns, and (3) probes
@@ -18,7 +18,7 @@ reject the call with ``rejected: True`` if the sanitization fails.
 
 This test exercises the two ReDoS-relevant rejection paths of
 ``_sanitize_regex`` (blocklist match, length cap) and asserts that
-``search_code_patterns`` propagates the rejection through to the
+``akosha_search_code_patterns`` propagates the rejection through to the
 caller instead of running the raw pattern against node sources.
 
 NOTE: the test fixture source is intentionally a short string of
@@ -156,7 +156,7 @@ async def test_search_code_patterns_rejects_blocklisted_nesting_pattern() -> Non
 
     async with _build_client(graph) as client:
         result = await client.call_tool(
-            "search_code_patterns",
+            "akosha_search_code_patterns",
             {"pattern": r"(.*)+", "scope": "python"},
         )
 
@@ -199,7 +199,7 @@ async def test_search_code_patterns_rejects_pattern_exceeding_sanitize_cap() -> 
 
     async with _build_client(graph) as client:
         result = await client.call_tool(
-            "search_code_patterns",
+            "akosha_search_code_patterns",
             {"pattern": long_pattern, "scope": "python"},
         )
 

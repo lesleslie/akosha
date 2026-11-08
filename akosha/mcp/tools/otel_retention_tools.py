@@ -1,6 +1,6 @@
 """The retention sweep trigger — the substrate's one mutating operation.
 
-``search_spans`` and ``spans_summary`` read the substrate; this writes to it,
+``akosha_search_spans`` and ``akosha_spans_summary`` read the substrate; this writes to it,
 by asking the receiver's sweep loop to run one cycle now instead of waiting
 out the interval (6h by default).
 
@@ -39,8 +39,8 @@ def register_otel_retention_tools(app: Any) -> None:
     inside a ``register_*_tools(app)`` function, no module-level ``mcp``.
     """
 
-    @app.tool(name="force_retention_sweep")
-    async def force_retention_sweep() -> dict[str, Any]:
+    @app.tool(name="akosha_force_retention_sweep")
+    async def akosha_force_retention_sweep() -> dict[str, Any]:
         """Ask the receiver to run a retention sweep now.
 
         The sweep removes rows older than ``spans_substrate.retention_days``

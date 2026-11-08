@@ -110,7 +110,7 @@ def test_akosha_runtime_facts_survives_broken_catalog_entry(
     ``(FileNotFoundError, ValidationError, KeyError)`` per entry and
     continues. :class:`RuntimeFactsBuilder` MUST preserve that
     fail-soft semantics so a single broken body file does not poison
-    the whole ``list_agents`` response.
+    the whole ``akosha_list_agents`` response.
     """
     from unittest.mock import patch
 
@@ -131,6 +131,6 @@ def test_akosha_runtime_facts_survives_broken_catalog_entry(
         result = RuntimeFactsBuilder(mock_app).build_all()
 
     assert not result, "broken entries must be skipped, not raised"
-    assert any("list_agents: failed to build metadata" in rec.message for rec in caplog.records), (
+    assert any("akosha_list_agents: failed to build metadata" in rec.message for rec in caplog.records), (
         "expected an error log per broken entry"
     )

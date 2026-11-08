@@ -44,7 +44,7 @@ live rows past a horizon they should not have reached.
 ## Forcing a sweep now
 
 ```
-mcp__akosha__force_retention_sweep()
+mcp__akosha__akosha_force_retention_sweep()
   -> {"requested": true, "already_pending": false,
       "interval_s": 21600,
       "watch": "akosha_otlp_sweep_last_completed_unix_nano"}

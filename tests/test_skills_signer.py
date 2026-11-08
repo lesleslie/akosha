@@ -593,14 +593,14 @@ class TestEndToEndFlow:
             "name": "akosha-search-insights",
             "version": "1.0.0",
             "description": "Search across Akosha-indexed systems",
-            "tool_refs": ["mcp__akosha__search_all_systems"],
+            "tool_refs": ["mcp__akosha__akosha_search_all_systems"],
             "dependencies": [],
         }
         canonical_bytes = canonical_payload_for_signing(server_metadata)
         signed = server_signer.sign(canonical_bytes)
 
         # Server publishes: the manifest is published in /health; the
-        # signed metadata is the SkillMetadata returned by get_skill.
+        # signed metadata is the SkillMetadata returned by akosha_get_skill.
         published_metadata = {**server_metadata, "signature": signed.signature_b64,
                               "server_pubkey_id": signed.key_id}
         published_health = server_manifest.as_dict()

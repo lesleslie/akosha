@@ -1,6 +1,6 @@
 """Cross-repo capability search MCP tools (Phase 1 of v2 plan).
 
-Registers ``cross_repo_capability_search`` which indexes every Bodai component's
+Registers ``akosha_cross_repo_capability_search`` which indexes every Bodai component's
 adapter signatures, tool surface, and error-handling conventions, then answers
 natural-language queries against that index.
 
@@ -13,11 +13,11 @@ Indexing strategy (Phase 1, lightweight):
   2026-09-26.
 * Substring + token-overlap scoring keeps the tool usable without requiring the
   embedding service. The embedding service may be plugged in later for richer
-  semantic matching (matches the pattern used by ``search_all_systems``).
+  semantic matching (matches the pattern used by ``akosha_search_all_systems``).
 
 Public surface:
 
-* :func:`register_cross_repo_tools` — registers ``cross_repo_capability_search``
+* :func:`register_cross_repo_tools` — registers ``akosha_cross_repo_capability_search``
   on the supplied registry.
 * :data:`BODAI_COMPONENT_KEYS` — the canonical list of indexed component keys.
 
@@ -143,7 +143,7 @@ _CAPABILITY_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "repo": "akosha",
         "kind": "tool",
-        "name": "search_all_systems",
+        "name": "akosha_search_all_systems",
         "summary": "Semantic search across all system memories.",
         "doc_hint": "akosha.mcp.tools.akosha_tools",
         "tags": ["search", "semantic", "akosha", "memory"],
@@ -151,7 +151,7 @@ _CAPABILITY_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "repo": "akosha",
         "kind": "tool",
-        "name": "search_code_patterns",
+        "name": "akosha_search_code_patterns",
         "summary": "Regex-based code pattern search across indexed repos.",
         "doc_hint": "akosha.mcp.tools.akosha_tools",
         "tags": ["search", "code", "pattern", "regex", "akosha"],
@@ -159,7 +159,7 @@ _CAPABILITY_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "repo": "akosha",
         "kind": "tool",
-        "name": "detect_anomalies",
+        "name": "akosha_detect_anomalies",
         "summary": "Detect statistical anomalies in system metrics.",
         "doc_hint": "akosha.mcp.tools.akosha_tools",
         "tags": ["anomaly", "metrics", "akosha"],
@@ -167,7 +167,7 @@ _CAPABILITY_CATALOG: tuple[dict[str, Any], ...] = (
     {
         "repo": "akosha",
         "kind": "tool",
-        "name": "analyze_trends",
+        "name": "akosha_analyze_trends",
         "summary": "Time-series trend analysis across systems.",
         "doc_hint": "akosha.mcp.tools.akosha_tools",
         "tags": ["trend", "timeseries", "akosha"],
@@ -359,7 +359,7 @@ def _filter_catalog(
 def register_cross_repo_tools(
     registry: FastMCPToolRegistry,
 ) -> None:
-    """Register ``cross_repo_capability_search`` on ``registry``.
+    """Register ``akosha_cross_repo_capability_search`` on ``registry``.
 
     Args:
         registry: Akosha ``FastMCPToolRegistry`` instance.
@@ -368,7 +368,7 @@ def register_cross_repo_tools(
 
     @registry.register(
         ToolMetadata(
-            name="cross_repo_capability_search",
+            name="akosha_cross_repo_capability_search",
             description=(
                 "Search the indexed Bodai capability catalog (adapters, "
                 "tools, error conventions) across all components."
@@ -386,7 +386,7 @@ def register_cross_repo_tools(
             ],
         )
     )
-    async def cross_repo_capability_search(
+    async def akosha_cross_repo_capability_search(
         query: str,
         repo_filter: str | None = None,
         kind_filter: str | None = None,
@@ -431,7 +431,7 @@ def register_cross_repo_tools(
         min_score = params.min_score
 
         logger.info(
-            "cross_repo_capability_search: query=%r repo=%s kind=%s limit=%d",
+            "akosha_cross_repo_capability_search: query=%r repo=%s kind=%s limit=%d",
             query[:80],
             repo_filter,
             kind_filter,

@@ -74,8 +74,8 @@ def register_otel_span_tools(app: Any) -> None:
     inside a ``register_*_tools(app)`` function, no module-level ``mcp``.
     """
 
-    @app.tool(name="search_spans")
-    async def search_spans(
+    @app.tool(name="akosha_search_spans")
+    async def akosha_search_spans(
         service_name: str | None = None,
         service_namespace: str | None = None,
         outcome: str | None = None,
@@ -129,8 +129,8 @@ def register_otel_span_tools(app: Any) -> None:
         )
         return [hit.model_dump() for hit in hits]
 
-    @app.tool(name="spans_summary")
-    async def spans_summary(
+    @app.tool(name="akosha_spans_summary")
+    async def akosha_spans_summary(
         selector: str | None = None,
         task_class: str | None = None,
         cutoff_unix_nano: int = 0,
@@ -172,7 +172,7 @@ def register_otel_span_tools(app: Any) -> None:
         store = get_shared_hot_store()
         if store is None:
             # No receiver means no DDL means no rows. Zeroed, not an error --
-            # same contract as search_spans.
+            # same contract as akosha_search_spans.
             return SpanSummary(span_count=0, failure_count=0, latency_p99_ms=None).model_dump()
 
         summary = await SpanQuery(store).summary(

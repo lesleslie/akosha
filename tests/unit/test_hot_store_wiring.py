@@ -1,7 +1,7 @@
 """Tests for HotStore production wiring in AkoshaApplication lifecycle.
 
 Sub-plan A of docs/plans/2026-08-29-akosha-websocket-search.md requires that
-``start()`` create a real HotStore instance (so search_all_systems can serve
+``start()`` create a real HotStore instance (so akosha_search_all_systems can serve
 results instead of mock data) and that ``stop()`` close it cleanly.
 """
 

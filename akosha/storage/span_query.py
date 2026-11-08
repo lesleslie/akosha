@@ -222,7 +222,7 @@ class SpanQuery:
         - ``True`` (default) scores only ``success`` and ``error``. A span that
           was still running when it landed (``unsettled``) is neither, and
           counting it would pad the denominator with rows that say nothing about
-          whether the producer worked. This is the ``spans_summary`` MCP tool's
+          whether the producer worked. This is the ``akosha_spans_summary`` MCP tool's
           contract.
         - ``False`` counts *every* row in the window. This is what
           ``FitnessAnalyzer`` needs, because its historical failure rate was

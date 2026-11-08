@@ -1,6 +1,6 @@
-"""Regression test for the cross-repo ``search_code_patterns`` source-fallback.
+"""Regression test for the cross-repo ``akosha_search_code_patterns`` source-fallback.
 
-REQ-CROSS-001: ``mcp__akosha__search_code_patterns`` must return a
+REQ-CROSS-001: ``mcp__akosha__akosha_search_code_patterns`` must return a
 non-empty result for patterns that match in the source code of a
 node, even when the node has no ``source`` field.
 
@@ -188,7 +188,7 @@ async def test_search_code_patterns_reads_source_from_disk_when_node_has_no_sour
 
     async with _build_client(graph) as client:
         result = await client.call_tool(
-            "search_code_patterns",
+            "akosha_search_code_patterns",
             {"pattern": "UNIQUE_PATTERN_TOKEN", "scope": "python"},
         )
 
@@ -251,7 +251,7 @@ async def test_search_code_patterns_node_without_file_path_falls_back_to_signatu
 
     async with _build_client(graph) as client:
         result = await client.call_tool(
-            "search_code_patterns",
+            "akosha_search_code_patterns",
             {"pattern": "UNIQUE_DOC_TOKEN", "scope": "python"},
         )
 
@@ -337,7 +337,7 @@ async def test_search_code_patterns_disk_read_rejects_path_traversal(
 
         async with _build_client(graph) as client:
             result = await client.call_tool(
-                "search_code_patterns",
+                "akosha_search_code_patterns",
                 {"pattern": outside_token, "scope": "python"},
             )
 
@@ -416,7 +416,7 @@ async def test_search_code_patterns_disk_read_caps_file_size(
     try:
         async with _build_client(graph) as client:
             result = await client.call_tool(
-                "search_code_patterns",
+                "akosha_search_code_patterns",
                 {"pattern": big_token, "scope": "python"},
             )
     finally:

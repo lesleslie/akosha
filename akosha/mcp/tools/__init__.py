@@ -134,20 +134,20 @@ def register_all_tools(
         logger.info("Registered PyCharm integration tools")
 
     if "register_skill_tools" in allowed:
-        # Phase 1: list_skills + get_skill. No service dependency —
+        # Phase 1: akosha_list_skills + akosha_get_skill. No service dependency —
         # the lifespan-owned SkillsSigner is read via the module-level
         # singleton populated at startup. Both tools return informative
         # error envelopes if the signer has not been initialized yet.
         register_skill_tools(app)
-        logger.info("Registered skill_tools (list_skills + get_skill)")
+        logger.info("Registered skill_tools (akosha_list_skills + akosha_get_skill)")
 
     if "register_agents_tools" in allowed:
-        # Phase 3: list_agents + get_agent. Same pattern as Phase 1 —
+        # Phase 3: akosha_list_agents + akosha_get_agent. Same pattern as Phase 1 —
         # no service dependency, signer singleton. Per plan §11 B-6,
-        # ``get_agent`` returns ``body == system_prompt`` so the
+        # ``akosha_get_agent`` returns ``body == system_prompt`` so the
         # installer writes a fully-functional agent file.
         register_agents_tools(app)
-        logger.info("Registered agents_tools (list_agents + get_agent)")
+        logger.info("Registered agents_tools (akosha_list_agents + akosha_get_agent)")
 
     if "register_ecosystem_skills" in allowed:
         # Phase 4: akosha_list_ecosystem_skills — federates across all 5

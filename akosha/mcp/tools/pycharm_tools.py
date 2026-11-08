@@ -359,12 +359,12 @@ def register_pycharm_tools(
 
     @registry.register(
         ToolMetadata(
-            name="search_code_patterns",
+            name="akosha_search_code_patterns",
             description="Search for code patterns across all indexed repositories using regex",
             category=ToolCategory.SEARCH,
         )
     )
-    async def search_code_patterns(
+    async def akosha_search_code_patterns(
         pattern: str,
         file_pattern: str | None = None,
         scope: str = "all",
@@ -386,7 +386,7 @@ def register_pycharm_tools(
             Dict with list of matches including file, line, and context
 
         Example:
-            >>> results = await search_code_patterns(
+            >>> results = await akosha_search_code_patterns(
             ...     pattern=r"async def\\s+\\w+\\(",
             ...     file_pattern="*.py"
             ... )
@@ -416,7 +416,7 @@ def register_pycharm_tools(
                 sanitized = sanitize_fn(pattern)
                 if not sanitized:
                     logger.warning(
-                        "Rejecting search_code_patterns call: pattern "
+                        "Rejecting akosha_search_code_patterns call: pattern "
                         "failed _sanitize_regex gate "
                         f"(length={len(pattern)})"
                     )
@@ -439,7 +439,7 @@ def register_pycharm_tools(
             # the inner cap is ever loosened.)
             if len(pattern) > _MAX_PATTERN_LENGTH:
                 logger.warning(
-                    f"Rejecting search_code_patterns call: pattern "
+                    f"Rejecting akosha_search_code_patterns call: pattern "
                     f"length {len(pattern)} exceeds cap {_MAX_PATTERN_LENGTH}"
                 )
                 return {
@@ -595,7 +595,7 @@ def register_pycharm_tools(
             }
 
         except Exception as e:
-            logger.exception("search_code_patterns failed")
+            logger.exception("akosha_search_code_patterns failed")
             return {
                 "status": "error",
                 "message": f"Search failed: {e}",
@@ -604,12 +604,12 @@ def register_pycharm_tools(
 
     @registry.register(
         ToolMetadata(
-            name="get_code_problems",
+            name="akosha_get_code_problems",
             description="Get code problems (diagnostics) across indexed repositories",
             category=ToolCategory.ANALYTICS,
         )
     )
-    async def get_code_problems(
+    async def akosha_get_code_problems(
         repo_path: str | None = None,
         severity: str = "ERROR",
         category: str | None = None,  # noqa: ARG001
@@ -630,7 +630,7 @@ def register_pycharm_tools(
             Dict with list of problems grouped by repository
 
         Example:
-            >>> problems = await get_code_problems(severity="ERROR")
+            >>> problems = await akosha_get_code_problems(severity="ERROR")
             >>> for prob in problems['problems']:
             ...     print(f"{prob['file']}:{prob['line']}: {prob['message']}")
         """
@@ -689,7 +689,7 @@ def register_pycharm_tools(
             }
 
         except Exception as e:
-            logger.exception("get_code_problems failed")
+            logger.exception("akosha_get_code_problems failed")
             return {
                 "status": "error",
                 "message": f"Failed to get problems: {e}",
@@ -698,12 +698,12 @@ def register_pycharm_tools(
 
     @registry.register(
         ToolMetadata(
-            name="find_function_usage",
+            name="akosha_find_function_usage",
             description="Find usage of a function across all indexed repositories",
             category=ToolCategory.SEARCH,
         )
     )
-    async def find_function_usage(
+    async def akosha_find_function_usage(
         function_name: str,
         language: str = "python",
         limit: int = 20,
@@ -723,7 +723,7 @@ def register_pycharm_tools(
             Dict with list of repositories and files using the function
 
         Example:
-            >>> usage = await find_function_usage("parse_config")
+            >>> usage = await akosha_find_function_usage("parse_config")
             >>> for repo in usage['repositories']:
             ...     print(f"{repo['repo_path']}: {len(repo['files'])} usages")
         """
@@ -813,7 +813,7 @@ def register_pycharm_tools(
             }
 
         except Exception as e:
-            logger.exception("find_function_usage failed")
+            logger.exception("akosha_find_function_usage failed")
             return {
                 "status": "error",
                 "message": f"Failed to find function usage: {e}",
@@ -822,12 +822,12 @@ def register_pycharm_tools(
 
     @registry.register(
         ToolMetadata(
-            name="analyze_imports",
+            name="akosha_analyze_imports",
             description="Analyze imports across indexed repositories (unused, circular, patterns)",
             category=ToolCategory.ANALYTICS,
         )
     )
-    async def analyze_imports(
+    async def akosha_analyze_imports(
         repo_path: str | None = None,
         analysis_type: str = "unused",
         limit: int = 50,
@@ -846,7 +846,7 @@ def register_pycharm_tools(
             Dict with analysis results based on analysis_type
 
         Example:
-            >>> unused = await analyze_imports(analysis_type="unused")
+            >>> unused = await akosha_analyze_imports(analysis_type="unused")
             >>> for imp in unused['imports']:
             ...     print(f"{imp['file']}: unused {imp['import']}")
         """
@@ -951,7 +951,7 @@ def register_pycharm_tools(
             }
 
         except Exception as e:
-            logger.exception("analyze_imports failed")
+            logger.exception("akosha_analyze_imports failed")
             return {
                 "status": "error",
                 "message": f"Import analysis failed: {e}",
@@ -967,7 +967,7 @@ def register_pycharm_tools(
                 "`healthy` (bool), and `details` holding "
                 "`pycharm_mcp_available`, `circuit_breaker_open`, "
                 "`failure_count` and `cache_size`. Do NOT use to diagnose a "
-                "specific file — use `get_code_problems` for that; this tool "
+                "specific file — use `akosha_get_code_problems` for that; this tool "
                 'reports connection state only. `status` is "error" and '
                 "`message` carries the reason when the probe itself raised; a "
                 "reachable-but-unhealthy integration still reports "
@@ -982,7 +982,7 @@ def register_pycharm_tools(
 
         Returns diagnostic information about the PyCharm integration
         including availability, circuit breaker state, and cache status.
-        Do NOT use to diagnose a specific file — use `get_code_problems` for
+        Do NOT use to diagnose a specific file — use `akosha_get_code_problems` for
         that; this tool reports connection state only.
 
         Returns:

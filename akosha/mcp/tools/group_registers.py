@@ -49,7 +49,7 @@ async def register_akosha_group(app: FastMCP) -> None:
 
     Hot-store wiring (Sub-plan C): best-effort ``HotStore`` creation is
     threaded through to ``register_akosha_tools`` so
-    ``search_all_systems`` reads real data instead of returning the
+    ``akosha_search_all_systems`` reads real data instead of returning the
     legacy hard-coded mock. When creation fails (lite mode / DuckDB
     missing), ``hot_store`` is ``None`` and the tool falls back to an
     informational result.
@@ -111,7 +111,7 @@ def register_cross_repo_group(app: FastMCP) -> None:
 
 
 def register_skill_tools_group(app: FastMCP) -> None:
-    """Register Phase 1 ``list_skills`` / ``get_skill`` MCP tools.
+    """Register Phase 1 ``akosha_list_skills`` / ``akosha_get_skill`` MCP tools.
 
     No service dependencies — the tools read the static catalog from
     ``akosha/mcp/skills_catalog/`` and access the :class:`SkillsSigner`
@@ -123,11 +123,11 @@ def register_skill_tools_group(app: FastMCP) -> None:
     from akosha.mcp.tools.skill_tools import register_skill_tools
 
     register_skill_tools(app)
-    logger.info("Registered skill_tools (list_skills + get_skill)")
+    logger.info("Registered skill_tools (akosha_list_skills + akosha_get_skill)")
 
 
 def register_agents_tools_group(app: FastMCP) -> None:
-    """Register Phase 3 ``list_agents`` / ``get_agent`` MCP tools.
+    """Register Phase 3 ``akosha_list_agents`` / ``akosha_get_agent`` MCP tools.
 
     Mirrors :func:`register_skill_tools_group`'s shape — no service
     dependencies, reads the static catalog from
@@ -136,7 +136,7 @@ def register_agents_tools_group(app: FastMCP) -> None:
     return informative error envelopes if the signer has not been
     initialized yet (pre-lifespan / lite mode).
 
-    **B-6 critical contract**: the ``get_agent`` tool returns
+    **B-6 critical contract**: the ``akosha_get_agent`` tool returns
     ``body == system_prompt``. Without this, the installer would ship
     non-functional agents. The end-to-end test
     ``tests/integration/test_get_agent_e2e.py`` asserts this invariant.
@@ -144,11 +144,11 @@ def register_agents_tools_group(app: FastMCP) -> None:
     from akosha.mcp.tools.agents_tools import register_agents_tools
 
     register_agents_tools(app)
-    logger.info("Registered agents_tools (list_agents + get_agent)")
+    logger.info("Registered agents_tools (akosha_list_agents + akosha_get_agent)")
 
 
 def register_ecosystem_skills_group(app: FastMCP) -> None:
-    """Register Phase 4 federation tool ``list_ecosystem_skills``.
+    """Register Phase 4 federation tool ``akosha_list_ecosystem_skills``.
 
     Aggregates ``mcp__<server>__list_skills`` responses from all 5 Bodai
     servers with a 1-second per-server timeout, per-server circuit
@@ -217,7 +217,7 @@ def register_otel_span_group(app: FastMCP) -> None:
     ``spans_substrate``, and a second handle would read whatever that handle
     happens to see.
 
-    Registration therefore needs no store at all: ``search_spans`` resolves
+    Registration therefore needs no store at all: ``akosha_search_spans`` resolves
     the shared one per call and returns ``[]`` when there is none, so the
     group registers cleanly at every profile tier and in lite mode.
     """
@@ -266,7 +266,7 @@ def register_fitness_group(app: FastMCP) -> None:
 
     With no store available (a direct tool-registration call outside the
     lifespan) the analyzer is constructed inert rather than raising: the
-    group must still register so ``run_fitness_analysis`` exists and can
+    group must still register so ``akosha_run_fitness_analysis`` exists and can
     report why it has no signals.
     """
     import asyncio
@@ -291,7 +291,7 @@ def register_fitness_group(app: FastMCP) -> None:
         # what an operator is being asked to debug at 3am.
         logger.info(
             "FitnessAnalyzer registered inert (span_query=%s declared_pairs=%d); "
-            "run_fitness_analysis will report no signals",
+            "akosha_run_fitness_analysis will report no signals",
             span_query is not None,
             len(declared),
         )
@@ -378,8 +378,8 @@ async def _try_create_hot_store():
 
     Returns an *initialised* ``HotStore`` (DuckDB connection opened, schema
     created). The pre-fix version constructed the store but never called
-    ``.initialize()``, so every dependent tool (``search_code_patterns``,
-    ``find_function_usage``, etc.) crashed at runtime with
+    ``.initialize()``, so every dependent tool (``akosha_search_code_patterns``,
+    ``akosha_find_function_usage``, etc.) crashed at runtime with
     ``RuntimeError("Hot store not initialized")``.
 
     Wave 5: when the lifespan has published a shared HotStore via
@@ -416,7 +416,7 @@ def _get_shared_kg_builder():
 
     Mirrors :func:`_try_create_hot_store`'s shared-instance preference.
     Used by :func:`register_akosha_group` so the graph the periodic-refresh
-    task populates is the same instance the ``get_graph_statistics``
+    task populates is the same instance the ``akosha_get_graph_statistics``
     tool reads.
     """
     try:

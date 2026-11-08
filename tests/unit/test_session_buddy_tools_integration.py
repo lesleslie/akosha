@@ -15,7 +15,7 @@ def _make_mock_registry():
     The real registry.register(metadata) returns a decorator that wraps the
     function.  We need the decorator to be an identity function so that
     the original async functions are preserved in closures (e.g. batch_store
-    captures store_memory).  A plain MagicMock decorator would replace the
+    captures akosha_store_memory).  A plain MagicMock decorator would replace the
     functions with non-awaitable Mocks.
     """
     registry = MagicMock()
@@ -85,26 +85,26 @@ class TestSessionBuddyToolsMCPIntegration:
         assert mock_registry.register.call_count == 2
         assert len(captured) == 2
 
-        # Check first tool (store_memory)
+        # Check first tool (akosha_store_memory)
         first_call = mock_registry.register.call_args_list[0]
         metadata = first_call[0][0]
-        assert metadata.name == "store_memory"
+        assert metadata.name == "akosha_store_memory"
         assert "Store a memory" in metadata.description
         assert metadata.category.value == "ingestion"
         assert "memory_id" in str(metadata.examples)
         assert "text" in str(metadata.examples)
 
-        # Check second tool (batch_store_memories)
+        # Check second tool (akosha_batch_store_memories)
         second_call = mock_registry.register.call_args_list[1]
         metadata = second_call[0][0]
-        assert metadata.name == "batch_store_memories"
+        assert metadata.name == "akosha_batch_store_memories"
         assert "Store multiple memories" in metadata.description
         assert metadata.category.value == "ingestion"
         assert "memories" in str(metadata.examples)
 
     @pytest.mark.asyncio
     async def test_store_memory_function_signature(self):
-        """Test that store_memory function has correct signature."""
+        """Test that akosha_store_memory function has correct signature."""
         from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
 
         mock_registry, captured = _make_registry_and_capture()
@@ -126,7 +126,7 @@ class TestSessionBuddyToolsMCPIntegration:
 
     @pytest.mark.asyncio
     async def test_batch_store_memories_function_signature(self):
-        """Test that batch_store_memories function has correct signature."""
+        """Test that akosha_batch_store_memories function has correct signature."""
         from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
 
         mock_registry, captured = _make_registry_and_capture()
@@ -147,7 +147,7 @@ class TestSessionBuddyToolsMCPIntegration:
 
     @pytest.mark.asyncio
     async def test_store_memory_logic_with_injection(self):
-        """Test store_memory logic with dependency injection."""
+        """Test akosha_store_memory logic with dependency injection."""
         from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
 
         mock_registry, captured = _make_registry_and_capture()
@@ -184,7 +184,7 @@ class TestSessionBuddyToolsMCPIntegration:
 
     @pytest.mark.asyncio
     async def test_batch_store_memories_logic_with_injection(self):
-        """Test batch_store_memories logic with dependency injection."""
+        """Test akosha_batch_store_memories logic with dependency injection."""
         from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
 
         mock_registry, captured = _make_registry_and_capture()
@@ -219,7 +219,7 @@ class TestSessionBuddyToolsMCPIntegration:
 
     @pytest.mark.asyncio
     async def test_error_handling_in_store_memory(self):
-        """Test error handling in store_memory function."""
+        """Test error handling in akosha_store_memory function."""
         from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
 
         mock_registry, captured = _make_registry_and_capture()
@@ -244,7 +244,7 @@ class TestSessionBuddyToolsMCPIntegration:
 
     @pytest.mark.asyncio
     async def test_batch_size_validation(self):
-        """Test batch size validation in batch_store_memories."""
+        """Test batch size validation in akosha_batch_store_memories."""
         from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
 
         mock_registry, captured = _make_registry_and_capture()
@@ -284,7 +284,7 @@ class TestSessionBuddyToolDocumentation:
     """Test tool documentation and examples."""
 
     def test_store_memory_examples(self):
-        """Test store_memory examples are properly defined."""
+        """Test akosha_store_memory examples are properly defined."""
         from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
 
         mock_registry, captured = _make_registry_and_capture()
@@ -306,7 +306,7 @@ class TestSessionBuddyToolDocumentation:
         assert "metadata" in first_example
 
     def test_batch_store_memories_examples(self):
-        """Test batch_store_memories examples are properly defined."""
+        """Test akosha_batch_store_memories examples are properly defined."""
         from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
 
         mock_registry, captured = _make_registry_and_capture()
@@ -332,7 +332,7 @@ class TestSessionBuddyToolPerformance:
 
     @pytest.mark.asyncio
     async def test_store_memory_performance(self):
-        """Test store_memory performance characteristics."""
+        """Test akosha_store_memory performance characteristics."""
         from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
 
         mock_registry, captured = _make_registry_and_capture()
@@ -363,7 +363,7 @@ class TestSessionBuddyToolPerformance:
 
     @pytest.mark.asyncio
     async def test_batch_store_performance(self):
-        """Test batch_store_memories performance."""
+        """Test akosha_batch_store_memories performance."""
         from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
 
         mock_registry, captured = _make_registry_and_capture()

@@ -541,7 +541,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         >>> app = create_app()
         >>> # Use with MCP client
         >>> async with app.get_client() as client:
-        ...     result = await client.call_tool("search_all_systems", {...})
+        ...     result = await client.call_tool("akosha_search_all_systems", {...})
     """
     # Capture mode for lifespan closure. Must be set before the lifespan
     # is defined since the lifespan closes over this local.
@@ -810,7 +810,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # Wave 5: publish the lifespan-owned KnowledgeGraphBuilder so the
         # ``register_akosha_group`` wrapper reuses it. Construct it once
         # here so the periodic-refresh task (below) can write into the same
-        # instance the tools read from via ``get_graph_statistics``.
+        # instance the tools read from via ``akosha_get_graph_statistics``.
         #
         # ORDERING IS LOAD-BEARING — this MUST stay BEFORE
         # ``_apply_tool_profile``. The tool groups are registered (and
@@ -820,7 +820,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # shared builder is published afterwards, the registration-time
         # lookup returns ``None`` and the OR-fallback captures an ORPHAN
         # instance; the refresh task then writes into the lifespan's
-        # instance while ``get_graph_statistics`` / ``get_neighbors`` read
+        # instance while ``akosha_get_graph_statistics`` / ``get_neighbors`` read
         # the orphan — which is why the tool returned
         # ``{"total_entities": 0, ...}`` forever even though the refresh
         # loop had rows.
@@ -874,7 +874,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 logger.info("CodeGraphIngester started (Wave 5) -> %s", session_buddy_endpoint)
             except Exception as exc:
                 logger.warning(
-                    "CodeGraphIngester start failed (%s); search_code_patterns "
+                    "CodeGraphIngester start failed (%s); akosha_search_code_patterns "
                     "will fall back to PyCharm HTTP path",
                     exc,
                 )
@@ -1322,7 +1322,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # ------------------------------------------------------------------
         # Phase 1.5 + Phase 1: load (or generate + persist) the signing
         # keypair and build the lifespan-owned SignerFeedState (which
-        # now bundles the SkillsSigner for Phase 1 get_skill responses).
+        # now bundles the SkillsSigner for Phase 1 akosha_get_skill responses).
         # This MUST happen BEFORE the health probe is defined — the probe
         # closes over ``signer_feed_state`` as its single source of truth
         # (no module globals; see the module-level comment above).

@@ -1,6 +1,6 @@
-"""Tests for Sub-plan C wiring of ``search_all_systems`` to ``HotStore.search_similar``.
+"""Tests for Sub-plan C wiring of ``akosha_search_all_systems`` to ``HotStore.search_similar``.
 
-Replaces the hard-coded mock in ``akosha/mcp/tools/akosha_tools.py:search_all_systems``
+Replaces the hard-coded mock in ``akosha/mcp/tools/akosha_tools.py:akosha_search_all_systems``
 (``content = f"Mock result for: {query}"``) with a real call to ``HotStore.search_similar``
 on the websocket invocations corpus (``system_id="mahavishnu"``).
 """
@@ -92,7 +92,7 @@ def _make_row(
 
 @pytest.mark.asyncio
 async def test_search_all_systems_returns_real_results_when_hot_store_populated() -> None:
-    """When hot_store returns rows, search_all_systems surfaces them in order.
+    """When hot_store returns rows, akosha_search_all_systems surfaces them in order.
 
     Asserts:
     - ``total_results`` equals the number of hot_store rows
@@ -111,9 +111,9 @@ async def test_search_all_systems_returns_real_results_when_hot_store_populated(
 
     registry = CapturingRegistry()
     register_search_tools(registry, embedding_service, hot_store=hot_store)
-    search_all_systems = registry.tools["search_all_systems"]
+    akosha_search_all_systems = registry.tools["akosha_search_all_systems"]
 
-    result = await search_all_systems(
+    result = await akosha_search_all_systems(
         query="websocket_get_status failures 2026-08-29",
         limit=10,
         threshold=0.7,
@@ -154,9 +154,9 @@ async def test_search_all_systems_falls_back_to_informational_when_hot_store_emp
 
     registry = CapturingRegistry()
     register_search_tools(registry, embedding_service, hot_store=hot_store)
-    search_all_systems = registry.tools["search_all_systems"]
+    akosha_search_all_systems = registry.tools["akosha_search_all_systems"]
 
-    result = await search_all_systems(
+    result = await akosha_search_all_systems(
         query="anything at all",
         limit=10,
         threshold=0.7,
@@ -182,9 +182,9 @@ async def test_search_all_systems_falls_back_when_hot_store_is_none() -> None:
 
     registry = CapturingRegistry()
     register_search_tools(registry, embedding_service, hot_store=None)
-    search_all_systems = registry.tools["search_all_systems"]
+    akosha_search_all_systems = registry.tools["akosha_search_all_systems"]
 
-    result = await search_all_systems(query="hello", limit=10, threshold=0.7)
+    result = await akosha_search_all_systems(query="hello", limit=10, threshold=0.7)
 
     assert result["mode"] == "fallback"
     assert result["total_results"] == 1
@@ -204,9 +204,9 @@ async def test_register_akosha_tools_threads_hot_store_through() -> None:
 
     registry = CapturingRegistry()
     register_akosha_tools(registry, embedding_service, hot_store=hot_store)
-    search_all_systems = registry.tools["search_all_systems"]
+    akosha_search_all_systems = registry.tools["akosha_search_all_systems"]
 
-    result = await search_all_systems(query="hello", limit=10, threshold=0.7)
+    result = await akosha_search_all_systems(query="hello", limit=10, threshold=0.7)
 
     assert result["total_results"] == 1
     assert result["mode"] == "real"

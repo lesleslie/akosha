@@ -54,7 +54,7 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
 
     @registry.register(
         ToolMetadata(
-            name="store_memory",
+            name="akosha_store_memory",
             description="Store a memory directly from Session-Buddy via HTTP push endpoint",
             category=ToolCategory.INGESTION,
             examples=[
@@ -67,7 +67,7 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
             ],
         )
     )
-    async def store_memory(
+    async def akosha_store_memory(
         memory_id: str,
         text: str,
         embedding: list[float] | list[list[float]] | None = None,
@@ -99,7 +99,7 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
                 }
 
         Example:
-            >>> result = await store_memory(
+            >>> result = await akosha_store_memory(
             ...     memory_id="mem_123",
             ...     text="How to implement JWT authentication",
             ...     embedding=[0.1, 0.2, ...],  # 384 dimensions
@@ -204,7 +204,7 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
 
     @registry.register(
         ToolMetadata(
-            name="batch_store_memories",
+            name="akosha_batch_store_memories",
             description="Store multiple memories from Session-Buddy in a single batch",
             category=ToolCategory.INGESTION,
             examples=[
@@ -226,13 +226,13 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
             ],
         )
     )
-    async def batch_store_memories(
+    async def akosha_batch_store_memories(
         memories: list[dict[str, Any]],
     ) -> dict[str, Any]:
         """Store multiple memories from Session-Buddy in a single batch.
 
         This tool provides efficient bulk ingestion for Session-Buddy sync
-        operations, reducing overhead compared to individual store_memory calls.
+        operations, reducing overhead compared to individual akosha_store_memory calls.
 
         Args:
             memories: List of memory dictionaries, each containing:
@@ -253,7 +253,7 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
                 }
 
         Example:
-            >>> result = await batch_store_memories(
+            >>> result = await akosha_batch_store_memories(
             ...     memories=[
             ...         {
             ...             "memory_id": "mem_1",
@@ -317,8 +317,8 @@ def register_session_buddy_tools(registry: FastMCPToolRegistry, hot_store: HotSt
                         )
                         continue
 
-                    # Store using store_memory logic
-                    result = await store_memory(
+                    # Store using akosha_store_memory logic
+                    result = await akosha_store_memory(
                         memory_id=memory_id,
                         text=text,
                         embedding=embedding,

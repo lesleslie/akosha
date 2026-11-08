@@ -1,6 +1,6 @@
 """MCP tools for the Akosha-side EventBridge publisher.
 
-Exposes a single ``publish_to_eventbridge`` MCP tool that wraps the
+Exposes a single ``akosha_publish_to_eventbridge`` MCP tool that wraps the
 underlying ``publish_*`` async functions into a sync-callable interface
 for Claude Code and other MCP clients.
 
@@ -102,8 +102,8 @@ def register_eventbridge_tools(
     else:
         _resolved_enabled_fn = enabled_fn
 
-    @mcp_app.tool(name="publish_to_eventbridge")
-    async def publish_to_eventbridge(
+    @mcp_app.tool(name="akosha_publish_to_eventbridge")
+    async def akosha_publish_to_eventbridge(
         topic: str,
         payload: dict[str, Any],
         async_callback: bool = False,

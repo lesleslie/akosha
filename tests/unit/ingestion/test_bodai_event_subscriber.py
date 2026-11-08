@@ -42,7 +42,7 @@ SUB_MODULE = "akosha.ingestion.bodai_event_subscriber"
 
 
 def _make_fake_embedding_service(dim: int = 384) -> MagicMock:
-    """Return a stub ``EmbeddingService`` whose ``generate_embedding`` is async."""
+    """Return a stub ``EmbeddingService`` whose ``akosha_generate_embedding`` is async."""
     service = MagicMock()
     service.generate_embedding = AsyncMock(return_value=np.zeros(dim, dtype=np.float32))
     return service

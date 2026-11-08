@@ -93,7 +93,7 @@ async def _analyze(
 ) -> dict[str, dict]:
     """Run one analyzer cycle over ``store`` with ``declared`` pairs.
 
-    Reads ``_signals`` directly rather than ``run_fitness_analysis()``, which
+    Reads ``_signals`` directly rather than ``akosha_run_fitness_analysis()``, which
     would run a *second* cycle of its own.
     """
     analyzer = FitnessAnalyzer(

@@ -1,7 +1,7 @@
 """Signing API for Bodai skill/agent metadata.
 
 A :class:`SkillsSigner` wraps a single :class:`Keypair` and provides
-:meth:`sign` for callers (Phase 1 ``get_skill`` / ``get_agent`` MCP
+:meth:`sign` for callers (Phase 1 ``akosha_get_skill`` / ``akosha_get_agent`` MCP
 tool handlers). The signer also exposes :meth:`pubkey_manifest`
 for publication in ``/health``.
 

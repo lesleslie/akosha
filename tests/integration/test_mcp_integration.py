@@ -81,18 +81,18 @@ class TestMCPIntegration:
 
         # Check for specific tools
         tool_names = list(tools.keys())
-        assert "generate_embedding" in tool_names
-        assert "search_all_systems" in tool_names
-        assert "analyze_trends" in tool_names
-        assert "detect_anomalies" in tool_names
-        assert "correlate_systems" in tool_names
-        assert "query_knowledge_graph" in tool_names
-        assert "find_path" in tool_names
-        assert "get_graph_statistics" in tool_names
+        assert "akosha_generate_embedding" in tool_names
+        assert "akosha_search_all_systems" in tool_names
+        assert "akosha_analyze_trends" in tool_names
+        assert "akosha_detect_anomalies" in tool_names
+        assert "akosha_correlate_systems" in tool_names
+        assert "akosha_query_knowledge_graph" in tool_names
+        assert "akosha_find_path" in tool_names
+        assert "akosha_get_graph_statistics" in tool_names
 
     @pytest.mark.asyncio
     async def test_generate_embedding_tool(self) -> None:
-        """Test generate_embedding tool."""
+        """Test akosha_generate_embedding tool."""
         from akosha.mcp.server import create_app
         from akosha.mcp.tools.akosha_tools import register_embedding_tools
         from akosha.mcp.tools.tool_registry import FastMCPToolRegistry
@@ -107,10 +107,10 @@ class TestMCPIntegration:
 
         # Get the tool
         tools = registry.tools
-        assert "generate_embedding" in tools
+        assert "akosha_generate_embedding" in tools
 
         # Call the tool coroutine
-        result = await tools["generate_embedding"].coroutine(text="test conversation about Python")
+        result = await tools["akosha_generate_embedding"].coroutine(text="test conversation about Python")
 
         assert result["text"] == "test conversation about Python"
         # Assert the invariant, not a literal width. The tool reports
@@ -151,11 +151,11 @@ class TestMCPIntegration:
 
             register_analytics_tools(registry, analytics_service)
 
-            # Test analyze_trends tool
+            # Test akosha_analyze_trends tool
             tools = registry.tools
-            assert "analyze_trends" in tools
+            assert "akosha_analyze_trends" in tools
 
-            result = await tools["analyze_trends"].coroutine(
+            result = await tools["akosha_analyze_trends"].coroutine(
                 metric_name="test_metric",
                 system_id="test-system",
                 time_window_days=1,
@@ -181,11 +181,11 @@ class TestMCPIntegration:
 
             register_graph_tools(registry, graph_builder)
 
-            # Test get_graph_statistics tool
+            # Test akosha_get_graph_statistics tool
             tools = registry.tools
-            assert "get_graph_statistics" in tools
+            assert "akosha_get_graph_statistics" in tools
 
-            result = await tools["get_graph_statistics"].coroutine()
+            result = await tools["akosha_get_graph_statistics"].coroutine()
 
             assert result["total_entities"] == 0
             assert result["total_edges"] == 0

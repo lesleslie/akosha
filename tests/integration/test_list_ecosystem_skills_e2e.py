@@ -8,7 +8,7 @@ tests do NOT require the real Bodai MCP servers to be running.
 Tests assert:
 
 * Tool is registered on a FastMCP app via ``register_ecosystem_skills``.
-* Tool name matches the picker-facing convention (``list_ecosystem_skills``).
+* Tool name matches the picker-facing convention (``akosha_list_ecosystem_skills``).
 * Federation aggregates >=12 entries across the 4 mock servers (3 per
   server — matches plan section 5 Phase 4 exit criteria, after the
   2026-09-26 federation cleanup).
@@ -44,7 +44,7 @@ from akosha.mcp.tools.ecosystem_skills_circuit import EcosystemCircuitRegistry
 
 
 def _seed_metadata(server_key: str, name: str, version: str = "1.0.0") -> dict[str, Any]:
-    """Build a SkillMetadata-shaped dict for a synthetic per-server list_skills response."""
+    """Build a SkillMetadata-shaped dict for a synthetic per-server akosha_list_skills response."""
     return SkillMetadata(
         id=f"{server_key}:{name}:{version}",
         server=server_key,
@@ -190,12 +190,12 @@ class TestRegistration:
     def test_tool_registered_with_canonical_name(self) -> None:
         app = _DummyFastMCP()
         register_ecosystem_skills(app)  # type: ignore[arg-type]
-        assert "list_ecosystem_skills" in app.registered
+        assert "akosha_list_ecosystem_skills" in app.registered
 
     def test_tool_is_async_coroutine(self) -> None:
         app = _DummyFastMCP()
         register_ecosystem_skills(app)  # type: ignore[arg-type]
-        fn = app.registered["list_ecosystem_skills"]
+        fn = app.registered["akosha_list_ecosystem_skills"]
         import inspect
 
         assert inspect.iscoroutinefunction(fn)
@@ -228,7 +228,7 @@ class TestFederationAggregation:
         )
         # Wipe cache from any prior test
         cache.invalidate()
-        fn = app.registered["list_ecosystem_skills"]
+        fn = app.registered["akosha_list_ecosystem_skills"]
         result = await fn()
 
         assert isinstance(result, dict)
@@ -285,7 +285,7 @@ class TestPagination:
             http_client_factory=_http_client_factory(mock_client),
         )
         cache.invalidate()
-        fn = app.registered["list_ecosystem_skills"]
+        fn = app.registered["akosha_list_ecosystem_skills"]
 
         page1 = await fn(limit=10, cursor=None)
         assert len(page1["data"]) == 10
@@ -333,7 +333,7 @@ class TestCache:
             http_client_factory=_http_client_factory(mock_client),
         )
         cache.invalidate()
-        fn = app.registered["list_ecosystem_skills"]
+        fn = app.registered["akosha_list_ecosystem_skills"]
 
         first = await fn(limit=20)
         # Subsequent call within TTL should match (cached on file)
@@ -370,7 +370,7 @@ class TestIncludeInstalled:
             http_client_factory=_http_client_factory(mock_client),
         )
         cache.invalidate()
-        fn = app.registered["list_ecosystem_skills"]
+        fn = app.registered["akosha_list_ecosystem_skills"]
 
         # Provide a stub installed path so include_installed=True works.
         fake_skill_dir = tmp_path / "akosha-installed-stub"

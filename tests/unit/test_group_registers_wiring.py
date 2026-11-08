@@ -82,7 +82,7 @@ async def test_register_akosha_group_wires_embedding_service(
 
     # The hardcoded ``None`` regression made every tool group skip registration.
     # After the fix, embedding tools must appear in the registry.
-    assert "generate_embedding" in app.registered, (
+    assert "akosha_generate_embedding" in app.registered, (
         "register_akosha_group hardcoded embedding_service=None; "
         "embedding tools were silently skipped at startup."
     )
@@ -114,12 +114,12 @@ async def test_register_akosha_group_wires_analytics_and_graph(
 
     await register_akosha_group(app)
 
-    # detect_anomalies comes from register_analytics_tools; query_knowledge_graph
+    # akosha_detect_anomalies comes from register_analytics_tools; akosha_query_knowledge_graph
     # comes from register_graph_tools. Both should be present when services wire.
-    assert "detect_anomalies" in app.registered, (
+    assert "akosha_detect_anomalies" in app.registered, (
         "analytics tools skipped — analytics_service never reached register_akosha_tools"
     )
-    assert "query_knowledge_graph" in app.registered, (
+    assert "akosha_query_knowledge_graph" in app.registered, (
         "graph tools skipped — graph_builder never reached register_akosha_tools"
     )
 
@@ -130,7 +130,7 @@ async def test_try_create_hot_store_returns_initialized_store() -> None:
 
     The pre-fix version returned a freshly-constructed ``HotStore`` whose
     ``conn`` attribute was still ``None`` — causing every dependent tool
-    (``search_code_patterns``, ``find_function_usage``, etc.) to raise
+    (``akosha_search_code_patterns``, ``akosha_find_function_usage``, etc.) to raise
     ``RuntimeError("Hot store not initialized")`` at runtime."""
     with patch("akosha.storage.create_hot_store") as create_mock:
         store_instance = MagicMock()
@@ -148,7 +148,7 @@ async def test_hot_store_initialize_creates_code_graphs_table() -> None:
     """``HotStore.initialize()`` must also create the ``code_graphs`` table.
 
     ``initialize_code_graphs_table`` exists at ``hot_store.py:325`` but was
-    never called anywhere in the codebase — so ``search_code_patterns``
+    never called anywhere in the codebase — so ``akosha_search_code_patterns``
     failed with ``table not found`` even when the store itself was
     initialized. Calling ``list_code_graphs`` post-initialize must succeed."""
     from akosha.storage.hot_store import HotStore

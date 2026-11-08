@@ -54,7 +54,7 @@ def app() -> _FakeApp:
 @pytest.fixture
 def tool(app: _FakeApp) -> Any:
     register_otel_retention_tools(app)
-    return app.tools["force_retention_sweep"]
+    return app.tools["akosha_force_retention_sweep"]
 
 
 @pytest.fixture
@@ -88,8 +88,8 @@ class TestRegistration:
 
     def test_it_registers_under_the_documented_name(self, app: _FakeApp) -> None:
         register_otel_retention_tools(app)
-        assert "force_retention_sweep" in app.tools
-        assert callable(app.tools["force_retention_sweep"])
+        assert "akosha_force_retention_sweep" in app.tools
+        assert callable(app.tools["akosha_force_retention_sweep"])
 
     def test_the_profile_map_lists_it(self) -> None:
         """The tool must be in the group's tool list, or the profile map drifts.
@@ -99,7 +99,7 @@ class TestRegistration:
         """
         from akosha.mcp.tools.profiles import REGISTRATION_TOOLS
 
-        assert "force_retention_sweep" in REGISTRATION_TOOLS["register_otel_span_tools"]
+        assert "akosha_force_retention_sweep" in REGISTRATION_TOOLS["register_otel_span_tools"]
 
 
 class TestTheToolSignals:

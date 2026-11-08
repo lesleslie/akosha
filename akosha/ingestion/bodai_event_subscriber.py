@@ -17,7 +17,7 @@ A persistent watermark row in the HotStore carries the
 ``last_processed_message_id`` so restarts resume from where they left
 off rather than re-processing the whole stream. The watermark row uses
 ``conversation_id="__bodai_subscriber_watermark__"`` (reserved;
-``search_all_systems`` and friends must filter it out at query time).
+``akosha_search_all_systems`` and friends must filter it out at query time).
 
 Fail-soft contract:
 
@@ -643,7 +643,7 @@ class BodaiToolInvocationSubscriber:
         """Insert/upsert the watermark row in the HotStore.
 
         Uses a zero-vector embedding because HNSW index lookup on a
-        zero vector is degenerate; ``search_all_systems`` filters out
+        zero vector is degenerate; ``akosha_search_all_systems`` filters out
         the reserved ``WATERMARK_CONVERSATION_ID`` at query time so the
         row never appears in search results.
 

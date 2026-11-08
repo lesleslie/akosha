@@ -3,7 +3,7 @@
 The audit caught an empty-feed failure mode (see ``docs/specs/
 2026-09-05-akosha-hardening-design.md`` Appendix A): the MCP server
 registered 30+ tools, returned 200 from ``/health``, but every data feed
-(``get_graph_statistics``, ``query_local_traces``, ``search_code_patterns``)
+(``akosha_get_graph_statistics``, ``query_local_traces``, ``akosha_search_code_patterns``)
 returned empty because no producer was ever started.
 
 Wave 5 wires three things in the lifespan:

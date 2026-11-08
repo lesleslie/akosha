@@ -59,7 +59,7 @@ class ValidationError(Exception):
 
 
 class GenerateEmbeddingRequest(BaseModel):
-    """Validation schema for generate_embedding tool."""
+    """Validation schema for akosha_generate_embedding tool."""
 
     text: str = Field(
         ...,
@@ -93,7 +93,7 @@ class GenerateEmbeddingRequest(BaseModel):
 
 
 class GenerateBatchEmbeddingsRequest(BaseModel):
-    """Validation schema for generate_batch_embeddings tool."""
+    """Validation schema for akosha_generate_batch_embeddings tool."""
 
     texts: list[str] = Field(
         ...,
@@ -164,7 +164,7 @@ class GenerateBatchEmbeddingsRequest(BaseModel):
 
 
 class SearchAllSystemsRequest(BaseModel):
-    """Validation schema for search_all_systems tool."""
+    """Validation schema for akosha_search_all_systems tool."""
 
     query: str = Field(
         ...,
@@ -271,7 +271,7 @@ class SearchAllSystemsRequest(BaseModel):
 
 
 class GetSystemMetricsRequest(BaseModel):
-    """Validation schema for get_system_metrics tool."""
+    """Validation schema for akosha_get_system_metrics tool."""
 
     time_range_days: int = Field(
         30,
@@ -282,7 +282,7 @@ class GetSystemMetricsRequest(BaseModel):
 
 
 class AnalyzeTrendsRequest(BaseModel):
-    """Validation schema for analyze_trends tool."""
+    """Validation schema for akosha_analyze_trends tool."""
 
     metric_name: str = Field(
         ...,
@@ -354,7 +354,7 @@ class AnalyzeTrendsRequest(BaseModel):
 
 
 class DetectAnomaliesRequest(BaseModel):
-    """Validation schema for detect_anomalies tool."""
+    """Validation schema for akosha_detect_anomalies tool."""
 
     metric_name: str = Field(
         ...,
@@ -431,7 +431,7 @@ class DetectAnomaliesRequest(BaseModel):
 
 
 class CorrelateSystemsRequest(BaseModel):
-    """Validation schema for correlate_systems tool."""
+    """Validation schema for akosha_correlate_systems tool."""
 
     metric_name: str = Field(
         ...,
@@ -477,7 +477,7 @@ class CorrelateSystemsRequest(BaseModel):
 
 
 class QueryKnowledgeGraphRequest(BaseModel):
-    """Validation schema for query_knowledge_graph tool."""
+    """Validation schema for akosha_query_knowledge_graph tool."""
 
     entity_id: str = Field(
         ...,
@@ -553,7 +553,7 @@ class QueryKnowledgeGraphRequest(BaseModel):
 
 
 class FindPathRequest(BaseModel):
-    """Validation schema for find_path tool."""
+    """Validation schema for akosha_find_path tool."""
 
     source_id: str = Field(
         ...,
@@ -620,7 +620,7 @@ class FindPathRequest(BaseModel):
 
 
 class CrossRepoCapabilitySearchRequest(BaseModel):
-    """Validation schema for ``cross_repo_capability_search`` MCP tool (Phase 1).
+    """Validation schema for ``akosha_cross_repo_capability_search`` MCP tool (Phase 1).
 
     The query supports any of the indexed Bodai components: ``mahavishnu``,
     ``akosha``, ``session-buddy``, ``crackerjack``, ``oneiric``,
@@ -720,7 +720,7 @@ def is_eval_metric_name(name: str) -> bool:
 
 
 class AddEvalMetricRequest(BaseModel):
-    """Validation schema for the add_eval_metric write-side MCP tool.
+    """Validation schema for the akosha_add_eval_metric write-side MCP tool.
 
     Per REQ-MS-001 + REQ-MS-006: write-side entry point for Mahavishnu
     eval fixtures to post per-(adapter, fixture) pass rates. The

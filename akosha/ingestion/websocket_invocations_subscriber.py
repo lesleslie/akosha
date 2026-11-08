@@ -3,7 +3,7 @@
 Plan: docs/plans/2026-08-29-push-subscriber.md Phase 3.
 
 The class wires the ``BodaiToolInvocationSubscriber`` (Redis Streams
-push) into the HotStore so ``mcp__akosha__search_all_systems`` can
+push) into the HotStore so ``mcp__akosha__akosha_search_all_systems`` can
 serve real results. The previous poll fallback was removed in
 2026-09-26; the orchestrator now only drives the push path (which is
 the source of truth). When the push subscriber fails to start (Redis
@@ -51,7 +51,7 @@ class WebSocketInvocationsSubscriber:
     ``_index_row``).
 
     Each row is embedded and inserted into the HotStore so that
-    ``mcp__akosha__search_all_systems`` can serve real results.
+    ``mcp__akosha__akosha_search_all_systems`` can serve real results.
 
     Attributes:
         _hot_store: HotStore handle (AsyncMock-friendly). May be None

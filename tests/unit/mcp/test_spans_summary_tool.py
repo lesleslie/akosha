@@ -1,6 +1,6 @@
-"""Tests for the ``spans_summary`` MCP tool (read-path R-3).
+"""Tests for the ``akosha_spans_summary`` MCP tool (read-path R-3).
 
-R-3 is the aggregate sibling of R-2's ``search_spans``, sharing the registrar.
+R-3 is the aggregate sibling of R-2's ``akosha_search_spans``, sharing the registrar.
 The two things R-3 must get right that R-2 does not have to think about:
 
 * **NULL is a value, not an absence.** A window where every span has NULL
@@ -99,7 +99,7 @@ async def _call(app: FastMCP, **kwargs: Any) -> dict[str, Any]:
     return under a ``result`` key, because a bare array has no name to carry
     the structured-output schema.
     """
-    result = await app.call_tool("spans_summary", kwargs)
+    result = await app.call_tool("akosha_spans_summary", kwargs)
     return dict(result.structured_content)
 
 
@@ -109,7 +109,7 @@ async def _call(app: FastMCP, **kwargs: Any) -> dict[str, Any]:
 @pytest.mark.asyncio
 async def test_tool_is_registered(app: FastMCP) -> None:
     names = [t.name for t in await app.list_tools()]
-    assert "spans_summary" in names
+    assert "akosha_spans_summary" in names
 
 
 # --- §5.2: quiet is not broken -------------------------------------------

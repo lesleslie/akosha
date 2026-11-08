@@ -184,7 +184,7 @@ class AkoshaApplication:
         # was removed from the hot tier 2026-09-27 — pgvector is now a
         # warm-tier-only backend via ``create_warm_store(backend="pgvector")``.
         # Graceful no-op when init fails or when the feature is disabled in
-        # settings — search_all_systems will fall back to an informational
+        # settings — akosha_search_all_systems will fall back to an informational
         # "no rows indexed yet" response.
         #
         # HotStore schema dim is baked into CREATE TABLE at __init__ time,
@@ -225,7 +225,7 @@ class AkoshaApplication:
             # NOTE (2026-09-27 security review): asyncpg exceptions may
             # embed the connection DSN in str(exc) — redact before logging.
             logger.warning(
-                "HotStore init failed (%s); search_all_systems will fall back",
+                "HotStore init failed (%s); akosha_search_all_systems will fall back",
                 _safe_exc_message(exc, hot_cfg.get("pg_url")),
             )
             self.hot_store = None

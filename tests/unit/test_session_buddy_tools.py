@@ -7,19 +7,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# store_memory and batch_store_memories are nested functions inside
+# akosha_store_memory and akosha_batch_store_memories are nested functions inside
 # register_session_buddy_tools(), so we access them via the registry.
 from akosha.mcp.tools.session_buddy_tools import register_session_buddy_tools
 
 
 def _get_registered_tools(registry):
-    """Extract store_memory and batch_store_memories from the registry."""
+    """Extract akosha_store_memory and akosha_batch_store_memories from the registry."""
     store_fn = None
     batch_fn = None
     for name, func in registry._registered_tools.items():
-        if name == "store_memory":
+        if name == "akosha_store_memory":
             store_fn = func
-        elif name == "batch_store_memories":
+        elif name == "akosha_batch_store_memories":
             batch_fn = func
     return store_fn, batch_fn
 
@@ -48,13 +48,13 @@ class TestStoreMemory:
         mock_registry.register = mock_register
         register_session_buddy_tools(mock_registry, mock_hot_store)
 
-        store_memory_fn = registered.get("store_memory")
+        store_memory_fn = registered.get("akosha_store_memory")
         return mock_registry, mock_hot_store, store_memory_fn
 
     @pytest.mark.asyncio
     async def test_store_memory_basic(self, registry_and_store):
         """Test basic memory storage."""
-        _, mock_hot_store, store_memory = registry_and_store
+        _, mock_hot_store, akosha_store_memory = registry_and_store
         mock_hot_store.insert = AsyncMock()
 
         # Mock HotRecord
@@ -69,7 +69,7 @@ class TestStoreMemory:
                 "correlation_id": "corr-123",
             }
 
-            result = await store_memory(
+            result = await akosha_store_memory(
                 memory_id=memory_id, text=text, embedding=[0.1] * 384, metadata=metadata
             )
 
@@ -84,9 +84,9 @@ class TestStoreMemory:
     @pytest.mark.asyncio
     async def test_store_memory_invalid_id(self, registry_and_store):
         """Test memory storage with invalid memory_id."""
-        _, _, store_memory = registry_and_store
+        _, _, akosha_store_memory = registry_and_store
 
-        result = await store_memory(memory_id="", text="test content")
+        result = await akosha_store_memory(memory_id="", text="test content")
 
         # Should fail
         assert result["status"] == "failed"
@@ -96,9 +96,9 @@ class TestStoreMemory:
     @pytest.mark.asyncio
     async def test_store_memory_no_text(self, registry_and_store):
         """Test memory storage without text content."""
-        _, _, store_memory = registry_and_store
+        _, _, akosha_store_memory = registry_and_store
 
-        result = await store_memory(memory_id="test-id", text="")
+        result = await akosha_store_memory(memory_id="test-id", text="")
 
         # Should fail
         assert result["status"] == "failed"
@@ -108,7 +108,7 @@ class TestStoreMemory:
     @pytest.mark.asyncio
     async def test_store_memory_wrong_embedding_dim(self, registry_and_store):
         """Test memory storage with wrong embedding dimension."""
-        _, mock_hot_store, store_memory = registry_and_store
+        _, mock_hot_store, akosha_store_memory = registry_and_store
         mock_hot_store.insert = AsyncMock()
 
         with patch("akosha.models.HotRecord") as mock_record_class:
@@ -119,7 +119,7 @@ class TestStoreMemory:
             text = "Test content"
             embedding = [0.1] * 256  # Wrong dimension (should be 384)
 
-            result = await store_memory(memory_id=memory_id, text=text, embedding=embedding)
+            result = await akosha_store_memory(memory_id=memory_id, text=text, embedding=embedding)
 
             # Should succeed but warn
             assert result["status"] == "stored"
@@ -129,7 +129,7 @@ class TestStoreMemory:
     @pytest.mark.asyncio
     async def test_store_memory_with_metadata(self, registry_and_store):
         """Test memory storage with full metadata."""
-        _, mock_hot_store, store_memory = registry_and_store
+        _, mock_hot_store, akosha_store_memory = registry_and_store
         mock_hot_store.insert = AsyncMock()
 
         with patch("akosha.models.HotRecord") as mock_record_class:
@@ -146,7 +146,7 @@ class TestStoreMemory:
                 "type": "insight",
             }
 
-            result = await store_memory(
+            result = await akosha_store_memory(
                 memory_id=memory_id, text=text, embedding=embedding, metadata=metadata
             )
 
@@ -160,7 +160,7 @@ class TestStoreMemory:
     @pytest.mark.asyncio
     async def test_store_memory_insert_error(self, registry_and_store):
         """Test memory storage when insert fails."""
-        _, mock_hot_store, store_memory = registry_and_store
+        _, mock_hot_store, akosha_store_memory = registry_and_store
         mock_hot_store.insert = AsyncMock(side_effect=Exception("Database connection failed"))
 
         memory_id = "test-error"
@@ -171,7 +171,7 @@ class TestStoreMemory:
             mock_record = MagicMock()
             mock_record_class.return_value = mock_record
 
-            result = await store_memory(memory_id=memory_id, text=text, embedding=embedding)
+            result = await akosha_store_memory(memory_id=memory_id, text=text, embedding=embedding)
 
             # Should fail
             assert result["status"] == "failed"
@@ -200,13 +200,13 @@ class TestBatchStoreMemories:
         mock_registry.register = mock_register
         register_session_buddy_tools(mock_registry, mock_hot_store)
 
-        batch_fn = registered.get("batch_store_memories")
+        batch_fn = registered.get("akosha_batch_store_memories")
         return mock_registry, mock_hot_store, batch_fn
 
     @pytest.mark.asyncio
     async def test_batch_store_memories_basic(self, registry_and_batch):
         """Test basic batch memory storage."""
-        _, mock_hot_store, batch_store_memories = registry_and_batch
+        _, mock_hot_store, akosha_batch_store_memories = registry_and_batch
         mock_hot_store.insert = AsyncMock()
 
         memories = [
@@ -227,7 +227,7 @@ class TestBatchStoreMemories:
             mock_record = MagicMock()
             mock_record_class.return_value = mock_record
 
-            result = await batch_store_memories(memories)
+            result = await akosha_batch_store_memories(memories)
 
             # Should succeed completely
             assert result["status"] == "completed"
@@ -240,7 +240,7 @@ class TestBatchStoreMemories:
     @pytest.mark.asyncio
     async def test_batch_store_memories_partial_success(self, registry_and_batch):
         """Test batch memory storage with partial success."""
-        _, mock_hot_store, batch_store_memories = registry_and_batch
+        _, mock_hot_store, akosha_batch_store_memories = registry_and_batch
         mock_hot_store.insert = AsyncMock()
 
         memories = [
@@ -258,7 +258,7 @@ class TestBatchStoreMemories:
             mock_record = MagicMock()
             mock_record_class.return_value = mock_record
 
-            result = await batch_store_memories(memories)
+            result = await akosha_batch_store_memories(memories)
 
             # Should be partial success
             assert result["status"] == "partial"
@@ -270,12 +270,12 @@ class TestBatchStoreMemories:
     @pytest.mark.asyncio
     async def test_batch_store_memories_batch_too_large(self, registry_and_batch):
         """Test batch memory storage with oversized batch."""
-        _, _, batch_store_memories = registry_and_batch
+        _, _, akosha_batch_store_memories = registry_and_batch
 
         # Create batch of 1001 memories (exceeds limit)
         memories = [{"memory_id": f"mem{i}", "text": f"Memory {i}"} for i in range(1001)]
 
-        result = await batch_store_memories(memories)
+        result = await akosha_batch_store_memories(memories)
 
         # Should fail
         assert result["status"] == "failed"
@@ -287,11 +287,11 @@ class TestBatchStoreMemories:
     @pytest.mark.asyncio
     async def test_batch_store_memories_empty_batch(self, registry_and_batch):
         """Test batch memory storage with empty batch."""
-        _, _, batch_store_memories = registry_and_batch
+        _, _, akosha_batch_store_memories = registry_and_batch
 
         memories = []
 
-        result = await batch_store_memories(memories)
+        result = await akosha_batch_store_memories(memories)
 
         # Should succeed with zero items
         assert result["status"] == "completed"
@@ -303,11 +303,11 @@ class TestBatchStoreMemories:
     @pytest.mark.asyncio
     async def test_batch_store_memories_all_fail(self, registry_and_batch):
         """Test batch memory storage where all items fail."""
-        _, _, batch_store_memories = registry_and_batch
+        _, _, akosha_batch_store_memories = registry_and_batch
 
         memories = [{"memory_id": "", "text": "No ID"}, {"memory_id": "mem2", "text": ""}]
 
-        result = await batch_store_memories(memories)
+        result = await akosha_batch_store_memories(memories)
 
         # Should fail completely
         assert result["status"] == "failed"
@@ -351,7 +351,7 @@ class TestSessionBuddyToolsIntegration:
         mock_registry.register = mock_register
         register_session_buddy_tools(mock_registry, mock_hot_store)
 
-        store_memory = registered["store_memory"]
+        akosha_store_memory = registered["akosha_store_memory"]
 
         with patch("akosha.models.HotRecord") as mock_record_class:
             mock_record = MagicMock()
@@ -371,7 +371,7 @@ class TestSessionBuddyToolsIntegration:
                 },
             }
 
-            result = await store_memory(**memory_data)
+            result = await akosha_store_memory(**memory_data)
 
             # Verify complete flow
             assert result["status"] == "stored"

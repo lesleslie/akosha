@@ -1,6 +1,6 @@
 """Regression test for the `'list' object has no attribute 'values'` crash.
 
-REQ-002, REQ-009: the ``search_code_patterns`` and
+REQ-002, REQ-009: the ``akosha_search_code_patterns`` and
 ``find_similar_repositories`` handlers must return a structured response
 (populated results OR a typed ``degraded`` envelope) for every indexer shape.
 The session-buddy code-graph indexer can return ``graph_data["nodes"]`` as a
@@ -138,7 +138,7 @@ class _StubHotStore:
 
 
 def _build_client(graph: dict[str, Any] | None) -> Client:
-    """Wire a FastMCP app, register ``search_code_patterns`` with a stubbed
+    """Wire a FastMCP app, register ``akosha_search_code_patterns`` with a stubbed
     hot_store, and return a ``Client`` over the in-memory transport.
 
     The PyCharm adapter is left at its default (no real MCP client); the
@@ -178,7 +178,7 @@ async def test_dict_shape_returns_structured_response() -> None:
     """
     async with _build_client(DICT_SHAPE_GRAPH) as client:
         result = await client.call_tool(
-            "search_code_patterns",
+            "akosha_search_code_patterns",
             {"pattern": r"def \w+"},
         )
     payload = _extract_payload(result)
@@ -198,7 +198,7 @@ async def test_list_shape_returns_structured_response() -> None:
     """
     async with _build_client(LIST_SHAPE_GRAPH) as client:
         result = await client.call_tool(
-            "search_code_patterns",
+            "akosha_search_code_patterns",
             {"pattern": r"def \w+"},
         )
     payload = _extract_payload(result)
@@ -214,7 +214,7 @@ async def test_missing_shape_returns_structured_response() -> None:
     """
     async with _build_client(MISSING_SHAPE_GRAPH) as client:
         result = await client.call_tool(
-            "search_code_patterns",
+            "akosha_search_code_patterns",
             {"pattern": r"def \w+"},
         )
     payload = _extract_payload(result)
@@ -229,7 +229,7 @@ async def test_no_hot_store_graphs_returns_structured_response() -> None:
     """
     async with _build_client(None) as client:
         result = await client.call_tool(
-            "search_code_patterns",
+            "akosha_search_code_patterns",
             {"pattern": r"def \w+"},
         )
     payload = _extract_payload(result)

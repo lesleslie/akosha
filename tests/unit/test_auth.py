@@ -409,7 +409,7 @@ class TestAuthenticationMiddlewareBranches:
         middleware = AuthenticationMiddleware()
 
         result = await middleware.authenticate_request(
-            tool_name="search_all_systems",
+            tool_name="akosha_search_all_systems",
             tool_category="search",
             context=None,
         )
@@ -430,7 +430,7 @@ class TestAuthenticationMiddlewareBranches:
 
         with pytest.raises(MissingTokenError):
             await middleware.authenticate_request(
-                tool_name="search_all_systems",
+                tool_name="akosha_search_all_systems",
                 tool_category="search",
                 context=mock_context,
             )

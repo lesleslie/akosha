@@ -107,7 +107,7 @@ async def test_a_wired_analyzer_reports_a_pair_that_emitted(
     """The whole point: spans in, signal out.
 
     Every earlier state of this feature failed here while looking fine —
-    no exception, no log line, just ``run_fitness_analysis`` returning
+    no exception, no log line, just ``akosha_run_fitness_analysis`` returning
     ``{}`` forever.
     """
     await _ingest(
@@ -241,7 +241,7 @@ async def test_registration_without_a_lifespan_is_inert_not_broken(
 ) -> None:
     """Outside the lifespan there is no shared store, and that is fine.
 
-    The group must still register so ``run_fitness_analysis`` exists and can
+    The group must still register so ``akosha_run_fitness_analysis`` exists and can
     explain itself. Raising here would take down every tool registration in
     the profile — a much worse failure than a tool that reports no data.
     """

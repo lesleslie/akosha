@@ -172,12 +172,12 @@ erDiagram
 
 | Tier / object | Read by | Written by | Retention / aging |
 |---------------|---------|------------|-------------------|
-| `HotStore.conversations` | `search_all_systems`, `query_local_traces`, `find_similar_repositories`, `get_cross_repo_function_usage` (via code graphs), PyCharm search fallback | `store_memory`, `batch_store_memories`, `IngestionWorker._process_upload`, `system_endpoint/` uploads | Aging pushes ≥7d records to warm; rows deleted from hot after warm insert |
-| `HotStore.code_graphs` | `list_ingested_code_graphs`, `get_code_graph_details`, `find_similar_repositories`, `get_cross_repo_function_usage`, `search_code_patterns`, `get_code_problems`, `find_function_usage`, `analyze_imports` | Mahavishnu indexer via `IngestionWorker` (JSON payload pushed into `store_code_graph`) | Refreshed per commit; `INSERT OR REPLACE` keyed on `(repo_path, commit_hash)` |
+| `HotStore.conversations` | `akosha_search_all_systems`, `query_local_traces`, `find_similar_repositories`, `get_cross_repo_function_usage` (via code graphs), PyCharm search fallback | `akosha_store_memory`, `akosha_batch_store_memories`, `IngestionWorker._process_upload`, `system_endpoint/` uploads | Aging pushes ≥7d records to warm; rows deleted from hot after warm insert |
+| `HotStore.code_graphs` | `list_ingested_code_graphs`, `get_code_graph_details`, `find_similar_repositories`, `get_cross_repo_function_usage`, `akosha_search_code_patterns`, `akosha_get_code_problems`, `akosha_find_function_usage`, `akosha_analyze_imports` | Mahavishnu indexer via `IngestionWorker` (JSON payload pushed into `store_code_graph`) | Refreshed per commit; `INSERT OR REPLACE` keyed on `(repo_path, commit_hash)` |
 | `WarmStore.conversations` | (planned) warm-tier semantic recall; currently read indirectly via `get_migration_stats` | `AgingService._migrate_batch` (writes), `ColdExporter.export_expired` (reads, then evicts) | 7–90 days; aged out to the cold tier by the `akosha.cold_export` cron (`cold.age_threshold_days`, default 90) |
 | `ColdStore` parquet batches | (planned) bulk recall via DuckDB external scan of S3 bucket | `ColdExporter.export_expired` via `ColdStore.export_batch` — one Parquet object per `system_id/YYYY/MM/DD` partition, keyed under the configured `cold.prefix` | 90+ days; partitioned by `system_id/YYYY/MM/DD` |
-| `FitnessAnalyzer` buffer | `run_fitness_analysis` (returns snapshot) | `_analyze_and_persist` (every `poll_interval` seconds; default 60) | Maxlen 1000 entries; signals are held in memory only |
-| `KnowledgeGraphBuilder.entities` / `.edges` | `query_knowledge_graph`, `find_path`, `get_graph_statistics` | `KnowledgeGraphBuilder.add_to_graph` (called after `extract_entities` + `extract_relationships` per conversation) | Process lifetime; no disk persistence yet |
+| `FitnessAnalyzer` buffer | `akosha_run_fitness_analysis` (returns snapshot) | `_analyze_and_persist` (every `poll_interval` seconds; default 60) | Maxlen 1000 entries; signals are held in memory only |
+| `KnowledgeGraphBuilder.entities` / `.edges` | `akosha_query_knowledge_graph`, `akosha_find_path`, `akosha_get_graph_statistics` | `KnowledgeGraphBuilder.add_to_graph` (called after `extract_entities` + `extract_relationships` per conversation) | Process lifetime; no disk persistence yet |
 
 ### Path resolution
 
@@ -212,17 +212,17 @@ publishes analytics events onto the Bodai EventBridge.
 
 | Tool | Tier | Caller (typical) | What it writes |
 |------|------|------------------|----------------|
-| `store_memory` | Hot | Session-Buddy HTTP push (push-based ingestion) | One row in `HotStore.conversations` via `HotRecord` |
-| `batch_store_memories` | Hot | Session-Buddy bulk sync | Up to 1000 rows in `HotStore.conversations` per call |
-| `publish_to_eventbridge` | Events | Akosha analytics paths (`/vishnu`, Conscious Agent) | One `EventEnvelope` on the Bodai EventBridge; topics: `pattern.detected`, `anomaly.detected`, `insight.generated`, `aggregation.completed` |
-| `run_fitness_analysis` (side effect) | Fitness | Manual trigger / dashboards | One analysis cycle over the `spans_substrate`; the resulting signals are returned in-memory |
+| `akosha_store_memory` | Hot | Session-Buddy HTTP push (push-based ingestion) | One row in `HotStore.conversations` via `HotRecord` |
+| `akosha_batch_store_memories` | Hot | Session-Buddy bulk sync | Up to 1000 rows in `HotStore.conversations` per call |
+| `akosha_publish_to_eventbridge` | Events | Akosha analytics paths (`/vishnu`, Conscious Agent) | One `EventEnvelope` on the Bodai EventBridge; topics: `pattern.detected`, `anomaly.detected`, `insight.generated`, `aggregation.completed` |
+| `akosha_run_fitness_analysis` (side effect) | Fitness | Manual trigger / dashboards | One analysis cycle over the `spans_substrate`; the resulting signals are returned in-memory |
 | `report_runtime_to_oneiric` (lifespan side effect) | Discovery | Akosha MCP server startup | Fire-and-forget push of the static agent catalog to Oneiric via `oneiric_report_runtime` |
 | `IngestionWorker._process_upload` (non-MCP side effect) | Hot | S3/R2 poller (cloud mode only) | Multiple rows + a `code_graphs` row from one uploaded Session-Buddy snapshot |
 | `register_fitness_group` (startup side effect) | Fitness | Akosha MCP server startup | Populates `FitnessAnalyzer` with the `SpanQuery` over the shared HotStore and the `spans_substrate.declared_pairs` inventory |
 
 ### Gating and disable behavior
 
-`publish_to_eventbridge` is gated three ways:
+`akosha_publish_to_eventbridge` is gated three ways:
 
 1. **`enabled`** parameter passed at registration time (legacy, captured once).
 1. **`enabled_fn` callable** invoked on every tool invocation — the production wiring reads `AkoshaConfig().eventbridge.enabled` per call so operators can flip `AKOSHA_EVENTBRIDGE_ENABLED` without restarting the MCP server.
@@ -233,7 +233,7 @@ publisher is wired but `enabled=true`, the tool warns but does not
 error — operators must attach an Oneiric `EventBridge` instance via
 `set_eventbridge_publisher()` to actually emit envelopes.
 
-`run_fitness_analysis` returns `{"status": "no_data"}` when no traces
+`akosha_run_fitness_analysis` returns `{"status": "no_data"}` when no traces
 were collected in the cycle (no signals computed) and
 `{"status": "error", "error": "..."}` when the analyzer wasn't
 initialized.
@@ -282,7 +282,7 @@ sequenceDiagram
     LS->>CLI: register_all_tools(...)
     CLI->>ON: oneiric_report_runtime (agent catalog)
     Note over CLI,ON: fire-and-forget, failure never blocks boot
-    Note over CLI,HS: search_all_systems currently returns a single mock record (Contract 5.2)
+    Note over CLI,HS: akosha_search_all_systems currently returns a single mock record (Contract 5.2)
     LS->>FA: start() (background task every 60s)
 
     Note over CLI,FA: Steady state: query the spans substrate, hold signals in memory
@@ -303,8 +303,8 @@ they exercise.
 
 | Tool | What it reads | Use when |
 |------|---------------|----------|
-| `generate_embedding` | Calls `EmbeddingService.generate_embedding` (mock-only in-process; real embeddings must be routed through a configured MCP-side provider like Ollama or OpenAI) | Inline vectorization for an ad-hoc search or semantic classification |
-| `generate_batch_embeddings` | Same, vectorized | Bulk-ingest pipelines, code-graph pre-embedding |
+| `akosha_generate_embedding` | Calls `EmbeddingService.generate_embedding` (mock-only in-process; real embeddings must be routed through a configured MCP-side provider like Ollama or OpenAI) | Inline vectorization for an ad-hoc search or semantic classification |
+| `akosha_generate_batch_embeddings` | Same, vectorized | Bulk-ingest pipelines, code-graph pre-embedding |
 
 Both return `mode: "real" | "fallback"` so callers can degrade
 gracefully when the model isn't loaded.
@@ -313,7 +313,7 @@ gracefully when the model isn't loaded.
 
 | Tool | What it reads | Use when |
 |------|---------------|----------|
-| `search_all_systems` | Generates an embedding for the query, then (planned) searches `HotStore.conversations`; **current implementation returns a single mock result** (see `akosha/mcp/tools/akosha_tools.py:347-357`) | Default recall; semantic similarity ≥ `threshold` |
+| `akosha_search_all_systems` | Generates an embedding for the query, then (planned) searches `HotStore.conversations`; **current implementation returns a single mock result** (see `akosha/mcp/tools/akosha_tools.py:347-357`) | Default recall; semantic similarity ≥ `threshold` |
 | `query_local_traces` | `HotStore.query_traces` with SQL `WHERE` filters on `system_id`, `timestamp`, `metadata.attributes.task_class` (HNSW index not used) | Bodai feedback loop, fitness analyzer, time-bounded audit |
 
 ### Code-graph and code search
@@ -324,47 +324,47 @@ gracefully when the model isn't loaded.
 | `get_code_graph_details` | `HotStore.get_code_graph` by `(repo_path, commit_hash)` | Drill into one snapshot |
 | `find_similar_repositories` | All code graphs; `array_cosine_similarity` of node-type histograms | Cross-repo structural similarity |
 | `get_cross_repo_function_usage` | All code graphs; scans `nodes` for `function_name` substring | "Who calls X?" across all indexed repos |
-| `search_code_patterns` | PyCharm adapter **and** code-graph `nodes[].source` regex | Cross-cutting regex with IDE fallback |
-| `get_code_problems` | `nodes[].problems[]` filtered by severity | IDE diagnostics rollup |
-| `find_function_usage` | Code-graph `nodes[]` matching `function_name` substring; PyCharm search as enrichment | "Where is function `parse_config` referenced?" |
-| `analyze_imports` | Code-graph `nodes[].type == "import"` vs `edges[].type == "imports"` | Unused / circular / pattern analysis |
+| `akosha_search_code_patterns` | PyCharm adapter **and** code-graph `nodes[].source` regex | Cross-cutting regex with IDE fallback |
+| `akosha_get_code_problems` | `nodes[].problems[]` filtered by severity | IDE diagnostics rollup |
+| `akosha_find_function_usage` | Code-graph `nodes[]` matching `function_name` substring; PyCharm search as enrichment | "Where is function `parse_config` referenced?" |
+| `akosha_analyze_imports` | Code-graph `nodes[].type == "import"` vs `edges[].type == "imports"` | Unused / circular / pattern analysis |
 
 ### Analytics (time-series + anomaly + correlation + changepoint)
 
 | Tool | What it reads | Use when |
 |------|---------------|----------|
-| `get_system_metrics` | `TimeSeriesAnalytics.get_metric_names()` (in-process) | List active metric names |
-| `analyze_trends` | Linear regression over `add_metric` data | Direction + strength of one metric over `time_window_days` |
-| `detect_anomalies` | Z-score over the metric | Statistical outliers (configurable `threshold_std`) |
-| `correlate_systems` | Pearson correlation across systems | "Which systems move together?" |
+| `akosha_get_system_metrics` | `TimeSeriesAnalytics.get_metric_names()` (in-process) | List active metric names |
+| `akosha_analyze_trends` | Linear regression over `add_metric` data | Direction + strength of one metric over `time_window_days` |
+| `akosha_detect_anomalies` | Z-score over the metric | Statistical outliers (configurable `threshold_std`) |
+| `akosha_correlate_systems` | Pearson correlation across systems | "Which systems move together?" |
 
 ### Knowledge graph
 
 | Tool | What it reads | Use when |
 |------|---------------|----------|
-| `query_knowledge_graph` | `KnowledgeGraphBuilder.get_neighbors` | "What did `user:alice` work on?" |
-| `find_path` | Bidirectional BFS over `edges` | Shortest path between two entities within `max_hops` |
-| `get_graph_statistics` | `KnowledgeGraphBuilder.get_statistics` | Graph size + entity/edge type histograms |
+| `akosha_query_knowledge_graph` | `KnowledgeGraphBuilder.get_neighbors` | "What did `user:alice` work on?" |
+| `akosha_find_path` | Bidirectional BFS over `edges` | Shortest path between two entities within `max_hops` |
+| `akosha_get_graph_statistics` | `KnowledgeGraphBuilder.get_statistics` | Graph size + entity/edge type histograms |
 
 ### Fitness / routing
 
 | Tool | What it reads | Use when |
 |------|---------------|----------|
-| `run_fitness_analysis` | All registered component endpoints via `BodaiComponentMCPClient.query_local_traces`; then `FitnessAnalyzer.run_fitness_analysis` | Manual cycle trigger, integration tests, dashboards |
-| `get_fitness_analyzer_status` | `FitnessAnalyzer._running`, `_component_endpoints`, `_poll_interval` | Health check |
+| `akosha_run_fitness_analysis` | All registered component endpoints via `BodaiComponentMCPClient.query_local_traces`; then `FitnessAnalyzer.run_fitness_analysis` | Manual cycle trigger, integration tests, dashboards |
+| `akosha_get_fitness_analyzer_status` | `FitnessAnalyzer._running`, `_component_endpoints`, `_poll_interval` | Health check |
 
 ### Session-Buddy integration (push)
 
 | Tool | What it writes | Use when |
 |------|----------------|----------|
-| `store_memory` | `HotStore.conversations` via `HotRecord` (validated 384-dim embedding) | Session-Buddy pushes a memory |
-| `batch_store_memories` | Up to 1000 rows in one call (per-memory partial success) | Bulk sync from Session-Buddy |
+| `akosha_store_memory` | `HotStore.conversations` via `HotRecord` (validated 384-dim embedding) | Session-Buddy pushes a memory |
+| `akosha_batch_store_memories` | Up to 1000 rows in one call (per-memory partial success) | Bulk sync from Session-Buddy |
 
 ### EventBridge
 
 | Tool | What it does | Use when |
 |------|--------------|----------|
-| `publish_to_eventbridge` | Wraps `publish_pattern_detected` / `publish_anomaly_detected` / `publish_insight_generated` / `publish_aggregation_completed` via `_dispatch_topic` | Akosha wants to emit an analytics envelope to Bodai |
+| `akosha_publish_to_eventbridge` | Wraps `publish_pattern_detected` / `publish_anomaly_detected` / `publish_insight_generated` / `publish_aggregation_completed` via `_dispatch_topic` | Akosha wants to emit an analytics envelope to Bodai |
 
 ### Health
 
@@ -388,9 +388,9 @@ opposite of Session-Buddy's.
 
 | Consumer | Surface | What it reads from Akosha | What it writes to Akosha |
 |----------|---------|---------------------------|--------------------------|
-| **Session-Buddy** | `mcp__akosha__store_memory`, `mcp__akosha__batch_store_memories`, `mcp__akosha__publish_to_eventbridge` | (no read traffic in the canonical flow; SB reads its own reflections) | HotStore `conversations` rows pushed via the SB tools |
-| **Mahavishnu** | `mcp__akosha__search_all_systems`, `mcp__akosha__query_knowledge_graph`, `mcp__akosha__find_path`, `mcp__akosha__correlate_systems` | HotStore `conversations` for semantic recall; `FitnessAnalyzer` reads the `spans_substrate` for signal computation | Sends `system_id` telemetry via the `publish_to_eventbridge` flow; otherwise read-only |
-| **Crackerjack** | `mcp__akosha__search_code_patterns`, `find_function_usage`, `get_code_problems`, `analyze_imports`, `pycharm_health` | Code graphs in `HotStore.code_graphs` (indexer pushes them) | Indexer pushes rows via `store_code_graph` (called indirectly via `IngestionWorker`) |
+| **Session-Buddy** | `mcp__akosha__akosha_store_memory`, `mcp__akosha__akosha_batch_store_memories`, `mcp__akosha__akosha_publish_to_eventbridge` | (no read traffic in the canonical flow; SB reads its own reflections) | HotStore `conversations` rows pushed via the SB tools |
+| **Mahavishnu** | `mcp__akosha__akosha_search_all_systems`, `mcp__akosha__akosha_query_knowledge_graph`, `mcp__akosha__akosha_find_path`, `mcp__akosha__akosha_correlate_systems` | HotStore `conversations` for semantic recall; `FitnessAnalyzer` reads the `spans_substrate` for signal computation | Sends `system_id` telemetry via the `akosha_publish_to_eventbridge` flow; otherwise read-only |
+| **Crackerjack** | `mcp__akosha__akosha_search_code_patterns`, `akosha_find_function_usage`, `akosha_get_code_problems`, `akosha_analyze_imports`, `pycharm_health` | Code graphs in `HotStore.code_graphs` (indexer pushes them) | Indexer pushes rows via `store_code_graph` (called indirectly via `IngestionWorker`) |
 | **Oneiric** | Settings + adapter discovery | (config only — does not query data) | (config only) — provides `PgvectorAdapter` for `PgvectorHotStore` and `EventBridge` for `eventbridge_publisher` |
 | **Claude Code** | MCP client (`mcp__akosha__*`) | All read tools | All write tools (rare; usually via Session-Buddy) |
 
@@ -436,7 +436,7 @@ asserts `app._mcp_server is not None` and the tool-registration test
 (`test_tool_registration`) verifies that `register_akosha_tools` actually
 attaches 9+ tools. Both fail if the lifespan is dropped.
 
-### Contract 5.2 — `search_all_systems` must return real results, not a single mock
+### Contract 5.2 — `akosha_search_all_systems` must return real results, not a single mock
 
 **Bug**: `akosha/mcp/tools/akosha_tools.py:347-357` (current code)
 generates the query embedding but does **not** call
@@ -455,11 +455,11 @@ results = [
 ```
 
 This was acceptable while the hot tier was being wired, but it
-**silently lies** to callers that believe `search_all_systems` is a
+**silently lies** to callers that believe `akosha_search_all_systems` is a
 production recall path. Downstream code (e.g., Mahavishnu agent loop)
 will see the same `conv-1` for every query and treat it as a hit.
 
-**Contract**: `search_all_systems(query, limit, threshold, system_id)`
+**Contract**: `akosha_search_all_systems(query, limit, threshold, system_id)`
 MUST delegate to `HotStore.search_similar(query_embedding, ...)` once
 the hot tier is fully wired. Until then, the docstring MUST say
 "mock" and the tool MUST return `mode: "mock"` (currently it returns
@@ -468,13 +468,13 @@ is a green-light to consumers that the recall is real).
 
 **Regression test**: `tests/integration/test_full_integration.py::test_storage_layers`
 asserts the real path (`hot_store.search_similar` returns the stored
-record), but no test currently asserts that `search_all_systems` goes
+record), but no test currently asserts that `akosha_search_all_systems` goes
 through that path. Add
 `test_search_all_systems_returns_real_results_after_store` that
-inserts a unique-marker record into `HotStore`, calls `search_all_systems`,
+inserts a unique-marker record into `HotStore`, calls `akosha_search_all_systems`,
 and asserts the marker appears in `results`.
 
-### Contract 5.3 — `publish_to_eventbridge` envelope must carry `source=akosha` and `version=1.0.0`
+### Contract 5.3 — `akosha_publish_to_eventbridge` envelope must carry `source=akosha` and `version=1.0.0`
 
 **Bug**: A pre-fix version of the publisher used
 `source="akosha.observability"` instead of `"akosha"`, which broke
@@ -503,7 +503,7 @@ asserts the same shape via the public API.
 returned early if `asyncio.get_running_loop()` raised
 `RuntimeError` (no loop). The lifespan startup path runs before the
 loop is established in some test harnesses, so the poll loop never
-started and `run_fitness_analysis` always returned
+started and `akosha_run_fitness_analysis` always returned
 `{"status": "no_data"}` — masking real downstream failures.
 
 **Contract**: `register_fitness_group` MUST build the analyzer against
@@ -524,7 +524,7 @@ contract, store it as `tests/integration/test_fitness_analyzer_discovery.py::tes
 
 ### General contract test policy
 
-- **No mocks on the hot tier for round-trip tests**: tests that verify a write/read contract (e.g. `store_memory` → `search_all_systems`) MUST use a real `HotStore` in `tmp_path`, not a `MagicMock`. See `tests/integration/test_full_integration.py` for the canonical pattern.
+- **No mocks on the hot tier for round-trip tests**: tests that verify a write/read contract (e.g. `akosha_store_memory` → `akosha_search_all_systems`) MUST use a real `HotStore` in `tmp_path`, not a `MagicMock`. See `tests/integration/test_full_integration.py` for the canonical pattern.
 - **Real Oneiric EventBridge for envelope tests**: `tests/integration/test_oneiric_transport_roundtrip.py` constructs a real `EventBridge` from `oneiric.core.lifecycle.LifecycleManager` and asserts the round-trip envelope; do not collapse to `AsyncMock`.
 - **Profile tests must cover all three tiers**: `tests/unit/test_mcp_tools_profiles.py` covers MINIMAL, STANDARD, and FULL with a `DummyFastMCP` that records every registered tool. Add new groups to `REGISTRATION_TOOLS` in `akosha/mcp/tools/profiles.py` **and** update the count assertion in that test.
 
@@ -545,7 +545,7 @@ not contrived examples.
 mentions JWT authentication.
 
 ```python
-mcp__akosha__search_all_systems(
+mcp__akosha__akosha_search_all_systems(
     query="JWT authentication best practices",
     limit=10,
     threshold=0.7,
@@ -593,7 +593,7 @@ list of trace records with `conversation_id`, `content`, `timestamp`,
 **Goal**: Vectorize a query to feed into an external ranker.
 
 ```python
-mcp__akosha__generate_embedding(
+mcp__akosha__akosha_generate_embedding(
     text="how to implement JWT authentication",
 )
 ```
@@ -605,7 +605,7 @@ Returns `{"embedding": [..384 floats..], "mode": "real" | "fallback"}`.
 **Goal**: Where is `parse_config` referenced?
 
 ```python
-mcp__akosha__find_function_usage(
+mcp__akosha__akosha_find_function_usage(
     function_name="parse_config",
     language="python",
     limit=20,
@@ -620,7 +620,7 @@ optionally enriches with PyCharm search.
 **Goal**: Find statistical outliers in error rate across all systems.
 
 ```python
-mcp__akosha__detect_anomalies(
+mcp__akosha__akosha_detect_anomalies(
     metric_name="error_rate",
     time_window_days=7,
     threshold_std=3.0,
@@ -635,7 +635,7 @@ anomalies with `z_score` and `deviation`.
 **Goal**: Is the volume of conversations increasing on `system-1`?
 
 ```python
-mcp__akosha__analyze_trends(
+mcp__akosha__akosha_analyze_trends(
     metric_name="conversation_count",
     system_id="system-1",
     time_window_days=7,
@@ -650,7 +650,7 @@ Returns `trend_direction` (`increasing` | `decreasing` | `stable`),
 **Goal**: Find systems whose `quality_score` moves together.
 
 ```python
-mcp__akosha__correlate_systems(
+mcp__akosha__akosha_correlate_systems(
     metric_name="quality_score",
     time_window_days=7,
 )
@@ -664,7 +664,7 @@ Returns Pearson `correlation` for every significant system pair and a
 **Goal**: What did `user:les` work on?
 
 ```python
-mcp__akosha__query_knowledge_graph(
+mcp__akosha__akosha_query_knowledge_graph(
     entity_id="user:les",
     edge_type="worked_on",
     limit=50,
@@ -679,7 +679,7 @@ Returns `total_neighbors` + `neighbors[]` (each with `entity_id`,
 **Goal**: How is `user:les` connected to `system:mahavishnu`?
 
 ```python
-mcp__akosha__find_path(
+mcp__akosha__akosha_find_path(
     source_id="user:les",
     target_id="system:mahavishnu",
     max_hops=3,
@@ -693,7 +693,7 @@ Bidirectional BFS over `edges`. Returns `{"path_found": True, "path": ["user:les
 **Goal**: Force a routing-fitness poll and confirm signals were written.
 
 ```python
-mcp__akosha__run_fitness_analysis()
+mcp__akosha__akosha_run_fitness_analysis()
 ```
 
 Returns `{"status": "completed", "task_classes": [...], "selectors_per_class": {"code_generation": 3, ...}, "total_signals": 7}`.
@@ -703,7 +703,7 @@ Returns `{"status": "completed", "task_classes": [...], "selectors_per_class": {
 **Goal**: Session-Buddy wants to push one memory.
 
 ```python
-mcp__akosha__store_memory(
+mcp__akosha__akosha_store_memory(
     memory_id="mem_abc123",
     text="How to implement JWT authentication",
     embedding=[0.1, 0.2, ..., 0.9],  # 384 dims
@@ -718,7 +718,7 @@ Returns `{"status": "stored", "memory_id": "mem_abc123", "stored_at": "...", "em
 **Goal**: Emit a `pattern.detected` event to the Bodai EventBridge.
 
 ```python
-mcp__akosha__publish_to_eventbridge(
+mcp__akosha__akosha_publish_to_eventbridge(
     topic="pattern.detected",
     payload={
         "pattern_id": "pat_001",
@@ -804,21 +804,21 @@ export AKOSHA__STORAGE__WARM__PG_URL=postgresql://akosha:***@localhost:5432/akos
 
 | Operation | Typical latency | Hot path? |
 |-----------|-----------------|-----------|
-| `generate_embedding` (real) | 15-50 ms | Yes (preflight for recall) |
-| `generate_embedding` (fallback) | \<1 ms | Yes |
-| `search_all_systems` | (mock; ~ms) → will be 5-30 ms once Contract 5.2 is fixed | Yes |
+| `akosha_generate_embedding` (real) | 15-50 ms | Yes (preflight for recall) |
+| `akosha_generate_embedding` (fallback) | \<1 ms | Yes |
+| `akosha_search_all_systems` | (mock; ~ms) → will be 5-30 ms once Contract 5.2 is fixed | Yes |
 | `query_local_traces` (SQL WHERE) | 10-50 ms | Yes (FitnessAnalyzer) |
 | `find_similar_repositories` | 200-800 ms (fans out to N code graphs) | No |
 | `get_cross_repo_function_usage` | 100-500 ms | No |
-| `analyze_trends` / `detect_anomalies` / `correlate_systems` | 50-300 ms (in-process) | No |
-| `run_fitness_analysis` | 2-10 s (substrate query + signal computation) | Yes (60s cycle) |
-| `store_memory` / `batch_store_memories` | 5-20 ms per record | Yes (HTTP push from SB) |
+| `akosha_analyze_trends` / `akosha_detect_anomalies` / `akosha_correlate_systems` | 50-300 ms (in-process) | No |
+| `akosha_run_fitness_analysis` | 2-10 s (substrate query + signal computation) | Yes (60s cycle) |
+| `akosha_store_memory` / `akosha_batch_store_memories` | 5-20 ms per record | Yes (HTTP push from SB) |
 
 ### Failure modes
 
 - **Hot store `:memory:` lost on restart**: `IngestionWorker` rebuilds it on next poll; expect ~1-2 minute cold-start.
 - **`pgvector` (warm tier) connection lost**: `PgvectorWarmStore` raises `RuntimeError` on every operation; `create_warm_store()` factory does not fall back to DuckDB automatically — operators must restart the MCP server with `AKOSHA__STORAGE__WARM__BACKEND=duckdb-ssd`. (pgvector migrated from the hot tier 2026-09-27.)
-- **Embedding model load fails**: `EmbeddingService.is_available()` returns False; downstream `mode` flag is `"fallback"`. `search_all_systems` will still return the mock result (see Contract 5.2).
+- **Embedding model load fails**: `EmbeddingService.is_available()` returns False; downstream `mode` flag is `"fallback"`. `akosha_search_all_systems` will still return the mock result (see Contract 5.2).
 - **FitnessAnalyzer substrate query fails**: the cycle aborts, no signals are updated, and the previous `self._signals` snapshot is retained.
 - **Oneiric runtime push fails**: the background task logs the error and gives up; Akosha still starts up and the runtime registry simply does not learn about Akosha.
 - **Ingestion worker S3/R2 unavailable**: `IngestionWorker._discover_uploads` raises; logged, lifespan continues. Hot store is unreachable for new data until the adapter recovers.
@@ -832,8 +832,8 @@ ______________________________________________________________________
 - `akosha/storage/hot_store.py` — Hot-tier SQL schema and HNSW index configuration.
 - `akosha/storage/aging.py` — Hot→warm migration; `AgingService.migrate_hot_to_warm(cutoff_days=7)`.
 - `akosha/mcp/tools/akosha_tools.py` — MCP read surface implementations (embeddings, search, analytics, graph).
-- `akosha/mcp/tools/session_buddy_tools.py` — `store_memory` / `batch_store_memories` push ingestion.
-- `akosha/mcp/tools/eventbridge_tools.py` — `publish_to_eventbridge` MCP wrapper.
+- `akosha/mcp/tools/session_buddy_tools.py` — `akosha_store_memory` / `akosha_batch_store_memories` push ingestion.
+- `akosha/mcp/tools/eventbridge_tools.py` — `akosha_publish_to_eventbridge` MCP wrapper.
 - `akosha/processing/fitness_analyzer.py` — FitnessAnalyzer (poll loop, buffer, in-memory signals).
 - `akosha/processing/knowledge_graph.py` — In-process KG with bidirectional BFS path finding.
 - `tests/integration/test_full_integration.py` — Canonical storage round-trip integration test.

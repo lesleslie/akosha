@@ -46,7 +46,7 @@ FULL_REGISTRATIONS: list[str] = [
     "register_eventbridge_tools",
     # Phase 1 cross-repo capability search
     "register_cross_repo_tools",
-    # Phase 4 federation — list_ecosystem_skills aggregator
+    # Phase 4 federation — akosha_list_ecosystem_skills aggregator
     "register_ecosystem_skills",
 ]
 
@@ -71,13 +71,13 @@ REGISTRATION_DESCRIPTIONS: dict[str, str] = {
     "register_fitness_tools": "Fitness analysis for Bodai routing feedback loop (failure rate, p99 latency per task class)",
     "register_eventbridge_tools": "EventBridge publisher: emit Akosha analytics events to the unified Bodai queue",
     "register_cross_repo_tools": "Phase 1 cross-repo capability search (Bodai component adapter/tool/error catalog)",
-    "register_skill_tools": "Phase 1 server-published skills (list_skills + get_skill, signed via skills_signer)",
+    "register_skill_tools": "Phase 1 server-published skills (akosha_list_skills + akosha_get_skill, signed via skills_signer)",
     "register_agents_tools": (
-        "Phase 3 server-published agents (list_agents + get_agent, signed via "
+        "Phase 3 server-published agents (akosha_list_agents + akosha_get_agent, signed via "
         "skills_signer; mandatory at every profile tier per plan §11 B-6)"
     ),
     "register_ecosystem_skills": (
-        "Phase 4 federation: list_ecosystem_skills aggregator across all 5 "
+        "Phase 4 federation: akosha_list_ecosystem_skills aggregator across all 5 "
         "Bodai servers (1s/server timeout, circuit breaker, file cache, pagination)"
     ),
 }
@@ -92,37 +92,37 @@ REGISTRATION_TOOLS: dict[str, list[str]] = {
         "wait_for_all_dependencies",
     ],
     "register_akosha_tools": [
-        "generate_embedding",
-        "generate_batch_embeddings",
-        "search_all_systems",
-        "detect_anomalies",
-        "analyze_trends",
-        "correlate_systems",
-        "query_knowledge_graph",
-        "get_system_metrics",
+        "akosha_generate_embedding",
+        "akosha_generate_batch_embeddings",
+        "akosha_search_all_systems",
+        "akosha_detect_anomalies",
+        "akosha_analyze_trends",
+        "akosha_correlate_systems",
+        "akosha_query_knowledge_graph",
+        "akosha_get_system_metrics",
     ],
     "register_session_buddy_tools": [
-        "store_memory",
-        "batch_store_memories",
+        "akosha_store_memory",
+        "akosha_batch_store_memories",
     ],
     "register_pycharm_tools": [
-        "search_code_patterns",
-        "get_code_problems",
-        "find_function_usage",
-        "analyze_imports",
+        "akosha_search_code_patterns",
+        "akosha_get_code_problems",
+        "akosha_find_function_usage",
+        "akosha_analyze_imports",
         "pycharm_health",
     ],
     "register_otel_query_tools": ["query_local_traces"],
-    "register_otel_span_tools": ["search_spans", "spans_summary", "force_retention_sweep"],
+    "register_otel_span_tools": ["akosha_search_spans", "akosha_spans_summary", "akosha_force_retention_sweep"],
     "register_fitness_tools": [
-        "run_fitness_analysis",
-        "get_fitness_analyzer_status",
+        "akosha_run_fitness_analysis",
+        "akosha_get_fitness_analyzer_status",
     ],
-    "register_eventbridge_tools": ["publish_to_eventbridge"],
-    "register_cross_repo_tools": ["cross_repo_capability_search"],
-    "register_skill_tools": ["list_skills", "get_skill"],
-    "register_agents_tools": ["list_agents", "get_agent"],
-    "register_ecosystem_skills": ["list_ecosystem_skills"],
+    "register_eventbridge_tools": ["akosha_publish_to_eventbridge"],
+    "register_cross_repo_tools": ["akosha_cross_repo_capability_search"],
+    "register_skill_tools": ["akosha_list_skills", "akosha_get_skill"],
+    "register_agents_tools": ["akosha_list_agents", "akosha_get_agent"],
+    "register_ecosystem_skills": ["akosha_list_ecosystem_skills"],
 }
 
 
@@ -188,7 +188,7 @@ REGISTRATION_MAP: dict[str, Callable[[FastMCP], Awaitable[None] | None]] = _buil
 # Always-on groups: registered at every profile level in addition to the
 # per-profile list. Per plan §11 B-6, the Phase 3 ``register_agents_tools``
 # group MUST be available at the MINIMAL tier — the installer reaches for
-# ``list_agents`` / ``get_agent`` even when running in a stripped-down
+# ``akosha_list_agents`` / ``akosha_get_agent`` even when running in a stripped-down
 # profile. The Phase 4 federation is also mandatory so orchestrators can
 # discover skills via the federation path regardless of profile.
 AKOSHA_MANDATORY_GROUPS: set[str] = {

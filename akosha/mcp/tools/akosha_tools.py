@@ -67,8 +67,8 @@ def register_akosha_tools(
             When ``None`` (e.g. lite mode), analytics tools are skipped.
         graph_builder: Knowledge graph builder for relationship queries.
             When ``None`` (e.g. lite mode), knowledge-graph tools are skipped.
-        hot_store: Optional HotStore for ``search_all_systems`` to query. When
-            ``None`` (lite mode / CI), ``search_all_systems`` falls back to an
+        hot_store: Optional HotStore for ``akosha_search_all_systems`` to query. When
+            ``None`` (lite mode / CI), ``akosha_search_all_systems`` falls back to an
             informational result instead of crashing.
 
     Example:
@@ -106,15 +106,15 @@ def register_embedding_tools(
         embedding_service: Embedding generation service
 
     Tools registered:
-        - generate_embedding: Generate embedding for single text
-        - generate_batch_embeddings: Generate embeddings for multiple texts
+        - akosha_generate_embedding: Generate embedding for single text
+        - akosha_generate_batch_embeddings: Generate embeddings for multiple texts
     """
     logger = logging.getLogger(__name__)
 
     if embedding_service is None:
         logger.warning(
             "Skipping embedding tool registration: embedding_service is None "
-            "(likely lite mode). generate_embedding and generate_batch_embeddings "
+            "(likely lite mode). akosha_generate_embedding and akosha_generate_batch_embeddings "
             "will be unavailable."
         )
         return
@@ -123,7 +123,7 @@ def register_embedding_tools(
 
     @registry.register(
         ToolMetadata(
-            name="generate_embedding",
+            name="akosha_generate_embedding",
             description="Generate semantic embedding for text using local AI model",
             category=ToolCategory.SEARCH,
             examples=[
@@ -134,7 +134,7 @@ def register_embedding_tools(
             ],
         )
     )
-    async def generate_embedding(
+    async def akosha_generate_embedding(
         text: str,
     ) -> dict[str, Any]:
         """Generate semantic embedding for text.
@@ -163,7 +163,7 @@ def register_embedding_tools(
                 by the validate_request wrapper.
 
         Example:
-            >>> result = await generate_embedding(
+            >>> result = await akosha_generate_embedding(
             ...     "how to implement JWT authentication in FastAPI"
             ... )
             >>> embedding = result["embedding"]
@@ -189,12 +189,12 @@ def register_embedding_tools(
 
     @registry.register(
         ToolMetadata(
-            name="generate_batch_embeddings",
+            name="akosha_generate_batch_embeddings",
             description="Generate embeddings for multiple texts at once",
             category=ToolCategory.SEARCH,
         )
     )
-    async def generate_batch_embeddings(
+    async def akosha_generate_batch_embeddings(
         texts: list[str],
         batch_size: int = 32,
     ) -> dict[str, Any]:
@@ -222,7 +222,7 @@ def register_embedding_tools(
             ValueError: If texts is empty or batch_size is invalid.
 
         Example:
-            >>> result = await generate_batch_embeddings(
+            >>> result = await akosha_generate_batch_embeddings(
             ...     texts=["hello world", "goodbye moon"],
             ...     batch_size=16
             ... )
@@ -262,25 +262,25 @@ def register_search_tools(
 
     Registers tools for searching across all system memories using semantic
     similarity backed by the optional ``HotStore``. When ``hot_store`` is
-    ``None`` (lite mode / CI), ``search_all_systems`` returns an
+    ``None`` (lite mode / CI), ``akosha_search_all_systems`` returns an
     informational fallback rather than crashing.
 
     Args:
         registry: FastMCP tool registry instance
         embedding_service: Embedding generation service for query encoding
         hot_store: Optional HotStore for vector retrieval. When ``None``,
-            ``search_all_systems`` returns a single informational fallback
+            ``akosha_search_all_systems`` returns a single informational fallback
             row instead of a crash. Defaults to ``None``.
 
     Tools registered:
-        - search_all_systems: Semantic search across all system memories
+        - akosha_search_all_systems: Semantic search across all system memories
     """
     logger = logging.getLogger(__name__)
 
     if embedding_service is None:
         logger.warning(
             "Skipping search tool registration: embedding_service is None "
-            "(likely lite mode). search_all_systems will be unavailable."
+            "(likely lite mode). akosha_search_all_systems will be unavailable."
         )
         return
 
@@ -288,7 +288,7 @@ def register_search_tools(
 
     @registry.register(
         ToolMetadata(
-            name="search_all_systems",
+            name="akosha_search_all_systems",
             description="Search across all system memories using semantic similarity",
             category=ToolCategory.SEARCH,
             examples=[
@@ -301,7 +301,7 @@ def register_search_tools(
         )
     )
     @require_auth
-    async def search_all_systems(
+    async def akosha_search_all_systems(
         query: str,
         limit: int = 10,
         threshold: float = 0.7,
@@ -344,7 +344,7 @@ def register_search_tools(
             PermissionError: If authentication fails (via @require_auth).
 
         Example:
-            >>> result = await search_all_systems(
+            >>> result = await akosha_search_all_systems(
             ...     query="JWT authentication best practices",
             ...     limit=5,
             ...     threshold=0.8
@@ -408,7 +408,7 @@ def register_search_tools(
                 if results:
                     mode = "real"
             except Exception as exc:
-                logger.warning("search_all_systems: hot_store query failed: %s", exc)
+                logger.warning("akosha_search_all_systems: hot_store query failed: %s", exc)
                 mode = "fallback"
 
         if not results:
@@ -455,19 +455,19 @@ def register_analytics_tools(
             tools are registered and a warning is logged.
 
     Tools registered:
-        - get_system_metrics: Get available metrics and statistics
-        - analyze_trends: Analyze trends for a metric over time (single linear slope)
-        - detect_anomalies: Detect statistical anomalies in metrics
-        - correlate_systems: Analyze correlations between systems
-        - add_eval_metric: Post a per-(adapter, fixture) eval pass rate
+        - akosha_get_system_metrics: Get available metrics and statistics
+        - akosha_analyze_trends: Analyze trends for a metric over time (single linear slope)
+        - akosha_detect_anomalies: Detect statistical anomalies in metrics
+        - akosha_correlate_systems: Analyze correlations between systems
+        - akosha_add_eval_metric: Post a per-(adapter, fixture) eval pass rate
     """
     logger = logging.getLogger(__name__)
 
     if analytics_service is None:
         logger.warning(
             "Skipping analytics tool registration: analytics_service is None "
-            "(likely lite mode). detect_anomalies, analyze_trends, correlate_systems, "
-            "and get_system_metrics will be unavailable."
+            "(likely lite mode). akosha_detect_anomalies, akosha_analyze_trends, akosha_correlate_systems, "
+            "and akosha_get_system_metrics will be unavailable."
         )
         return
 
@@ -475,13 +475,13 @@ def register_analytics_tools(
 
     @registry.register(
         ToolMetadata(
-            name="get_system_metrics",
+            name="akosha_get_system_metrics",
             description="Get metrics and statistics for all systems",
             category=ToolCategory.ANALYTICS,
         )
     )
     @require_auth
-    async def get_system_metrics(
+    async def akosha_get_system_metrics(
         time_range_days: int = 30,
     ) -> dict[str, Any]:
         """Get system metrics.
@@ -504,7 +504,7 @@ def register_analytics_tools(
             ValueError: If time_range_days is invalid.
 
         Example:
-            >>> metrics = await get_system_metrics(time_range_days=7)
+            >>> metrics = await akosha_get_system_metrics(time_range_days=7)
             >>> metrics["total_metrics"]
             15
             >>> metrics["metric_names"][:3]
@@ -526,7 +526,7 @@ def register_analytics_tools(
 
     @registry.register(
         ToolMetadata(
-            name="analyze_trends",
+            name="akosha_analyze_trends",
             description="Analyze trends across systems over time",
             category=ToolCategory.ANALYTICS,
             examples=[
@@ -540,7 +540,7 @@ def register_analytics_tools(
         )
     )
     @require_auth
-    async def analyze_trends(
+    async def akosha_analyze_trends(
         metric_name: str,
         system_id: str | None = None,
         time_window_days: int = 7,
@@ -582,7 +582,7 @@ def register_analytics_tools(
             PermissionError: If authentication fails.
 
         Example:
-            >>> result = await analyze_trends(
+            >>> result = await akosha_analyze_trends(
             ...     metric_name="conversation_count",
             ...     system_id="system-1",
             ...     time_window_days=7
@@ -639,7 +639,7 @@ def register_analytics_tools(
 
     @registry.register(
         ToolMetadata(
-            name="detect_anomalies",
+            name="akosha_detect_anomalies",
             description="Detect statistical anomalies in system metrics",
             category=ToolCategory.ANALYTICS,
             examples=[
@@ -652,7 +652,7 @@ def register_analytics_tools(
         )
     )
     @require_auth
-    async def detect_anomalies(
+    async def akosha_detect_anomalies(
         metric_name: str,
         system_id: str | None = None,
         time_window_days: int = 7,
@@ -701,7 +701,7 @@ def register_analytics_tools(
             PermissionError: If authentication fails.
 
         Example:
-            >>> result = await detect_anomalies(
+            >>> result = await akosha_detect_anomalies(
             ...     metric_name="error_rate",
             ...     threshold_std=3.0
             ... )
@@ -750,7 +750,7 @@ def register_analytics_tools(
 
     @registry.register(
         ToolMetadata(
-            name="correlate_systems",
+            name="akosha_correlate_systems",
             description="Analyze correlations between systems for a metric",
             category=ToolCategory.ANALYTICS,
             examples=[
@@ -763,7 +763,7 @@ def register_analytics_tools(
         )
     )
     @require_auth
-    async def correlate_systems(
+    async def akosha_correlate_systems(
         metric_name: str,
         time_window_days: int = 7,
     ) -> dict[str, Any]:
@@ -803,7 +803,7 @@ def register_analytics_tools(
             PermissionError: If authentication fails.
 
         Example:
-            >>> result = await correlate_systems(
+            >>> result = await akosha_correlate_systems(
             ...     metric_name="quality_score",
             ...     time_window_days=7
             ... )
@@ -849,13 +849,13 @@ def register_analytics_tools(
 
     @registry.register(
         ToolMetadata(
-            name="add_eval_metric",
+            name="akosha_add_eval_metric",
             description=(
                 "Write a per-(adapter, fixture) eval pass rate to the analytics "
                 "service. Eval metrics must match the suffixed convention "
                 "'eval_pass_rate:<adapter>:<fixture>'. After posting, the "
-                "metric is queryable via analyze_trends and "
-                "get_system_metrics. Persistence is added in Phase 2 "
+                "metric is queryable via akosha_analyze_trends and "
+                "akosha_get_system_metrics. Persistence is added in Phase 2 "
                 "of the eval-metric-sink plan; until then metrics live in "
                 "the in-memory cache for the Akosha process lifetime."
             ),
@@ -871,7 +871,7 @@ def register_analytics_tools(
         )
     )
     @require_auth
-    async def add_eval_metric(
+    async def akosha_add_eval_metric(
         metric_name: str,
         value: float,
         system_id: str,
@@ -963,17 +963,17 @@ def register_graph_tools(
         graph_builder: Knowledge graph builder service
 
     Tools registered:
-        - query_knowledge_graph: Query entities and relationships
-        - find_path: Find shortest path between entities
-        - get_graph_statistics: Get graph metadata and statistics
+        - akosha_query_knowledge_graph: Query entities and relationships
+        - akosha_find_path: Find shortest path between entities
+        - akosha_get_graph_statistics: Get graph metadata and statistics
     """
     logger = logging.getLogger(__name__)
 
     if graph_builder is None:
         logger.warning(
             "Skipping graph tool registration: graph_builder is None "
-            "(likely lite mode). query_knowledge_graph, find_path, and "
-            "get_graph_statistics will be unavailable."
+            "(likely lite mode). akosha_query_knowledge_graph, akosha_find_path, and "
+            "akosha_get_graph_statistics will be unavailable."
         )
         return
 
@@ -981,7 +981,7 @@ def register_graph_tools(
 
     @registry.register(
         ToolMetadata(
-            name="query_knowledge_graph",
+            name="akosha_query_knowledge_graph",
             description="Query the cross-system knowledge graph",
             category=ToolCategory.GRAPH,
             examples=[
@@ -993,7 +993,7 @@ def register_graph_tools(
         )
     )
     @require_auth
-    async def query_knowledge_graph(
+    async def akosha_query_knowledge_graph(
         entity_id: str,
         edge_type: str | None = None,
         limit: int = 50,
@@ -1030,7 +1030,7 @@ def register_graph_tools(
             PermissionError: If authentication fails.
 
         Example:
-            >>> result = await query_knowledge_graph(
+            >>> result = await akosha_query_knowledge_graph(
             ...     entity_id="user:alice",
             ...     edge_type="worked_on",
             ...     limit=10
@@ -1068,13 +1068,13 @@ def register_graph_tools(
 
     @registry.register(
         ToolMetadata(
-            name="find_path",
+            name="akosha_find_path",
             description="Find shortest path between entities in knowledge graph",
             category=ToolCategory.GRAPH,
         )
     )
     @require_auth
-    async def find_path(
+    async def akosha_find_path(
         source_id: str,
         target_id: str,
         max_hops: int = 3,
@@ -1109,7 +1109,7 @@ def register_graph_tools(
             PermissionError: If authentication fails.
 
         Example:
-            >>> result = await find_path(
+            >>> result = await akosha_find_path(
             ...     source_id="user:alice",
             ...     target_id="project:myapp",
             ...     max_hops=3
@@ -1157,13 +1157,13 @@ def register_graph_tools(
 
     @registry.register(
         ToolMetadata(
-            name="get_graph_statistics",
+            name="akosha_get_graph_statistics",
             description="Get knowledge graph statistics",
             category=ToolCategory.GRAPH,
         )
     )
     @require_auth
-    async def get_graph_statistics() -> dict[str, Any]:
+    async def akosha_get_graph_statistics() -> dict[str, Any]:
         """Get graph statistics.
 
         Returns metadata about the knowledge graph including entity counts,
@@ -1183,7 +1183,7 @@ def register_graph_tools(
             PermissionError: If authentication fails.
 
         Example:
-            >>> stats = await get_graph_statistics()
+            >>> stats = await akosha_get_graph_statistics()
             >>> stats["total_entities"]
             42
             >>> stats["entity_types"]

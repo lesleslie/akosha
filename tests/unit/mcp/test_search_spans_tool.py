@@ -1,4 +1,4 @@
-"""Tests for the ``search_spans`` MCP tool (read-path R-2).
+"""Tests for the ``akosha_search_spans`` MCP tool (read-path R-2).
 
 R-2's job is the *boundary* work: R-1 proved ``SpanQuery.search`` reads spans
 correctly, and these tests pin what the MCP layer adds on top — registration,
@@ -98,7 +98,7 @@ def _insert(
 
 async def _call(app: FastMCP, **kwargs: Any) -> list[dict[str, Any]]:
     """Invoke through the MCP boundary and unwrap the structured payload."""
-    result = await app.call_tool("search_spans", kwargs)
+    result = await app.call_tool("akosha_search_spans", kwargs)
     return list(result.structured_content["result"])
 
 
@@ -108,7 +108,7 @@ async def _call(app: FastMCP, **kwargs: Any) -> list[dict[str, Any]]:
 @pytest.mark.asyncio
 async def test_tool_is_registered(app: FastMCP) -> None:
     names = [t.name for t in await app.list_tools()]
-    assert "search_spans" in names
+    assert "akosha_search_spans" in names
 
 
 # --- §5.2: quiet is not broken -------------------------------------------

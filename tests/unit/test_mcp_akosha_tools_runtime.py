@@ -46,13 +46,13 @@ def embedding_service() -> MagicMock:
     service.generate_batch_embeddings = AsyncMock(
         side_effect=[[Vector([0.3] * 384), Vector([0.4] * 384)], []]
     )
-    # Sub-plan C: ``search_all_systems`` no longer consults ``is_available``
+    # Sub-plan C: ``akosha_search_all_systems`` no longer consults ``is_available``
     # — its ``mode`` is now driven by whether ``hot_store.search_similar``
     # returned rows. The cycling fixture still drives the
-    # ``generate_embedding`` / ``generate_batch_embeddings`` mode flags:
-    # 1. generate_embedding → real
-    # 2. generate_batch_embeddings(["alpha","beta"]) → real
-    # 3. generate_batch_embeddings(["gamma"]) → fallback (empty batch)
+    # ``akosha_generate_embedding`` / ``akosha_generate_batch_embeddings`` mode flags:
+    # 1. akosha_generate_embedding → real
+    # 2. akosha_generate_batch_embeddings(["alpha","beta"]) → real
+    # 3. akosha_generate_batch_embeddings(["gamma"]) → fallback (empty batch)
     service.is_available = MagicMock(side_effect=[True, True, False])
     return service
 
@@ -138,25 +138,25 @@ async def test_tool_runtime_branches(
     registry = CapturingRegistry()
     register_akosha_tools(registry, embedding_service, analytics_service, graph_builder)
 
-    generate_embedding = registry.tools["generate_embedding"]
-    search_all_systems = registry.tools["search_all_systems"]
-    generate_batch_embeddings = registry.tools["generate_batch_embeddings"]
-    get_system_metrics = registry.tools["get_system_metrics"]
-    analyze_trends = registry.tools["analyze_trends"]
-    detect_anomalies = registry.tools["detect_anomalies"]
-    correlate_systems = registry.tools["correlate_systems"]
-    query_knowledge_graph = registry.tools["query_knowledge_graph"]
-    find_path = registry.tools["find_path"]
-    get_graph_statistics = registry.tools["get_graph_statistics"]
+    akosha_generate_embedding = registry.tools["akosha_generate_embedding"]
+    akosha_search_all_systems = registry.tools["akosha_search_all_systems"]
+    akosha_generate_batch_embeddings = registry.tools["akosha_generate_batch_embeddings"]
+    akosha_get_system_metrics = registry.tools["akosha_get_system_metrics"]
+    akosha_analyze_trends = registry.tools["akosha_analyze_trends"]
+    akosha_detect_anomalies = registry.tools["akosha_detect_anomalies"]
+    akosha_correlate_systems = registry.tools["akosha_correlate_systems"]
+    akosha_query_knowledge_graph = registry.tools["akosha_query_knowledge_graph"]
+    akosha_find_path = registry.tools["akosha_find_path"]
+    akosha_get_graph_statistics = registry.tools["akosha_get_graph_statistics"]
 
-    embedding = await generate_embedding(text="how to secure JWT auth")
+    embedding = await akosha_generate_embedding(text="how to secure JWT auth")
     assert embedding["embedding_dim"] == 384
     assert embedding["mode"] == "real"
 
-    search = await search_all_systems(
+    search = await akosha_search_all_systems(
         query="JWT auth", limit=2, threshold=0.8, system_id="system-x"
     )
-    # Sub-plan C: search_all_systems always queries the websocket invocations
+    # Sub-plan C: akosha_search_all_systems always queries the websocket invocations
     # corpus (``system_id="mahavishnu"``); the operator-supplied system_id is
     # ignored. Without a wired ``hot_store`` (this test registers tools without
     # one), the function returns a single informational fallback row.
@@ -164,53 +164,53 @@ async def test_tool_runtime_branches(
     assert search["results"][0]["system_id"] == "mahavishnu"
     assert search["mode"] == "fallback"
 
-    batch = await generate_batch_embeddings(texts=["alpha", "beta"], batch_size=2)
+    batch = await akosha_generate_batch_embeddings(texts=["alpha", "beta"], batch_size=2)
     assert batch["count"] == 2
     assert batch["embedding_dim"] == 384
     assert batch["mode"] == "real"
 
-    empty_batch = await generate_batch_embeddings(texts=["gamma"], batch_size=1)
+    empty_batch = await akosha_generate_batch_embeddings(texts=["gamma"], batch_size=1)
     assert empty_batch["count"] == 0
     assert empty_batch["embedding_dim"] == 0
     assert empty_batch["mode"] == "fallback"
 
-    metrics = await get_system_metrics(time_range_days=7)
+    metrics = await akosha_get_system_metrics(time_range_days=7)
     assert metrics == {
         "time_range_days": 7,
         "total_metrics": 2,
         "metric_names": ["conversation_count", "quality_score"],
     }
 
-    trend = await analyze_trends(
+    trend = await akosha_analyze_trends(
         metric_name="conversation_count", system_id="system-1", time_window_days=7
     )
     assert trend["trend_direction"] == "increasing"
     assert trend["system_id"] == "system-1"
-    missing_trend = await analyze_trends(metric_name="conversation_count", time_window_days=7)
+    missing_trend = await akosha_analyze_trends(metric_name="conversation_count", time_window_days=7)
     assert missing_trend["error"] == "Insufficient data for trend analysis"
 
-    anomalies = await detect_anomalies(metric_name="error_rate", threshold_std=3.0)
+    anomalies = await akosha_detect_anomalies(metric_name="error_rate", threshold_std=3.0)
     assert anomalies["anomaly_count"] == 1
     assert anomalies["anomalies"][0]["value"] == 12.5
-    missing_anomalies = await detect_anomalies(metric_name="error_rate", threshold_std=3.0)
+    missing_anomalies = await akosha_detect_anomalies(metric_name="error_rate", threshold_std=3.0)
     assert missing_anomalies["error"] == "Insufficient data for anomaly detection"
 
-    correlations = await correlate_systems(metric_name="quality_score", time_window_days=7)
+    correlations = await akosha_correlate_systems(metric_name="quality_score", time_window_days=7)
     assert correlations["significant_correlations"] == 1
-    missing_correlations = await correlate_systems(metric_name="quality_score", time_window_days=7)
+    missing_correlations = await akosha_correlate_systems(metric_name="quality_score", time_window_days=7)
     assert missing_correlations["error"] == "Insufficient data for correlation analysis"
 
-    neighbors = await query_knowledge_graph(entity_id="user:alice", edge_type="worked_on", limit=10)
+    neighbors = await akosha_query_knowledge_graph(entity_id="user:alice", edge_type="worked_on", limit=10)
     assert neighbors["total_neighbors"] == 1
     assert neighbors["neighbors"][0]["entity_id"] == "project:myapp"
 
-    path_missing = await find_path(source_id="user:alice", target_id="project:myapp", max_hops=3)
+    path_missing = await akosha_find_path(source_id="user:alice", target_id="project:myapp", max_hops=3)
     assert path_missing["path_found"] is False
-    path_found = await find_path(source_id="user:alice", target_id="project:myapp", max_hops=3)
+    path_found = await akosha_find_path(source_id="user:alice", target_id="project:myapp", max_hops=3)
     assert path_found["path_found"] is True
     assert path_found["hops"] == 1
 
-    stats = await get_graph_statistics()
+    stats = await akosha_get_graph_statistics()
     assert stats["total_entities"] == 42
     assert stats["entity_types"]["user"] == 15
 
@@ -235,7 +235,7 @@ def test_register_analytics_tools_skips_when_service_is_none(
         register_analytics_tools(registry, analytics_service=None)
 
     assert "analytics_service is None" in caplog.text
-    assert "detect_anomalies" not in registry.tools
-    assert "analyze_trends" not in registry.tools
-    assert "correlate_systems" not in registry.tools
-    assert "get_system_metrics" not in registry.tools
+    assert "akosha_detect_anomalies" not in registry.tools
+    assert "akosha_analyze_trends" not in registry.tools
+    assert "akosha_correlate_systems" not in registry.tools
+    assert "akosha_get_system_metrics" not in registry.tools

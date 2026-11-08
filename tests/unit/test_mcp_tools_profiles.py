@@ -59,13 +59,13 @@ async def test_register_all_tools_minimal_profile(monkeypatch: pytest.MonkeyPatc
     assert default_result["profile"] == "minimal"
     assert default_result["query"] is None
     assert default_result["loaded_count"] == 6
-    # Phase 1 added ``list_skills`` + ``get_skill`` → 28 tools;
-    # Phase 3/4 added ``list_agents`` + ``get_agent`` +
-    # ``list_ecosystem_skills`` → 31 total. Minimal still only loads
+    # Phase 1 added ``akosha_list_skills`` + ``akosha_get_skill`` → 28 tools;
+    # Phase 3/4 added ``akosha_list_agents`` + ``akosha_get_agent`` +
+    # ``akosha_list_ecosystem_skills`` → 31 total. Minimal still only loads
     # the health group (6 tools), so not_loaded grew from 22 → 25;
-    # read-path R-2 added ``search_spans`` → 26; R-3 added
-    # ``spans_summary`` → 27; the retention sweep trigger added
-    # ``force_retention_sweep`` → 28.
+    # read-path R-2 added ``akosha_search_spans`` → 26; R-3 added
+    # ``akosha_spans_summary`` → 27; the retention sweep trigger added
+    # ``akosha_force_retention_sweep`` → 28.
     assert default_result["not_loaded_count"] == 28
     # Hint must point operators toward loading more tools (minimal
     # profile is the most restrictive; the full default is reachable
@@ -78,8 +78,8 @@ async def test_register_all_tools_minimal_profile(monkeypatch: pytest.MonkeyPatc
     assert result["loaded_tools"] == []
     assert result["not_loaded_count"] == 2
     assert result["not_loaded_tools"] == [
-        "batch_store_memories",
-        "store_memory",
+        "akosha_batch_store_memories",
+        "akosha_store_memory",
     ]
 
 
@@ -114,8 +114,8 @@ async def test_register_all_tools_full_profile_and_discovery(
     assert result["query"] == "session"
     assert result["loaded_count"] == 2
     assert result["loaded_tools"] == [
-        "batch_store_memories",
-        "store_memory",
+        "akosha_batch_store_memories",
+        "akosha_store_memory",
     ]
     assert result["not_loaded_count"] == 0
     assert result["not_loaded_tools"] == []
@@ -195,11 +195,11 @@ def test_readme_tool_count_matches_full_registrations() -> None:
     # not_loaded_count == 34`` is pinned in this file's
     # ``test_register_all_tools_full_profile_and_discovery`` (the
     # filtered "session" query case). Phase 1 added
-    # ``list_skills`` + ``get_skill`` (26 → 28); Phase 3/4
-    # added ``list_agents`` + ``get_agent`` +
-    # ``list_ecosystem_skills`` (28 → 31); read-path R-2 added
-    # ``search_spans`` (31 → 32) and R-3 ``spans_summary`` (32 → 33);
-    # the retention sweep trigger added ``force_retention_sweep``
+    # ``akosha_list_skills`` + ``akosha_get_skill`` (26 → 28); Phase 3/4
+    # added ``akosha_list_agents`` + ``akosha_get_agent`` +
+    # ``akosha_list_ecosystem_skills`` (28 → 31); read-path R-2 added
+    # ``akosha_search_spans`` (31 → 32) and R-3 ``akosha_spans_summary`` (32 → 33);
+    # the retention sweep trigger added ``akosha_force_retention_sweep``
     # (33 → 34).
     expected_count = 34
     assert f"({expected_count} tools)" in text, (

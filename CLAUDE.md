@@ -226,7 +226,7 @@ Akosha requires configuration for:
 
 Since 2026-10-23 this repo is the **substrate owner**: it holds the OTLP
 receiver and the tables every Bodai producer writes into. Oneiric owns the
-DDL; the read path (`search_spans`, `spans_summary`) lives here too.
+DDL; the read path (`akosha_search_spans`, `akosha_spans_summary`) lives here too.
 
 ### The receiver
 
@@ -344,7 +344,7 @@ hours. The substrate is **in-memory** with a 1GB limit, so that wait is
 sometimes the thing that hurts.
 
 ```
-mcp__akosha__force_retention_sweep()
+mcp__akosha__akosha_force_retention_sweep()
   -> {"requested": true, "already_pending": false,
       "interval_s": 21600,
       "watch": "akosha_otlp_sweep_last_completed_unix_nano"}
@@ -508,7 +508,7 @@ Session-Buddy → S3://session-buddy-memories/systems/{id}/
                             Akosha Worker (polls)
                                   ↓
                            Hot Store → Warm Store → Cold Store
-SB Push (store_memory) → Hot Store
+SB Push (akosha_store_memory) → Hot Store
 ```
 
 ### Mahavishnu Integration
