@@ -50,7 +50,7 @@ dependencies = [
     # provider BEFORE the server is built, so akosha inherits one it does
     # not own — the ownership distinction is what keeps a component from
     # closing an exporter that belongs to someone else.
-    "mcp-common>=0.35.0",
+    "mcp-common>=0.36.0",
 ]
 
 [project.scripts]
