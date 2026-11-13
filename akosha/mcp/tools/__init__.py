@@ -74,7 +74,7 @@ def register_health_tools_akosha(app: Any) -> None:
     """Register Akosha health tools through the shared MCP-common contract."""
     register_health_tools(
         mcp=app,
-        service_name=SERVICE_NAME,
+        server_name=SERVICE_NAME,
         version=SERVICE_VERSION,
         start_time=SERVICE_START_TIME,
         dependencies=DEFAULT_DEPENDENCIES,
