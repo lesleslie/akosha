@@ -206,7 +206,7 @@ requirements:
 **Tasks:**
 - Create `akosha/docs/ops/OTEL_TEMPO_HOOK.md` describing: (1) the current `otelcol.exporter.debug` block is a placeholder, (2) the operator steps to install Tempo (Docker, native binary), (3) the River config snippet to replace the debug exporter with `otelcol.exporter.otlp` to Tempo, (4) the verification curl.
 - Add a `docs/feature-tracking/2026-09-09-otel-feed-recovery.md` entry per `docs/feature-tracking/TEMPLATE.md`, tracking state `{built: true, wired: pending_phase4, adopted: false}`.
-- Persist a one-line state summary via `mcp__session-buddy__store_reflection` with tags `["feature-tracking", "akosha-otel-feed-recovery", "wire-up-state"]`.
+- Persist a one-line state summary via `mcp__session-buddy__session_buddy_store_reflection` with tags `["feature-tracking", "akosha-otel-feed-recovery", "wire-up-state"]`.
 
 **Exit criteria:**
 - Both files committed to akosha.
@@ -216,7 +216,7 @@ requirements:
 
 - **Triggered from**: completion of Phases 1–4.
 - **Returns to / updates**: `akosha/docs/ops/OTEL_TEMPO_HOOK.md`, `akosha/docs/feature-tracking/2026-09-09-otel-feed-recovery.md`, and the Session-Buddy reflection store.
-- **Demonstrable by**: `git -C akosha log --oneline -n 2` shows the new commits; `mcp__session-buddy__quick_search(query="akosha-otel-feed-recovery")` returns the reflection.
+- **Demonstrable by**: `git -C akosha log --oneline -n 2` shows the new commits; `mcp__session-buddy__session_buddy_quick_search(query="akosha-otel-feed-recovery")` returns the reflection.
 - **Rollback signal**: not applicable (documentation-only).
 - **Observability added**: not applicable (documentation-only).
 

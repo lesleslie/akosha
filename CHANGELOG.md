@@ -131,7 +131,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- akosha: `mcp__akosha__force_retention_sweep` — the operator can now run
+- akosha: `mcp__akosha__akosha_force_retention_sweep` — the operator can now run
   the retention sweep on demand instead of waiting out the 6-hour interval.
   §11.4a's operator-interface table had marked "force a sweep now" as *Not
   available*, which was honest but left a six-hour worst-case wait on the
