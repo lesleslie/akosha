@@ -234,9 +234,9 @@ Of the last 100 commits, ~50% are "feature was incomplete when merged" fixes —
 
 5.3. **OTel trace ingester wiring.** `akosha/processing/otel_ingester.py` (or similar) needs to be started at boot. The audit identified `mcp__akosha__query_local_traces` returns 0 traces; the ingester likely exists but isn't running. Add boot hook.
 
-5.4. **Code indexer wiring.** `mcp__akosha__search_code_patterns` returns 0 results. The indexer is built (per audit's "0 ERROR problems" finding) but never indexes. Add boot hook that indexes `akosha/**/*.py` on first start, with incremental updates on file-change events.
+5.4. **Code indexer wiring.** `mcp__akosha__akosha_search_code_patterns` returns 0 results. The indexer is built (per audit's "0 ERROR problems" finding) but never indexes. Add boot hook that indexes `akosha/**/*.py` on first start, with incremental updates on file-change events.
 
-5.5. **Live verification.** Run Akosha MCP, wait 60 seconds for the fitness analyzer's polling cycle, then call `mcp__akosha__get_graph_statistics` and `mcp__akosha__query_local_traces` and `mcp__akosha__search_code_patterns` from a real client. Capture the before/after numbers in the wave-end commit message.
+5.5. **Live verification.** Run Akosha MCP, wait 60 seconds for the fitness analyzer's polling cycle, then call `mcp__akosha__akosha_get_graph_statistics` and `mcp__akosha__query_local_traces` and `mcp__akosha__akosha_search_code_patterns` from a real client. Capture the before/after numbers in the wave-end commit message.
 
 5.6. **Bump version to 0.15.0.** Update `pyproject.toml` version, `akosha/__init__.py:__version__`, and the ratchet milestone in `.coverage-ratchet.json`. Tag the commit as `v0.15.0` if the project's release policy tags at every merge to main.
 
@@ -245,9 +245,9 @@ Of the last 100 commits, ~50% are "feature was incomplete when merged" fixes —
 - **Triggered from**: `AkoshaApplication.start()` in `akosha/main.py`; the 60-second `fitness_analyzer` polling loop; `mcp__akosha__*` tool invocations from any Bodai component.
 - **Returns to / updates**: Akosha MCP `knowledge_graph` (entities + edges); `HotStore`-backed OTel trace index; `code_patterns` index of `akosha/**/*.py` regex matches; version `0.15.0` in `pyproject.toml` and `akosha/__init__.py`; `.coverage-ratchet.json` milestone entry.
 - **Demonstrable by**:
-  - `mcp__akosha__get_graph_statistics` returns ≥100 entities after a 60-second warmup.
+  - `mcp__akosha__akosha_get_graph_statistics` returns ≥100 entities after a 60-second warmup.
   - `mcp__akosha__query_local_traces` returns ≥1 trace within 30 seconds of any Akosha tool invocation.
-  - `mcp__akosha__search_code_patterns(pattern="TODO")` returns ≥1 match (the audit-found stubs, if not yet removed, plus the legitimate "Implement MinHash" comments left for posterity).
+  - `mcp__akosha__akosha_search_code_patterns(pattern="TODO")` returns ≥1 match (the audit-found stubs, if not yet removed, plus the legitimate "Implement MinHash" comments left for posterity).
   - `python -c "import akosha; print(akosha.__version__)"` prints `0.15.0`.
 - **Rollback signal**: any of the three live queries returns 0 after 60-second warmup; `AkoshaApplication.start()` raises; the ratchet JSON parses invalid.
 - **Observability added**: OTel counter `akosha.kg.entities_indexed`; OTel counter `akosha.traces.ingested`; OTel counter `akosha.code_index.files_indexed`; structured log on each boot phase transition.
@@ -297,9 +297,9 @@ Of the last 100 commits, ~50% are "feature was incomplete when merged" fixes —
 | `pytest tests/unit/test_test_quality.py::test_no_empty_tests` | exit 0; reports 0 empty tests | Wave 4 commit |
 | `curl http://localhost:8682/health` | `{"status": "ok", "checks": {...}}` when healthy, `503` + structured error otherwise | Wave 1 + Wave 3 commits |
 | `akosha version` on broken install | traceback | Wave 3 commit |
-| `mcp__akosha__get_graph_statistics` after 60s warmup | ≥100 entities | Wave 5 commit + 60-second wait |
+| `mcp__akosha__akosha_get_graph_statistics` after 60s warmup | ≥100 entities | Wave 5 commit + 60-second wait |
 | `mcp__akosha__query_local_traces` after first tool call | ≥1 trace | Wave 5 commit |
-| `mcp__akosha__search_code_patterns(pattern="TODO")` | ≥1 match | Wave 5 commit |
+| `mcp__akosha__akosha_search_code_patterns(pattern="TODO")` | ≥1 match | Wave 5 commit |
 | `grep -rn "TODO: Implement" akosha/storage/ akosha/processing/ akosha/mcp/server.py akosha/shell/adapter.py` | 0 lines | Wave 1 + Wave 2 commits |
 | `pytest --collect-only -q \| grep "::" \| wc -l` | ≥1,387 tests | Wave 4 commit |
 

@@ -1825,7 +1825,7 @@ Expected: server starts; logs show whether knowledge-graph population task, OTel
 
 - [ ] **Step 2: Wait 60 seconds, then query**
 
-Run from another shell: `mcp__akosha__get_graph_statistics`, `mcp__akosha__query_local_traces`, `mcp__akosha__search_code_patterns` (via a Bodai CLI client or the Mahavishnu MCP bridge).
+Run from another shell: `mcp__akosha__akosha_get_graph_statistics`, `mcp__akosha__query_local_traces`, `mcp__akosha__akosha_search_code_patterns` (via a Bodai CLI client or the Mahavishnu MCP bridge).
 
 - [ ] **Step 3: Document findings in `## Appendix A` of the spec**
 
@@ -1960,9 +1960,9 @@ Run: `cd /Users/les/Projects/akosha && .venv/bin/python -m akosha.mcp &`
 Sleep 60 seconds. From another shell:
 
 ```bash
-mcp__akosha__get_graph_statistics
+mcp__akosha__akosha_get_graph_statistics
 mcp__akosha__query_local_traces
-mcp__akosha__search_code_patterns(pattern="TODO")
+mcp__akosha__akosha_search_code_patterns(pattern="TODO")
 ```
 
 Expected: non-empty results.
@@ -1987,7 +1987,7 @@ Live MCP backend wired:
 - OTel trace ingester polling loop active.
 - Code indexer indexes `akosha/**/*.py` and updates incrementally.
 
-Verification: `mcp__akosha__get_graph_statistics`, `query_local_traces`,
+Verification: `mcp__akosha__akosha_get_graph_statistics`, `query_local_traces`,
 `search_code_patterns` return non-empty results after 60-second warmup.
 
 Version bumped 0.14.x → 0.15.0.

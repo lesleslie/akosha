@@ -10,7 +10,7 @@ topic: websocket-to-hotstore-intake
 
 ## What
 
-`mcp__akosha__search_all_systems` now drives a real HotStore query over the
+`mcp__akosha__akosha_search_all_systems` now drives a real HotStore query over the
 Mahavishnu `websocket_tool_invocation/v1/*` audit corpus. The explicit
 mock that used to return `"Mock result for: {query}"` is gone. A
 `WebSocketInvocationsSubscriber` polls the audit prefix on a configurable
