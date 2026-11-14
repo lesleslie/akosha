@@ -108,7 +108,7 @@ class TestMainStartOrdersEmbeddingInitBeforeHotStore:
         _install_signal_spy(monkeypatch)
 
         app = AkoshaApplication()
-        app._wire_eventbridge_publisher = MagicMock()  # type: ignore[method-assign]
+        app._wire_eventbridge_publisher = MagicMock()
         app.shutdown_event.wait = AsyncMock(return_value=None)
 
         await app.start()
@@ -174,7 +174,7 @@ class TestMainStartOrdersEmbeddingInitBeforeHotStore:
         _install_signal_spy(monkeypatch)
 
         app = AkoshaApplication()
-        app._wire_eventbridge_publisher = MagicMock()  # type: ignore[method-assign]
+        app._wire_eventbridge_publisher = MagicMock()
         app.shutdown_event.wait = AsyncMock(return_value=None)
 
         await app.start()

@@ -29,7 +29,7 @@ def register_code_graph_analysis_tools(
         return
 
     # FastMCPToolRegistry has an 'app' attribute
-    mcp = registry.app  # type: ignore[attr-defined]
+    mcp = registry.app
 
     @mcp.tool(name="list_ingested_code_graphs")
     async def list_ingested_code_graphs(

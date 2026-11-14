@@ -158,7 +158,7 @@ async def test_search_all_shards_ignores_unexpected_result_type(distributed_engi
     async def bad_timeout(*args, **kwargs):
         return {"unexpected": "result"}
 
-    distributed_engine._search_shard_with_timeout = bad_timeout  # type: ignore[method-assign]
+    distributed_engine._search_shard_with_timeout = bad_timeout
 
     results = await distributed_engine.search_all_shards(
         query_embedding=[0.1] * 384,

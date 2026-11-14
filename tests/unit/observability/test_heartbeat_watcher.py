@@ -346,7 +346,7 @@ async def test_a_service_seen_again_resets_its_streak(
     assert present.status is HeartbeatStatus.OK
     assert watcher.consecutive_absences == {"mahavishnu": 0}
 
-    store.conn.execute("DELETE FROM spans_substrate")  # type: ignore[union-attr]
+    store.conn.execute("DELETE FROM spans_substrate")
     absent = await watcher.check()
     assert absent.services[0].consecutive_absences == 1
     assert absent.p0_a is False
@@ -399,7 +399,7 @@ async def test_a_row_older_than_the_window_does_not_count(
     """
     await _seed(receiver, "mahavishnu", span_id=b"\x24" * 8)
     now = time.time_ns()
-    store.conn.execute(  # type: ignore[union-attr]
+    store.conn.execute(
         "UPDATE spans_substrate SET received_at_unix_nano = ?",
         [now - 120 * NS_PER_SECOND],
     )

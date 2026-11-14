@@ -65,7 +65,7 @@ def test_create_hot_store_rejects_pgvector_kwarg() -> None:
     should migrate to ``create_warm_store(backend='pgvector', pg_url=...)``.
     """
     with pytest.raises(TypeError):
-        create_hot_store(  # type: ignore[call-arg]
+        create_hot_store(
             backend="duckdb-memory",
             pg_url="postgresql://legacy",
         )

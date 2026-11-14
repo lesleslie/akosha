@@ -41,14 +41,14 @@ if TYPE_CHECKING:
     from oneiric.core.config import OneiricMCPConfig
 else:
     try:
-        from oneiric.core.config import OneiricMCPConfig  # type: ignore[assignment]
+        from oneiric.core.config import OneiricMCPConfig
     except ImportError:
         # Fallback if oneiric is not installed. Defining an empty subclass of
         # BaseModel keeps ``OneiricMCPConfig`` a single class for the type checker,
         # instead of a ``OneiricMCPConfig | BaseModel`` union which would break
         # ``class AkoshaConfig(OneiricMCPConfig)``. The ``TYPE_CHECKING`` branch
         # above shadows this fallback for the type checker.
-        class OneiricMCPConfig(BaseModel):  # type: ignore[no-redef]
+        class OneiricMCPConfig(BaseModel):
             """Fallback base class when ``oneiric`` is unavailable."""
 
 
@@ -820,7 +820,7 @@ class OTelConfig(BaseModel):
     receiver: OTelReceiverConfig = Field(default_factory=OTelReceiverConfig)
 
 
-class AkoshaConfig(OneiricMCPConfig):  # type: ignore[reportUntypedBaseClass]
+class AkoshaConfig(OneiricMCPConfig):
     """Main Akosha configuration using Oneiric MCPBaseSettings pattern.
 
     Configuration loading order (later overrides earlier):
@@ -977,7 +977,7 @@ def load_config_from_file(config_path: str) -> dict[str, Any]:
 
     try:
         with path.open() as f:
-            config: dict[str, Any] = yaml.safe_load(f) or {}  # type: ignore[assignment]
+            config: dict[str, Any] = yaml.safe_load(f) or {}
         logger.info(f"Loaded configuration from {config_path}")
         return config
     except Exception as e:

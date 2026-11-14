@@ -76,7 +76,7 @@ def _patch_config(monkeypatch: pytest.MonkeyPatch, **kwargs) -> None:
 def _insert_old_row(receiver: OTLPReceiver, age_hours: int = 24 * 60) -> None:
     """Insert one row older than the retention horizon."""
     old_ns = time.time_ns() - age_hours * 3600 * 1_000_000_000
-    receiver._hot_store.conn.execute(  # type: ignore[union-attr]
+    receiver._hot_store.conn.execute(
         "INSERT INTO spans_substrate "
         "(span_id, trace_id, service_name, service_namespace, span_name, "
         " start_time_unix_nano, received_at_unix_nano, attributes, resource) "
@@ -86,7 +86,7 @@ def _insert_old_row(receiver: OTLPReceiver, age_hours: int = 24 * 60) -> None:
 
 
 def _row_count(receiver: OTLPReceiver) -> int:
-    row = receiver._hot_store.conn.execute(  # type: ignore[union-attr]
+    row = receiver._hot_store.conn.execute(
         "SELECT COUNT(*) FROM spans_substrate"
     ).fetchone()
     return int(row[0])

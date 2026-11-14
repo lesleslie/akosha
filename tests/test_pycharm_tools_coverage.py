@@ -1214,7 +1214,7 @@ class TestPyCharmToolRuntimeBranches:
         hot_store.get_code_graph = AsyncMock(side_effect=get_code_graph)
 
         old_adapter = mod._pycharm_adapter
-        mod._pycharm_adapter = fake_adapter  # type: ignore[assignment]
+        mod._pycharm_adapter = fake_adapter
         try:
             app = FakeApp()
             registry = FastMCPToolRegistry(app)

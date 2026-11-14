@@ -66,7 +66,7 @@ class TestHotStoreLifecycle:
         app = AkoshaApplication()
         # Eventbridge wiring would touch AkoshaConfig; stub it so the
         # start() path under test stays focused on HotStore.
-        app._wire_eventbridge_publisher = MagicMock()  # type: ignore[method-assign]
+        app._wire_eventbridge_publisher = MagicMock()
         # Short-circuit the shutdown_event.wait() so start() returns promptly.
         app.shutdown_event.wait = AsyncMock(return_value=None)
 
@@ -94,7 +94,7 @@ class TestHotStoreLifecycle:
         _install_signal_spy(monkeypatch)
 
         app = AkoshaApplication()
-        app._wire_eventbridge_publisher = MagicMock()  # type: ignore[method-assign]
+        app._wire_eventbridge_publisher = MagicMock()
         app.shutdown_event.wait = AsyncMock(return_value=None)
 
         await app.start()
@@ -121,7 +121,7 @@ class TestHotStoreLifecycle:
         _install_signal_spy(monkeypatch)
 
         app = AkoshaApplication()
-        app._wire_eventbridge_publisher = MagicMock()  # type: ignore[method-assign]
+        app._wire_eventbridge_publisher = MagicMock()
         app.shutdown_event.wait = AsyncMock(return_value=None)
 
         await app.start()

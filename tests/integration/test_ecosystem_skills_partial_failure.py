@@ -179,7 +179,7 @@ class TestPartialFailure:
         app = _DummyFastMCP()
         cache = EcosystemSkillsCache(path=tmp_path / "cache.json", ttl_seconds=60)
         circuit = EcosystemCircuitRegistry()
-        register_ecosystem_skills(  # type: ignore[arg-type]
+        register_ecosystem_skills(
             app,
             cache=cache,
             circuit=circuit,
@@ -211,7 +211,7 @@ class TestPartialFailure:
         app = _DummyFastMCP()
         cache = EcosystemSkillsCache(path=tmp_path / "cache.json", ttl_seconds=60)
         circuit = EcosystemCircuitRegistry()
-        register_ecosystem_skills(  # type: ignore[arg-type]
+        register_ecosystem_skills(
             app,
             cache=cache,
             circuit=circuit,
@@ -245,7 +245,7 @@ class TestPartialFailure:
         app = _DummyFastMCP()
         cache = EcosystemSkillsCache(path=tmp_path / "cache.json", ttl_seconds=60)
         circuit = EcosystemCircuitRegistry()
-        register_ecosystem_skills(  # type: ignore[arg-type]
+        register_ecosystem_skills(
             app,
             cache=cache,
             circuit=circuit,
@@ -283,7 +283,7 @@ class TestPartialFailure:
         app = _DummyFastMCP()
         cache = EcosystemSkillsCache(path=tmp_path / "cache.json", ttl_seconds=60)
         circuit = EcosystemCircuitRegistry()
-        register_ecosystem_skills(  # type: ignore[arg-type]
+        register_ecosystem_skills(
             app,
             cache=cache,
             circuit=circuit,
@@ -321,7 +321,7 @@ async def _cache_partial_failure_async(tmp_path: Path) -> None:
     app = _DummyFastMCP()
     cache = EcosystemSkillsCache(path=tmp_path / "cache.json", ttl_seconds=600)
     circuit = EcosystemCircuitRegistry()
-    register_ecosystem_skills(  # type: ignore[arg-type]
+    register_ecosystem_skills(
         app,
         cache=cache,
         circuit=circuit,

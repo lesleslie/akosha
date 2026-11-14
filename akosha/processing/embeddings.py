@@ -69,7 +69,7 @@ class EmbeddingService(_OneiricEmbeddingService):
         # been probed).
         self._initialized: bool = False
 
-    async def initialize(self) -> None:  # type: ignore[override]
+    async def initialize(self) -> None:
         """Probe the backend chain and mark the service initialized."""
         await super().initialize()
         self._initialized = True

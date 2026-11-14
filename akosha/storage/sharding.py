@@ -48,7 +48,7 @@ class ShardRouter:
         hash_int = int.from_bytes(hash_bytes[:4], byteorder="big")
 
         # Modulo num_shards to get shard ID
-        if self.num_shards is None or self.num_shards <= 0:  # type: ignore[reportUnnecessaryComparison]
+        if self.num_shards is None or self.num_shards <= 0:
             raise ValueError(f"num_shards must be a positive integer, got {self.num_shards}")
         shard_id = hash_int % self.num_shards
 

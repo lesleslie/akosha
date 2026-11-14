@@ -88,7 +88,7 @@ _HOT_STORE_SENTINEL = object()
 
 def _make_subscriber(
     *,
-    hot_store: Any | None = _HOT_STORE_SENTINEL,  # type: ignore[assignment]
+    hot_store: Any | None = _HOT_STORE_SENTINEL,
     redis_url: str = "redis://localhost:6379/0",
     consumer_group: str = "akosha-tool-invocation-indexers",
     **kwargs: Any,
@@ -737,8 +737,8 @@ class TestDecodeEnvelope:
     def test_returns_none_when_payload_is_not_a_dict(
         self, subscriber: BodaiToolInvocationSubscriber
     ) -> None:
-        assert subscriber._decode_envelope("not-a-dict") is None  # type: ignore[arg-type]
-        assert subscriber._decode_envelope(None) is None  # type: ignore[arg-type]
+        assert subscriber._decode_envelope("not-a-dict") is None
+        assert subscriber._decode_envelope(None) is None
 
     def test_envelope_blob_path(self, subscriber: BodaiToolInvocationSubscriber) -> None:
         payload = _envelope_blob_envelope(

@@ -240,7 +240,7 @@ def _build_unsigned_metadata(
     abstraction stays clean; both compute the canonical B-6
     ``content_hash`` from the stripped body.
     """
-    from mcp_common.agents_tools import _content_hash, _strip_body  # type: ignore[attr-defined]
+    from mcp_common.agents_tools import _content_hash, _strip_body
 
     entry = _STATIC_AGENTS_BY_NAME[name]
     body = _strip_body(_read_body(entry["body_filename"]))

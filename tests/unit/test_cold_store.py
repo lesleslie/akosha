@@ -330,7 +330,7 @@ class TestColdStoreBackends:
             assert isinstance(store._storage_adapter, AsyncMock)
             assert captured["settings"].bucket == "my-bucket"
             assert captured["settings"].region == "us-east-1"
-            store._storage_adapter.init.assert_awaited_once()  # type: ignore[union-attr]
+            store._storage_adapter.init.assert_awaited_once()
         finally:
             await store.close()
 
@@ -597,7 +597,7 @@ class TestColdStoreBackends:
     @pytest.mark.asyncio
     async def test_unknown_backend_rejected(self) -> None:
         """Unknown backend string raises ValueError during initialize()."""
-        store = ColdStore(bucket="x", storage_backend="local")  # type: ignore[arg-type]
+        store = ColdStore(bucket="x", storage_backend="local")
         store._storage_backend = "r2-not-supported"  # bypass Literal check
         with pytest.raises(ValueError, match="Unknown storage backend"):
             await store.initialize()

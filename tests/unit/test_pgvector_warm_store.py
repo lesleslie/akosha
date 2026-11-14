@@ -88,7 +88,7 @@ def _make_pkg_stub(name: str, path: str) -> types.ModuleType:
             return sys.modules[full]
         raise AttributeError(f"module {name!r} has no attribute {attr_name!r}")
 
-    mod.__getattr__ = __getattr__  # type: ignore[attr-defined]
+    mod.__getattr__ = __getattr__
     return mod
 
 
@@ -555,7 +555,7 @@ class TestInsert:
         store = _store(shard_router=router)
         await store.initialize()
 
-        await store.insert(_warm_record(timestamp="2024-06-15T12:30:45+00:00"))  # type: ignore[arg-type]
+        await store.insert(_warm_record(timestamp="2024-06-15T12:30:45+00:00"))
         inserted_doc = adapter.insert.await_args.args[1][0]
         assert inserted_doc.metadata["timestamp"] == "2024-06-15T12:30:45+00:00"
 

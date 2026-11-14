@@ -63,7 +63,7 @@ def resolve_storage_backend(backend: str | None) -> StorageBackendName:
     if resolved is not None:
         return resolved
     if name in ("local", "s3", "gcs", "azure"):
-        return name  # type: ignore[return-value]
+        return name
     raise ValueError(
         f"Unknown cold-storage backend: {backend!r}. "
         f"Known backends: {', '.join(sorted({'local', 's3', 'gcs', 'azure', *_BACKEND_ALIASES}))}."

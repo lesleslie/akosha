@@ -423,7 +423,7 @@ def test_drift_test_targets_resolve() -> None:
 try:
     import pytest  # noqa: F401  (used conditionally above)
 except ImportError:  # pragma: no cover
-    pytest = None  # type: ignore[assignment]
+    pytest = None
 
 
 # Ensure pytest is available for the standard assertion machinery.

@@ -136,7 +136,7 @@ def _request(spans: list[trace_pb2.Span]) -> Any:
 
 
 def _stored(receiver: OTLPReceiver, sql: str) -> list[tuple[Any, ...]]:
-    return receiver._hot_store.conn.execute(sql).fetchall()  # type: ignore[union-attr]
+    return receiver._hot_store.conn.execute(sql).fetchall()
 
 
 # ── the unwrapper ────────────────────────────────────────────────────────

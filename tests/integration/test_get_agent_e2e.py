@@ -112,7 +112,7 @@ def app_with_signer() -> tuple[_ToolRegistry, _StubSignerFeedState]:
     from akosha.mcp import signer_feed
 
     state = _StubSignerFeedState()
-    signer_feed._signer_state = state  # type: ignore[attr-defined]
+    signer_feed._signer_state = state
 
     app = _ToolRegistry()
     register_agents_tools(app)
@@ -120,7 +120,7 @@ def app_with_signer() -> tuple[_ToolRegistry, _StubSignerFeedState]:
     yield app, state
 
     # Teardown: clear the singleton so other tests start clean.
-    signer_feed._signer_state = None  # type: ignore[attr-defined]
+    signer_feed._signer_state = None
 
 
 @pytest.fixture
@@ -128,7 +128,7 @@ def app_without_signer() -> _ToolRegistry:
     """Return an app where the signer has NOT been initialized."""
     from akosha.mcp import signer_feed
 
-    signer_feed._signer_state = None  # type: ignore[attr-defined]
+    signer_feed._signer_state = None
 
     app = _ToolRegistry()
     register_agents_tools(app)

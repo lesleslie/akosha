@@ -62,7 +62,7 @@ def receiver(store: HotStore) -> OTLPReceiver:
 def _insert_expired_row(receiver: OTLPReceiver) -> None:
     """Insert one row 60 days old -- past the 30-day retention horizon."""
     old_ns = time.time_ns() - 60 * 24 * 3600 * 1_000_000_000
-    receiver._hot_store.conn.execute(  # type: ignore[union-attr]
+    receiver._hot_store.conn.execute(
         "INSERT INTO spans_substrate "
         "(span_id, trace_id, service_name, service_namespace, span_name, "
         " start_time_unix_nano, received_at_unix_nano, attributes, resource) "
@@ -72,7 +72,7 @@ def _insert_expired_row(receiver: OTLPReceiver) -> None:
 
 
 def _row_count(receiver: OTLPReceiver) -> int:
-    row = receiver._hot_store.conn.execute(  # type: ignore[union-attr]
+    row = receiver._hot_store.conn.execute(
         "SELECT COUNT(*) FROM spans_substrate"
     ).fetchone()
     return int(row[0])

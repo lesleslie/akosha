@@ -139,7 +139,7 @@ class TestVerifyToken:
 
         fake_module = ModuleType("aiohttp")
         session = _FakeSession(response, post_exc)
-        fake_module.ClientSession = lambda: session  # type: ignore[assignment]
+        fake_module.ClientSession = lambda: session
         monkeypatch.setitem(sys.modules, "aiohttp", fake_module)
         return session
 

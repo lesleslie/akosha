@@ -97,7 +97,7 @@ async def test_the_receiver_reaches_the_substrate_writer(
         "rejected": 0,
         "error_message": "",
     }
-    rows = store.conn.execute(  # type: ignore[union-attr]
+    rows = store.conn.execute(
         "SELECT span_id, service_name FROM spans_substrate"
     ).fetchall()
     assert rows == [("02" * 8, "akosha")]
@@ -135,7 +135,7 @@ async def test_a_rejected_span_reaches_the_substrate_dlq(
     result = await receiver._handle_batch(request)
 
     assert result["rejected"] == 1
-    quarantined = store.conn.execute(  # type: ignore[union-attr]
+    quarantined = store.conn.execute(
         "SELECT reason, field, span_id FROM _dlq_rows"
     ).fetchall()
     assert quarantined == [("not_null", "service_name", "04" * 8)]

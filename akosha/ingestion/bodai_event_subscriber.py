@@ -85,7 +85,7 @@ def _create_redis_client(redis_url: str) -> Any | None:
     caller to idle until cancellation.
     """
     try:
-        import redis.asyncio as aioredis  # type: ignore[import-not-found]
+        import redis.asyncio as aioredis
     except ImportError:
         logger.warning(
             "akosha.bodai_subscriber: redis.asyncio is not installed; "

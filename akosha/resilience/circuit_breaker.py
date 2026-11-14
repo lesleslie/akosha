@@ -266,8 +266,8 @@ class CircuitBreaker:
         # ``func`` is typed as ``Callable[..., T]`` but may be either sync or
         # async. Detect at runtime so we await the coroutine only when present.
         if inspect.iscoroutinefunction(func):
-            return await func(*args, **kwargs)  # type: ignore[union-attr]
-        return func(*args, **kwargs)  # type: ignore[arg-type]
+            return await func(*args, **kwargs)
+        return func(*args, **kwargs)
 
     def get_stats_summary(self) -> dict[str, Any]:
         """Get summary of circuit statistics.

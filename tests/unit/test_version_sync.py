@@ -85,7 +85,7 @@ def test_version_fallback_when_metadata_unavailable() -> None:
     fresh = importlib.util.module_from_spec(spec)
 
     with patch("importlib.metadata.version", side_effect=metadata.PackageNotFoundError):
-        spec.loader.exec_module(fresh)  # type: ignore[union-attr]
+        spec.loader.exec_module(fresh)
 
     assert fresh.__version__ == _FALLBACK_VERSION, (
         f"Fallback returned {fresh.__version__!r}; expected sentinel "

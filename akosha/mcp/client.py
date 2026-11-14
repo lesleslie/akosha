@@ -94,10 +94,10 @@ async def query_local_traces(
     )
     payload = extract_mcp_payload(result)
     if isinstance(payload, list):
-        return payload  # type: ignore[return-value]
+        return payload
     if isinstance(payload, dict):
         items = payload.get("traces") or payload.get("items") or payload.get("result")
         if isinstance(items, list):
-            return items  # type: ignore[return-value]
+            return items
     logger.debug("Unexpected query_local_traces payload shape: %r", payload)
     return []

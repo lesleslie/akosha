@@ -116,7 +116,7 @@ def extract_schema() -> list[Field]:
     """
     if str(AKOSHA_ROOT) not in sys.path:
         sys.path.insert(0, str(AKOSHA_ROOT))
-    from akosha.config import AkoshaConfig  # type: ignore[import-not-found]
+    from akosha.config import AkoshaConfig
     from pydantic import BaseModel
 
     fields: list[Field] = []

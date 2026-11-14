@@ -308,7 +308,7 @@ def _lowercase_keys(value: Any) -> Any:
 audit_logger = AuditLogger()
 
 
-def audit_log(_action: str, _resource_type: str) -> Callable[[dict[str, Any]], AuditLogger]:  # type: ignore[reportUnusedParameter]
+def audit_log(_action: str, _resource_type: str) -> Callable[[dict[str, Any]], AuditLogger]:
     """Create FastAPI dependency for audit logging.
 
     Usage:
@@ -322,7 +322,7 @@ def audit_log(_action: str, _resource_type: str) -> Callable[[dict[str, Any]], A
             return {"status": "success"}
     """
 
-    def dependency(_claims: dict[str, Any] = Depends(verify_token)) -> AuditLogger:  # type: ignore[reportUnusedParameter] # noqa: B008
+    def dependency(_claims: dict[str, Any] = Depends(verify_token)) -> AuditLogger:  # noqa: B008
         """Dependency that logs audit event on completion."""
         return audit_logger
 

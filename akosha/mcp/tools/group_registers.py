@@ -318,7 +318,7 @@ def _shared_store_only() -> Any:
     infrastructure that looks correct.
     """
     with contextlib.suppress(Exception):
-        from akosha.mcp.server import get_shared_hot_store  # type: ignore[attr-defined]
+        from akosha.mcp.server import get_shared_hot_store
 
         return get_shared_hot_store()
     return None
@@ -391,7 +391,7 @@ async def _try_create_hot_store():
     """
     shared: Any = None
     with contextlib.suppress(Exception):
-        from akosha.mcp.server import get_shared_hot_store  # type: ignore[attr-defined]
+        from akosha.mcp.server import get_shared_hot_store
 
         shared = get_shared_hot_store()
     # ``get_shared_hot_store`` may not be importable in some test

@@ -100,12 +100,12 @@ def build_canary_request(unix_nano: int) -> Any:
     A real ``ExportTraceServiceRequest``, not a dict, so the marker goes
     through the same protobuf decode the gRPC and HTTP paths use.
     """
-    from opentelemetry.proto.collector.trace.v1 import (  # type: ignore[import-not-found]
+    from opentelemetry.proto.collector.trace.v1 import (
         trace_service_pb2,
     )
-    from opentelemetry.proto.common.v1 import common_pb2  # type: ignore[import-not-found]
-    from opentelemetry.proto.resource.v1 import resource_pb2  # type: ignore[import-not-found]
-    from opentelemetry.proto.trace.v1 import trace_pb2  # type: ignore[import-not-found]
+    from opentelemetry.proto.common.v1 import common_pb2
+    from opentelemetry.proto.resource.v1 import resource_pb2
+    from opentelemetry.proto.trace.v1 import trace_pb2
 
     return trace_service_pb2.ExportTraceServiceRequest(
         resource_spans=[

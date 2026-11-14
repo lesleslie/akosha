@@ -596,7 +596,7 @@ class TestXreadgroupBlockTimeout:
                     captured["kwargs"] = kwargs
                     return await original(*args, **kwargs)
 
-                client.xreadgroup = spy_xreadgroup  # type: ignore[method-assign]
+                client.xreadgroup = spy_xreadgroup
 
                 sub._running = True
                 loop_task = asyncio.create_task(sub._run_loop())

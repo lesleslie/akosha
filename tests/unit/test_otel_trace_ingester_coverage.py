@@ -634,7 +634,7 @@ async def test_polling_loop_cold_start_uses_lookback_window() -> None:
         ingester._running = False
         return []
 
-    ingester._fetch_spans = fake_fetch  # type: ignore[assignment]
+    ingester._fetch_spans = fake_fetch
     # Patch sleep so we don't wait.
     with patch("akosha.ingestion.otel_ingester.asyncio.sleep", new=AsyncMock()):
         await ingester._polling_loop()
@@ -658,7 +658,7 @@ async def test_polling_loop_warm_cycle_uses_max_watermark() -> None:
         ingester._running = False
         return []
 
-    ingester._fetch_spans = fake_fetch  # type: ignore[assignment]
+    ingester._fetch_spans = fake_fetch
     with patch("akosha.ingestion.otel_ingester.asyncio.sleep", new=AsyncMock()):
         await ingester._polling_loop()
 
@@ -695,7 +695,7 @@ async def test_polling_loop_embeds_and_inserts_spans() -> None:
         ingester._running = False
         return [("svc-a", span_a), ("svc-b", span_b)]
 
-    ingester._fetch_spans = fake_fetch  # type: ignore[assignment]
+    ingester._fetch_spans = fake_fetch
     with patch("akosha.ingestion.otel_ingester.asyncio.sleep", new=AsyncMock()):
         await ingester._polling_loop()
 
@@ -730,7 +730,7 @@ async def test_polling_loop_swallows_per_span_exception() -> None:
         ingester._running = False
         return [("svc", bad_span)]
 
-    ingester._fetch_spans = fake_fetch  # type: ignore[assignment]
+    ingester._fetch_spans = fake_fetch
     with patch("akosha.ingestion.otel_ingester.asyncio.sleep", new=AsyncMock()):
         await ingester._polling_loop()
 
@@ -756,7 +756,7 @@ async def test_polling_loop_outer_exception_logs_and_continues() -> None:
         ingester._running = False
         return []
 
-    ingester._fetch_spans = fake_fetch  # type: ignore[assignment]
+    ingester._fetch_spans = fake_fetch
     with patch("akosha.ingestion.otel_ingester.asyncio.sleep", new=AsyncMock()):
         await ingester._polling_loop()
 
@@ -773,7 +773,7 @@ async def test_polling_loop_breaker_on_cancellation() -> None:
     async def fake_fetch(since_unix_nano: int) -> list[tuple[str, dict[str, Any]]]:
         raise asyncio.CancelledError()
 
-    ingester._fetch_spans = fake_fetch  # type: ignore[assignment]
+    ingester._fetch_spans = fake_fetch
     # Must not raise — CancelledError inside the loop must be swallowed
     # by the outer try/except (it logs + breaks).
     await ingester._polling_loop()
@@ -803,7 +803,7 @@ async def test_polling_loop_per_span_cancellation_re_raises() -> None:
         ingester._running = False
         return [("svc", cancel_span)]
 
-    ingester._fetch_spans = fake_fetch  # type: ignore[assignment]
+    ingester._fetch_spans = fake_fetch
     with patch("akosha.ingestion.otel_ingester.asyncio.sleep", new=AsyncMock()):
         # The per-span CancelledError is re-raised so the outer cycle-level
         # handler can catch it. The outer handler swallows + logs + breaks.
@@ -859,7 +859,7 @@ async def test_initial_lookback_parameter_is_honored_on_first_cycle() -> None:
         ingester._running = False
         return []
 
-    ingester._fetch_spans = fake_fetch  # type: ignore[assignment]
+    ingester._fetch_spans = fake_fetch
     with patch("akosha.ingestion.otel_ingester.asyncio.sleep", new=AsyncMock()):
         await ingester._polling_loop()
 

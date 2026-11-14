@@ -320,7 +320,7 @@ class TestIngestionWorker:
     async def test_storage_get_sync_and_missing(self, worker: IngestionWorker) -> None:
         """Test storage getter fallback for sync adapters and missing methods."""
 
-        worker.storage.get = lambda key: f"value:{key}"  # type: ignore[method-assign]
+        worker.storage.get = lambda key: f"value:{key}"
         assert await worker._storage_get("demo") == "value:demo"
 
         class NoGetStorage:
@@ -328,7 +328,7 @@ class TestIngestionWorker:
                 return []
 
         no_get_worker = IngestionWorker(
-            storage_adapter=NoGetStorage(),  # type: ignore[arg-type]
+            storage_adapter=NoGetStorage(),
             hot_store=worker.hot_store,
         )
 
@@ -338,7 +338,7 @@ class TestIngestionWorker:
     async def test_iterate_storage_list_sync(self, worker: IngestionWorker) -> None:
         """Test iteration over a synchronous storage listing."""
 
-        worker.storage.list = lambda prefix: ["systems/demo/"]  # type: ignore[method-assign]
+        worker.storage.list = lambda prefix: ["systems/demo/"]
 
         items = [item async for item in worker._iterate_storage_list("systems/")]
 
@@ -500,7 +500,7 @@ class TestIngestionWorker:
         async def fail_scan(system_id: str, system_prefix: str):
             raise RuntimeError("scan failed")
 
-        worker._scan_system = fail_scan  # type: ignore[assignment]
+        worker._scan_system = fail_scan
         results = await worker._scan_systems_concurrent(["systems/demo/"])
 
         assert len(results) == 1

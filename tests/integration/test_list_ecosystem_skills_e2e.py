@@ -189,12 +189,12 @@ def _mock_no_installed(monkeypatch: pytest.MonkeyPatch) -> None:
 class TestRegistration:
     def test_tool_registered_with_canonical_name(self) -> None:
         app = _DummyFastMCP()
-        register_ecosystem_skills(app)  # type: ignore[arg-type]
+        register_ecosystem_skills(app)
         assert "akosha_list_ecosystem_skills" in app.registered
 
     def test_tool_is_async_coroutine(self) -> None:
         app = _DummyFastMCP()
-        register_ecosystem_skills(app)  # type: ignore[arg-type]
+        register_ecosystem_skills(app)
         fn = app.registered["akosha_list_ecosystem_skills"]
         import inspect
 
@@ -220,7 +220,7 @@ class TestFederationAggregation:
         cache = EcosystemSkillsCache(path=tmp_path / "cache.json", ttl_seconds=60)
         circuit = EcosystemCircuitRegistry()
 
-        register_ecosystem_skills(  # type: ignore[arg-type]
+        register_ecosystem_skills(
             app,
             cache=cache,
             circuit=circuit,
@@ -278,7 +278,7 @@ class TestPagination:
         cache = EcosystemSkillsCache(path=tmp_path / "cache.json", ttl_seconds=60)
         circuit = EcosystemCircuitRegistry()
 
-        register_ecosystem_skills(  # type: ignore[arg-type]
+        register_ecosystem_skills(
             app,
             cache=cache,
             circuit=circuit,
@@ -326,7 +326,7 @@ class TestCache:
         cache = EcosystemSkillsCache(path=tmp_path / "cache.json", ttl_seconds=600)
         circuit = EcosystemCircuitRegistry()
 
-        register_ecosystem_skills(  # type: ignore[arg-type]
+        register_ecosystem_skills(
             app,
             cache=cache,
             circuit=circuit,
@@ -363,7 +363,7 @@ class TestIncludeInstalled:
         app = _DummyFastMCP()
         cache = EcosystemSkillsCache(path=tmp_path / "cache.json", ttl_seconds=60)
         circuit = EcosystemCircuitRegistry()
-        register_ecosystem_skills(  # type: ignore[arg-type]
+        register_ecosystem_skills(
             app,
             cache=cache,
             circuit=circuit,

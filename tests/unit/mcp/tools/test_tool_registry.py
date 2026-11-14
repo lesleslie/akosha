@@ -69,7 +69,7 @@ def app() -> FakeApp:
 
 @pytest.fixture
 def registry(app: FakeApp) -> FastMCPToolRegistry:
-    return FastMCPToolRegistry(app)  # type: ignore[arg-type]
+    return FastMCPToolRegistry(app)
 
 
 def test_registry_starts_empty(registry: FastMCPToolRegistry) -> None:

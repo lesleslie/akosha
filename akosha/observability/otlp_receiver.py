@@ -320,11 +320,11 @@ class OTLPReceiver:
         descriptors. A missing proto package should surface as a bind failure at
         boot, not as an ImportError during collection of an unrelated test.
         """
-        import grpc  # type: ignore[import-not-found]
-        from opentelemetry.proto.collector.metrics.v1 import (  # type: ignore[import-not-found]
+        import grpc
+        from opentelemetry.proto.collector.metrics.v1 import (
             metrics_service_pb2_grpc,
         )
-        from opentelemetry.proto.collector.trace.v1 import (  # type: ignore[import-not-found]
+        from opentelemetry.proto.collector.trace.v1 import (
             trace_service_pb2_grpc,
         )
 
@@ -353,7 +353,7 @@ class OTLPReceiver:
         receiver's own ``stop()`` owns the shutdown — a blocking call here would
         make the lifespan's reverse-order teardown impossible.
         """
-        import uvicorn  # type: ignore[import-not-found]
+        import uvicorn
         from starlette.applications import Starlette
         from starlette.responses import Response
         from starlette.routing import Route
@@ -536,7 +536,7 @@ class OTLPReceiver:
         producer's bug and not a reason to answer 4xx — the producer would then
         retry a payload that can never parse.
         """
-        from opentelemetry.proto.collector.trace.v1 import (  # type: ignore[import-not-found]
+        from opentelemetry.proto.collector.trace.v1 import (
             trace_service_pb2,
         )
 
@@ -1209,7 +1209,7 @@ class _TraceServiceServicer:
         them, and a producer reading them is the signal that a validation
         regression is visible from outside the process.
         """
-        from opentelemetry.proto.collector.trace.v1 import (  # type: ignore[import-not-found]
+        from opentelemetry.proto.collector.trace.v1 import (
             trace_service_pb2,
         )
 
@@ -1260,7 +1260,7 @@ class _MetricsServiceServicer:
         "the receiver is throwing your data away" message would have if it
         were always empty. The OTel Python SDK tolerates its absence.
         """
-        from opentelemetry.proto.collector.metrics.v1 import (  # type: ignore[import-not-found]
+        from opentelemetry.proto.collector.metrics.v1 import (
             metrics_service_pb2,
         )
 

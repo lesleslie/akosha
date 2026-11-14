@@ -20,7 +20,7 @@ from akosha.models.schemas import (
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
-    from oneiric.adapters.storage.s3 import S3StorageAdapter  # type: ignore[import]
+    from oneiric.adapters.storage.s3 import S3StorageAdapter
 
     from akosha.storage.hot_store import HotStore
 
@@ -41,7 +41,7 @@ class IngestionWorker:
 
     def __init__(
         self,
-        storage_adapter: S3StorageAdapter,  # type: ignore[import]
+        storage_adapter: S3StorageAdapter,
         hot_store: HotStore,
         poll_interval_seconds: int = 30,
         max_concurrent_ingests: int = 100,
@@ -216,8 +216,8 @@ class IngestionWorker:
             # storage adapter contract as ``_discover_uploads_concurrent``:
             # ``storage.list(prefix)`` yields prefix strings (sync or async).
             system_prefixes: list[str] = []
-            async for prefix in self._iterate_storage_list("systems/"):  # type: ignore[arg-type]
-                system_prefixes.append(prefix)  # type: ignore[union-attr]
+            async for prefix in self._iterate_storage_list("systems/"):
+                system_prefixes.append(prefix)
                 if len(system_prefixes) >= self.MAX_SYSTEM_PREFIXES:
                     logger.warning(
                         f"System prefix limit reached ({self.MAX_SYSTEM_PREFIXES}), "
@@ -302,8 +302,8 @@ class IngestionWorker:
             List of system prefixes (max MAX_SYSTEM_PREFIXES)
         """
         system_prefixes: list[str] = []
-        async for prefix in self._iterate_storage_list("systems/"):  # type: ignore[arg-type]
-            system_prefixes.append(prefix)  # type: ignore[union-attr]
+        async for prefix in self._iterate_storage_list("systems/"):
+            system_prefixes.append(prefix)
             if len(system_prefixes) >= self.MAX_SYSTEM_PREFIXES:
                 logger.warning(
                     f"System prefix limit reached ({self.MAX_SYSTEM_PREFIXES}), "
@@ -397,8 +397,8 @@ class IngestionWorker:
             List of upload prefixes
         """
         obj_prefixes: list[str] = []
-        async for obj in self._iterate_storage_list(upload_prefix):  # type: ignore[arg-type]
-            obj_prefixes.append(obj)  # type: ignore[union-attr]
+        async for obj in self._iterate_storage_list(upload_prefix):
+            obj_prefixes.append(obj)
             if len(obj_prefixes) >= self.MAX_UPLOAD_PREFIXES:
                 logger.warning(
                     f"Upload prefix limit reached ({self.MAX_UPLOAD_PREFIXES}) "
@@ -488,7 +488,7 @@ class IngestionWorker:
         """Resolve the storage prefix for an upload across model variants."""
         storage_prefix = getattr(upload, "storage_prefix", None)
         if storage_prefix:
-            return storage_prefix  # type: ignore[no-any-return]
+            return storage_prefix
 
         manifest_path = getattr(upload, "manifest_path", None)
         if manifest_path:
@@ -504,8 +504,8 @@ class IngestionWorker:
 
         value = getter(key)
         if inspect.isawaitable(value):
-            return await value  # type: ignore[no-any-return]
-        return value  # type: ignore[no-any-return]
+            return await value
+        return value
 
     async def _iterate_storage_list(self, prefix: str) -> AsyncGenerator[str]:
         """Iterate over storage listings from async generators or plain iterables."""
@@ -513,8 +513,8 @@ class IngestionWorker:
         if inspect.isawaitable(listing):
             listing = await listing
 
-        if hasattr(listing, "__aiter__"):  # type: ignore[attr-defined]
-            async for item in listing:  # type: ignore[misc, attr-defined]
+        if hasattr(listing, "__aiter__"):
+            async for item in listing:
                 yield item
             return
 

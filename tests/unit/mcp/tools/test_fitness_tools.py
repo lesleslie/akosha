@@ -27,9 +27,9 @@ from akosha.mcp.tools.fitness_tools import (
 @pytest.fixture(autouse=True)
 def _reset_global() -> None:
     """Reset the module-level ``_fitness_analyzer`` between tests."""
-    fitness_mod._fitness_analyzer = None  # type: ignore[attr-defined]
+    fitness_mod._fitness_analyzer = None
     yield
-    fitness_mod._fitness_analyzer = None  # type: ignore[attr-defined]
+    fitness_mod._fitness_analyzer = None
 
 
 # ---------------------------------------------------------------------------
@@ -41,7 +41,7 @@ def test_init_fitness_analyzer_stores_instance() -> None:
     analyzer = MagicMock()
     analyzer._component_endpoints = [("akosha", "http://akosha:8682/mcp")]
     init_fitness_analyzer(analyzer)
-    assert fitness_mod._fitness_analyzer is analyzer  # type: ignore[attr-defined]
+    assert fitness_mod._fitness_analyzer is analyzer
 
 
 def test_init_fitness_analyzer_logs_endpoint_count() -> None:
@@ -52,7 +52,7 @@ def test_init_fitness_analyzer_logs_endpoint_count() -> None:
     # We don't assert the log message text — just that init didn't raise
     # and stored the instance. (Logger format varies; the endpoint count
     # check lives in init's body via len().)
-    assert fitness_mod._fitness_analyzer is analyzer  # type: ignore[attr-defined]
+    assert fitness_mod._fitness_analyzer is analyzer
 
 
 # ---------------------------------------------------------------------------
@@ -77,7 +77,7 @@ class FakeApp:
 
 def test_register_fitness_tools_registers_two_tools() -> None:
     app = FakeApp()
-    register_fitness_tools(app)  # type: ignore[arg-type]
+    register_fitness_tools(app)
     assert "akosha_run_fitness_analysis" in app.tools
     assert "akosha_get_fitness_analyzer_status" in app.tools
 
@@ -90,7 +90,7 @@ def test_register_fitness_tools_registers_two_tools() -> None:
 @pytest.mark.asyncio
 async def test_run_fitness_analysis_returns_error_when_analyzer_not_initialized() -> None:
     app = FakeApp()
-    register_fitness_tools(app)  # type: ignore[arg-type]
+    register_fitness_tools(app)
     result = await app.tools["akosha_run_fitness_analysis"]()
     assert result["status"] == "error"
     assert "FitnessAnalyzer not initialized" in result["error"]
@@ -108,7 +108,7 @@ async def test_run_fitness_analysis_returns_no_data_when_no_signals() -> None:
     init_fitness_analyzer(analyzer)
 
     app = FakeApp()
-    register_fitness_tools(app)  # type: ignore[arg-type]
+    register_fitness_tools(app)
 
     result = await app.tools["akosha_run_fitness_analysis"]()
     assert result["status"] == "no_data"
@@ -133,7 +133,7 @@ async def test_run_fitness_analysis_returns_completed_with_signal_summary() -> N
     init_fitness_analyzer(analyzer)
 
     app = FakeApp()
-    register_fitness_tools(app)  # type: ignore[arg-type]
+    register_fitness_tools(app)
     result = await app.tools["akosha_run_fitness_analysis"]()
 
     assert result["status"] == "completed"
@@ -153,7 +153,7 @@ async def test_run_fitness_analysis_catches_internal_exceptions() -> None:
     init_fitness_analyzer(analyzer)
 
     app = FakeApp()
-    register_fitness_tools(app)  # type: ignore[arg-type]
+    register_fitness_tools(app)
     result = await app.tools["akosha_run_fitness_analysis"]()
 
     assert result["status"] == "error"
@@ -168,7 +168,7 @@ async def test_run_fitness_analysis_catches_internal_exceptions() -> None:
 @pytest.mark.asyncio
 async def test_get_fitness_analyzer_status_returns_defaults_when_not_initialized() -> None:
     app = FakeApp()
-    register_fitness_tools(app)  # type: ignore[arg-type]
+    register_fitness_tools(app)
     result = await app.tools["akosha_get_fitness_analyzer_status"]()
     assert result == {
         "running": False,
@@ -186,7 +186,7 @@ async def test_get_fitness_analyzer_status_returns_state_when_initialized() -> N
     init_fitness_analyzer(analyzer)
 
     app = FakeApp()
-    register_fitness_tools(app)  # type: ignore[arg-type]
+    register_fitness_tools(app)
     result = await app.tools["akosha_get_fitness_analyzer_status"]()
 
     assert result["running"] is True

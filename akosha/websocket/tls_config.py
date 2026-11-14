@@ -30,7 +30,7 @@ def get_websocket_tls_config() -> dict[str, str | bool | None]:
     Returns:
         Dictionary with TLS configuration
     """
-    return get_tls_config_from_env("AKOSHA_WS")  # type: ignore[return-value]
+    return get_tls_config_from_env("AKOSHA_WS")
 
 
 def load_ssl_context(
@@ -80,4 +80,4 @@ def load_ssl_context(
         "key_file": key_file,
         "ca_file": ca_file,
         "verify_client": verify_client,
-    }  # type: ignore[return-value]
+    }

@@ -55,7 +55,7 @@ def receiver(store: HotStore) -> OTLPReceiver:
 
 
 def _rows(receiver: OTLPReceiver) -> list[tuple[str, str]]:
-    return receiver._hot_store.conn.execute(  # type: ignore[union-attr]
+    return receiver._hot_store.conn.execute(
         "SELECT service_name, span_name FROM spans_substrate"
     ).fetchall()
 
@@ -149,13 +149,13 @@ async def test_the_canary_goes_through_the_conversion_path(
 
     def _spy(span: object, resource_attrs: dict[str, object]) -> dict[str, object]:
         converted.append(getattr(span, "name", ""))
-        return real(span, resource_attrs)  # type: ignore[arg-type]
+        return real(span, resource_attrs)
 
-    mod._proto_to_dict = _spy  # type: ignore[assignment]
+    mod._proto_to_dict = _spy
     try:
         await CanaryEmitter(receiver).emit_once()
     finally:
-        mod._proto_to_dict = real  # type: ignore[assignment]
+        mod._proto_to_dict = real
 
     assert converted == [CANARY_SPAN_NAME], (
         "the canary must be converted exactly like a producer's span"
@@ -203,15 +203,15 @@ async def test_a_quarantined_write_is_a_failure(receiver: OTLPReceiver) -> None:
     real = mod._proto_to_dict
 
     def _break_it(span: object, resource_attrs: dict[str, object]) -> dict[str, object]:
-        row = real(span, resource_attrs)  # type: ignore[arg-type]
+        row = real(span, resource_attrs)
         row["service_namespace"] = "not-a-real-namespace"
         return row
 
-    mod._proto_to_dict = _break_it  # type: ignore[assignment]
+    mod._proto_to_dict = _break_it
     try:
         outcome = await CanaryEmitter(receiver).emit_once()
     finally:
-        mod._proto_to_dict = real  # type: ignore[assignment]
+        mod._proto_to_dict = real
 
     assert outcome == "failed"
     assert _rows(receiver) == []
@@ -314,7 +314,7 @@ def test_canary_rows_are_swept_at_24h(receiver: OTLPReceiver) -> None:
     old_ns = now_ns - 25 * 3600 * 1_000_000_000
     recent_ns = now_ns - 3600 * 1_000_000_000
 
-    receiver._hot_store.conn.execute(  # type: ignore[union-attr]
+    receiver._hot_store.conn.execute(
         "INSERT INTO spans_substrate "
         "(span_id, trace_id, service_name, service_namespace, span_name, "
         " start_time_unix_nano, received_at_unix_nano, attributes, resource) "
@@ -329,7 +329,7 @@ def test_canary_rows_are_swept_at_24h(receiver: OTLPReceiver) -> None:
             old_ns,
         ],
     )
-    receiver._hot_store.conn.execute(  # type: ignore[union-attr]
+    receiver._hot_store.conn.execute(
         "INSERT INTO spans_substrate "
         "(span_id, trace_id, service_name, service_namespace, span_name, "
         " start_time_unix_nano, received_at_unix_nano, attributes, resource) "
@@ -353,7 +353,7 @@ def test_canary_rows_are_swept_at_24h(receiver: OTLPReceiver) -> None:
     )
 
     assert deleted == 1, "the 25h-old canary row must go, the 1h-old one must stay"
-    remaining = receiver._hot_store.conn.execute(  # type: ignore[union-attr]
+    remaining = receiver._hot_store.conn.execute(
         "SELECT COUNT(*) FROM spans_substrate"
     ).fetchone()
     assert remaining[0] == 1

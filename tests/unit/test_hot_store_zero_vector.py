@@ -152,14 +152,14 @@ async def test_search_similar_nonzero_delegates_to_substrate() -> None:
     # ``DuckdbHotStore.search_similar`` in the MRO instead.
     from oneiric.adapters.vector.duckdb_hot_store import DuckdbHotStore
     original = DuckdbHotStore.search_similar
-    DuckdbHotStore.search_similar = substrate_call  # type: ignore[method-assign]
+    DuckdbHotStore.search_similar = substrate_call
     try:
         results = await store.search_similar(
             query_embedding=[0.1, 0.2, 0.3],
             limit=10,
         )
     finally:
-        DuckdbHotStore.search_similar = original  # type: ignore[method-assign]
+        DuckdbHotStore.search_similar = original
 
     # Substrate was called exactly once.
     assert substrate_call.await_count == 1

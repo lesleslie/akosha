@@ -46,7 +46,7 @@ def test_constructor_stores_bridge_reference(
     publisher: EventBridgePublisher, fake_bridge: MagicMock
 ) -> None:
     """Pin: the adapter must hold the bridge for the publish() lifetime."""
-    assert publisher._bridge is fake_bridge  # type: ignore[attr-defined]
+    assert publisher._bridge is fake_bridge
 
 
 @pytest.mark.asyncio
@@ -56,7 +56,7 @@ async def test_publish_forwards_topic_payload_headers(
     fake_envelope: MagicMock,
 ) -> None:
     """Three-attribute translation: topic, payload, headers."""
-    await publisher.publish(fake_envelope)  # type: ignore[arg-type]
+    await publisher.publish(fake_envelope)
     fake_bridge.emit.assert_awaited_once_with(
         "test_topic",
         {"key": "value", "count": 42},
@@ -73,7 +73,7 @@ async def test_publish_propagates_bridge_runtime_error(
     """If ``bridge.emit`` raises, ``publish`` must surface it — no swallowing."""
     fake_bridge.emit.side_effect = RuntimeError("bridge down")
     with pytest.raises(RuntimeError, match="bridge down"):
-        await publisher.publish(fake_envelope)  # type: ignore[arg-type]
+        await publisher.publish(fake_envelope)
 
 
 @pytest.mark.asyncio
@@ -87,7 +87,7 @@ async def test_publish_handles_empty_payload_and_headers(
     env.payload = {}
     env.headers = {}
 
-    await publisher.publish(env)  # type: ignore[arg-type]
+    await publisher.publish(env)
     fake_bridge.emit.assert_awaited_once_with("minimal", {}, {})
 
 
@@ -102,8 +102,8 @@ async def test_publish_called_twice_invokes_bridge_twice(
     env.payload = {"n": 1}
     env.headers = {}
 
-    await publisher.publish(env)  # type: ignore[arg-type]
-    await publisher.publish(env)  # type: ignore[arg-type]
+    await publisher.publish(env)
+    await publisher.publish(env)
     assert fake_bridge.emit.await_count == 2
 
 
@@ -118,5 +118,5 @@ async def test_publish_with_non_dict_payload(
     env.payload = b"raw bytes"
     env.headers = {}
 
-    await publisher.publish(env)  # type: ignore[arg-type]
+    await publisher.publish(env)
     fake_bridge.emit.assert_awaited_once_with("binary", b"raw bytes", {})

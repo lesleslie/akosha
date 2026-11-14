@@ -226,7 +226,7 @@ async def test_registration_borrows_the_shared_store(
     class _App:
         pass
 
-    gr.register_fitness_group(_App())  # type: ignore[arg-type]
+    gr.register_fitness_group(_App())
 
     analyzer = captured["a"]
     assert analyzer._span_query is not None
@@ -257,7 +257,7 @@ async def test_registration_without_a_lifespan_is_inert_not_broken(
     class _App:
         pass
 
-    gr.register_fitness_group(_App())  # type: ignore[arg-type]
+    gr.register_fitness_group(_App())
 
     assert captured["a"]._span_query is None
     assert captured["a"]._declared_pairs == []
@@ -300,7 +300,7 @@ def test_a_malformed_entry_is_skipped_not_fatal(
 
     class _Cfg:
         spans_substrate = SpansSubstrateConfig(
-            declared_pairs=["code_generation:least_loaded", bad]  # type: ignore[list-item]
+            declared_pairs=["code_generation:least_loaded", bad]
         )
 
     monkeypatch.setattr("akosha.config.get_config", lambda: _Cfg())

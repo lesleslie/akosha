@@ -113,7 +113,7 @@ class TestComputeGraphSimilarity:
         graph2 = {"nodes": {"n1": {"type": "Bar"}}}
         # The first ``graph1.get`` raises — verify it propagates.
         with pytest.raises(RuntimeError, match="boom"):
-            await _compute_graph_similarity(graph1, graph2)  # type: ignore[arg-type]
+            await _compute_graph_similarity(graph1, graph2)
 
     @pytest.mark.asyncio
     async def test_similarity_zero_on_both_empty(self):
@@ -210,7 +210,7 @@ class TestCodeGraphToolsRuntime:
                 return decorator
 
         app = FakeApp()
-        registry = FastMCPToolRegistry(app)  # type: ignore[arg-type]
+        registry = FastMCPToolRegistry(app)
         registry.app = registry._app
 
         hot_store = MagicMock()

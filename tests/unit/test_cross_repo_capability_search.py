@@ -139,7 +139,7 @@ class _DummyFastMCP:
 
 def _make_registry() -> tuple[_DummyFastMCP, FastMCPToolRegistry]:
     app = _DummyFastMCP()
-    registry = FastMCPToolRegistry(app)  # type: ignore[arg-type]
+    registry = FastMCPToolRegistry(app)
     register_cross_repo_tools(registry)
     return app, registry
 
@@ -295,7 +295,7 @@ def test_cross_repo_group_registers_tool() -> None:
     from akosha.mcp.tools.group_registers import register_cross_repo_group
 
     app = _DummyFastMCP()
-    register_cross_repo_group(app)  # type: ignore[arg-type]
+    register_cross_repo_group(app)
     assert "akosha_cross_repo_capability_search" in app.registered
 
 

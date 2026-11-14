@@ -20,7 +20,7 @@ def _minhash_to_bytes(minhash: MinHash) -> bytes:
     current API is to access the underlying ``hashvalues`` numpy array
     directly and call ``tobytes()``.
     """
-    return bytes(minhash.hashvalues.tobytes())  # type: ignore[attr-defined]
+    return bytes(minhash.hashvalues.tobytes())
 
 
 def _bytes_to_minhash(raw: bytes, num_perm: int) -> MinHash:
@@ -31,10 +31,10 @@ def _bytes_to_minhash(raw: bytes, num_perm: int) -> MinHash:
     a freshly constructed ``MinHash``.
     """
     import numpy as np
-    from datasketch import MinHash  # type: ignore[import-not-found]
+    from datasketch import MinHash
 
     mh = MinHash(num_perm=num_perm)
-    mh.hashvalues = np.frombuffer(raw, dtype=mh.hashvalues.dtype).copy()  # type: ignore[attr-defined]
+    mh.hashvalues = np.frombuffer(raw, dtype=mh.hashvalues.dtype).copy()
     return mh
 
 
@@ -104,7 +104,7 @@ class DeduplicationService:
         """
         if self._backend == "minhash":
             try:
-                from datasketch import MinHash  # type: ignore[import-not-found]
+                from datasketch import MinHash
             except ImportError:
                 logger.warning("datasketch not installed; falling back to SHA-256 fingerprint")
                 return hashlib.sha256(content.encode("utf-8")).digest()
@@ -133,7 +133,7 @@ class DeduplicationService:
 
         if self._backend == "minhash":
             try:
-                from datasketch import MinHash  # noqa: F401  # type: ignore[import-not-found]
+                from datasketch import MinHash  # noqa: F401
             except ImportError:
                 # SHA-256 fallback: only byte-identical matches count.
                 return [(i, 1.0) for i, cand in enumerate(candidates) if cand == fingerprint]

@@ -167,7 +167,7 @@ def setup_telemetry(
 
     # Instrument asyncio
     asyncio_instrumentor = AsyncioInstrumentor()
-    asyncio_instrumentor.instrument()  # type: ignore[union-attr]
+    asyncio_instrumentor.instrument()
 
     logger.info(f"✅ Telemetry initialized: {service_name} ({environment})")
     logger.info(f"   Sampling rate: {sample_rate:.0%}")

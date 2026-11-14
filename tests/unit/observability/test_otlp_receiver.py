@@ -90,7 +90,7 @@ def _sv(value: str) -> common_pb2.AnyValue:
 
 
 def _stored(receiver: OTLPReceiver, sql: str) -> list[tuple[Any, ...]]:
-    return receiver._hot_store.conn.execute(sql).fetchall()  # type: ignore[union-attr]
+    return receiver._hot_store.conn.execute(sql).fetchall()
 
 
 # ── pre_validate ─────────────────────────────────────────────────────────
@@ -137,7 +137,7 @@ def test_the_reported_field_is_deterministic(receiver: OTLPReceiver) -> None:
     the rows that exist precisely because something went wrong.
     """
     empty: dict[str, Any] = {}
-    reported = {receiver.pre_validate(empty).field for _ in range(200)}  # type: ignore[union-attr]
+    reported = {receiver.pre_validate(empty).field for _ in range(200)}
     assert reported == {"service_name"}
 
 
@@ -699,7 +699,7 @@ async def test_start_raises_when_the_substrate_is_missing(
     """
     from oneiric.core.lifecycle import LifecycleError
 
-    store.conn.execute("DROP TABLE spans_substrate")  # type: ignore[union-attr]
+    store.conn.execute("DROP TABLE spans_substrate")
     with pytest.raises(LifecycleError, match="spans_substrate_missing"):
         await receiver.start()
 
@@ -713,7 +713,7 @@ async def test_start_does_not_bind_when_the_substrate_is_missing(
     never receive a span, and the next start attempt would then fail with a
     port-in-use error that hides the real cause.
     """
-    store.conn.execute("DROP TABLE spans_substrate")  # type: ignore[union-attr]
+    store.conn.execute("DROP TABLE spans_substrate")
     with suppress(Exception):
         await receiver.start()
     assert receiver._grpc_server is None
