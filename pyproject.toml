@@ -221,12 +221,6 @@ omit = [
 precision = 2
 fail_under = 87.61723329425557
 
-[tool.mypy]
-python_version = "3.14"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-
 [tool.pyright]
 pythonVersion = "3.14"
 typeCheckingMode = "strict"
@@ -283,7 +277,6 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=5.0.0",
     "ruff>=0.8.0",
-    "mypy>=1.0.0",
     "pre-commit>=3.0.0",
     "bandit>=1.7.0",
     "refurb>=0.0.0",
