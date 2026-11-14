@@ -66,7 +66,7 @@ class TestIngestionWorker:
     def worker(self, mock_storage: AsyncMock, mock_hot_store: AsyncMock) -> IngestionWorker:
         """Create ingestion worker with mocked dependencies."""
         return IngestionWorker(
-            storage_adapter=mock_storage,  # type: ignore
+            storage_adapter=mock_storage,
             hot_store=mock_hot_store,
             max_concurrent_ingests=5,
             poll_interval_seconds=1,
@@ -162,7 +162,7 @@ class TestIngestionWorker:
             seen.append(upload.upload_id)
             return upload.upload_id
 
-        worker._process_upload = mock_process  # type: ignore
+        worker._process_upload = mock_process
 
         results = await worker.run(uploads=uploads)
 
@@ -201,7 +201,7 @@ class TestIngestionWorker:
                 current_concurrent -= 1
             return None
 
-        worker._process_upload = mock_process  # type: ignore
+        worker._process_upload = mock_process
 
         # Create a semaphore with the same limit as the worker
         semaphore = asyncio.Semaphore(worker.max_concurrent_ingests)
@@ -248,7 +248,7 @@ class TestIngestionWorker:
             await asyncio.sleep(0.2)  # Simulate work
             return upload
 
-        worker._process_upload = mock_process  # type: ignore
+        worker._process_upload = mock_process
 
         # Start and quickly stop
         task = asyncio.create_task(worker.run())
@@ -290,7 +290,7 @@ class TestIngestionWorker:
         async def mock_process_error(upload: SystemMemoryUpload):
             raise RuntimeError("Processing failed")
 
-        worker._process_upload = mock_process_error  # type: ignore
+        worker._process_upload = mock_process_error
 
         # The error should propagate from _process_upload itself
         # The worker's run() method handles exceptions with return_exceptions=True
@@ -552,7 +552,7 @@ class TestIngestionWorker:
     def test_worker_configuration(self) -> None:
         """Test worker configuration from environment."""
         worker = IngestionWorker(
-            storage_adapter=AsyncMock(),  # type: ignore
+            storage_adapter=AsyncMock(),
             hot_store=AsyncMock(),
             max_concurrent_ingests=100,
             poll_interval_seconds=60,
