@@ -256,6 +256,15 @@ exclude_deps = [
 [tool.hatch.build.targets.wheel]
 packages = ["akosha"]
 
+[tool.crackerjack]
+# ty type-check ratchet enforced by ``crackerjack.tools.ty_ratchet``.
+# Measured 2026-11-14 with ty 0.0.104: prod 0, test 1756. The prod budget is
+# pinned at 0 so the next prod diagnostic fails the gate; the test budget is
+# the measured count, giving the ratchet a real baseline to tighten from.
+# The test gate is advisory — it never controls the exit code.
+ty_max_errors_prod = 0
+ty_max_errors_test = 1756
+
 [tool.ty]
 src = { include = ["akosha/**/*.py"] }
 
