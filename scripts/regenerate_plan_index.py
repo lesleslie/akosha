@@ -1,7 +1,7 @@
 #!/usr/bin/env uv run python
 """Regenerate docs/plans/PLAN_INDEX.md from per-store frontmatter.
 
-Walks the six Bodai documentation stores, parses YAML frontmatter on each
+Walks the Bodai documentation stores, parses YAML frontmatter on each
 ``.md`` file, and emits a deterministic index grouped by store and sorted
 by date DESC within each store. The output mirrors the structure of the
 previous hand-edited PLAN_INDEX.md (status legend, authority matrix, review
@@ -15,18 +15,17 @@ Usage:
 Default --out: docs/plans/PLAN_INDEX.md. Pass --dry-run to print the
 generated markdown to stdout and skip writing.
 
-Default stores scanned (POSIX, relative to repo root):
-    docs/adr/
-    docs/plans/                    (excluding drafts/ subdirectory)
-    docs/specs/
-    docs/plans/
-    .claude/decisions/
-    docs/followups/
+Default stores scanned (POSIX, relative to repo root): the entries of
+``DEFAULT_STORES`` below, which is the single source of truth for the
+store list. This module deliberately does not restate the list -- a
+second copy is what let a directory rename collide two distinct stores
+onto one path (commit 3aaaaa0) and go unnoticed. The ``docs/plans/``
+store excludes its ``drafts/`` subdirectory.
 
 Always excluded:
     docs/plans/PLAN_INDEX.md (this script's own output — self-skip)
     Any *.archive* or *.backup* / *.backup.json subdirectory anywhere
-    under the six stores.
+    under the scanned stores.
 
 Exit codes:
     0 = success (file written or --dry-run)
@@ -69,7 +68,6 @@ DEFAULT_STORES: tuple[str, ...] = (
     "docs/adr/",
     "docs/plans/",
     "docs/specs/",
-    "docs/plans/",
     ".claude/decisions/",
     "docs/followups/",
 )
@@ -79,7 +77,6 @@ STORE_LABELS: dict[str, str] = {
     "docs/adr/": "Architecture Decision Records (`docs/adr/`)",
     "docs/plans/": "Plans & Specifications (`docs/plans/`)",
     "docs/specs/": "Superpowers Specs (`docs/specs/`)",
-    "docs/plans/": "Superpowers Plans (`docs/plans/`)",
     ".claude/decisions/": "Repo-local Decisions (`.claude/decisions/`)",
     "docs/followups/": "Follow-up Notes (`docs/followups/`)",
 }

@@ -10,7 +10,7 @@ ______________________________________________________________________
 
 ## Goal
 
-This schema unifies the eight ad-hoc status conventions currently scattered across Mahavishnu's six documentation stores — `.claude/decisions/`, `docs/followups/`, `docs/adr/`, `docs/specs/`, `docs/plans/`, and `docs/plans/` — into a single YAML frontmatter contract. After migration, agents greping for `status:` reach one source of truth, `PLAN_INDEX.md` is regenerated mechanically, and `superseded_by` / `blocks_on` are machine-readable rather than buried in prose. The contract covers 178 in-scope files and is intentionally small: eight keys plus a two-enum vocabulary.
+This schema unifies the eight ad-hoc status conventions currently scattered across Mahavishnu's five documentation stores — `.claude/decisions/`, `docs/followups/`, `docs/adr/`, `docs/specs/`, and `docs/plans/` — into a single YAML frontmatter contract. After migration, agents greping for `status:` reach one source of truth, `PLAN_INDEX.md` is regenerated mechanically, and `superseded_by` / `blocks_on` are machine-readable rather than buried in prose. The contract covers 178 in-scope files and is intentionally small: eight keys plus a two-enum vocabulary.
 
 ## Vocabulary — Lifecycle
 
@@ -34,7 +34,7 @@ Five values, applied to the `role` field. A file carries exactly one role. Role 
 
 ## Full Schema
 
-Applied to `docs/adr/`, `docs/plans/`, `docs/specs/`, `docs/plans/`, and `docs/followups/`.
+Applied to `docs/adr/`, `docs/plans/`, `docs/specs/`, `.claude/decisions/`, and `docs/followups/`.
 
 ```yaml
 status: active
@@ -121,7 +121,7 @@ uv run python scripts/regenerate_plan_index.py --json-summary # emit per-store c
 
 Discovery rules (mirrors the validator's exclusion list):
 
-- Default stores: `docs/adr/`, `docs/plans/`, `docs/specs/`, `docs/plans/`, `.claude/decisions/`, `docs/followups/`.
+- Default stores: `docs/adr/`, `docs/plans/`, `docs/specs/`, `.claude/decisions/`, `docs/followups/`.
 - Always excluded: `docs/plans/PLAN_INDEX.md` (self-skip), `docs/plans/drafts/`, any `*.archive*` or `*.backup*` subdirectory or suffix.
 - Output is rendered with a fixed frontmatter block, the Status Legend, an Authority Matrix, a Review Entry Points block, one registry table per store (sorted by `date` DESC), and a Lifecycle × Role distribution table at the bottom.
 - Files without valid frontmatter are silently skipped — they are the validator's job, not the indexer's.
