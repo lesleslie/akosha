@@ -278,7 +278,7 @@ class CodeGraphIngester:
             ):
                 logger.debug("CodeGraphIngester: hot_store lacks store_code_graph; skipping write")
                 return True
-            await self.hot_store.store_code_graph(  # ty: ignore[call-non-callable]
+            await self.hot_store.store_code_graph(  # ty: ignore[not-callable]
                 repo_path=graph_data["repo_path"],
                 commit_hash=graph_data["commit_hash"],
                 nodes_count=graph_data["nodes_count"],

@@ -677,7 +677,7 @@ def main_cli() -> None:
     """
     # OneiricCLIBase subclasses typer.Typer so ``run`` is inherited, but zuban
     # doesn't resolve it through the typer base class without help.
-    app.run()  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
+    app.run()  # type: ignore[attr-defined]  # ty: ignore[missing-attribute]
 
 
 if __name__ == "__main__":

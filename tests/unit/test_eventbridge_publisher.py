@@ -310,7 +310,7 @@ async def test_publisher_handles_zero_and_empty_values(call: object, expected_to
     """Boundary values (``0``, ``""``, ``0.0``) flow through without dropping fields."""
     publisher = AsyncMock()
     publisher.publish.return_value = None
-    await call(publisher)  # ty: ignore[call-non-callable]
+    await call(publisher)  # ty: ignore[not-callable]
     envelope = publisher.publish.await_args.args[0]
     assert envelope.topic == expected_topic
     payload = _payload_of(envelope)

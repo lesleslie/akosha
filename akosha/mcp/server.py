@@ -1049,7 +1049,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
                     # (they patch ``query_traces`` directly without going
                     # through the isinstance chain).
                     if isinstance(hot_store, HotStore) or hasattr(hot_store, "query_traces"):
-                        rows = await hot_store.query_traces(limit=100)  # ty: ignore[call-non-callable]
+                        rows = await hot_store.query_traces(limit=100)  # ty: ignore[not-callable]
                     else:
                         rows = []
                     for row in rows:
