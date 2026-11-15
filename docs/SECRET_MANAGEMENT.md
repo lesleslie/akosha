@@ -39,7 +39,7 @@ export AUTH_ENABLED="true"
 
 ```bash
 # Secrets are now sourced from environment variables / Oneiric layered settings.
-# See akosha/scripts/generate_secrets.py (deprecated 2026-09-10).
+# See scripts/generate_secrets.py (deprecated 2026-09-10).
 ```
 
 This creates environment-ready secrets with cryptographically secure values.
@@ -66,7 +66,7 @@ curl http://localhost:8682/health
 
 ## Secret Generation Script
 
-The `akosha/scripts/generate_secrets.py` script provides secure secret generation
+The `scripts/generate_secrets.py` script provides secure secret generation
 (deprecated 2026-09-10 — Kubernetes manifests dropped, use env-based config):
 
 ### Features
@@ -80,7 +80,7 @@ The `akosha/scripts/generate_secrets.py` script provides secure secret generatio
 
 ```bash
 # Default usage (generates env-file at the path you pass via --output)
-python -m akosha.scripts.generate_secrets --output /tmp/akosha-secrets.env
+python -m scripts.generate_secrets --output /tmp/akosha-secrets.env
 ```
 
 ### Generated Secrets
@@ -123,7 +123,7 @@ In production, the following placeholder values are **rejected**:
 **Example error:**
 
 ```
-RuntimeError: Authentication configuration failed: JWT_SECRET is using a placeholder value. Generate secure secrets with: python -m akosha.scripts.generate_secrets
+RuntimeError: Authentication configuration failed: JWT_SECRET is using a placeholder value. Generate secure secrets with: python -m scripts.generate_secrets
 ```
 
 ## Kubernetes Secrets
@@ -131,7 +131,7 @@ RuntimeError: Authentication configuration failed: JWT_SECRET is using a placeho
 > **Kubernetes manifests dropped 2026-09-10.** The `kubernetes/secret.yaml`,
 > `kubernetes/secret.production.yaml`, and `kubernetes/secret.production.yaml.template`
 > files no longer exist. Use environment variables and Oneiric layered settings
-> for secrets management. The `akosha/scripts/generate_secrets.py` script is
+> for secrets management. The `scripts/generate_secrets.py` script is
 > retained for reference but emits env-file output rather than k8s manifests.
 
 ## Validation
@@ -199,14 +199,14 @@ print('✅ Secrets validated')
 1. Generate new secret:
 
    ```bash
-   python -m akosha.scripts.generate_secrets --output /tmp/akosha-secrets.new.env
+   python -m scripts.generate_secrets --output /tmp/akosha-secrets.new.env
    ```
 
 1. Apply new secret:
 
    ```bash
    # Kubernetes manifests dropped 2026-09-10 — source the env file instead
-   python -m akosha.scripts.generate_secrets --output /tmp/akosha-secrets.new.env
+   python -m scripts.generate_secrets --output /tmp/akosha-secrets.new.env
    source /tmp/akosha-secrets.new.env && mahavishnu mcp restart
    ```
 
@@ -240,7 +240,7 @@ For data-at-rest encryption, key rotation is more complex:
 
 ### ✅ DO
 
-- Generate secrets with `python -m akosha.scripts.generate_secrets`
+- Generate secrets with `python -m scripts.generate_secrets`
 - Store secrets in Kubernetes Secrets (not ConfigMaps)
 - Use environment-specific secrets (dev/staging/prod)
 - Rotate secrets regularly (quarterly for JWT, annually for encryption)
@@ -274,7 +274,7 @@ kubectl get secrets -n akosha
 # Or via Bodai orchestrator: mahavishnu status
 
 # Generate and apply secret
-python -m akosha.scripts.generate_secrets --output /tmp/akosha-secrets.env
+python -m scripts.generate_secrets --output /tmp/akosha-secrets.env
 source /tmp/akosha-secrets.env && mahavishnu mcp start
 ```
 
@@ -285,7 +285,7 @@ source /tmp/akosha-secrets.env && mahavishnu mcp start
 **Fix**: Regenerate secret with proper length:
 
 ```bash
-python -m akosha.scripts.generate_secrets
+python -m scripts.generate_secrets
 ```
 
 ### "JWT_SECRET is using a placeholder value"
@@ -296,7 +296,7 @@ python -m akosha.scripts.generate_secrets
 
 ```bash
 # Generate real secrets (Kubernetes manifests dropped 2026-09-10)
-python -m akosha.scripts.generate_secrets --output /tmp/akosha-secrets.env
+python -m scripts.generate_secrets --output /tmp/akosha-secrets.env
 
 # Source and restart
 source /tmp/akosha-secrets.env && mahavishnu mcp start

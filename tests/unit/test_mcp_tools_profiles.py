@@ -171,7 +171,7 @@ def test_register_health_tools_akosha_delegates_to_shared_contract(
 
     assert health_register.call_count == 1
     kwargs = health_register.call_args.kwargs
-    assert kwargs["service_name"] == "akosha"
+    assert kwargs["server_name"] == "akosha"
     assert kwargs["version"] == __version__, (
         f"register_health_tools_akosha version {kwargs['version']!r} "
         f"drifted from akosha.__version__ {__version__!r}"

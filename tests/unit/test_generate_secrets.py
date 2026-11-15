@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-SCRIPT_PATH = Path(__file__).resolve().parents[2] / "akosha" / "scripts" / "generate_secrets.py"
+SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "generate_secrets.py"
 
 
 def load_script_module() -> ModuleType:

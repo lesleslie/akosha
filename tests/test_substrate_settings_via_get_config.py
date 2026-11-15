@@ -12,18 +12,25 @@ fails CI.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 
 @pytest.fixture(autouse=True)
 def _clear_substrate_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Strip substrate env vars so each test starts from a clean slate.
+    """Strip substrate and component-scoped env vars so each test is clean.
 
     The substrate settings object is a process-singleton Pydantic model;
     without this scrub, prior tests' env vars leak across tests.
+
+    The component-scoped ``AKOSHA__STORAGE__*`` vars are cleared too. They
+    outrank the substrate in the documented precedence order, so one left
+    in the developer's shell (a local cold-store bucket, say) would
+    silently win over the substrate value the test is asserting on.
     """
-    for key in list(__import__("os").environ):
-        if key.startswith("ONEIRIC__SUBSTRATE__"):
+    for key in list(os.environ):
+        if key.startswith(("ONEIRIC__SUBSTRATE__", "AKOSHA__STORAGE__")):
             monkeypatch.delenv(key, raising=False)
 
 

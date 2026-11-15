@@ -13,7 +13,7 @@ contract under test is:
 
 Per the test-dir-shadows-site-package convention (``akosha.mcp``
 already exists as a real package), this test module does NOT add an
-``__init__.py`` to the ``akosha/tests/`` directory.
+``__init__.py`` to the ``tests/`` directory.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from unittest.mock import MagicMock
 if TYPE_CHECKING:
     import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_FACTS_PATH = REPO_ROOT / "akosha" / "mcp" / "runtime_facts.py"
 ONEIRIC_RUNTIME_PATH = REPO_ROOT / "akosha" / "mcp" / "oneiric_runtime.py"
 AGENTS_TOOLS_PATH = REPO_ROOT / "akosha" / "mcp" / "tools" / "agents_tools.py"

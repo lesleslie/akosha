@@ -26,11 +26,26 @@ Pydantic-settings ``BaseSettings.__init__`` re-reads env vars on every
 construction; the substrate lazy accessor (``akosha.config._substrate_field``)
 calls ``oneiric.core.config.load_settings()`` fresh per field resolution,
 so env-var overrides propagate without a cache reset.
+
+The autouse fixture below also clears the component-scoped
+``AKOSHA__STORAGE__*`` vars. They outrank the substrate in the documented
+precedence order, so one left in the developer's shell (a local cold-store
+bucket, say) would silently win over the substrate value under test.
 """
 
 from __future__ import annotations
 
+import os
+
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _clear_component_scoped_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Strip component-scoped env vars that outrank the substrate."""
+    for key in list(os.environ):
+        if key.startswith("AKOSHA__STORAGE__"):
+            monkeypatch.delenv(key, raising=False)
 
 
 class TestSubstrateSettingsViaOneiric:

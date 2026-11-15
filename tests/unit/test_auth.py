@@ -305,7 +305,7 @@ class TestAuthenticationConfig:
     @pytest.mark.asyncio
     async def test_generate_secrets_script_exists(self) -> None:
         """Test that the secret generation script exists and is importable."""
-        from akosha.scripts import generate_secrets
+        from scripts import generate_secrets
 
         # Verify the module has the main function
         assert hasattr(generate_secrets, "main")
