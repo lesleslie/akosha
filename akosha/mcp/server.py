@@ -19,7 +19,7 @@ import os
 import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Final, NamedTuple, TypedDict, cast
 
 from fastmcp import FastMCP
 
@@ -507,6 +507,898 @@ def _resolve_skills_signer_key_path() -> Path:
     return Path.home() / ".akosha" / "state" / "skills_signer" / "private_key.pem"
 
 
+# ---------------------------------------------------------------------------
+# /health feed builders
+# ---------------------------------------------------------------------------
+# The default health probe used to build all seven HealthFeedState
+# snapshots inline, so one nested function carried the whole /health
+# contract: seven feeds, the aggregator call, the metric emission, the
+# legacy wire shape, and the infrastructure checks.
+#
+# Each data feed now has its own builder below. The probe assembles the
+# snapshots and hands them to the canonical aggregator; the builders only
+# read live producer state.
+# ---------------------------------------------------------------------------
+
+
+class _OtelReceiverFeed(NamedTuple):
+    """The OTLP receiver's live counters, as the /health feeds read them."""
+
+    running: bool
+    cycles_total: int
+    batches_total: int
+    errors_total: int
+    last_batch_at: float | None
+    last_error_at: float | None
+    http_port: int | None
+
+
+def _otel_receiver_feed() -> _OtelReceiverFeed:
+    """Read the live OTLP-receiver counters into one snapshot."""
+    # PR-A8: the OTLP receiver is the span producer now.
+    #
+    # The legacy OtelTraceIngester poller is gated off, so its counters
+    # above are permanently zero and its ``_running`` permanently
+    # False. Reading them for the health verdict would report a dead
+    # producer: ``mcp_tool_call_feed`` would get entities_count=0,
+    # cycles_total=0, ingester_running=False, which
+    # ``mcp_common.health.feed.is_healthy`` maps to FAILED -- and
+    # severity 3 is a 503 on the /health route. The feed only reads
+    # warming_up today because the poller's cycles_total kept
+    # climbing while it ingested nothing at all.
+    #
+    # So the feed is re-pointed at the receiver, which IS alive and
+    # IS the thing writing spans_substrate. The legacy values stay
+    # above only because the retired wire fields still report them.
+    _otel_receiver = get_shared_otel_receiver()
+    receiver_running = _otel_receiver is not None
+    # The feed's cycle count is the receiver's HEALTH cycle count, not
+    # its batch count. The batch count is zero until a producer
+    # actually exports, and a feed stuck at cycles_total=0 is
+    # `feed_never_populated` -- DEGRADED, so a 503, and the launchd
+    # wrapper's `curl -fsS` kills the server it just started. The
+    # receiver counts its startup as its first cycle precisely so
+    # this cannot happen; see OTLPReceiver.cycles_total.
+    receiver_cycles = _count_or_zero(getattr(_otel_receiver, "cycles_total", 0))
+    receiver_batches = _count_or_zero(getattr(_otel_receiver, "batches_total", 0))
+    receiver_errors = _count_or_zero(getattr(_otel_receiver, "dlq_insert_failed_total", 0))
+    receiver_last_batch = _epoch_or_none(getattr(_otel_receiver, "last_batch_at", None))
+    receiver_last_error = _epoch_or_none(getattr(_otel_receiver, "last_error_at", None))
+    return _OtelReceiverFeed(
+        running=receiver_running,
+        cycles_total=receiver_cycles,
+        batches_total=receiver_batches,
+        errors_total=receiver_errors,
+        last_batch_at=receiver_last_batch,
+        last_error_at=receiver_last_error,
+        http_port=_count_or_zero(getattr(_otel_receiver, "_http_port", 0)) or None,
+    )
+
+
+async def _code_graphs_feed_state(hot_store: Any) -> tuple[HealthFeedState, bool]:
+    """Build the ``code_graphs_feed`` snapshot from live producer state.
+
+    Returns the snapshot and the ingester's running flag (the wire dict
+    exposes the flag separately, so it is returned rather than re-read).
+    """
+    from mcp_common.health.feed import HealthFeedState
+
+    code_graphs_count = 0
+    with suppress(Exception):
+        if isinstance(hot_store, HotStore):
+            code_graphs_count = len(await hot_store.list_code_graphs(limit=1000))
+    code_graphs_running = bool(
+        _code_graph_ingester is not None and getattr(_code_graph_ingester, "_running", False)
+    )
+    code_graphs_state = HealthFeedState(
+        entities_count=code_graphs_count,
+        last_updated_timestamp=(
+            getattr(_code_graph_ingester, "_last_poll_at", None)
+            if _code_graph_ingester is not None
+            else None
+        ),
+        cycles_total=(
+            getattr(_code_graph_ingester, "_cycles_total", 0) or 0
+            if _code_graph_ingester is not None
+            else 0
+        ),
+        errors_total=(
+            getattr(_code_graph_ingester, "_errors_total", 0) or 0
+            if _code_graph_ingester is not None
+            else 0
+        ),
+        last_error_at=(
+            getattr(_code_graph_ingester, "_last_error_at", None)
+            if _code_graph_ingester is not None
+            else None
+        ),
+        ingester_running=code_graphs_running,
+    )
+    return code_graphs_state, code_graphs_running
+
+
+def _knowledge_graph_feed_state(kg_builder: Any) -> tuple[HealthFeedState, int, bool]:
+    """Build the ``knowledge_graph_feed`` snapshot from live producer state.
+
+    Returns the snapshot, the edge count, and whether the refresh task
+    is still running (both are exposed separately on the wire).
+    """
+    from mcp_common.health.feed import HealthFeedState
+
+    kg_entities_count = len(kg_builder.entities) if kg_builder is not None else 0
+    kg_edges_count = len(kg_builder.edges) if kg_builder is not None else 0
+    kg_running = _kg_refresh_task is not None and not _kg_refresh_task.done()
+    knowledge_graph_state = HealthFeedState(
+        entities_count=kg_entities_count,
+        # kg_refresh doesn't currently record a per-cycle timestamp;
+        # leave ``last_updated_timestamp`` as None. Future Phase 4+
+        # work can wire a real one if operators need it.
+        last_updated_timestamp=None,
+        cycles_total=_kg_refresh_cycles,
+        errors_total=_kg_refresh_errors,
+        last_error_at=_kg_refresh_last_error_at,
+        ingester_running=kg_running,
+    )
+    return knowledge_graph_state, kg_edges_count, kg_running
+
+
+async def _local_traces_feed_state(
+    hot_store: Any,
+    kg_running: bool,
+    receiver: _OtelReceiverFeed,
+) -> tuple[HealthFeedState, int]:
+    """Build the ``local_traces_feed`` snapshot from live producer state.
+
+    Returns the snapshot and the trace count (the wire dict exposes
+    ``feed_populated`` from the count).
+    """
+    from mcp_common.health.feed import HealthFeedState
+
+    local_traces_count = 0
+    with suppress(Exception):
+        if isinstance(hot_store, HotStore):
+            local_traces_count = len(await hot_store.query_traces(limit=1000))
+    # The retired poller's counters are read only for the LEGACY wire
+    # fields below; its running/cycles/errors values are gone, because
+    # the feed is sourced from the OTLP receiver now.
+    otel_last_poll = _epoch_or_none(
+        getattr(_otel_trace_ingester, "_last_poll_at", None)
+        if _otel_trace_ingester is not None
+        else None
+    )
+    otel_last_error = _epoch_or_none(
+        getattr(_otel_trace_ingester, "_last_error_at", None)
+        if _otel_trace_ingester is not None
+        else None
+    )
+    code_graphs_last_poll = (
+        getattr(_code_graph_ingester, "_last_poll_at", None)
+        if _code_graph_ingester is not None
+        else None
+    )
+    last_poll_candidates = [t for t in (code_graphs_last_poll, otel_last_poll) if t is not None]
+    local_traces_last_poll = max(last_poll_candidates) if last_poll_candidates else None
+    last_error_candidates = [
+        t for t in (_kg_refresh_last_error_at, otel_last_error) if t is not None
+    ]
+    local_traces_last_error = max(last_error_candidates) if last_error_candidates else None
+    local_traces_state = HealthFeedState(
+        entities_count=local_traces_count,
+        last_updated_timestamp=local_traces_last_poll,
+        cycles_total=_kg_refresh_cycles + receiver.cycles_total,
+        errors_total=_kg_refresh_errors + receiver.errors_total,
+        last_error_at=local_traces_last_error,
+        ingester_running=(kg_running or receiver.running),
+    )
+    return local_traces_state, local_traces_count
+
+
+async def _mcp_tool_call_feed_state(
+    hot_store: Any,
+    receiver: _OtelReceiverFeed,
+) -> tuple[HealthFeedState, int]:
+    """Build the ``mcp_tool_call_feed`` snapshot from live producer state.
+
+    Returns the snapshot and the task-class-filtered entity count (the
+    aging feed reuses the count).
+    """
+    # REQ-TSQ-008 (docs/plans/2026-09-26-tool-surface-quality.md):
+    # dedicated ``mcp_tool_call`` feed so operators can distinguish a
+    # degraded tool-call trace feed from a healthy trace feed in
+    # general. ``local_traces_feed`` above aggregates ALL OTel traces
+    # generically; this feed filters by ``task_class == "mcp_tool_call"``
+    # so the four-signal HealthFeedState surface (entities_count,
+    # last_updated_timestamp, cycles_total, errors_total) reflects
+    # the tool-call subset specifically. REQ-FEED-002 (Phase 2)
+    # initially routed ``cycles_total`` and ``errors_total`` through
+    # the ingester's per-task-class accessors so a healthy
+    # mcp_tool_call stream wasn't masked by a noisy
+    # ``conversation`` stream (the two share one ingester-level
+    # counter, which used to roll both into this feed's cycles).
+    #
+    # 2026-10-05 fix: ``cycles_total`` and ``errors_total`` now source
+    # from the OTel ingester's OVERALL counters (same pattern as
+    # ``local_traces_feed``'s otel_cycles / otel_errors), not the
+    # per-task-class ones. Reason: per-task-class counts stay at 0
+    # on a fresh server until a ``mcp_tool_call``-class span flows
+    # through (no upstream Bodai event producer yet), which made the
+    # aggregator's HNSW hardening branch fire on every cold start
+    # (cycles_total=0 + ingester_running=True → DEGRADED) and pushed
+    # the aggregate ``status`` to ``degraded`` even after the
+    # ``AgingService`` / ``kg_refresh`` fixes had made their feeds
+    # healthy-or-warming-up. /health returned 503 for the lifetime
+    # of every install. With the overall counter the feed goes
+    # warming_up after the OTel ingester's first poll, matching the
+    # pattern operators expect from a producer that exists but
+    # has not yet seen data on this specific task class.
+    # ``entities_count`` remains per-task-class so operators still
+    # see "zero mcp_tool_call spans landed yet" as distinct from
+    # "ingester dead". If a future operator wants the per-task-class
+    # signal back for /health, the right move is to introduce a
+    # dedicated Bodai-tool-invocation producer with its own
+    # /health feed (e.g. ``bodai_tool_invocation_feed``); until then
+    # coupling the mcp_tool_call_feed's health to the OTel ingester
+    # is the lesser of two evils.
+    from mcp_common.health.feed import HealthFeedState
+
+    mcp_tool_call_entities_count = 0
+    with suppress(Exception):
+        if isinstance(hot_store, HotStore):
+            # PR-A8: count from spans_substrate, where the receiver
+            # writes, rather than from conversations, where the
+            # retired poller wrote. Querying the old table would
+            # report zero spans arriving while spans are in fact
+            # landing -- a health feed that reports the opposite of
+            # the truth.
+            from akosha.storage.span_query import SpanQuery
+
+            mcp_tool_call_entities_count = await SpanQuery(hot_store).count_by_task_class(
+                "mcp_tool_call"
+            )
+    mcp_tool_call_state = HealthFeedState(
+        entities_count=mcp_tool_call_entities_count,
+        last_updated_timestamp=receiver.last_batch_at,
+        cycles_total=receiver.cycles_total,
+        errors_total=receiver.errors_total,
+        last_error_at=receiver.last_error_at,
+        ingester_running=receiver.running,
+    )
+    return mcp_tool_call_state, mcp_tool_call_entities_count
+
+
+def _skills_signer_feed_state(signer_feed_state: Any) -> HealthFeedState:
+    """Build the ``skills_signer`` snapshot from the lifespan-owned state."""
+    from mcp_common.health.feed import HealthFeedState
+
+    if signer_feed_state is not None:
+        manifest_dict = signer_feed_state.manifest.as_dict()
+        return HealthFeedState(
+            entities_count=manifest_dict["key_count"],
+            last_updated_timestamp=signer_feed_state.last_updated_timestamp,
+            cycles_total=signer_feed_state.cycles_total,
+            errors_total=signer_feed_state.errors_total,
+            last_error_at=None,
+            ingester_running=True,
+        )
+    return HealthFeedState(
+        entities_count=0,
+        last_updated_timestamp=None,
+        cycles_total=0,
+        errors_total=0,
+        last_error_at=None,
+        ingester_running=False,
+    )
+
+
+def _aging_feed_state(mcp_tool_call_entities_count: int) -> tuple[HealthFeedState, bool]:
+    """Build the ``aging_feed`` snapshot from the aging cron's counters.
+
+    Returns the snapshot and whether the aging cron is still running (the
+    wire dict exposes the flag separately).
+    """
+    # Phase 2 (REQ-FEED-003): the AgingService cron migrates
+    # records from hot to warm; the feed's ``entities_count`` is
+    # the count of mcp_tool_call rows still in the hot store
+    # (aging itself doesn't grow the count — it migrates rows
+    # OUT of hot_store and INTO warm_store). The cycle counter
+    # is the meaningful signal here: operators want to know
+    # "did the aging cron run?", not "how many rows did it
+    # produce?" — the pre-warm hook bumps ``cycles_total`` to
+    # 1 within 60s of boot so /health is not stuck in
+    # ``warming_up`` longer than the launchd wrapper tolerates.
+    from mcp_common.health.feed import HealthFeedState
+
+    aging_running = bool(_aging_task is not None and not _aging_task.done())
+    aging_state = HealthFeedState(
+        entities_count=mcp_tool_call_entities_count,
+        last_updated_timestamp=_aging_last_run_at,
+        cycles_total=_aging_cycles,
+        errors_total=_aging_errors,
+        last_error_at=None,
+        ingester_running=aging_running,
+    )
+    return aging_state, aging_running
+
+
+# ---------------------------------------------------------------------------
+# Lifespan step helpers
+# ---------------------------------------------------------------------------
+# The lifespan below orchestrates the whole server lifecycle: auth
+# validation, telemetry, the storage substrates, the OTLP receiver, the
+# background producers, the /health probe, and the reverse-order
+# shutdown.
+#
+# It used to be one enormous function, which made the load-bearing
+# ORDERING constraints (the receiver binds before the tool profile is
+# applied; the HotStore and KnowledgeGraphBuilder singletons are
+# published before the tool closures capture them) impossible to see in
+# one place and impossible to exercise one step at a time.
+#
+# Each step below is a module-level helper with explicit parameters and
+# an explicit return value, so the ORDERING constraints stay in the
+# lifespan -- where they can be read in one screen -- while the step
+# bodies live where they can be read on their own. A helper that
+# assigns a module-level singleton declares the ``global`` itself.
+# ---------------------------------------------------------------------------
+
+
+def _lifespan_is_lite_mode(mode_instance: Any | None) -> bool:
+    """Return True when the mode instance declares "no external services"."""
+    return (
+        mode_instance is not None
+        and hasattr(mode_instance, "requires_external_services")
+        and not mode_instance.requires_external_services
+    )
+
+
+async def _lifespan_validate_auth() -> None:
+    """Validate the authentication configuration.
+
+    Raises:
+        RuntimeError: If authentication configuration is invalid.
+    """
+    from akosha.mcp.auth import validate_auth_config
+
+    try:
+        validate_auth_config()
+    except ValueError as e:
+        logger.error(f"Authentication configuration error: {e}")
+        raise RuntimeError(f"Authentication configuration failed: {e}") from e
+
+
+def _lifespan_setup_telemetry() -> tuple[Any, Any]:
+    """Set up OpenTelemetry tracing and metrics; return ``(tracer, meter)``."""
+    from akosha.observability import setup_telemetry
+
+    environment = os.getenv("ENVIRONMENT", "development")
+    otlp_endpoint = os.getenv("OTLP_ENDPOINT", None)
+
+    # Console span export is a DEBUGGING aid, and it is opt-in.
+    #
+    # It used to be switched on whenever ENVIRONMENT was unset (which
+    # is the normal case), but it never actually worked: the provider
+    # carrying the console processor was discarded by the sampler
+    # rebuild. Now that the provider bug is fixed it would work, and
+    # it would write every span to stderr -- including the
+    # asyncio-instrumented task spans, of which a server makes a great
+    # many. The subprocess's stderr is the launchd log, so that would
+    # be a 60MB-log problem, not a debugging one.
+    enable_console_export = os.getenv("AKOSHA_CONSOLE_SPAN_EXPORT", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+    tracer, meter = setup_telemetry(
+        # The name the receiver's heartbeat roster watches. It used to
+        # be "akosha-mcp", which no roster entry matches, so akosha's
+        # own spans could never have satisfied the watcher that exists
+        # to watch them.
+        service_name="akosha",
+        environment=environment,
+        otlp_endpoint=otlp_endpoint,
+        enable_console_export=enable_console_export,
+        sample_rate=1.0 if environment == "development" else 0.1,
+    )
+    logger.info("OpenTelemetry tracing initialized")
+    return tracer, meter
+
+
+async def _lifespan_init_cache(mode_instance: Any | None) -> Any | None:
+    """Initialize the cache layer based on mode."""
+    if mode_instance is not None and hasattr(mode_instance, "initialize_cache"):
+        return await mode_instance.initialize_cache()
+    return None
+
+
+async def _lifespan_init_embeddings(get_embedding_service: Any) -> Any:
+    """Initialize the embedding service (with graceful fallback)."""
+    embedding_service = get_embedding_service()
+    await embedding_service.initialize()
+    logger.info(
+        f"Embedding service initialized: "
+        f"{'real' if embedding_service.is_available() else 'fallback'} mode"
+    )
+    return embedding_service
+
+
+async def _lifespan_init_analytics(is_lite_mode: bool, analytics_cls: Any) -> Any | None:
+    """Initialize the time-series analytics service (skipped in lite mode)."""
+    if is_lite_mode:
+        return None
+
+    analytics_service = analytics_cls()
+    # REQ-MS-002: repopulate the in-memory cache from the SQLite
+    # backing so eval-metric history survives Akosha restarts.
+    await analytics_service.initialize()
+    logger.info("Time-series analytics service initialized")
+    return analytics_service
+
+
+async def _lifespan_init_hot_store(create_hot_store: Any) -> Any:
+    """Create and initialize the lifespan-owned hot store."""
+    # Initialize hot store using factory (Task 1.1a: wire PgvectorHotStore)
+    #
+    # The backend + database path come from the layered config
+    # (``hot.backend`` / ``hot.path`` in settings/akosha.yaml, overlaid
+    # by ~/.config/akosha/local.yaml). The previous call was
+    # ``create_hot_store()`` with no arguments, which always produced
+    # the DEFAULT in-memory DuckDB (``:memory:``) — so the
+    # ``conversations`` table lost every row on restart, and the
+    # configured backend never reached the runtime at all.
+    from akosha.config import get_config
+
+    _hot_cfg = get_config().hot
+    hot_store = create_hot_store(
+        backend=_hot_cfg.backend,
+        database_path=_hot_cfg.path,
+    )
+    await hot_store.initialize()
+    logger.info(
+        "Hot store initialized (%s, backend=%s, path=%s)",
+        type(hot_store).__name__,
+        _hot_cfg.backend,
+        _hot_cfg.path,
+    )
+    return hot_store
+
+
+async def _lifespan_start_otel_receiver(hot_store: Any) -> OTLPReceiver:
+    """Bind the OTLP receiver and publish it as the shared singleton.
+
+    The receiver is created, started, and published in one step so the
+    ordering the lifespan depends on (the substrate exists, THEN the
+    receiver binds, THEN the singleton is published) cannot drift apart.
+    """
+    global _lifespan_spans_config
+
+    from akosha.config import get_config
+    from akosha.observability.resource_validator import ResourceAttributeValidator
+
+    _lifespan_spans_config = get_config().spans_substrate
+    _receiver_validator_cfg = get_config().resource_validator
+
+    receiver = OTLPReceiver(
+        hot_store,
+        grpc_port=_receiver_port("grpc"),
+        http_port=_receiver_port("http"),
+        # PR-A6: the allowlist comes from config so a new MCP server can
+        # be admitted without a code change. The validator owns its drift
+        # history, so the receiver holds ONE instance for its lifetime --
+        # a per-batch instance would detect nothing.
+        resource_validator=ResourceAttributeValidator(
+            allowed_namespaces=frozenset(_receiver_validator_cfg.allowed_namespaces),
+            startup_grace_seconds=_receiver_validator_cfg.startup_grace_seconds,
+            rolling_window_seconds=_receiver_validator_cfg.rolling_window_seconds,
+            spike_threshold=_receiver_validator_cfg.spike_threshold,
+            sustained_threshold_hr=(_receiver_validator_cfg.sustained_threshold_per_hour),
+        ),
+    )
+    await receiver.start()
+    set_shared_otel_receiver(receiver)
+    return receiver
+
+
+async def _lifespan_init_cold_storage(mode_instance: Any | None) -> Any | None:
+    """Initialize cold storage if available."""
+    if mode_instance is not None and hasattr(mode_instance, "initialize_cold_storage"):
+        return await mode_instance.initialize_cold_storage()
+    return None
+
+
+async def _lifespan_start_code_graph_ingester(hot_store: Any) -> None:
+    """Start the Wave-5 CodeGraphIngester (or skip it via the env flag)."""
+    # ------------------------------------------------------------------
+    # Wave 5: start the CodeGraphIngester so ingested code graphs land in
+    # the shared HotStore. The class has a complete start/stop/polling
+    # lifecycle that was never wired anywhere (see Wave-5 spec Appendix A,
+    # finding A.3). Polling interval defaults to 60s; opt-out via
+    # ``AKOSHA_SKIP_CODE_GRAPH_INGESTER=1`` for offline test suites.
+    # ------------------------------------------------------------------
+    global _code_graph_ingester
+
+    if not _env_truthy("AKOSHA_SKIP_CODE_GRAPH_INGESTER"):
+        try:
+            from akosha.ingestion.code_graph_ingester import CodeGraphIngester
+
+            session_buddy_endpoint = os.getenv("SESSION_BUDDY_MCP_URL", "http://localhost:8678/mcp")
+            # ``AKOSHA_CODE_GRAPH_POLL_SECONDS`` lets test suites and
+            # operators shorten the 60s default. Documented in
+            # docs/specs/2026-09-06-live-mcp-smoke-test-design.md
+            code_graph_poll_seconds = int(os.getenv("AKOSHA_CODE_GRAPH_POLL_SECONDS", "60"))
+            _code_graph_ingester = CodeGraphIngester(
+                hot_store=hot_store,
+                session_buddy_endpoint=session_buddy_endpoint,
+                poll_interval_seconds=code_graph_poll_seconds,
+            )
+            await _code_graph_ingester.start()
+            logger.info("CodeGraphIngester started (Wave 5) -> %s", session_buddy_endpoint)
+        except Exception as exc:
+            logger.warning(
+                "CodeGraphIngester start failed (%s); akosha_search_code_patterns "
+                "will fall back to PyCharm HTTP path",
+                exc,
+            )
+            _code_graph_ingester = None
+    else:
+        logger.debug("CodeGraphIngester skipped via AKOSHA_SKIP_CODE_GRAPH_INGESTER")
+
+
+async def _lifespan_start_event_subscriber(hot_store: Any, is_lite_mode: bool) -> None:
+    """Start the event-subscriber stack: the ONLY producer of the
+    ``conversations`` table in this process.
+    """
+    # ------------------------------------------------------------------
+    # Start the event-subscriber stack: the ONLY producer of the
+    # ``conversations`` table in this process.
+    #
+    # This mirrors the wiring in ``akosha/main.py`` (the standalone
+    # FastAPI application) and uses the SAME helper module
+    # (``akosha.ingestion.subscriber_wiring``) so the two entry points
+    # cannot drift apart again.
+    #
+    # Before this, the subscriber existed ONLY in the standalone
+    # FastAPI app. The only Akosha process that actually runs is
+    # ``python -m akosha mcp start``, so the MCP process had NO
+    # producer: the kg_refresh loop read an empty ``conversations``
+    # table every cycle and the knowledge graph stayed empty forever.
+    #
+    # Config comes from the layered loader (``get_config()``), so the
+    # operator's ``~/.config/akosha/local.yaml`` overlay is honoured.
+    # The subscriber fails soft — an unreachable Redis leaves it
+    # not-running rather than taking the process down.
+    # ------------------------------------------------------------------
+    global _event_subscriber, _event_subscriber_running, _event_subscriber_enabled
+
+    from akosha.config import get_config
+
+    try:
+        from akosha.ingestion.subscriber_wiring import (
+            build_event_subscribers,
+            start_event_subscriber,
+        )
+
+        _app_cfg = get_config()
+        _event_subscriber_enabled = _app_cfg.websocket_invocations_subscriber.enabled
+        if is_lite_mode:
+            # Lite mode means "zero external dependencies"; Redis is an
+            # external dependency. Skip the producer, and say so — an
+            # empty feed caused by the mode must never be presented as
+            # a healthy empty feed.
+            logger.warning(
+                "Lite mode disables external services: the Redis-backed "
+                "event subscriber is NOT started, so the conversations "
+                "table stays empty and the knowledge graph stays empty. "
+                "Run in standard mode if those feeds matter.",
+            )
+        else:
+            _event_subscriber = build_event_subscribers(
+                hot_store,
+                websocket_cfg=_app_cfg.websocket_invocations_subscriber,
+                bodai_cfg=_app_cfg.bodai_tool_invocation_subscriber,
+            )
+            _event_subscriber_running = await start_event_subscriber(_event_subscriber)
+    except Exception as exc:
+        logger.warning("Event subscriber wiring failed (%s)", exc)
+        _event_subscriber = None
+        _event_subscriber_running = False
+
+
+async def _lifespan_start_otel_trace_ingester(hot_store: Any, embedding_service: Any) -> None:
+    """Start the Wave-6 OtelTraceIngester poller (or skip it via config)."""
+    # ------------------------------------------------------------------
+    # Wave 6: start the OtelTraceIngester so spans from an OTLP/HTTP
+    # collector land in the shared HotStore (independent of the
+    # BodaiToolInvocationSubscriber's Redis feed). Mirrors the
+    # CodeGraphIngester block above.
+    #
+    # PR-A8: retired. The poller POSTs an empty JSON envelope to an
+    # OTLP/HTTP endpoint and expects spans back; no standard receiver
+    # answers that, so it has ingested nothing since the OTLP receiver
+    # took :4318. It is kept behind a settings flag rather than deleted so
+    # rollback stays a flag flip -- see below.
+    # ------------------------------------------------------------------
+    global _otel_trace_ingester
+
+    # PR-A8. The gate is the settings key, NOT an env var.
+    #
+    # The legacy skip env var for this ingester is retired: it gated a
+    # poller that no longer does anything, and an operator who set it
+    # would believe the poller was off when the settings key is what
+    # actually controls it. Rollback is flipping
+    # ``otel.receiver.trace_ingester_poller`` back to true and restarting.
+    #
+    # The class is retained behind the flag rather than deleted precisely
+    # so that rollback stays a flag flip, and so the flag never becomes "a
+    # settings key that maps to deleted code" -- a documentation lie that
+    # outlives the code.
+    from akosha.config import get_config
+
+    if get_config().otel.receiver.trace_ingester_poller:
+        try:
+            from akosha.ingestion.otel_ingester import OtelTraceIngester
+
+            otel_endpoint = os.getenv("AKOSHA_OTLP_ENDPOINT", "http://localhost:4318/v1/traces")
+            poll_seconds = int(os.getenv("AKOSHA_OTEL_POLL_SECONDS", "60"))
+            # Spec-listed knobs (see
+            # docs/specs/2026-09-06-otel-trace-ingester-design.md).
+            max_spans_per_poll = int(os.getenv("AKOSHA_OTEL_MAX_SPANS_PER_POLL", "500"))
+            initial_lookback_seconds = int(
+                os.getenv("AKOSHA_OTEL_INITIAL_LOOKBACK_SECONDS", "3600")
+            )
+            _otel_trace_ingester = OtelTraceIngester(
+                hot_store=hot_store,
+                embedding_service=embedding_service,
+                otlp_endpoint=otel_endpoint,
+                poll_interval_seconds=poll_seconds,
+                max_spans_per_poll=max_spans_per_poll,
+                initial_lookback_seconds=initial_lookback_seconds,
+            )
+            await _otel_trace_ingester.start()
+            logger.info(
+                "OtelTraceIngester started (Wave 6) -> %s (interval=%ds)",
+                otel_endpoint,
+                poll_seconds,
+            )
+        except Exception as exc:
+            logger.warning(
+                "OtelTraceIngester start failed (%s); query_local_traces "
+                "will fall back to the BodaiToolInvocationSubscriber path",
+                exc,
+            )
+            _otel_trace_ingester = None
+    else:
+        logger.info(
+            "OtelTraceIngester not started: "
+            "otel.receiver.trace_ingester_poller is false. The OTLP receiver "
+            "is the span producer; this poller POSTs empty JSON envelopes to "
+            "an OTLP/HTTP endpoint, which no receiver answers."
+        )
+
+
+async def _lifespan_init_cold_exporter(
+    cold_storage: Any | None,
+    aging_warm_store: Any | None,
+) -> Any | None:
+    """Build the warm->cold exporter when both tiers exist."""
+    # ------------------------------------------------------------------
+    # Cold tier (F5): the warm->cold export cron.
+    # The cold tier is Parquet batches in object storage. Until this
+    # loop existed, ``ColdStore.export_batch`` -- the only producer of
+    # a cold object -- had no production caller, so the tier was
+    # reachable but not writable.
+    #
+    # The exporter reads the SAME warm store the aging service writes
+    # into: a second ``duckdb.connect()`` on the same file from the
+    # same process would fail on the file lock.
+    #
+    # It runs only when BOTH tiers exist. Lite mode has no cold store;
+    # ``AKOSHA_SKIP_AGING=1`` leaves no warm store. Either way the
+    # tier chain stops where the operator asked it to.
+    # ------------------------------------------------------------------
+    if cold_storage is None or aging_warm_store is None:
+        return None
+
+    from akosha.config import get_config
+
+    try:
+        from akosha.storage.cold_exporter import ColdExporter
+
+        cold_exporter = ColdExporter(
+            warm_store=aging_warm_store,
+            cold_store=cold_storage,
+            age_threshold_days=get_config().cold.age_threshold_days,
+        )
+        logger.info(
+            "ColdExporter initialized (threshold=%dd, backend=%s)",
+            get_config().cold.age_threshold_days,
+            type(cold_storage).__name__,
+        )
+        return cold_exporter
+    except Exception as exc:
+        logger.warning(
+            "ColdExporter init failed (%s); the cold tier will not be written "
+            "until the next lifespan restart",
+            exc,
+        )
+        return None
+
+
+async def _lifespan_start_cold_export_task(cold_exporter: Any | None) -> None:
+    """Start the warm->cold export cron when the exporter exists."""
+    global _cold_export_task
+
+    if (
+        not _env_truthy("AKOSHA_SKIP_COLD_EXPORT")
+        and cold_exporter is not None
+        and not _env_truthy("AKOSHA_SKIP_AGING")
+    ):
+        _cold_export_task = asyncio.create_task(
+            _lifespan_cold_export_loop(cold_exporter), name="akosha.cold_export"
+        )
+        logger.info(
+            "cold export task started (interval=%ss)",
+            os.getenv("AKOSHA_COLD_EXPORT_INTERVAL_SECONDS", "86400"),
+        )
+
+
+async def _lifespan_cold_export_loop(cold_exporter: Any) -> None:
+    """The warm->cold export cron body."""
+    global _cold_export_cycles, _cold_export_errors, _cold_export_last_run_at
+
+    try:
+        interval = float(os.getenv("AKOSHA_COLD_EXPORT_INTERVAL_SECONDS", "86400"))
+    except ValueError:
+        interval = 86400.0
+    while True:
+        try:
+            _cold_export_cycles += 1
+            stats = await cold_exporter.export_expired()
+            _cold_export_last_run_at = time.time()
+            logger.info(
+                "cold export cycle=%d records=%d batches=%d bytes=%d errors=%d",
+                _cold_export_cycles,
+                stats.records_exported,
+                stats.batches_exported,
+                stats.bytes_exported,
+                stats.errors,
+            )
+        except asyncio.CancelledError:
+            logger.info(
+                "cold export loop cancelled after %d cycles (%d errors)",
+                _cold_export_cycles,
+                _cold_export_errors,
+            )
+            break
+        except Exception as exc:
+            _cold_export_errors += 1
+            _cold_export_last_run_at = time.time()
+            logger.warning("cold export loop iteration failed (%s); will retry", exc)
+        await asyncio.sleep(interval)
+
+
+def _lifespan_init_signer_feed_state() -> Any:
+    """Load (or generate + persist) the signing keypair and its feed state.
+
+    Raises:
+        RuntimeError: If the signer feed state comes back without a signer.
+    """
+    # ------------------------------------------------------------------
+    # Phase 1.5 + Phase 1: load (or generate + persist) the signing
+    # keypair and build the lifespan-owned SignerFeedState (which
+    # now bundles the SkillsSigner for Phase 1 akosha_get_skill responses).
+    # This MUST happen BEFORE the health probe is defined — the probe
+    # closes over ``signer_feed_state`` as its single source of truth
+    # (no module globals; see the module-level comment above).
+    # Without persistence, every restart produces a fresh
+    # ``key_id`` and breaks all previously installed Skills (review
+    # R2-H1). The parameterless init_signer_feed_state() helper
+    # matches the other Bodai servers so Phase 2's installer and any
+    # future Phase 3+ caller can use one helper API across the
+    # ecosystem.
+    # ------------------------------------------------------------------
+    from akosha.mcp.signer_feed import init_signer_feed_state
+
+    signer_feed_state = init_signer_feed_state()
+    # ``SignerFeedState.signer`` is Optional so tests can build the
+    # dataclass with just a manifest. ``init_signer_feed_state`` is
+    # contract-bound to populate it (see ``signer_feed.py``); any
+    # None at this call site is an internal invariant violation.
+    if signer_feed_state.signer is None:
+        msg = "init_signer_feed_state returned SignerFeedState without a signer"
+        raise RuntimeError(msg)
+    logger.info(
+        "Phase 1.5+1: signer feed state initialized key_id=%s",
+        signer_feed_state.signer.key_id,
+    )
+    return signer_feed_state
+
+
+async def _lifespan_stop_producers(analytics_service: Any | None) -> None:
+    """Stop every background producer, in dependency order."""
+    # Wave 5: cancel the kg_refresh task and stop the CodeGraphIngester
+    # before the lifespan returns. Order matters: cancel kg_refresh
+    # first (it reads from hot_store), then stop CodeGraphIngester
+    # (it writes to hot_store), then clear the singletons so the
+    # next create_app() starts fresh.
+    # NB: ``_kg_refresh_task`` and ``_code_graph_ingester`` are both
+    # declared global at their assignment sites above (lines ~497 and
+    # ~576 respectively); no re-declaration is needed here.
+    global \
+        _kg_refresh_task, \
+        _code_graph_ingester, \
+        _otel_trace_ingester, \
+        _event_subscriber, \
+        _event_subscriber_running
+
+    if _kg_refresh_task is not None and not _kg_refresh_task.done():
+        _kg_refresh_task.cancel()
+        with suppress(asyncio.CancelledError, Exception):
+            await _kg_refresh_task
+        _kg_refresh_task = None
+
+    if _code_graph_ingester is not None:
+        try:
+            await _code_graph_ingester.stop()
+        except Exception as exc:
+            logger.warning("CodeGraphIngester stop failed: %s", exc)
+        _code_graph_ingester = None
+
+    if _otel_trace_ingester is not None:
+        try:
+            await _otel_trace_ingester.stop()
+        except Exception as exc:
+            logger.warning("OtelTraceIngester stop failed: %s", exc)
+        _otel_trace_ingester = None
+
+    # Stop the event subscriber AFTER the readers (kg_refresh) and the
+    # other writers, so it cannot write into a hot store that is
+    # already being torn down.
+    if _event_subscriber is not None:
+        try:
+            from akosha.ingestion.subscriber_wiring import stop_event_subscriber
+
+            await stop_event_subscriber(_event_subscriber)
+        except Exception as exc:
+            logger.warning("Event subscriber stop failed: %s", exc)
+        _event_subscriber = None
+    _event_subscriber_running = False
+
+    # REQ-MS-002: close the analytics SQLite connection so the
+    # write-through cache's durable backing flushes cleanly. Order
+    # matters only relative to the telemetry shutdown below — the
+    # SQLite write is synchronous so no data is in flight.
+    if analytics_service is not None:
+        try:
+            await analytics_service.aclose()
+        except Exception as exc:
+            logger.warning("TimeSeriesAnalytics aclose failed: %s", exc)
+
+
+async def _lifespan_stop_crons() -> None:
+    """Cancel the aging cron and the warm->cold export cron."""
+    # Phase 2 (REQ-FEED-002): cancel the aging cron before clearing
+    # state so the task gets a clean CancelledError instead of being
+    # garbage-collected mid-await. Mirror the kg_refresh shutdown.
+    #
+    # Cold tier (F5): cancel the warm->cold export cron before clearing
+    # state, mirroring the aging cron above.
+    global _aging_task, _cold_export_task
+
+    if _aging_task is not None and not _aging_task.done():
+        _aging_task.cancel()
+        with suppress(asyncio.CancelledError, Exception):
+            await _aging_task
+        _aging_task = None
+
+    if _cold_export_task is not None and not _cold_export_task.done():
+        _cold_export_task.cancel()
+        with suppress(asyncio.CancelledError, Exception):
+            await _cold_export_task
+        _cold_export_task = None
+
+
 def create_app(mode: Any | None = None) -> FastMCP:
     """Create and configure the FastMCP application.
 
@@ -615,49 +1507,12 @@ def create_app(mode: Any | None = None) -> FastMCP:
         logger.info(f"{APP_NAME} v{APP_VERSION} starting up")
 
         # Validate authentication configuration
-        from akosha.mcp.auth import validate_auth_config
-
-        try:
-            validate_auth_config()
-        except ValueError as e:
-            logger.error(f"Authentication configuration error: {e}")
-            raise RuntimeError(f"Authentication configuration failed: {e}") from e
+        await _lifespan_validate_auth()
 
         # Initialize OpenTelemetry
-        from akosha.observability import setup_telemetry, shutdown_telemetry
+        from akosha.observability import shutdown_telemetry
 
-        environment = os.getenv("ENVIRONMENT", "development")
-        otlp_endpoint = os.getenv("OTLP_ENDPOINT", None)
-
-        # Console span export is a DEBUGGING aid, and it is opt-in.
-        #
-        # It used to be switched on whenever ENVIRONMENT was unset (which
-        # is the normal case), but it never actually worked: the provider
-        # carrying the console processor was discarded by the sampler
-        # rebuild. Now that the provider bug is fixed it would work, and
-        # it would write every span to stderr -- including the
-        # asyncio-instrumented task spans, of which a server makes a great
-        # many. The subprocess's stderr is the launchd log, so that would
-        # be a 60MB-log problem, not a debugging one.
-        enable_console_export = os.getenv("AKOSHA_CONSOLE_SPAN_EXPORT", "").lower() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        }
-
-        tracer, meter = setup_telemetry(
-            # The name the receiver's heartbeat roster watches. It used to
-            # be "akosha-mcp", which no roster entry matches, so akosha's
-            # own spans could never have satisfied the watcher that exists
-            # to watch them.
-            service_name="akosha",
-            environment=environment,
-            otlp_endpoint=otlp_endpoint,
-            enable_console_export=enable_console_export,
-            sample_rate=1.0 if environment == "development" else 0.1,
-        )
-        logger.info("OpenTelemetry tracing initialized")
+        tracer, meter = _lifespan_setup_telemetry()
 
         # Initialize Phase 2 services
         from akosha.processing.analytics import TimeSeriesAnalytics
@@ -665,11 +1520,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         from akosha.storage import create_hot_store
 
         # Check if we're in lite mode
-        is_lite_mode = (
-            mode_instance is not None
-            and hasattr(mode_instance, "requires_external_services")
-            and not mode_instance.requires_external_services
-        )
+        is_lite_mode = _lifespan_is_lite_mode(mode_instance)
 
         if is_lite_mode:
             logger.info("Running in lite mode - using minimal services")
@@ -677,51 +1528,15 @@ def create_app(mode: Any | None = None) -> FastMCP:
             logger.info("Running in standard mode - using full services")
 
         # Initialize cache layer based on mode
-        if mode_instance is not None and hasattr(mode_instance, "initialize_cache"):
-            cache_client = await mode_instance.initialize_cache()
-        else:
-            cache_client = None
+        cache_client = await _lifespan_init_cache(mode_instance)
 
-        embedding_service = get_embedding_service()
-        await embedding_service.initialize()
-        logger.info(
-            f"Embedding service initialized: "
-            f"{'real' if embedding_service.is_available() else 'fallback'} mode"
-        )
+        embedding_service = await _lifespan_init_embeddings(get_embedding_service)
 
         # In lite mode, skip analytics services
-        if not is_lite_mode:
-            analytics_service = TimeSeriesAnalytics()
-            # REQ-MS-002: repopulate the in-memory cache from the SQLite
-            # backing so eval-metric history survives Akosha restarts.
-            await analytics_service.initialize()
-            logger.info("Time-series analytics service initialized")
-        else:
-            analytics_service = None
+        analytics_service = await _lifespan_init_analytics(is_lite_mode, TimeSeriesAnalytics)
 
         # Initialize hot store using factory (Task 1.1a: wire PgvectorHotStore)
-        #
-        # The backend + database path come from the layered config
-        # (``hot.backend`` / ``hot.path`` in settings/akosha.yaml, overlaid
-        # by ~/.config/akosha/local.yaml). The previous call was
-        # ``create_hot_store()`` with no arguments, which always produced
-        # the DEFAULT in-memory DuckDB (``:memory:``) — so the
-        # ``conversations`` table lost every row on restart, and the
-        # configured backend never reached the runtime at all.
-        from akosha.config import get_config
-
-        _hot_cfg = get_config().hot
-        hot_store = create_hot_store(
-            backend=_hot_cfg.backend,
-            database_path=_hot_cfg.path,
-        )
-        await hot_store.initialize()
-        logger.info(
-            "Hot store initialized (%s, backend=%s, path=%s)",
-            type(hot_store).__name__,
-            _hot_cfg.backend,
-            _hot_cfg.path,
-        )
+        hot_store = await _lifespan_init_hot_store(create_hot_store)
 
         # ------------------------------------------------------------------
         # v7 PR-A3: bind the OTLP receiver immediately after the substrate
@@ -745,36 +1560,10 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # OTLP endpoint.
         # ------------------------------------------------------------------
         stop_event = asyncio.Event()
-        global _lifespan_spans_config
-
-        _lifespan_spans_config = get_config().spans_substrate
-        _receiver_validator_cfg = get_config().resource_validator
-        from akosha.observability.resource_validator import ResourceAttributeValidator
-
-        receiver = OTLPReceiver(
-            hot_store,
-            grpc_port=_receiver_port("grpc"),
-            http_port=_receiver_port("http"),
-            # PR-A6: the allowlist comes from config so a new MCP server can
-            # be admitted without a code change. The validator owns its drift
-            # history, so the receiver holds ONE instance for its lifetime --
-            # a per-batch instance would detect nothing.
-            resource_validator=ResourceAttributeValidator(
-                allowed_namespaces=frozenset(_receiver_validator_cfg.allowed_namespaces),
-                startup_grace_seconds=_receiver_validator_cfg.startup_grace_seconds,
-                rolling_window_seconds=_receiver_validator_cfg.rolling_window_seconds,
-                spike_threshold=_receiver_validator_cfg.spike_threshold,
-                sustained_threshold_hr=(_receiver_validator_cfg.sustained_threshold_per_hour),
-            ),
-        )
-        await receiver.start()
-        set_shared_otel_receiver(receiver)
+        receiver = await _lifespan_start_otel_receiver(hot_store)
 
         # Initialize cold storage if available
-        if mode_instance is not None and hasattr(mode_instance, "initialize_cold_storage"):
-            cold_storage = await mode_instance.initialize_cold_storage()
-        else:
-            cold_storage = None
+        cold_storage = await _lifespan_init_cold_storage(mode_instance)
 
         # Apply ToolProfile dispatch via the W0 helper from mcp-common 0.18.0.
         #
@@ -853,34 +1642,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # finding A.3). Polling interval defaults to 60s; opt-out via
         # ``AKOSHA_SKIP_CODE_GRAPH_INGESTER=1`` for offline test suites.
         # ------------------------------------------------------------------
-        global _code_graph_ingester
-        if not _env_truthy("AKOSHA_SKIP_CODE_GRAPH_INGESTER"):
-            try:
-                from akosha.ingestion.code_graph_ingester import CodeGraphIngester
-
-                session_buddy_endpoint = os.getenv(
-                    "SESSION_BUDDY_MCP_URL", "http://localhost:8678/mcp"
-                )
-                # ``AKOSHA_CODE_GRAPH_POLL_SECONDS`` lets test suites and
-                # operators shorten the 60s default. Documented in
-                # docs/specs/2026-09-06-live-mcp-smoke-test-design.md
-                code_graph_poll_seconds = int(os.getenv("AKOSHA_CODE_GRAPH_POLL_SECONDS", "60"))
-                _code_graph_ingester = CodeGraphIngester(
-                    hot_store=hot_store,
-                    session_buddy_endpoint=session_buddy_endpoint,
-                    poll_interval_seconds=code_graph_poll_seconds,
-                )
-                await _code_graph_ingester.start()
-                logger.info("CodeGraphIngester started (Wave 5) -> %s", session_buddy_endpoint)
-            except Exception as exc:
-                logger.warning(
-                    "CodeGraphIngester start failed (%s); akosha_search_code_patterns "
-                    "will fall back to PyCharm HTTP path",
-                    exc,
-                )
-                _code_graph_ingester = None
-        else:
-            logger.debug("CodeGraphIngester skipped via AKOSHA_SKIP_CODE_GRAPH_INGESTER")
+        await _lifespan_start_code_graph_ingester(hot_store)
 
         # ------------------------------------------------------------------
         # Start the event-subscriber stack: the ONLY producer of the
@@ -902,37 +1664,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # The subscriber fails soft — an unreachable Redis leaves it
         # not-running rather than taking the process down.
         # ------------------------------------------------------------------
-        global _event_subscriber, _event_subscriber_running, _event_subscriber_enabled
-        try:
-            from akosha.ingestion.subscriber_wiring import (
-                build_event_subscribers,
-                start_event_subscriber,
-            )
-
-            _app_cfg = get_config()
-            _event_subscriber_enabled = _app_cfg.websocket_invocations_subscriber.enabled
-            if is_lite_mode:
-                # Lite mode means "zero external dependencies"; Redis is an
-                # external dependency. Skip the producer, and say so — an
-                # empty feed caused by the mode must never be presented as
-                # a healthy empty feed.
-                logger.warning(
-                    "Lite mode disables external services: the Redis-backed "
-                    "event subscriber is NOT started, so the conversations "
-                    "table stays empty and the knowledge graph stays empty. "
-                    "Run in standard mode if those feeds matter.",
-                )
-            else:
-                _event_subscriber = build_event_subscribers(
-                    hot_store,
-                    websocket_cfg=_app_cfg.websocket_invocations_subscriber,
-                    bodai_cfg=_app_cfg.bodai_tool_invocation_subscriber,
-                )
-                _event_subscriber_running = await start_event_subscriber(_event_subscriber)
-        except Exception as exc:
-            logger.warning("Event subscriber wiring failed (%s)", exc)
-            _event_subscriber = None
-            _event_subscriber_running = False
+        await _lifespan_start_event_subscriber(hot_store, is_lite_mode)
 
         # ------------------------------------------------------------------
         # Wave 6: start the OtelTraceIngester so spans from an OTLP/HTTP
@@ -946,59 +1678,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # took :4318. It is kept behind a settings flag rather than deleted so
         # rollback stays a flag flip -- see below.
         # ------------------------------------------------------------------
-        global _otel_trace_ingester
-        # PR-A8. The gate is the settings key, NOT an env var.
-        #
-        # The legacy skip env var for this ingester is retired: it gated a
-        # poller that no longer does anything, and an operator who set it
-        # would believe the poller was off when the settings key is what
-        # actually controls it. Rollback is flipping
-        # ``otel.receiver.trace_ingester_poller`` back to true and restarting.
-        #
-        # The class is retained behind the flag rather than deleted precisely
-        # so that rollback stays a flag flip, and so the flag never becomes "a
-        # settings key that maps to deleted code" -- a documentation lie that
-        # outlives the code.
-        if get_config().otel.receiver.trace_ingester_poller:
-            try:
-                from akosha.ingestion.otel_ingester import OtelTraceIngester
-
-                otel_endpoint = os.getenv("AKOSHA_OTLP_ENDPOINT", "http://localhost:4318/v1/traces")
-                poll_seconds = int(os.getenv("AKOSHA_OTEL_POLL_SECONDS", "60"))
-                # Spec-listed knobs (see
-                # docs/specs/2026-09-06-otel-trace-ingester-design.md).
-                max_spans_per_poll = int(os.getenv("AKOSHA_OTEL_MAX_SPANS_PER_POLL", "500"))
-                initial_lookback_seconds = int(
-                    os.getenv("AKOSHA_OTEL_INITIAL_LOOKBACK_SECONDS", "3600")
-                )
-                _otel_trace_ingester = OtelTraceIngester(
-                    hot_store=hot_store,
-                    embedding_service=embedding_service,
-                    otlp_endpoint=otel_endpoint,
-                    poll_interval_seconds=poll_seconds,
-                    max_spans_per_poll=max_spans_per_poll,
-                    initial_lookback_seconds=initial_lookback_seconds,
-                )
-                await _otel_trace_ingester.start()
-                logger.info(
-                    "OtelTraceIngester started (Wave 6) -> %s (interval=%ds)",
-                    otel_endpoint,
-                    poll_seconds,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "OtelTraceIngester start failed (%s); query_local_traces "
-                    "will fall back to the BodaiToolInvocationSubscriber path",
-                    exc,
-                )
-                _otel_trace_ingester = None
-        else:
-            logger.info(
-                "OtelTraceIngester not started: "
-                "otel.receiver.trace_ingester_poller is false. The OTLP receiver "
-                "is the span producer; this poller POSTs empty JSON envelopes to "
-                "an OTLP/HTTP endpoint, which no receiver answers."
-            )
+        await _lifespan_start_otel_trace_ingester(hot_store, embedding_service)
 
         # ------------------------------------------------------------------
         # Wave 5: start the knowledge-graph periodic-refresh task. Every
@@ -1250,74 +1930,9 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # ``AKOSHA_SKIP_AGING=1`` leaves no warm store. Either way the
         # tier chain stops where the operator asked it to.
         # ------------------------------------------------------------------
-        cold_exporter: Any | None = None
-        if cold_storage is not None and aging_warm_store is not None:
-            try:
-                from akosha.storage.cold_exporter import ColdExporter
+        cold_exporter = await _lifespan_init_cold_exporter(cold_storage, aging_warm_store)
 
-                cold_exporter = ColdExporter(
-                    warm_store=aging_warm_store,
-                    cold_store=cold_storage,
-                    age_threshold_days=get_config().cold.age_threshold_days,
-                )
-                logger.info(
-                    "ColdExporter initialized (threshold=%dd, backend=%s)",
-                    get_config().cold.age_threshold_days,
-                    type(cold_storage).__name__,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "ColdExporter init failed (%s); the cold tier will not be written "
-                    "until the next lifespan restart",
-                    exc,
-                )
-                cold_exporter = None
-
-        async def _cold_export_loop() -> None:
-            global _cold_export_cycles, _cold_export_errors, _cold_export_last_run_at
-            if cold_exporter is None:  # type guard for the type checker
-                return
-            try:
-                interval = float(os.getenv("AKOSHA_COLD_EXPORT_INTERVAL_SECONDS", "86400"))
-            except ValueError:
-                interval = 86400.0
-            while True:
-                try:
-                    _cold_export_cycles += 1
-                    stats = await cold_exporter.export_expired()
-                    _cold_export_last_run_at = time.time()
-                    logger.info(
-                        "cold export cycle=%d records=%d batches=%d bytes=%d errors=%d",
-                        _cold_export_cycles,
-                        stats.records_exported,
-                        stats.batches_exported,
-                        stats.bytes_exported,
-                        stats.errors,
-                    )
-                except asyncio.CancelledError:
-                    logger.info(
-                        "cold export loop cancelled after %d cycles (%d errors)",
-                        _cold_export_cycles,
-                        _cold_export_errors,
-                    )
-                    break
-                except Exception as exc:
-                    _cold_export_errors += 1
-                    _cold_export_last_run_at = time.time()
-                    logger.warning("cold export loop iteration failed (%s); will retry", exc)
-                await asyncio.sleep(interval)
-
-        if (
-            not _env_truthy("AKOSHA_SKIP_COLD_EXPORT")
-            and cold_exporter is not None
-            and not _env_truthy("AKOSHA_SKIP_AGING")
-        ):
-            global _cold_export_task
-            _cold_export_task = asyncio.create_task(_cold_export_loop(), name="akosha.cold_export")
-            logger.info(
-                "cold export task started (interval=%ss)",
-                os.getenv("AKOSHA_COLD_EXPORT_INTERVAL_SECONDS", "86400"),
-            )
+        await _lifespan_start_cold_export_task(cold_exporter)
 
         # ------------------------------------------------------------------
         # Phase 1.5 + Phase 1: load (or generate + persist) the signing
@@ -1333,20 +1948,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # future Phase 3+ caller can use one helper API across the
         # ecosystem.
         # ------------------------------------------------------------------
-        from akosha.mcp.signer_feed import init_signer_feed_state
-
-        signer_feed_state = init_signer_feed_state()
-        # ``SignerFeedState.signer`` is Optional so tests can build the
-        # dataclass with just a manifest. ``init_signer_feed_state`` is
-        # contract-bound to populate it (see ``signer_feed.py``); any
-        # None at this call site is an internal invariant violation.
-        if signer_feed_state.signer is None:
-            msg = "init_signer_feed_state returned SignerFeedState without a signer"
-            raise RuntimeError(msg)
-        logger.info(
-            "Phase 1.5+1: signer feed state initialized key_id=%s",
-            signer_feed_state.signer.key_id,
-        )
+        signer_feed_state = _lifespan_init_signer_feed_state()
 
         # Register a default health probe that surfaces the state of every
         # in-process data feed. Phase 4: body delegates per-feed evaluation
@@ -1371,7 +1973,6 @@ def create_app(mode: Any | None = None) -> FastMCP:
             shape so they stay inline.
             """
             from mcp_common.health.aggregator import aggregate_feed_states
-            from mcp_common.health.feed import HealthFeedState
 
             checks: dict[str, dict[str, Any]] = {}
 
@@ -1381,227 +1982,26 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # (the code-graph ingester and the OTel trace ingester) and
             # the module-level kg_refresh counters.
             # ----------------------------------------------------------
-            code_graphs_count = 0
-            with suppress(Exception):
-                if isinstance(hot_store, HotStore):
-                    code_graphs_count = len(await hot_store.list_code_graphs(limit=1000))
-            code_graphs_running = bool(
-                _code_graph_ingester is not None
-                and getattr(_code_graph_ingester, "_running", False)
+            code_graphs_state, code_graphs_running = await _code_graphs_feed_state(hot_store)
+            knowledge_graph_state, kg_edges_count, kg_running = _knowledge_graph_feed_state(
+                kg_builder
             )
-            code_graphs_state = HealthFeedState(
-                entities_count=code_graphs_count,
-                last_updated_timestamp=(
-                    getattr(_code_graph_ingester, "_last_poll_at", None)
-                    if _code_graph_ingester is not None
-                    else None
-                ),
-                cycles_total=(
-                    getattr(_code_graph_ingester, "_cycles_total", 0) or 0
-                    if _code_graph_ingester is not None
-                    else 0
-                ),
-                errors_total=(
-                    getattr(_code_graph_ingester, "_errors_total", 0) or 0
-                    if _code_graph_ingester is not None
-                    else 0
-                ),
-                last_error_at=(
-                    getattr(_code_graph_ingester, "_last_error_at", None)
-                    if _code_graph_ingester is not None
-                    else None
-                ),
-                ingester_running=code_graphs_running,
+            receiver_feed = _otel_receiver_feed()
+            local_traces_state, local_traces_count = await _local_traces_feed_state(
+                hot_store, kg_running, receiver_feed
             )
 
-            kg_entities_count = len(kg_builder.entities) if kg_builder is not None else 0
-            kg_edges_count = len(kg_builder.edges) if kg_builder is not None else 0
-            kg_running = _kg_refresh_task is not None and not _kg_refresh_task.done()
-            knowledge_graph_state = HealthFeedState(
-                entities_count=kg_entities_count,
-                # kg_refresh doesn't currently record a per-cycle timestamp;
-                # leave ``last_updated_timestamp`` as None. Future Phase 4+
-                # work can wire a real one if operators need it.
-                last_updated_timestamp=None,
-                cycles_total=_kg_refresh_cycles,
-                errors_total=_kg_refresh_errors,
-                last_error_at=_kg_refresh_last_error_at,
-                ingester_running=kg_running,
+            mcp_tool_call_state, mcp_tool_call_entities_count = await _mcp_tool_call_feed_state(
+                hot_store, receiver_feed
             )
-
-            local_traces_count = 0
-            with suppress(Exception):
-                if isinstance(hot_store, HotStore):
-                    local_traces_count = len(await hot_store.query_traces(limit=1000))
-            # The retired poller's counters are read only for the LEGACY wire
-            # fields below; its running/cycles/errors values are gone, because
-            # the feed is sourced from the OTLP receiver now.
-            otel_last_poll = _epoch_or_none(
-                getattr(_otel_trace_ingester, "_last_poll_at", None)
-                if _otel_trace_ingester is not None
-                else None
-            )
-            otel_last_error = _epoch_or_none(
-                getattr(_otel_trace_ingester, "_last_error_at", None)
-                if _otel_trace_ingester is not None
-                else None
-            )
-
-            # PR-A8: the OTLP receiver is the span producer now.
-            #
-            # The legacy OtelTraceIngester poller is gated off, so its counters
-            # above are permanently zero and its ``_running`` permanently
-            # False. Reading them for the health verdict would report a dead
-            # producer: ``mcp_tool_call_feed`` would get entities_count=0,
-            # cycles_total=0, ingester_running=False, which
-            # ``mcp_common.health.feed.is_healthy`` maps to FAILED -- and
-            # severity 3 is a 503 on the /health route. The feed only reads
-            # warming_up today because the poller's cycles_total kept
-            # climbing while it ingested nothing at all.
-            #
-            # So the feed is re-pointed at the receiver, which IS alive and
-            # IS the thing writing spans_substrate. The legacy values stay
-            # above only because the retired wire fields still report them.
-            _otel_receiver = get_shared_otel_receiver()
-            receiver_running = _otel_receiver is not None
-            # The feed's cycle count is the receiver's HEALTH cycle count, not
-            # its batch count. The batch count is zero until a producer
-            # actually exports, and a feed stuck at cycles_total=0 is
-            # `feed_never_populated` -- DEGRADED, so a 503, and the launchd
-            # wrapper's `curl -fsS` kills the server it just started. The
-            # receiver counts its startup as its first cycle precisely so
-            # this cannot happen; see OTLPReceiver.cycles_total.
-            receiver_cycles = _count_or_zero(getattr(_otel_receiver, "cycles_total", 0))
-            receiver_batches = _count_or_zero(getattr(_otel_receiver, "batches_total", 0))
-            receiver_errors = _count_or_zero(getattr(_otel_receiver, "dlq_insert_failed_total", 0))
-            receiver_last_batch = _epoch_or_none(getattr(_otel_receiver, "last_batch_at", None))
-            receiver_last_error = _epoch_or_none(getattr(_otel_receiver, "last_error_at", None))
-            code_graphs_last_poll = (
-                getattr(_code_graph_ingester, "_last_poll_at", None)
-                if _code_graph_ingester is not None
-                else None
-            )
-            last_poll_candidates = [
-                t for t in (code_graphs_last_poll, otel_last_poll) if t is not None
-            ]
-            local_traces_last_poll = max(last_poll_candidates) if last_poll_candidates else None
-            last_error_candidates = [
-                t for t in (_kg_refresh_last_error_at, otel_last_error) if t is not None
-            ]
-            local_traces_last_error = max(last_error_candidates) if last_error_candidates else None
-            local_traces_state = HealthFeedState(
-                entities_count=local_traces_count,
-                last_updated_timestamp=local_traces_last_poll,
-                cycles_total=_kg_refresh_cycles + receiver_cycles,
-                errors_total=_kg_refresh_errors + receiver_errors,
-                last_error_at=local_traces_last_error,
-                ingester_running=(kg_running or receiver_running),
-            )
-
-            # REQ-TSQ-008 (docs/plans/2026-09-26-tool-surface-quality.md):
-            # dedicated ``mcp_tool_call`` feed so operators can distinguish a
-            # degraded tool-call trace feed from a healthy trace feed in
-            # general. ``local_traces_feed`` above aggregates ALL OTel traces
-            # generically; this feed filters by ``task_class == "mcp_tool_call"``
-            # so the four-signal HealthFeedState surface (entities_count,
-            # last_updated_timestamp, cycles_total, errors_total) reflects
-            # the tool-call subset specifically. REQ-FEED-002 (Phase 2)
-            # initially routed ``cycles_total`` and ``errors_total`` through
-            # the ingester's per-task-class accessors so a healthy
-            # mcp_tool_call stream wasn't masked by a noisy
-            # ``conversation`` stream (the two share one ingester-level
-            # counter, which used to roll both into this feed's cycles).
-            #
-            # 2026-10-05 fix: ``cycles_total`` and ``errors_total`` now source
-            # from the OTel ingester's OVERALL counters (same pattern as
-            # ``local_traces_feed``'s otel_cycles / otel_errors), not the
-            # per-task-class ones. Reason: per-task-class counts stay at 0
-            # on a fresh server until a ``mcp_tool_call``-class span flows
-            # through (no upstream Bodai event producer yet), which made the
-            # aggregator's HNSW hardening branch fire on every cold start
-            # (cycles_total=0 + ingester_running=True → DEGRADED) and pushed
-            # the aggregate ``status`` to ``degraded`` even after the
-            # ``AgingService`` / ``kg_refresh`` fixes had made their feeds
-            # healthy-or-warming-up. /health returned 503 for the lifetime
-            # of every install. With the overall counter the feed goes
-            # warming_up after the OTel ingester's first poll, matching the
-            # pattern operators expect from a producer that exists but
-            # has not yet seen data on this specific task class.
-            # ``entities_count`` remains per-task-class so operators still
-            # see "zero mcp_tool_call spans landed yet" as distinct from
-            # "ingester dead". If a future operator wants the per-task-class
-            # signal back for /health, the right move is to introduce a
-            # dedicated Bodai-tool-invocation producer with its own
-            # /health feed (e.g. ``bodai_tool_invocation_feed``); until then
-            # coupling the mcp_tool_call_feed's health to the OTel ingester
-            # is the lesser of two evils.
-            mcp_tool_call_entities_count = 0
-            with suppress(Exception):
-                if isinstance(hot_store, HotStore):
-                    # PR-A8: count from spans_substrate, where the receiver
-                    # writes, rather than from conversations, where the
-                    # retired poller wrote. Querying the old table would
-                    # report zero spans arriving while spans are in fact
-                    # landing -- a health feed that reports the opposite of
-                    # the truth.
-                    from akosha.storage.span_query import SpanQuery
-
-                    mcp_tool_call_entities_count = await SpanQuery(hot_store).count_by_task_class(
-                        "mcp_tool_call"
-                    )
-            mcp_tool_call_state = HealthFeedState(
-                entities_count=mcp_tool_call_entities_count,
-                last_updated_timestamp=receiver_last_batch,
-                cycles_total=receiver_cycles,
-                errors_total=receiver_errors,
-                last_error_at=receiver_last_error,
-                ingester_running=receiver_running,
-            )
-
-            if signer_feed_state is not None:
-                manifest_dict = signer_feed_state.manifest.as_dict()
-                skills_signer_state = HealthFeedState(
-                    entities_count=manifest_dict["key_count"],
-                    last_updated_timestamp=signer_feed_state.last_updated_timestamp,
-                    cycles_total=signer_feed_state.cycles_total,
-                    errors_total=signer_feed_state.errors_total,
-                    last_error_at=None,
-                    ingester_running=True,
-                )
-            else:
-                skills_signer_state = HealthFeedState(
-                    entities_count=0,
-                    last_updated_timestamp=None,
-                    cycles_total=0,
-                    errors_total=0,
-                    last_error_at=None,
-                    ingester_running=False,
-                )
+            skills_signer_state = _skills_signer_feed_state(signer_feed_state)
 
             # The METRIC path's own feed. See ``_metrics_feed_state`` for
             # why it exists and what each of its fields means.
             metrics_receiver = get_shared_otel_receiver()
             metrics_state = await _metrics_feed_state(metrics_receiver, hot_store)
 
-            # Phase 2 (REQ-FEED-003): the AgingService cron migrates
-            # records from hot to warm; the feed's ``entities_count`` is
-            # the count of mcp_tool_call rows still in the hot store
-            # (aging itself doesn't grow the count — it migrates rows
-            # OUT of hot_store and INTO warm_store). The cycle counter
-            # is the meaningful signal here: operators want to know
-            # "did the aging cron run?", not "how many rows did it
-            # produce?" — the pre-warm hook bumps ``cycles_total`` to
-            # 1 within 60s of boot so /health is not stuck in
-            # ``warming_up`` longer than the launchd wrapper tolerates.
-            aging_running = bool(_aging_task is not None and not _aging_task.done())
-            aging_state = HealthFeedState(
-                entities_count=mcp_tool_call_entities_count,
-                last_updated_timestamp=_aging_last_run_at,
-                cycles_total=_aging_cycles,
-                errors_total=_aging_errors,
-                last_error_at=None,
-                ingester_running=aging_running,
-            )
+            aging_state, aging_running = _aging_feed_state(mcp_tool_call_entities_count)
 
             # Aggregate via mcp-common's canonical aggregator. The
             # halflife is operator-tunable via HEALTH_FEED_HALFLIFE_SECONDS;
@@ -1697,12 +2097,10 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # ``otel_ingester_*`` names described the legacy poller, which is
             # retired; keeping the names would make a permanently-dead
             # producer look like the live one in the health payload.
-            lt_dict["otel_receiver_running"] = receiver_running
-            lt_dict["otel_receiver_http_port"] = (
-                _count_or_zero(getattr(_otel_receiver, "_http_port", 0)) or None
-            )
-            lt_dict["otel_receiver_batches_total"] = receiver_batches
-            lt_dict["otel_receiver_errors_total"] = receiver_errors
+            lt_dict["otel_receiver_running"] = receiver_feed.running
+            lt_dict["otel_receiver_http_port"] = receiver_feed.http_port
+            lt_dict["otel_receiver_batches_total"] = receiver_feed.batches_total
+            lt_dict["otel_receiver_errors_total"] = receiver_feed.errors_total
             # The ``conversations`` table is written ONLY by the event
             # subscriber. When it is not running, the table is empty and
             # ``feed_populated`` is False — an empty feed, not a healthy
@@ -1726,7 +2124,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # so operators can reproduce the count via mcp__akosha__query_local_traces.
             mt_dict = _feed_dict("mcp_tool_call_feed", mcp_tool_call_state)
             mt_dict["source"] = "spans_substrate(task_class='mcp_tool_call')"
-            mt_dict["otel_receiver_running"] = receiver_running
+            mt_dict["otel_receiver_running"] = receiver_feed.running
             checks["mcp_tool_call_feed"] = mt_dict
 
             # Phase 2 (REQ-FEED-003): the aging cron runs over the same
@@ -1868,6 +2266,7 @@ def create_app(mode: Any | None = None) -> FastMCP:
         # right: a watcher with nothing to watch is a misconfiguration, not
         # an all-clear, and the watcher reports that rather than silently
         # reporting healthy.
+        from akosha.config import get_config
         from akosha.observability.heartbeat_watcher import HeartbeatWatcher
         from akosha.storage.span_query import SpanQuery
 
@@ -1903,78 +2302,20 @@ def create_app(mode: Any | None = None) -> FastMCP:
         canary_task.cancel()
         heartbeat_task.cancel()
         await asyncio.gather(retention_task, canary_task, heartbeat_task, return_exceptions=True)
+        # The receiver stops here, at its own site, and not only via
+        # ``clear_shared_services``: the receiver is dropped at the same
+        # moment its listeners close. Relying on ``clear_shared_services``
+        # alone leaves a window where a shutdown server still reports a
+        # stopped receiver's counters.
         try:
             await receiver.stop()
         except Exception as exc:
             logger.warning("OTLPReceiver stop failed: %s", exc)
         set_shared_otel_receiver(None)
 
-        # Wave 5: cancel the kg_refresh task and stop the CodeGraphIngester
-        # before the lifespan returns. Order matters: cancel kg_refresh
-        # first (it reads from hot_store), then stop CodeGraphIngester
-        # (it writes to hot_store), then clear the singletons so the
-        # next create_app() starts fresh.
-        # NB: ``_kg_refresh_task`` and ``_code_graph_ingester`` are both
-        # declared global at their assignment sites above (lines ~497 and
-        # ~576 respectively); no re-declaration is needed here.
-        if _kg_refresh_task is not None and not _kg_refresh_task.done():
-            _kg_refresh_task.cancel()
-            with suppress(asyncio.CancelledError, Exception):
-                await _kg_refresh_task
-            _kg_refresh_task = None
+        await _lifespan_stop_producers(analytics_service)
 
-        if _code_graph_ingester is not None:
-            try:
-                await _code_graph_ingester.stop()
-            except Exception as exc:
-                logger.warning("CodeGraphIngester stop failed: %s", exc)
-            _code_graph_ingester = None
-
-        if _otel_trace_ingester is not None:
-            try:
-                await _otel_trace_ingester.stop()
-            except Exception as exc:
-                logger.warning("OtelTraceIngester stop failed: %s", exc)
-            _otel_trace_ingester = None
-
-        # Stop the event subscriber AFTER the readers (kg_refresh) and the
-        # other writers, so it cannot write into a hot store that is
-        # already being torn down.
-        if _event_subscriber is not None:
-            try:
-                from akosha.ingestion.subscriber_wiring import stop_event_subscriber
-
-                await stop_event_subscriber(_event_subscriber)
-            except Exception as exc:
-                logger.warning("Event subscriber stop failed: %s", exc)
-            _event_subscriber = None
-        _event_subscriber_running = False
-
-        # REQ-MS-002: close the analytics SQLite connection so the
-        # write-through cache's durable backing flushes cleanly. Order
-        # matters only relative to the telemetry shutdown below — the
-        # SQLite write is synchronous so no data is in flight.
-        if analytics_service is not None:
-            try:
-                await analytics_service.aclose()
-            except Exception as exc:
-                logger.warning("TimeSeriesAnalytics aclose failed: %s", exc)
-        # Phase 2 (REQ-FEED-002): cancel the aging cron before clearing
-        # state so the task gets a clean CancelledError instead of being
-        # garbage-collected mid-await. Mirror the kg_refresh shutdown.
-        if _aging_task is not None and not _aging_task.done():
-            _aging_task.cancel()
-            with suppress(asyncio.CancelledError, Exception):
-                await _aging_task
-            _aging_task = None
-
-        # Cold tier (F5): cancel the warm->cold export cron before clearing
-        # state, mirroring the aging cron above.
-        if _cold_export_task is not None and not _cold_export_task.done():
-            _cold_export_task.cancel()
-            with suppress(asyncio.CancelledError, Exception):
-                await _cold_export_task
-            _cold_export_task = None
+        await _lifespan_stop_crons()
 
         # Reset the per-feed cycle/error counters so the next create_app()
         # call starts from zero. Without this, the probe would carry stale
