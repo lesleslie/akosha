@@ -414,7 +414,7 @@ async def store_conversation(content: str) -> str:
 - **Unit tests**: Test individual functions in isolation
 - **Integration tests**: Test component interactions
 - **Performance tests**: Benchmark critical paths
-- **Test coverage**: Maintain >91% coverage (current ratchet baseline; the enforced floor is the measured 90.99%)
+- **Test coverage**: Maintain >91% coverage (the 91% claim is the whole point above the measured 90.99%; the enforced floor is 90%, the whole point below it)
 
 ## Key Design Patterns
 
@@ -613,7 +613,7 @@ crackerjack analyze --ai-fix
 ### Quality Tools Configured
 
 - **Ruff**: Fast Python linter and formatter (line-length: 100)
-- **Pytest**: Testing framework with 91%+ coverage requirement (matches `--cov-fail-under` ratchet in `pyproject.toml`)
+- **Pytest**: Testing framework with a 90% enforced coverage floor (`--cov-fail-under` in `pyproject.toml`; the 91% claim in the line above is the whole point above the measured 90.99%)
 - **Mypy & Pyright**: Dual type checkers for maximum type safety
 - **Bandit**: Security vulnerability scanner
 - **Codespell**: Catch common typos
