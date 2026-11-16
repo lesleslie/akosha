@@ -39,6 +39,7 @@ fallback must reject any candidate path that resolves outside
 
 from __future__ import annotations
 
+import os
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -295,19 +296,14 @@ async def test_search_code_patterns_disk_read_rejects_path_traversal(
     outside_file.write_text(outside_token)
     try:
         # Compute a relative path that escapes tmp_path: e.g.
-        # ``../<outside_dir_basename>/<file_name>``. We rely on the
-        # common case where ``outside_dir`` and ``tmp_path`` are
-        # siblings under ``/tmp`` or ``/var/folders/.../T/``.
-        try:
-            traversal_rel = outside_file.resolve().relative_to(
-                tmp_path.resolve()
-            )
-        except ValueError:
-            pytest.skip(
-                "outside_dir and tmp_path are not siblings under a common "
-                "parent; cannot construct a relative-traversal fixture on "
-                "this filesystem layout."
-            )
+        # ``../<outside_dir_basename>/<file_name>``.
+        #
+        # ``os.path.relpath`` is the right tool here. ``Path.relative_to``
+        # raises ValueError unless the target is ALREADY INSIDE the base
+        # — the opposite of what this fixture needs — so the previous
+        # form raised on every filesystem layout and the test skipped
+        # instead of exercising the guard it was written for.
+        traversal_rel = os.path.relpath(outside_file.resolve(), tmp_path.resolve())
 
         graph = {
             "repo_path": str(tmp_path),
