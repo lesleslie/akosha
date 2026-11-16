@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.0] - 2026-11-16
+
+### Changed
+
+- akosha: Move the package-internal tests and scripts to the project root
+- Feat/component-prefix-sweep -> main
+- Feat/mcp-tool-disambiguation -> main
+- Feat/tool-refresh -> main
+- Fix/dedupe-default-stores -> main
+- mcp: Split the over-complex pycharm and OTLP paths
+
+### Fixed
+
+- akosha: Bring the MCP server back under the complexity ceiling
+- akosha: Remove dead blanket type-ignores
+- deps: Bump tornado past CVE-2026-126347
+- deps: Keep redis on a stable release so fakeredis can construct its client
+- lint: Rename stale ty ignore rules to their current names
+- mcp: Use the renamed register_health_tools keyword
+- release: Make the version stamper atomic and interpreter-agnostic
+- release: Make the version stamper's --stage flag real
+
+### Testing
+
+- mcp: Make the path-traversal test actually run
+
+### Build
+
+- deps: Add a 7-day dependency cooldown with CVE and tooling carve-outs
+
+### Internal
+
+- akosha: Drop mypy configuration in favour of ty
+- akosha: Re-tighten the ty ratchet test budget to 1750
+- akosha: Remove bracketed mypy ignore directives
+- akosha: Set measured ty ratchet budgets
+- deps: Raise the mcp-common floor to 0.36.0
+- Emit a JSON coverage report and refresh the ratchet
+- pytest: Name the async fixture loop scope
+- release: Stamp the README version and add the stamper that keeps it
+- repo: Drop the pre-commit tool dep and refresh gate artifacts
+
 ## [0.27.0] - 2026-11-07
 
 ### Added
