@@ -21,6 +21,11 @@ The fleet runs this from the pre-commit hook, so the commit that bumps the
 version carries the claims with it. ``--check`` asks the same question
 without writing, for use outside a commit.
 
+Staging is opt-in via ``--stage``. The pre-commit hook passes it, because
+the hook has no other staging step. The release path does not: crackerjack's
+publish flow rewrites the claims and then stages them itself, as part of the
+commit that carries the version bump.
+
 Exit codes:
     0 — surfaces are in sync, or were rewritten
     1 — a surface is out of sync and ``--check`` was given
@@ -151,11 +156,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"version claims are in sync with pyproject.toml ({version})")
         return 0
 
-    for path, text in planned:
-        path.write_text(text)
-        print(f"stamped {path.relative_to(root)} -> {version}")
     if planned:
-        stage(root, [path for path, _ in planned])
+        for path, text in planned:
+            path.write_text(text)
+            print(f"stamped {path.relative_to(root)} -> {version}")
+        if args.stage:
+            stage(root, [path for path, _ in planned])
     else:
         print(f"version claims already match pyproject.toml ({version})")
     return 0
