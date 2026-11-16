@@ -212,7 +212,15 @@ addopts = [
     "--cov=akosha",
     "--cov-report=term-missing",
     "--cov-report=html",
-    "--cov-fail-under=89.0",
+    # The coverage ratchet refreshes .coverage-ratchet.json from
+    # coverage.json, and the release audit reads the ratchet's
+    # recorded coverage.json mtime to decide whether the ratchet still
+    # describes the measured coverage. Without a JSON report there is
+    # no coverage.json, so the ratchet can never be refreshed and every
+    # publish fails the release audit as "stale" until the file is
+    # written by hand.
+    "--cov-report=json",
+    "--cov-fail-under=90.0",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
@@ -238,7 +246,7 @@ omit = [
 
 [tool.coverage.report]
 precision = 2
-fail_under = 87.61723329425557
+fail_under = 90.0
 
 [tool.pyright]
 pythonVersion = "3.14"
