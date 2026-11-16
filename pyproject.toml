@@ -128,8 +128,9 @@ session-buddy = "2099-12-31T23:59:59Z"
 # vendored webpki-root-certs (PYSEC-2026-4321), certifi
 # (PYSEC-2026-4320), filelock (CVE-2026-112907/112913/112940),
 # fastmcp + fastmcp-slim (GHSA-7xgj-8392-5q4r and
-# GHSA-vqqp-x5qm-5qp4, authorization bypasses in the MCP server), and
-# pyasn1 (four quadratic-complexity DoS bugs in the ASN.1 decoder).
+# GHSA-vqqp-x5qm-5qp4, authorization bypasses in the MCP server),
+# pyasn1 (four quadratic-complexity DoS bugs in the ASN.1 decoder), and
+# tornado (CVE-2026-126347).
 # Each fix landed inside a cooldown window, so without these entries the
 # resolver keeps the vulnerable version rather than erroring.
 certifi = "2099-12-31T23:59:59Z"
@@ -138,6 +139,17 @@ fastmcp-slim = "2099-12-31T23:59:59Z"
 filelock = "2099-12-31T23:59:59Z"
 pyasn1 = "2099-12-31T23:59:59Z"
 uv = "2099-12-31T23:59:59Z"
+# tornado 6.6.1 -- GHSA-5cjw-f85j-cv6r / CVE-2026-126347. Open redirect
+# via triple-slash redirect paths: browsers treat three or more leading
+# slashes as a protocol-level redirect while urllib does not, so a
+# triple-slash path escapes the redirect check. The fix landed inside the
+# 7-day cooldown above, so without this entry `uv lock --upgrade` keeps the
+# vulnerable 6.6 rather than erroring.
+#
+# Transitive only: akosha never imports tornado. It arrives via
+# jupyter-client, which declares tornado with no version specifier, so
+# 6.6.1 is a drop-in bump with no resolver conflict.
+tornado = "2099-12-31T23:59:59Z"
 # Class 3 -- dev-tool pinning. ty is the gate's primary type checker
 # and ruff is its linter; their versions change what the gate reports,
 # so a week-old ty or ruff fails quietly rather than loudly. Both arrive
