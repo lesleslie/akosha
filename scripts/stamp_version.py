@@ -41,7 +41,7 @@ import argparse
 import re
 import subprocess
 import sys
-import tomllib
+from contextlib import suppress
 from pathlib import Path
 
 #: The surfaces in this repo that carry a version claim, as
@@ -49,6 +49,15 @@ from pathlib import Path
 #: named group, ``version``, spanning the version string and nothing else —
 #: so the rewrite replaces the number and leaves the surrounding text (and any
 #: suffix) alone.
+#: The ``[project]`` table in pyproject.toml and the ``version`` key inside
+#: it. Parsed with a regex rather than ``tomllib`` so the script runs on any
+#: Python 3: the pre-commit hook invokes it with whatever ``python3`` the
+#: committing shell happens to have, and on some machines that is 3.9 — which
+#: has no ``tomllib`` and would fail every commit in the repo. The other
+#: hook scripts in the fleet are written the same way, for the same reason.
+_PROJECT_TABLE = re.compile(r"^\[project\]\s*$(.*?)(?=^\[|\Z)", re.MULTILINE | re.DOTALL)
+_VERSION_KEY = re.compile(r"""^\s*version\s*=\s*["']([^"']+)["']""", re.MULTILINE)
+
 SURFACES: tuple[tuple[str, str], ...] = (
     (
         "README.md",
@@ -59,8 +68,14 @@ SURFACES: tuple[tuple[str, str], ...] = (
 
 def read_version(root: Path) -> str:
     """Return the canonical version declared in ``pyproject.toml``."""
-    with (root / "pyproject.toml").open("rb") as handle:
-        return str(tomllib.load(handle)["project"]["version"])
+    text = (root / "pyproject.toml").read_text()
+    table = _PROJECT_TABLE.search(text)
+    if table is None:
+        raise ValueError("pyproject.toml has no [project] table")
+    version = _VERSION_KEY.search(table.group(1))
+    if version is None:
+        raise ValueError("pyproject.toml has no [project] version")
+    return version.group(1)
 
 
 def _substitute(match: re.Match[str], version: str) -> str:
@@ -92,6 +107,34 @@ def plan(root: Path, version: str) -> list[tuple[Path, str]]:
             continue
         planned.append((path, regex.sub(lambda m: _substitute(m, version), text)))
     return planned
+
+
+def write_all(root: Path, planned: list[tuple[Path, str]], version: str) -> None:
+    """Rewrite every planned surface, restoring what was written on failure.
+
+    The release path snapshots ``pyproject.toml`` and restores it when the
+    bump fails. That snapshot knows nothing about the doc surfaces, so a
+    failure *here* — a disk error partway through the writes — would leave
+    one surface stamped for a version the rollback just undid. Restoring
+    what this function wrote keeps the stamp atomic from the caller's point
+    of view: either every claim moves to the new version, or none does.
+    """
+    written: list[tuple[Path, str]] = []
+    try:
+        for path, text in planned:
+            original = path.read_text()
+            # Recorded BEFORE the write. ``write_text`` opens in truncate
+            # mode, so a write that fails partway through leaves the file
+            # empty rather than untouched — the original has to be in hand
+            # before that can happen.
+            written.append((path, original))
+            path.write_text(text)
+            print(f"stamped {path.relative_to(root)} -> {version}")
+    except OSError:
+        for path, original in reversed(written):
+            with suppress(OSError):
+                path.write_text(original)
+        raise
 
 
 def stage(root: Path, paths: list[Path]) -> None:
@@ -132,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         version = read_version(root)
-    except (OSError, KeyError, tomllib.TOMLDecodeError) as exc:
+    except (OSError, ValueError) as exc:
         print(
             f"ERROR: could not read the version from {root / 'pyproject.toml'}: {exc}",
             file=sys.stderr,
@@ -157,9 +200,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if planned:
-        for path, text in planned:
-            path.write_text(text)
-            print(f"stamped {path.relative_to(root)} -> {version}")
+        try:
+            write_all(root, planned, version)
+        except OSError as exc:
+            print(f"ERROR: could not rewrite the version claims: {exc}", file=sys.stderr)
+            return 2
         if args.stage:
             stage(root, [path for path, _ in planned])
     else:
