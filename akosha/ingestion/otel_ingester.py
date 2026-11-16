@@ -39,6 +39,32 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# The OTLP AnyValue wrapper keys, in the order they are probed. Per the
+# OTLP spec the value of ``service.name`` is one of these wrappers;
+# ``stringValue`` is the canonical type but the others are tolerated by
+# stringifying the unwrapped value.
+_OTLP_ANY_VALUE_KEYS = ("stringValue", "intValue", "boolValue", "doubleValue")
+
+
+def _service_name_from_resource(resource_spans: dict[str, Any]) -> str:
+    """The ``service.name`` of one OTLP resource, or ``"unknown"``.
+
+    Per the OTLP spec the value is one of the AnyValue wrappers. A
+    ``value: null`` and a missing key both fall through to
+    ``"unknown"`` rather than raising TypeError, and the FIRST
+    ``service.name`` attribute wins even when its value carries a shape
+    this method does not recognise.
+    """
+    for attr in resource_spans.get("resource", {}).get("attributes") or []:
+        if attr.get("key") != "service.name":
+            continue
+        value_entry = attr.get("value") or {}
+        for value_key in _OTLP_ANY_VALUE_KEYS:
+            if value_key in value_entry:
+                return str(value_entry[value_key])
+        break
+    return "unknown"
+
 
 class OtelTraceIngester:
     """Pull-based OTel trace ingester from an OTLP/HTTP collector.
@@ -268,26 +294,7 @@ class OtelTraceIngester:
                 return []
             result: list[tuple[str, dict[str, Any]]] = []
             for resource_spans in body.get("resourceSpans", []):
-                # Extract service.name from resource.attributes. Per the OTLP
-                # spec the value is one of the AnyValue wrappers;
-                # ``stringValue`` is the canonical type for service.name but
-                # we tolerate other shapes by stringifying the unwrapped
-                # value. ``value: null`` and missing keys fall through to
-                # ``"unknown"`` rather than raising TypeError.
-                system_id = "unknown"
-                for attr in resource_spans.get("resource", {}).get("attributes") or []:
-                    if attr.get("key") != "service.name":
-                        continue
-                    value_entry = attr.get("value") or {}
-                    if "stringValue" in value_entry:
-                        system_id = str(value_entry["stringValue"])
-                    elif "intValue" in value_entry:
-                        system_id = str(value_entry["intValue"])
-                    elif "boolValue" in value_entry:
-                        system_id = str(value_entry["boolValue"])
-                    elif "doubleValue" in value_entry:
-                        system_id = str(value_entry["doubleValue"])
-                    break
+                system_id = _service_name_from_resource(resource_spans)
                 for scope_spans in resource_spans.get("scopeSpans", []):
                     for span in scope_spans.get("spans", []):
                         result.append((system_id, span))

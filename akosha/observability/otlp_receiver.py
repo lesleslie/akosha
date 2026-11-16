@@ -56,6 +56,7 @@ from akosha.observability.otlp_prometheus_bridge import OTLPPrometheusBridge
 from akosha.observability.resource_validator import ResourceAttributeValidator
 
 if TYPE_CHECKING:
+    from akosha.config import SpansSubstrateConfig
     from akosha.storage.hot_store import HotStore
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,26 @@ class RowValidationError:
     field: str
     reason: str
     value: object = None
+
+
+@dataclass(frozen=True)
+class _SweepOutcome:
+    """What one retention sweep deleted.
+
+    ``clean`` is False when any table's DELETE failed. "Deleted
+    nothing" and "could not run" are different facts, and collapsing
+    them is how a broken sweep reports itself as healthy for weeks.
+
+    The counts are ``None`` for a table whose DELETE failed, matching
+    ``_sweep_table``'s contract: ``None`` means "could not run", not
+    "deleted zero rows".
+    """
+
+    clean: bool
+    cutoff_ns: int
+    spans_deleted: int | None
+    dlq_deleted: int | None
+    metrics_deleted: int | None
 
 
 class OTLPReceiver:
@@ -639,72 +660,13 @@ class OTLPReceiver:
             else:
                 bad.append((error, point))
 
-        inserted, deduped = (0, 0)
-        problems: list[str] = []
-        if good:
-            ready, detail = await self._refresh_substrate_readiness()
-            if not ready:
-                # The substrate cannot take the write. The points are NOT
-                # lost from the Prometheus exposure — they are still
-                # rendered on /metrics — but nothing durable backs them.
-                # The producer is told, the operator is told, and the
-                # export still succeeds: failing the RPC would make the
-                # producer drop the batch, and the trace path on the same
-                # port must not go down with it.
-                self.metrics_insert_failed_total += 1
-                otlp_metrics.metrics_insert_failed_total.labels(
-                    reason="substrate_unavailable"
-                ).inc()
-                self.metrics_last_error_at = time.time()
-                problems.append(f"metrics substrate unavailable: {detail}")
-                logger.error(
-                    "akosha.otlp_metrics.substrate_unavailable rows=%s detail=%s",
-                    len(good),
-                    detail,
-                )
-            else:
-                try:
-                    inserted, deduped = await self._hot_store.insert_metrics_substrate(good)
-                except Exception:
-                    # A substrate failure must not answer UNKNOWN. The
-                    # producer would drop the whole batch, and the points
-                    # that would have landed are gone with it. The failure
-                    # is counted so an operator can see it, and the export
-                    # still answers.
-                    #
-                    # The readiness is re-probed here: a table that was
-                    # dropped after boot reads as "the substrate is gone",
-                    # which is a different fault from "this write failed"
-                    # and has a different remedy.
-                    still_ready, detail = await self._refresh_substrate_readiness(force=True)
-                    reason = "write_failed" if still_ready else "substrate_unavailable"
-                    self.metrics_insert_failed_total += 1
-                    otlp_metrics.metrics_insert_failed_total.labels(reason=reason).inc()
-                    self.metrics_last_error_at = time.time()
-                    problems.append(
-                        f"metrics substrate unavailable: {detail}"
-                        if reason == "substrate_unavailable"
-                        else "metrics substrate write failed"
-                    )
-                    logger.exception("akosha.otlp_metrics.insert_failed rows=%s", len(good))
+        inserted, deduped, problems = await self._write_metric_points(good)
 
         if bad:
             await self._metrics_dlq_insert(bad)
 
-        exported = 0
         dropped_before = self._prometheus_bridge.dropped_by_reason.copy()
-        for point in good:
-            try:
-                if self._prometheus_bridge.export(point):
-                    exported += 1
-            except Exception:
-                # One unexposable point must not take the export down with
-                # it. The point is already in the substrate; losing the
-                # EXPOSURE is bad, losing the batch is worse.
-                logger.exception(
-                    "akosha.otlp_metrics.expose_raised metric=%s",
-                    point.get("metric_name"),
-                )
+        exported = self._export_metric_points(good)
 
         self.metrics_inserted_total += inserted
         self.metrics_deduped_total += deduped
@@ -734,6 +696,84 @@ class OTLPReceiver:
             "exported": exported,
             "error_message": "; ".join(problems),
         }
+
+    async def _write_metric_points(self, good: list[dict[str, Any]]) -> tuple[int, int, list[str]]:
+        """Persist the valid points of a metrics export.
+
+        Returns ``(inserted, deduped, problems)``. A substrate that
+        cannot take the write is NOT a lost batch: the points are still
+        rendered on /metrics, nothing durable backs them, and the
+        producer is told so the gap is visible from outside the process.
+        """
+        if not good:
+            return (0, 0, [])
+
+        inserted, deduped = (0, 0)
+        problems: list[str] = []
+        ready, detail = await self._refresh_substrate_readiness()
+        if not ready:
+            # The substrate cannot take the write. The points are NOT
+            # lost from the Prometheus exposure — they are still
+            # rendered on /metrics — but nothing durable backs them.
+            # The producer is told, the operator is told, and the
+            # export still succeeds: failing the RPC would make the
+            # producer drop the batch, and the trace path on the same
+            # port must not go down with it.
+            self.metrics_insert_failed_total += 1
+            otlp_metrics.metrics_insert_failed_total.labels(reason="substrate_unavailable").inc()
+            self.metrics_last_error_at = time.time()
+            problems.append(f"metrics substrate unavailable: {detail}")
+            logger.error(
+                "akosha.otlp_metrics.substrate_unavailable rows=%s detail=%s",
+                len(good),
+                detail,
+            )
+            return (inserted, deduped, problems)
+
+        try:
+            inserted, deduped = await self._hot_store.insert_metrics_substrate(good)
+        except Exception:
+            # A substrate failure must not answer UNKNOWN. The
+            # producer would drop the whole batch, and the points
+            # that would have landed are gone with it. The failure
+            # is counted so an operator can see it, and the export
+            # still answers.
+            #
+            # The readiness is re-probed here: a table that was
+            # dropped after boot reads as "the substrate is gone",
+            # which is a different fault from "this write failed"
+            # and has a different remedy.
+            still_ready, detail = await self._refresh_substrate_readiness(force=True)
+            reason = "write_failed" if still_ready else "substrate_unavailable"
+            self.metrics_insert_failed_total += 1
+            otlp_metrics.metrics_insert_failed_total.labels(reason=reason).inc()
+            self.metrics_last_error_at = time.time()
+            problems.append(
+                f"metrics substrate unavailable: {detail}"
+                if reason == "substrate_unavailable"
+                else "metrics substrate write failed"
+            )
+            logger.exception("akosha.otlp_metrics.insert_failed rows=%s", len(good))
+        return (inserted, deduped, problems)
+
+    def _export_metric_points(self, good: list[dict[str, Any]]) -> int:
+        """Render the valid points on /metrics. Returns the exported count.
+
+        One unexposable point must not take the export down with it.
+        The point is already in the substrate; losing the EXPOSURE is
+        bad, losing the batch is worse.
+        """
+        exported = 0
+        for point in good:
+            try:
+                if self._prometheus_bridge.export(point):
+                    exported += 1
+            except Exception:
+                logger.exception(
+                    "akosha.otlp_metrics.expose_raised metric=%s",
+                    point.get("metric_name"),
+                )
+        return exported
 
     @property
     def metrics_substrate_ready(self) -> bool:
@@ -1070,94 +1110,113 @@ class OTLPReceiver:
                 first_started = sweep_started
                 otlp_metrics.sweep_first_started_unix_nano.set(sweep_started)
 
-            clean = True
-            cutoff_ns = sweep_started - cfg.retention_days * 86_400 * 1_000_000_000
-            deleted = self._sweep_table(
-                self._hot_store.spans_substrate_table,
-                "WHERE received_at_unix_nano < ?",
-                [cutoff_ns],
-            )
-            if deleted is None:
-                clean = False
-
-            # Canary rows get a 24h horizon, not the substrate's 30 days.
-            # At one row per 30 seconds that is 86,400 rows a day, and the
-            # substrate is an IN-MEMORY DuckDB with a 1GB limit — on the
-            # normal horizon the canary alone would fill it with millions
-            # of rows inside a month. A canary row is liveness evidence,
-            # not history: the same reasoning §8.1 applies to _dlq_rows.
-            canary_cutoff_ns = sweep_started - 24 * 3600 * 1_000_000_000
-            canary_deleted = self._sweep_table(
-                self._hot_store.spans_substrate_table,
-                "WHERE service_name = ? AND received_at_unix_nano < ?",
-                [CANARY_SERVICE_NAME, canary_cutoff_ns],
-                label="spans_substrate_canary",
-            )
-            if canary_deleted is None:
-                clean = False
-            elif canary_deleted > 0:
-                otlp_metrics.canary_rows_deleted_total.inc(canary_deleted)
-
-            dlq_deleted = self._sweep_table(
-                self._hot_store.dlq_rows_table,
-                "WHERE rejected_at < CURRENT_TIMESTAMP - INTERVAL '24 hours'",
-            )
-            if dlq_deleted is None:
-                clean = False
-            elif dlq_deleted > 0:
-                otlp_metrics.dlq_rows_deleted_total.inc(dlq_deleted)
-
-            # ``metrics_substrate`` ages out on the SAME horizon as
-            # ``spans_substrate``: it is a sibling table in the same
-            # substrate file, and a table that is not swept is a table
-            # that grows without bound (~575 bytes a row, so ~39 MB a day
-            # at 50 instruments on a 60s interval). The horizon is the
-            # SAME ``retention_days`` setting, not a second constant.
-            #
-            # The column is ``inserted_at``, NOT an epoch-nanos column.
-            # Phase 1 gave the table ``inserted_at TIMESTAMP NOT NULL
-            # DEFAULT CURRENT_TIMESTAMP`` and no ``received_at_unix_nano``,
-            # and the schema lives in oneiric — the receiver cannot add a
-            # column to a table it does not own. The cardinal rule (§15)
-            # still holds: ``inserted_at`` is stamped by the DATABASE's
-            # clock, not by the producer's, so a producer with a skewed
-            # clock still cannot drive deletion of rows that just
-            # arrived. That is the same reasoning the DLQ sweep's
-            # ``rejected_at`` uses.
-            #
-            # The sweep is skipped when the metrics substrate is not
-            # usable: there is no table to sweep, and a delete against a
-            # missing table would report a sweep failure every cycle.
-            metrics_deleted = 0
-            metrics_table = getattr(self._hot_store, "metrics_substrate_table", None)
-            if metrics_table is not None:
-                ready, _detail = await self._refresh_substrate_readiness()
-                if ready:
-                    metrics_deleted = self._sweep_table(
-                        metrics_table,
-                        "WHERE inserted_at < CURRENT_TIMESTAMP - (? * INTERVAL '1 day')",
-                        [cfg.retention_days],
-                        label="metrics_substrate",
-                    )
-                    if metrics_deleted is None:
-                        clean = False
-                    elif metrics_deleted > 0:
-                        otlp_metrics.metrics_rows_deleted_total.inc(metrics_deleted)
+            outcome = await self._sweep_substrate_tables(cfg, sweep_started)
 
             # 0 means "the last cycle did not finish cleanly". first_started is
             # never reset — that pair is how an operator tells "sweep failed"
             # from "sweep has never run" (runbook §11.1.6).
-            otlp_metrics.sweep_last_completed_unix_nano.set(sweep_started if clean else 0)
+            otlp_metrics.sweep_last_completed_unix_nano.set(sweep_started if outcome.clean else 0)
             otlp_metrics.sweep_duration_seconds.observe((time.time_ns() - sweep_started) / 1e9)
             logger.info(
                 "akosha.retention_sweep_complete cutoff_unix_nano=%s spans_deleted=%s "
                 "dlq_deleted=%s metrics_deleted=%s clean=%s",
-                cutoff_ns,
-                deleted,
-                dlq_deleted,
-                metrics_deleted,
-                clean,
+                outcome.cutoff_ns,
+                outcome.spans_deleted,
+                outcome.dlq_deleted,
+                outcome.metrics_deleted,
+                outcome.clean,
             )
+
+    async def _sweep_substrate_tables(
+        self, cfg: SpansSubstrateConfig, sweep_started: int
+    ) -> _SweepOutcome:
+        """Delete expired rows from every substrate table.
+
+        Returns the outcome for this cycle. Each table's DELETE is
+        independent: one failing table does not stop the others from
+        being swept.
+        """
+        clean = True
+        cutoff_ns = sweep_started - cfg.retention_days * 86_400 * 1_000_000_000
+        deleted = self._sweep_table(
+            self._hot_store.spans_substrate_table,
+            "WHERE received_at_unix_nano < ?",
+            [cutoff_ns],
+        )
+        if deleted is None:
+            clean = False
+
+        # Canary rows get a 24h horizon, not the substrate's 30 days.
+        # At one row per 30 seconds that is 86,400 rows a day, and the
+        # substrate is an IN-MEMORY DuckDB with a 1GB limit — on the
+        # normal horizon the canary alone would fill it with millions
+        # of rows inside a month. A canary row is liveness evidence,
+        # not history: the same reasoning §8.1 applies to _dlq_rows.
+        canary_cutoff_ns = sweep_started - 24 * 3600 * 1_000_000_000
+        canary_deleted = self._sweep_table(
+            self._hot_store.spans_substrate_table,
+            "WHERE service_name = ? AND received_at_unix_nano < ?",
+            [CANARY_SERVICE_NAME, canary_cutoff_ns],
+            label="spans_substrate_canary",
+        )
+        if canary_deleted is None:
+            clean = False
+        elif canary_deleted > 0:
+            otlp_metrics.canary_rows_deleted_total.inc(canary_deleted)
+
+        dlq_deleted = self._sweep_table(
+            self._hot_store.dlq_rows_table,
+            "WHERE rejected_at < CURRENT_TIMESTAMP - INTERVAL '24 hours'",
+        )
+        if dlq_deleted is None:
+            clean = False
+        elif dlq_deleted > 0:
+            otlp_metrics.dlq_rows_deleted_total.inc(dlq_deleted)
+
+        # ``metrics_substrate`` ages out on the SAME horizon as
+        # ``spans_substrate``: it is a sibling table in the same
+        # substrate file, and a table that is not swept is a table
+        # that grows without bound (~575 bytes a row, so ~39 MB a day
+        # at 50 instruments on a 60s interval). The horizon is the
+        # SAME ``retention_days`` setting, not a second constant.
+        #
+        # The column is ``inserted_at``, NOT an epoch-nanos column.
+        # Phase 1 gave the table ``inserted_at TIMESTAMP NOT NULL
+        # DEFAULT CURRENT_TIMESTAMP`` and no ``received_at_unix_nano``,
+        # and the schema lives in oneiric — the receiver cannot add a
+        # column to a table it does not own. The cardinal rule (§15)
+        # still holds: ``inserted_at`` is stamped by the DATABASE's
+        # clock, not by the producer's, so a producer with a skewed
+        # clock still cannot drive deletion of rows that just
+        # arrived. That is the same reasoning the DLQ sweep's
+        # ``rejected_at`` uses.
+        #
+        # The sweep is skipped when the metrics substrate is not
+        # usable: there is no table to sweep, and a delete against a
+        # missing table would report a sweep failure every cycle.
+        metrics_deleted: int | None = 0
+        metrics_table = getattr(self._hot_store, "metrics_substrate_table", None)
+        if metrics_table is not None:
+            ready, _detail = await self._refresh_substrate_readiness()
+            if ready:
+                metrics_deleted = self._sweep_table(
+                    metrics_table,
+                    "WHERE inserted_at < CURRENT_TIMESTAMP - (? * INTERVAL '1 day')",
+                    [cfg.retention_days],
+                    label="metrics_substrate",
+                )
+                if metrics_deleted is None:
+                    clean = False
+                elif metrics_deleted > 0:
+                    otlp_metrics.metrics_rows_deleted_total.inc(metrics_deleted)
+
+        return _SweepOutcome(
+            clean=clean,
+            cutoff_ns=cutoff_ns,
+            spans_deleted=deleted,
+            dlq_deleted=dlq_deleted,
+            metrics_deleted=metrics_deleted,
+        )
 
     def _sweep_table(
         self,

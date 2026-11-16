@@ -331,6 +331,174 @@ _MAX_DISK_READ_BYTES: int = 4 * 1024 * 1024
 _MAX_PATTERN_LENGTH: int = 1600
 
 
+def _rejected_pattern_response(pattern: str, adapter: PyCharmMCPAdapter) -> dict[str, Any]:
+    """The uniform envelope returned when a search pattern is refused.
+
+    A rejected pattern is not an error: the tool answered correctly by
+    declining to search. ``status`` stays ``"success"`` and ``rejected``
+    marks the refusal, so a caller can tell "I declined" apart from "I
+    searched and found nothing".
+    """
+    return {
+        "status": "success",
+        "pattern": pattern,
+        "count": 0,
+        "results": [],
+        "pycharm_available": adapter._available,
+        "rejected": True,
+    }
+
+
+def _read_node_source_from_disk(node: dict[str, Any], graph: dict[str, Any]) -> str:
+    """Read one graph node's source slice off disk.
+
+    Returns ``""`` when the node carries no usable location, when the
+    candidate path escapes the repo root, or when the read fails.
+
+    SECURITY: the ``file_path`` field comes from the code graph
+    (operator data) and is not caller-controlled, but a compromised or
+    maliciously-crafted graph could point it at ``../../etc/passwd``.
+    The candidate is resolved and verified to stay inside
+    ``repo_path`` before it is opened.
+    """
+    file_path_rel = node.get("file_path")
+    repo_path_abs = graph.get("repo_path") or node.get("repo_path")
+    start_line = node.get("start_line")
+    end_line = node.get("end_line")
+    if not (file_path_rel and repo_path_abs and start_line and end_line):
+        return ""
+
+    try:
+        from pathlib import Path as _Path
+
+        _repo_root = _Path(repo_path_abs).resolve()
+        _candidate = (_Path(repo_path_abs) / file_path_rel).resolve()
+        if not _candidate.is_relative_to(_repo_root):
+            logger.warning(f"Refusing to read {_candidate}: outside repo root {_repo_root}")
+            return ""
+        with _candidate.open(encoding="utf-8") as _fh:
+            # SECURITY: cap the read at ``_MAX_DISK_READ_BYTES`` so a
+            # multi-GB file can't blow up memory. Read in chunks, not
+            # ``readlines()``.
+            _chunks: list[str] = []
+            _remaining = _MAX_DISK_READ_BYTES
+            while _remaining > 0:
+                _chunk = _fh.read(_remaining)
+                if not _chunk:
+                    break
+                _chunks.append(_chunk)
+                _remaining -= len(_chunk)
+        _decoded = "".join(_chunks)
+        _all_lines = _decoded.splitlines(keepends=True)
+        # ``start_line``/``end_line`` are 1-indexed; convert to slice
+        # indices. Clamp the end to what we actually read so a stale
+        # ``end_line`` can't IndexError.
+        _lo = max(0, int(start_line) - 1)
+        _hi = min(len(_all_lines), int(end_line))
+        return "".join(_all_lines[_lo:_hi])
+    except OSError as _e:
+        logger.debug(f"Could not read {file_path_rel}: {_e}")
+        return ""
+
+
+def _resolve_node_source(node: dict[str, Any], graph: dict[str, Any]) -> str:
+    """The regex-searchable source string for one graph node.
+
+    Three layers, in order: the node's own ``source`` field, the line
+    range read off disk, and finally the node's ``signature`` — the
+    docstring carried on function/class nodes (already redacted in the
+    parser). The signature layer lets docstring-style searches work
+    even when the file is missing.
+    """
+    source = node.get("source", "")
+    if source:
+        return source
+    source = _read_node_source_from_disk(node, graph)
+    if not source:
+        source = node.get("signature") or ""
+    return source
+
+
+def _match_line_number(node: dict[str, Any], source: str, match: re.Match[str]) -> int:
+    """The line number of ``match`` within the node's own file.
+
+    For the disk-read slice the offset is relative to ``start_line``;
+    for the signature fallback it is the node's ``start_line`` (a
+    signature is a snippet, not a verbatim source slice).
+    """
+    start_line = node.get("start_line") or 0
+    line_offset = source[: match.start()].count("\n")
+    if source is not node.get("signature"):
+        return int(start_line) + line_offset
+    return int(start_line)
+
+
+def _analyze_unused_imports(graph_data: dict[str, Any], repo_path: str) -> list[dict[str, Any]]:
+    """Imports the graph declares but never references."""
+    imports: set[str] = set()
+    usages: set[str] = set()
+
+    for node in iter_graph_nodes(graph_data):
+        node_type = node.get("type", "")
+        node_name = node.get("name", "")
+
+        if node_type == "import":
+            imports.add(node_name.split(".")[-1])
+        elif node_type in ("call", "reference"):
+            usages.add(node_name)
+
+    return [
+        {"repo_path": repo_path, "import": imp, "type": "unused_import"} for imp in imports - usages
+    ]
+
+
+def _analyze_circular_imports(graph_data: dict[str, Any], repo_path: str) -> list[dict[str, Any]]:
+    """Import cycles detected in the graph's edge list."""
+    import_graph: dict[str, set[str]] = {}
+
+    for edge in graph_data.get("edges", []):
+        if not isinstance(edge, dict):
+            continue
+        if edge.get("type") != "imports":
+            continue
+        src = edge.get("source", "")
+        tgt = edge.get("target", "")
+        if src and tgt:
+            import_graph.setdefault(src, set()).add(tgt)
+
+    cycles: list[dict[str, Any]] = []
+    for node, deps in import_graph.items():
+        for dep in deps:
+            if dep in import_graph and node in import_graph[dep]:
+                cycles.append(
+                    {
+                        "repo_path": repo_path,
+                        "cycle": [node, dep],
+                        "type": "circular_import",
+                    }
+                )
+    return cycles
+
+
+def _analyze_import_patterns(graph_data: dict[str, Any], repo_path: str) -> list[dict[str, Any]]:
+    """The most frequently imported modules in the graph."""
+    import_counts: dict[str, int] = {}
+
+    for node in iter_graph_nodes(graph_data):
+        if node.get("type") == "import":
+            imp = node.get("name", "")
+            import_counts[imp] = import_counts.get(imp, 0) + 1
+
+    return [
+        {"repo_path": repo_path, "import": imp, "count": count, "type": "import_pattern"}
+        for imp, count in sorted(
+            import_counts.items(),
+            key=operator.itemgetter(1),
+            reverse=True,
+        )[:10]
+    ]
+
+
 def get_pycharm_adapter() -> PyCharmMCPAdapter:
     """Get or create the global PyCharm adapter instance."""
     global _pycharm_adapter
@@ -420,14 +588,7 @@ def register_pycharm_tools(
                         "failed _sanitize_regex gate "
                         f"(length={len(pattern)})"
                     )
-                    return {
-                        "status": "success",
-                        "pattern": pattern,
-                        "count": 0,
-                        "results": [],
-                        "pycharm_available": adapter._available,
-                        "rejected": True,
-                    }
+                    return _rejected_pattern_response(pattern, adapter)
 
             # SECURITY: cap caller-supplied pattern length. A
             # catastrophic-backtracking regex against the disk-read
@@ -442,14 +603,7 @@ def register_pycharm_tools(
                     f"Rejecting akosha_search_code_patterns call: pattern "
                     f"length {len(pattern)} exceeds cap {_MAX_PATTERN_LENGTH}"
                 )
-                return {
-                    "status": "success",
-                    "pattern": pattern,
-                    "count": 0,
-                    "results": [],
-                    "pycharm_available": adapter._available,
-                    "rejected": True,
-                }
+                return _rejected_pattern_response(pattern, adapter)
 
             # Search via PyCharm adapter
             pycharm_results = await adapter.search_regex(
@@ -476,95 +630,19 @@ def register_pycharm_tools(
                             # file/line metadata); the akosha search
                             # has to reconstruct the slice from disk to
                             # make the search work against the real
-                            # payload shape. Three layers, in order:
-                            source = node.get("source", "")
-                            if not source:
-                                file_path_rel = node.get("file_path")
-                                repo_path_abs = graph.get("repo_path") or node.get("repo_path")
-                                start_line = node.get("start_line")
-                                end_line = node.get("end_line")
-                                if file_path_rel and repo_path_abs and start_line and end_line:
-                                    # SECURITY: path-traversal guard.
-                                    # The ``file_path`` field comes from
-                                    # the code graph (operator data)
-                                    # and is not caller-controlled, but
-                                    # a compromised or maliciously-crafted
-                                    # graph could point it at
-                                    # ``../../etc/passwd``. Resolve the
-                                    # candidate and verify it stays
-                                    # inside ``repo_path_abs`` before
-                                    # reading.
-                                    try:
-                                        from pathlib import Path as _Path
-
-                                        _repo_root = _Path(repo_path_abs).resolve()
-                                        _candidate = (
-                                            _Path(repo_path_abs) / file_path_rel
-                                        ).resolve()
-                                        if not _candidate.is_relative_to(_repo_root):
-                                            logger.warning(
-                                                f"Refusing to read {_candidate}: "
-                                                f"outside repo root {_repo_root}"
-                                            )
-                                        else:
-                                            with _candidate.open(encoding="utf-8") as _fh:
-                                                # SECURITY: cap the read at
-                                                # ``_MAX_DISK_READ_BYTES`` so
-                                                # a multi-GB file can't blow
-                                                # up memory. Read in chunks,
-                                                # not ``readlines()``.
-                                                _chunks: list[str] = []
-                                                _remaining = _MAX_DISK_READ_BYTES
-                                                while _remaining > 0:
-                                                    _chunk = _fh.read(_remaining)
-                                                    if not _chunk:
-                                                        break
-                                                    _chunks.append(_chunk)
-                                                    _remaining -= len(_chunk)
-                                            _decoded = "".join(_chunks)
-                                            _all_lines = _decoded.splitlines(keepends=True)
-                                            # ``start_line``/``end_line``
-                                            # are 1-indexed; convert to
-                                            # slice indices. Clamp the
-                                            # end to what we actually
-                                            # read so a stale ``end_line``
-                                            # can't IndexError.
-                                            _lo = max(0, int(start_line) - 1)
-                                            _hi = min(len(_all_lines), int(end_line))
-                                            source = "".join(_all_lines[_lo:_hi])
-                                    except OSError as _e:
-                                        logger.debug(f"Could not read {file_path_rel}: {_e}")
-                                # Final fallback: the docstring is
-                                # carried on function/class nodes as
-                                # ``signature`` (already redacted in the
-                                # parser). Lets docstring-style searches
-                                # work even when the file is missing.
-                                if not source:
-                                    source = node.get("signature") or ""
+                            # payload shape.
+                            source = _resolve_node_source(node, graph)
 
                             if not source:
                                 continue
 
                             match = re.search(pattern, source)
                             if match:
-                                # Compute the actual line number of the
-                                # match. For the disk-read slice the
-                                # offset is relative to ``start_line``;
-                                # for the signature fallback it is the
-                                # node's ``start_line`` (signature is a
-                                # snippet, not a verbatim source slice).
-                                start_line = node.get("start_line") or 0
-                                line_offset = source[: match.start()].count("\n")
-                                actual_line = (
-                                    int(start_line) + line_offset
-                                    if source is not node.get("signature")
-                                    else int(start_line)
-                                )
                                 code_graph_results.append(
                                     {
                                         "repo_path": graph_summary["repo_path"],
                                         "file_path": node.get("file_path", "unknown"),
-                                        "line_number": actual_line,
+                                        "line_number": _match_line_number(node, source, match),
                                         "match_text": source[match.start() : match.end()][:100],
                                         "source": "code_graph",
                                     }
@@ -871,78 +949,13 @@ def register_pycharm_tools(
                     graph_data = graph.get("graph_data", {})
 
                     # Analyze imports based on type
+                    repo_label = graph_summary["repo_path"]
                     if analysis_type == "unused":
-                        # Find imports that are declared but not used
-                        imports = set()
-                        usages = set()
-
-                        for node in iter_graph_nodes(graph_data):
-                            node_type = node.get("type", "")
-                            node_name = node.get("name", "")
-
-                            if node_type == "import":
-                                imports.add(node_name.split(".")[-1])
-                            elif node_type in ("call", "reference"):
-                                usages.add(node_name)
-
-                        unused = imports - usages
-                        for imp in unused:
-                            results.append(
-                                {
-                                    "repo_path": graph_summary["repo_path"],
-                                    "import": imp,
-                                    "type": "unused_import",
-                                }
-                            )
-
+                        results.extend(_analyze_unused_imports(graph_data, repo_label))
                     elif analysis_type == "circular":
-                        # Detect potential circular imports
-                        edges = graph_data.get("edges", [])
-                        import_graph: dict[str, set[str]] = {}
-
-                        for edge in edges:
-                            if isinstance(edge, dict):  # nosec SIM102  # noqa: SIM102
-                                if edge.get("type") == "imports":
-                                    src = edge.get("source", "")
-                                    tgt = edge.get("target", "")
-                                    if src and tgt:
-                                        import_graph.setdefault(src, set()).add(tgt)
-
-                        # Check for cycles
-                        for node, deps in import_graph.items():
-                            for dep in deps:
-                                if dep in import_graph and node in import_graph[dep]:
-                                    results.append(
-                                        {
-                                            "repo_path": graph_summary["repo_path"],
-                                            "cycle": [node, dep],
-                                            "type": "circular_import",
-                                        }
-                                    )
-
+                        results.extend(_analyze_circular_imports(graph_data, repo_label))
                     elif analysis_type == "patterns":
-                        # Find common import patterns
-                        import_counts: dict[str, int] = {}
-
-                        for node in iter_graph_nodes(graph_data):
-                            if node.get("type") == "import":
-                                imp = node.get("name", "")
-                                import_counts[imp] = import_counts.get(imp, 0) + 1
-
-                        for imp, count in sorted(
-                            import_counts.items(),
-                            key=operator.itemgetter(1),
-                            reverse=True,
-                        )[:10]:
-                            results.append(
-                                {
-                                    "repo_path": graph_summary["repo_path"],
-                                    "import": imp,
-                                    "count": count,
-                                    "type": "import_pattern",
-                                }
-                            )
-
+                        results.extend(_analyze_import_patterns(graph_data, repo_label))
             return {
                 "status": "success",
                 "analysis_type": analysis_type,
