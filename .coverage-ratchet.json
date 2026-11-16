@@ -26,14 +26,14 @@
       ]
     }
   ],
-  "last_updated": "2026-11-16T16:58:55.752760+00:00",
+  "last_updated": "2026-11-16T19:16:15.621853+00:00",
   "milestones_achieved": [
     89.0,
     90.0
   ],
   "next_milestone": 95,
   "target": 100.0,
-  "generated_at": "2026-11-16T16:58:55.753252+00:00",
+  "generated_at": "2026-11-16T19:16:15.622477+00:00",
   "coverage_data_path": "/Users/les/Projects/akosha/coverage.json",
-  "coverage_data_mtime": 1794848315.137344
+  "coverage_data_mtime": 1794856429.6392648
 }
