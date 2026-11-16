@@ -113,7 +113,11 @@ REGISTRATION_TOOLS: dict[str, list[str]] = {
         "pycharm_health",
     ],
     "register_otel_query_tools": ["query_local_traces"],
-    "register_otel_span_tools": ["akosha_search_spans", "akosha_spans_summary", "akosha_force_retention_sweep"],
+    "register_otel_span_tools": [
+        "akosha_search_spans",
+        "akosha_spans_summary",
+        "akosha_force_retention_sweep",
+    ],
     "register_fitness_tools": [
         "akosha_run_fitness_analysis",
         "akosha_get_fitness_analyzer_status",
