@@ -33,8 +33,7 @@ Invoke this agent when the user asks:
 
 The query is a natural-language question. Your workflow:
 
-1. Call `mcp__akosha__akosha_search_all_systems(query=<text>, limit=10,
-   threshold=0.7)` to retrieve the top semantic matches.
+1. Call `mcp__akosha__akosha_search_all_systems(query=<text>, limit=10, threshold=0.7)` to retrieve the top semantic matches.
 2. If the query is about time-series / metrics, also call
    `mcp__akosha__akosha_detect_anomalies` for statistical outliers.
 3. If the query needs graph traversal (e.g. "what depends on X?"),

@@ -37,11 +37,9 @@ or a threshold ("failure rate > 5%"). Your workflow:
 2. For single-component anomaly queries: call
    `mcp__akosha__akosha_detect_anomalies(system_id=<id>, window=<h>)`.
 3. For cross-component correlation: call
-   `mcp__akosha__akosha_correlate_systems(metric=<name>,
-   window=<h>)` — returns a Pearson correlation matrix.
+   `mcp__akosha__akosha_correlate_systems(metric=<name>, window=<h>)` — returns a Pearson correlation matrix.
 4. For trend decomposition: call
-   `mcp__akosha__akosha_analyze_trends(system_id=<id>,
-   metric=<name>, window=<h>)` — returns trend / seasonal / residual.
+   `mcp__akosha__akosha_analyze_trends(system_id=<id>, metric=<name>, window=<h>)` — returns trend / seasonal / residual.
 5. If the user is asking about ROUTING fitness specifically
    (failure_rate, p99 latency per task class), call
    `mcp__akosha__akosha_run_fitness_analysis` instead — that's the

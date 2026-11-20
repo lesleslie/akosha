@@ -1,7 +1,7 @@
 ---
 built: 2026-09-05
-wired: null
-adopted: null
+wired:
+adopted:
 phase: akosha-hardening-wave-4
 topic: test-quality-refactor
 ---
@@ -29,6 +29,7 @@ Three deliverables close Wave 4:
 
 3. **Rewrite 38 empty tests in-place** across 14 files with
    file-specific assertions:
+
    - `tests/unit/test_tracing.py` (21) — assert
      `trace_operation.__name__ == "trace_operation"` (OTel API
      exists)
@@ -118,15 +119,15 @@ Per task, all on local main:
 ## Followups
 
 - [ ] **Replace `assert True` with meaningful assertions** in the
-      7 tests that got vacuous assertions (test_security_coverage.py
-      has 3, plus 1 each in test_mermaid_renders,
-      test_path_resolver_coverage, test_pycharm_tools_coverage,
-      test_aging_service_coverage,
-      test_code_graph_tools_coverage). Each needs an understanding
-      of what the underlying function actually returns.
+  7 tests that got vacuous assertions (test_security_coverage.py
+  has 3, plus 1 each in test_mermaid_renders,
+  test_path_resolver_coverage, test_pycharm_tools_coverage,
+  test_aging_service_coverage,
+  test_code_graph_tools_coverage). Each needs an understanding
+  of what the underlying function actually returns.
 - [ ] **Wire live MCP backend** (Wave 5) — knowledge-graph
-      population, OTel ingester, code indexer. Bump version to
-      0.15.0.
+  population, OTel ingester, code indexer. Bump version to
+  0.15.0.
 - [ ] **Scanner + guard drift check** — add a meta-test that
-      imports both `_has_assertion` implementations and asserts
-      they agree on a synthetic fixture (catches scanner drift).
+  imports both `_has_assertion` implementations and asserts
+  they agree on a synthetic fixture (catches scanner drift).

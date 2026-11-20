@@ -1,7 +1,7 @@
 ---
 built: 2026-10-21
 wired: 2026-10-21
-adopted: null
+adopted:
 phase: bodai-otel-substrate-read-path
 topic: substrate-otel
 plan: docs/plans/2026-10-20-bodai-otel-substrate-read-path-implementation.md
@@ -29,8 +29,7 @@ Four things happen at this boundary that R-1 deliberately does not do:
    (v7 PR-A2, not built), so "not started" and "nothing matched" are the same
    observable state.
 3. **Bounded pages.** `limit` clamps to `[1, 500]`.
-4. **Cursor wire format.** The keyset cursor `(received_at_unix_nano,
-   span_id)` crosses MCP as `"<int>:<span_id>"`, split on the *first* colon —
+4. **Cursor wire format.** The keyset cursor `(received_at_unix_nano, span_id)` crosses MCP as `"<int>:<span_id>"`, split on the *first* colon —
    the integer side is colon-free, the `span_id` is opaque. A malformed cursor
    raises rather than degrading to page one, which would loop forever.
 

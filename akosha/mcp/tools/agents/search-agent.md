@@ -35,8 +35,7 @@ named or strongly implied. Your workflow:
    - "mahavishnu" / "orchestrator" → `mahavishnu`
    - "crackerjack" / "quality" / "linter" → `crackerjack`
    - "akosha" / "memory aggregator" → `akosha`
-2. Call `mcp__akosha__akosha_search_all_systems(query=<text>,
-   system_id=<id>, limit=10, threshold=0.7)`.
+2. Call `mcp__akosha__akosha_search_all_systems(query=<text>, system_id=<id>, limit=10, threshold=0.7)`.
 3. If no results above threshold, retry with `threshold=0.5` and warn
    the user about low-confidence matches.
 4. Return the top results with `system_id:conversation_id` citations.

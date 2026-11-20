@@ -1,7 +1,7 @@
 ---
 built: 2026-09-05
-wired: null
-adopted: null
+wired:
+adopted:
 phase: akosha-hardening-wave-1
 topic: critical-bugs-and-dependency-hygiene
 ---
@@ -38,8 +38,7 @@ the MCP backend wiring discipline in Akosha itself:
    `_trends`) used to return `{"status": "success", ...}` with TODO
    comments — operators couldn't distinguish "no results" from
    "command not implemented". Replaced with explicit
-   `{"status": "stub", "command": "<name>", "message": "...tracked
-   in feature-tracking..."}` envelopes.
+   `{"status": "stub", "command": "<name>", "message": "...tracked in feature-tracking..."}` envelopes.
 
 4. **T1-T5 — version-sync test fix**: pyproject.toml was at
    `0.14.3` but five canonical version stamps (and six test
@@ -153,24 +152,24 @@ Per task, all on local main (no PRs per bodai-pre-1.0-merge-policy):
 ## Followups
 
 - [ ] Wave 5 (`tasks: 5.1-5.5` in the impl plan) — wire the live
-      MCP backend: knowledge-graph population, OTel ingester,
-      code indexer, version bump to 0.15.0. Each new tool
-      registration must include the four per-feed observability
-      metrics from `mcp-backend-wiring-discipline.md` §3, and
-      the lifespan must register probes so `/health` returns
-      200 once feeds are actually producing.
+  MCP backend: knowledge-graph population, OTel ingester,
+  code indexer, version bump to 0.15.0. Each new tool
+  registration must include the four per-feed observability
+  metrics from `mcp-backend-wiring-discipline.md` §3, and
+  the lifespan must register probes so `/health` returns
+  200 once feeds are actually producing.
 - [ ] The 382 empty no-assert tests across ~12 files (the other
-      audit deliverable) are Wave 4 territory — rewritten
-      in-place with `pytest.raises` / failure-path probes and
-      pinned by a self-guard (`test_no_empty_tests`).
+  audit deliverable) are Wave 4 territory — rewritten
+  in-place with `pytest.raises` / failure-path probes and
+  pinned by a self-guard (`test_no_empty_tests`).
 - [ ] Apply the same discipline to `akosha/mcp/tools/` — every
-      currently-registered tool should have a corresponding
-      `tests/integration/test_<tool>_e2e.py` that asserts
-      non-empty results, per discipline §2. (Deferred until
-      Wave 5 lands so the tool list stabilises.)
+  currently-registered tool should have a corresponding
+  `tests/integration/test_<tool>_e2e.py` that asserts
+  non-empty results, per discipline §2. (Deferred until
+  Wave 5 lands so the tool list stabilises.)
 - [ ] The 4-backends-in-1 design means a new `storage_backend` is
-      an additive change to the `Literal[...]` union. If we add
-      a fifth backend (e.g. S3-compatible MinIO), it should land
-      in one PR with one new test case in
-      `test_initialize_constructs_<backend>_adapter` to keep
-      the per-backend coverage pattern.
+  an additive change to the `Literal[...]` union. If we add
+  a fifth backend (e.g. S3-compatible MinIO), it should land
+  in one PR with one new test case in
+  `test_initialize_constructs_<backend>_adapter` to keep
+  the per-backend coverage pattern.

@@ -4,7 +4,7 @@ role: operations
 date: 2026-10-27
 last_reviewed: 2026-10-27
 topic: otel-retention
-superseded_by: null
+superseded_by:
 related_decisions:
   - mahavishnu/docs/specs/2026-10-19-bodai-substrate-otel-v7.md#114a-operator-interface-for-the-substrate-v9--rewritten-2026-10-27
 audited_by: []

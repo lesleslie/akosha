@@ -167,9 +167,7 @@ right reason, then make it pass.
 
 ### Task 2.9 — verification
 
-- [x] T2.9.1 `pytest tests/unit/storage/ tests/unit/test_cold_store.py
-  tests/unit/test_cold_store_security.py tests/unit/test_modes/
-  tests/unit/test_aging.py tests/unit/test_config.py` passes.
+- [x] T2.9.1 `pytest tests/unit/storage/ tests/unit/test_cold_store.py tests/unit/test_cold_store_security.py tests/unit/test_modes/ tests/unit/test_aging.py tests/unit/test_config.py` passes.
 - [x] T2.9.2 `python scripts/audit_orphans.py --root <akosha>` reports no
   orphan symbols from this work.
 - [x] T2.9.3 `ruff check` and `ruff format --check` are clean on the
@@ -208,13 +206,13 @@ right reason, then make it pass.
 ## Acceptance criteria
 
 - [x] A warm-tier row older than the threshold reaches the cold backend as
-      a Parquet batch under the configured prefix.
+  a Parquet batch under the configured prefix.
 - [x] The partition path is `system_id/YYYY/MM/DD`, taken from the
-      record's own timestamp.
+  record's own timestamp.
 - [x] The threshold is `cold.age_threshold_days`, default 90, overridable
-      per environment.
+  per environment.
 - [x] The hot→warm migration moves rows (the DuckDB JSON-column coercion
-      is fixed and covered by a real-DuckDB test).
+  is fixed and covered by a real-DuckDB test).
 - [x] `akosha_cold_store_size_bytes` is emitted, not just declared.
 - [x] The documentation no longer describes the cold tier as unwritten.
 - [x] The storage, mode and config test suites pass.

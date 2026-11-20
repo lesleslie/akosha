@@ -3,7 +3,7 @@ status: complete
 role: implementation
 date: 2026-09-05
 last_reviewed: 2026-09-05
-superseded_by: null
+superseded_by:
 blocks_on: []
 topic: convergence-control-plane
 ---
@@ -140,14 +140,15 @@ Of the last 100 commits, ~50% are "feature was incomplete when merged" fixes —
 2.3. **INT8 quantization correctness (H3).** Rewrite `akosha/storage/aging.py:291-309` `_quantize_embedding` to compute `scale = 127 / max(abs(values))`, clip values to [-127, 127], and persist `scale` alongside the quantized vector. Update `EmbeddingQuantizer` schema in `akosha/storage/models.py` (or wherever the metadata struct lives) to include the scale factor. Add round-trip tests that verify quantization → dequantization stays within `1/127` of the original.
 
 2.4. **Test files for 9 zero-coverage modules:**
-  - `tests/unit/processing/test_fitness_analyzer.py` (≥10 tests covering the per-(task_class, selector) signal computation)
-  - `tests/unit/mcp/test_client.py` (≥8 tests for the MCP client wrapper)
-  - `tests/unit/cli/commands/test_migrate.py` (≥8 tests covering real migration paths, distinct from `test_migrate_cli.py` which only exercises CliRunner flags)
-  - `tests/unit/mcp/tools/test_fitness_tools.py` (≥6 tests for the MCP-exposed sibling)
-  - `tests/unit/processing/test_deduplication.py` (≥8 tests for `MinHashService`)
-  - `tests/unit/mcp/tools/test_tool_registry.py` (≥6 tests for class internals)
-  - `tests/unit/observability/test_eventbridge_adapter.py` (≥4 tests with real assertions, replacing the existing 1-test no-op)
-  - `tests/unit/test_main_entrypoints.py` (smoke tests invoking `python -m akosha` and `python -m akosha.mcp` via subprocess; ≥4 tests)
+
+- `tests/unit/processing/test_fitness_analyzer.py` (≥10 tests covering the per-(task_class, selector) signal computation)
+- `tests/unit/mcp/test_client.py` (≥8 tests for the MCP client wrapper)
+- `tests/unit/cli/commands/test_migrate.py` (≥8 tests covering real migration paths, distinct from `test_migrate_cli.py` which only exercises CliRunner flags)
+- `tests/unit/mcp/tools/test_fitness_tools.py` (≥6 tests for the MCP-exposed sibling)
+- `tests/unit/processing/test_deduplication.py` (≥8 tests for `MinHashService`)
+- `tests/unit/mcp/tools/test_tool_registry.py` (≥6 tests for class internals)
+- `tests/unit/observability/test_eventbridge_adapter.py` (≥4 tests with real assertions, replacing the existing 1-test no-op)
+- `tests/unit/test_main_entrypoints.py` (smoke tests invoking `python -m akosha` and `python -m akosha.mcp` via subprocess; ≥4 tests)
 
 #### Phase 2 — Integration Contract
 
@@ -196,17 +197,19 @@ Of the last 100 commits, ~50% are "feature was incomplete when merged" fixes —
 4.1. **Identify all empty tests.** Re-run the audit's static AST scan (the `test_quality.py` script referenced in the audit) to produce a per-file inventory of empty tests. Group by domain: security, validation, tracing, eventbridge, schemas.
 
 4.2. **Rewrite empty tests in-place.** For each empty test, replace with one or more tests that:
-  - Include at least one `assert` or `pytest.raises(...)` statement.
-  - Probe a failure path (not the happy path).
-  - Have a docstring naming the invariant under test.
 
-  Focus domains (sorted by risk):
-  - `tests/test_security_coverage.py` — 18 empty of 132 tests → add 18+ failure-path tests (auth-bypass, malformed-token, expired-token, role-mismatch, etc.).
-  - `tests/test_prometheus_metrics_coverage.py` — 38 empty of 74 tests → add failure-path probes (missing labels, NaN values, malformed exposition format).
-  - `tests/test_validation_coverage.py` — 35 empty of 72 tests → add schema-rejection, missing-required-field, type-mismatch probes.
-  - `tests/unit/test_models_schemas.py` — 33 empty of 56 tests → add Pydantic v2 validator-failure probes.
-  - `tests/unit/test_tracing.py` — 21 empty of 48 tests → add OTel exporter-failure, span-drop, batch-overflow probes.
-  - Remaining ~237 empty tests across `tests/unit/test_validation.py`, `tests/unit/test_ingestion_validation.py`, `tests/unit/test_security_logging.py`, `tests/scripts/test_data_ingestion.py`, `tests/test_mermaid_renders.py`, `tests/unit/test_websocket_tls_config.py`, and others.
+- Include at least one `assert` or `pytest.raises(...)` statement.
+- Probe a failure path (not the happy path).
+- Have a docstring naming the invariant under test.
+
+Focus domains (sorted by risk):
+
+- `tests/test_security_coverage.py` — 18 empty of 132 tests → add 18+ failure-path tests (auth-bypass, malformed-token, expired-token, role-mismatch, etc.).
+- `tests/test_prometheus_metrics_coverage.py` — 38 empty of 74 tests → add failure-path probes (missing labels, NaN values, malformed exposition format).
+- `tests/test_validation_coverage.py` — 35 empty of 72 tests → add schema-rejection, missing-required-field, type-mismatch probes.
+- `tests/unit/test_models_schemas.py` — 33 empty of 56 tests → add Pydantic v2 validator-failure probes.
+- `tests/unit/test_tracing.py` — 21 empty of 48 tests → add OTel exporter-failure, span-drop, batch-overflow probes.
+- Remaining ~237 empty tests across `tests/unit/test_validation.py`, `tests/unit/test_ingestion_validation.py`, `tests/unit/test_security_logging.py`, `tests/scripts/test_data_ingestion.py`, `tests/test_mermaid_renders.py`, `tests/unit/test_websocket_tls_config.py`, and others.
 
 4.3. **Coverage-quality guard test.** Add `tests/unit/test_test_quality.py` that walks `tests/**/*.py`, parses each `def test_*` function, and asserts non-empty body + at least one assertion. CI fails if any empty test is added going forward.
 
@@ -416,6 +419,6 @@ It does **not** check `knowledge_graph.entities_count`, `hot_store.list_code_gra
 
 3. **`/health` probe must surface per-feed state.** Extend the default probe to check `kg_builder.entities_count`, `hot_store.list_code_graphs().length`, `hot_store.query_traces().length` (or the closest equivalent — `hot_store.query_traces` doesn't return all rows; use a `get_stats()` method if available). Return 503 if any feed is below a low-water mark for too long. This is what closes the `mcp-surface-health-illusion` failure mode.
 
----
+______________________________________________________________________
 
 *Spec drafted via brainstorming skill on 2026-09-05. Awaiting user review before transitioning to writing-plans skill.*

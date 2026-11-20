@@ -237,8 +237,8 @@ receivers:
 ### Method 1: Grafana UI
 
 1. Open Grafana at `http://localhost:3001` (default: admin/admin)
-1. Navigate to **Dashboards** → **Import**
-1. Upload JSON files from `monitoring/grafana/`
+2. Navigate to **Dashboards** → **Import**
+3. Upload JSON files from `monitoring/grafana/`
 
 ### Method 2: Provisioning (Docker)
 
@@ -311,13 +311,13 @@ curl -X POST \
    curl http://localhost:9090/api/v1/targets
    ```
 
-1. **Verify metrics are being exposed**:
+2. **Verify metrics are being exposed**:
 
    ```bash
    curl http://localhost:3002/metrics
    ```
 
-1. **Check Grafana data source**:
+3. **Check Grafana data source**:
 
    - Go to Configuration → Data Sources → Prometheus
    - Click "Test" to verify connection
@@ -330,13 +330,13 @@ curl -X POST \
    curl http://localhost:9090/api/v1/rules
    ```
 
-1. **Verify AlertManager connectivity**:
+2. **Verify AlertManager connectivity**:
 
    ```bash
    curl http://localhost:9093/api/v1/status
    ```
 
-1. **Check alert evaluation**:
+3. **Check alert evaluation**:
 
    - Go to Prometheus UI → Alerts
    - Verify alert state and evaluation time
@@ -346,19 +346,19 @@ curl -X POST \
 Prometheus can use significant memory with high cardinality metrics. Solutions:
 
 1. **Reduce metric cardinality** by limiting label values
-1. **Adjust retention** in `prometheus.yml`:
+2. **Adjust retention** in `prometheus.yml`:
    ```yaml
    --storage.tsdb.retention.time=15d
    ```
-1. **Add recording rules** to pre-aggregate data
+3. **Add recording rules** to pre-aggregate data
 
 ## Next Steps
 
 1. **Set up AlertManager**: Configure notification channels (Slack, PagerDuty, email)
-1. **Customize dashboards**: Add project-specific panels and queries
-1. **Tune alert thresholds**: Adjust for your environment's baselines
-1. **Add recording rules**: Create pre-aggregated metrics for better performance
-1. **Set up alert silences**: Configure maintenance windows
+2. **Customize dashboards**: Add project-specific panels and queries
+3. **Tune alert thresholds**: Adjust for your environment's baselines
+4. **Add recording rules**: Create pre-aggregated metrics for better performance
+5. **Set up alert silences**: Configure maintenance windows
 
 ## Additional Resources
 

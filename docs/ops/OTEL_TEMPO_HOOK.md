@@ -4,7 +4,7 @@ role: operations
 date: 2026-09-09
 last_reviewed: 2026-09-09
 topic: otel-tempo-hook
-superseded_by: null
+superseded_by:
 related_decisions:
   - mahavishnu/.claude/decisions/wire-up-contract.md
   - akosha/docs/plans/2026-09-09-akosha-otel-feed-recovery.md

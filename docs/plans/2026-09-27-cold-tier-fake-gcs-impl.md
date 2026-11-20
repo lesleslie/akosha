@@ -1261,8 +1261,8 @@ export AKOSHA__STORAGE__COLD__SECRET_ACCESS_KEY=<your-secret-access-key>
 R2 tokens don't auto-rotate. Periodically:
 
 1. Generate a new token in the Cloudflare dashboard.
-1. Update env vars / `local.yaml`.
-1. Revoke the old token in the Cloudflare dashboard.
+2. Update env vars / `local.yaml`.
+3. Revoke the old token in the Cloudflare dashboard.
 
 ## 3. Smoke-test recipe
 

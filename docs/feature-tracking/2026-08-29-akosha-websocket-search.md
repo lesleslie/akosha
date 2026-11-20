@@ -65,47 +65,47 @@ date so any future regression that removes the entry fails the gate.
 ## Followups
 
 - [x] Embedding dimension mismatch: the real `EmbeddingService` returns
-      768-dim vectors but the HotStore schema is `FLOAT[384]`. Production
-      inserts will fail unless someone pads, swaps the model, or migrates
-      the schema. **Resolved** by
-      `docs/plans/2026-08-29-embedding-dim-fix.md` (Phase 1-4 shipped
-      2026-08-29): schema dim is now a constructor param, resolved via
-      `akosha.processing.embedding_dim.resolve_embedding_dim`; insert()
-      and search_similar() raise `ValueError` on dim mismatch (fail-loud);
-      `AkoshaApplication.start()` initialises the embedding service before
-      constructing the HotStore. Pinning tests:
-      `tests/unit/processing/test_embedding_dim.py` (7 cases),
-      `tests/unit/storage/test_hot_store_dim_validation.py` (8 cases),
-      `tests/test_embedding_dim_match.py` (2 cases),
-      `tests/unit/ingestion/test_websocket_invocations_subscriber.py`
-      (`TestSubscriberRespectsBackendDim`).
+  768-dim vectors but the HotStore schema is `FLOAT[384]`. Production
+  inserts will fail unless someone pads, swaps the model, or migrates
+  the schema. **Resolved** by
+  `docs/plans/2026-08-29-embedding-dim-fix.md` (Phase 1-4 shipped
+  2026-08-29): schema dim is now a constructor param, resolved via
+  `akosha.processing.embedding_dim.resolve_embedding_dim`; insert()
+  and search_similar() raise `ValueError` on dim mismatch (fail-loud);
+  `AkoshaApplication.start()` initialises the embedding service before
+  constructing the HotStore. Pinning tests:
+  `tests/unit/processing/test_embedding_dim.py` (7 cases),
+  `tests/unit/storage/test_hot_store_dim_validation.py` (8 cases),
+  `tests/test_embedding_dim_match.py` (2 cases),
+  `tests/unit/ingestion/test_websocket_invocations_subscriber.py`
+  (`TestSubscriberRespectsBackendDim`).
 - [ ] HotStore defaults to in-memory DuckDB; production deployments
-      will lose indexed rows on restart. Future plan: file-backed DuckDB
-      or pgvector-backed store. **Resolved** by Followup 2 (pgvector as
-      production default) below — `settings/akosha.yaml:hot_store.backend`
-      now accepts `pgvector`, `AkoshaApplication.start()` threads
-      `backend + pg_url` into `create_hot_store()`, and the
-      `PgvectorHotStore` class (already complete from prior work)
-      becomes the production path. Plan:
-      `/Users/les/Projects/mahavishnu/.claude/worktrees/cleanup-v2-plan-finalization/docs/plans/2026-08-29-pgvector-default.md`.
-      See **Serverless deployment notes** below for the operator
-      walkthrough.
+  will lose indexed rows on restart. Future plan: file-backed DuckDB
+  or pgvector-backed store. **Resolved** by Followup 2 (pgvector as
+  production default) below — `settings/akosha.yaml:hot_store.backend`
+  now accepts `pgvector`, `AkoshaApplication.start()` threads
+  `backend + pg_url` into `create_hot_store()`, and the
+  `PgvectorHotStore` class (already complete from prior work)
+  becomes the production path. Plan:
+  `/Users/les/Projects/mahavishnu/.claude/worktrees/cleanup-v2-plan-finalization/docs/plans/2026-08-29-pgvector-default.md`.
+  See **Serverless deployment notes** below for the operator
+  walkthrough.
 - [ ] Sub-plan B's subscriber polls every 5s by default. Push-based
-      subscriptions would be lower-latency but require new
-      infrastructure that doesn't exist yet. **Resolved** by Followup 3
-      (push subscriber) below — `BodaiToolInvocationSubscriber` consumes
-      the `bodai:events` Redis stream filtered to
-      `topic="websocket_tool_invocation"` so rows reach HotStore in
-      milliseconds. Plan: `/Users/les/Projects/mahavishnu/.claude/worktrees/cleanup-v2-plan-finalization/docs/plans/2026-08-29-push-subscriber.md`.
+  subscriptions would be lower-latency but require new
+  infrastructure that doesn't exist yet. **Resolved** by Followup 3
+  (push subscriber) below — `BodaiToolInvocationSubscriber` consumes
+  the `bodai:events` Redis stream filtered to
+  `topic="websocket_tool_invocation"` so rows reach HotStore in
+  milliseconds. Plan: `/Users/les/Projects/mahavishnu/.claude/worktrees/cleanup-v2-plan-finalization/docs/plans/2026-08-29-push-subscriber.md`.
 - [ ] The subscriber had no production handle threaded through
-      `main.py`, so it no-opped in production. **Resolved** by
-      Followup 4 — the subscriber now calls the upstream MCP
-      `list_prefix` tool via a dedicated HTTP client, threaded
-      into `akosha/main.py:start()`.
+  `main.py`, so it no-opped in production. **Resolved** by
+  Followup 4 — the subscriber now calls the upstream MCP
+  `list_prefix` tool via a dedicated HTTP client, threaded
+  into `akosha/main.py:start()`.
 - [ ] `search_all_systems` always queries `system_id="mahavishnu"` —
-      the user-supplied `system_id` is intentionally ignored. This is
-      correct for the websocket-invocations corpus but the contract
-      should be documented more visibly in the tool docstring.
+  the user-supplied `system_id` is intentionally ignored. This is
+  correct for the websocket-invocations corpus but the contract
+  should be documented more visibly in the tool docstring.
 
 ## Followup 3 (push subscriber) — resolved 2026-08-29
 

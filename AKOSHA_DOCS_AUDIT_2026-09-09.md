@@ -30,13 +30,13 @@ under `/Users/les/Projects/akosha/`. Akosha v0.15.1 is the Bodai ecosystem's
 (2) tool-name hallucination in README/profiles.py, (3) hardening waves W1–W5
 (2026-09-05) never propagated to user-facing docs.
 
----
+______________________________________________________________________
 
 ## 1. Cross-Cutting Findings (verified by 2+ agents — high confidence)
 
 | Pattern | Caught by | Sites affected |
 |---|---|---|
-| **Port drift** (3002/8000 → 8682) | ecosystem F1/F2/F26, API F5/F6, runbooks H-2/M-4/L-4 | `settings/akosha.yaml:37`, `QUICKSTART.md:105,108`, `DEPLOYMENT_GUIDE.md:218,222`, `PHASE_3_PRODUCTION_HARDENING.md:505`, `akosha/CLAUDE.md:314,324,327`, `README.md:104,107,356`, `OPERATIONAL_MODES_QUICK_START.md` (AWS_S3_*) |
+| **Port drift** (3002/8000 → 8682) | ecosystem F1/F2/F26, API F5/F6, runbooks H-2/M-4/L-4 | `settings/akosha.yaml:37`, `QUICKSTART.md:105,108`, `DEPLOYMENT_GUIDE.md:218,222`, `PHASE_3_PRODUCTION_HARDENING.md:505`, `akosha/CLAUDE.md:314,324,327`, `README.md:104,107,356`, `OPERATIONAL_MODES_QUICK_START.md` (AWS_S3\_\*) |
 | **`akosha/cache/layered_cache.py` referenced but deleted** | ecosystem F6, architecture (Class A) | `docs/ARCHITECTURE.md:306, 548` |
 | **Hardening waves W1–W5 not reflected in user docs** | ecosystem F14, architecture (Class G/H) | `README.md` still shows Phase 1–3 ✅ Phase 4 unchecked; `USER_GUIDE.md` no wave mentions; `CURRENT_STATUS.md` last touched 2026-07-17 |
 | **ARCHITECTURE.md version stamp (0.3.0) vs pyproject (0.15.1)** | ecosystem F3/F15, architecture | `docs/ARCHITECTURE.md:7-9`; date `2025-02-08` vs frontmatter `2026-07-16` |
@@ -49,7 +49,7 @@ under `/Users/les/Projects/akosha/`. Akosha v0.15.1 is the Bodai ecosystem's
 - `docs-audit-cross-component-port-drift.md` — "each Bodai repo owns its port table" → confirmed (3002/8000/8682 internal drift)
 - `crackerjack-cli-run-subcommand.md` — canonical `crackerjack run` not `crackerjack test` → confirmed in `akosha/CLAUDE.md:418,445`
 
----
+______________________________________________________________________
 
 ## 2. Severity-Ranked Findings
 
@@ -153,7 +153,7 @@ under `/Users/les/Projects/akosha/`. Akosha v0.15.1 is the Bodai ecosystem's
 - Hardcoded `--port 8000` in `README.md:356`
 - `pytrendy>=0.2` dep — no docs cover it
 
----
+______________________________________________________________________
 
 ## 3. Affected Files Heat Map
 
@@ -175,26 +175,30 @@ under `/Users/les/Projects/akosha/`. Akosha v0.15.1 is the Bodai ecosystem's
 | `docs/CURRENT_STATUS.md` | 1 (54 days old, version 0.3.0) | rot |
 | `settings/akosha.yaml` | 1 (`mcp_port: 3002`) | config drift |
 
----
+______________________________________________________________________
 
 ## 4. Recommended Fix Clusters (sequenced)
 
 ### Cluster 1: Port standardization (one search/replace)
+
 Replace `8000` / `3002` → `8682` across `settings/akosha.yaml:37`,
 `QUICKSTART.md:105,108`, `DEPLOYMENT_GUIDE.md:218,222`,
 `PHASE_3_PRODUCTION_HARDENING.md:505`, `akosha/CLAUDE.md:314,324,327`,
 `README.md:104,107,356`. **Resolves ~10 findings across 3 audit lenses.**
 
 ### Cluster 2: Hallucinated tool names (mechanical rename)
+
 Update `README.md:419-420,424-428` and `profiles.py:55,82-92` to actual
 registered names. **Resolves 2 HIGH findings (MCP F1, F2).**
 
 ### Cluster 3: ARCHITECTURE.md full rewrite
+
 One doc, 7+ drift points (version stamp, config paths, cache module,
 tool count, env vars, date, hot tier). High leverage — single PR closes
 many findings.
 
 ### Cluster 4: Delete or rewrite fabricated docs
+
 - `docs/runbooks/MILVUS_FAILURE.md` → delete (no Milvus exists) or replace
   with DuckDB/pgvector failover runbook
 - `docs/IMPLEMENTATION_GUIDE.md:621-710` → delete (file it describes doesn't exist)
@@ -204,15 +208,17 @@ many findings.
 - 3 stub runbooks → either author recovery steps or set `status: draft`
 
 ### Cluster 5: Hardening wave propagation
+
 Add "Recent hardening (2026-09-05)" section to `README.md` and brief note in
 `USER_GUIDE.md`. Update `CURRENT_STATUS.md` against v0.15.1 reality.
 
 ### Cluster 6: `/health` contract documentation
+
 Document the real response shape (probe-driven aggregate + 503 on degraded) in
 `docs/IMPLEMENTATION_GUIDE.md:674-677` and `docs/ARCHITECTURE.md:475-479`. This
 is the contract that the 2026-09-05 hardening waves formalized.
 
----
+______________________________________________________________________
 
 ## 5. Open Questions / False Premises
 
@@ -234,7 +240,7 @@ is the contract that the 2026-09-05 hardening waves formalized.
    `profiles.py` REGISTRATION_TOOLS still misses 5 tools. Re-verification
    recommended after Cluster 2 fix.
 
----
+______________________________________________________________________
 
 ## 6. Total Findings by Audit
 
@@ -247,7 +253,7 @@ is the contract that the 2026-09-05 hardening waves formalized.
 | Runbooks & ops | 20 | 9 | 7 | 4 |
 | **Total** | **~91** | **~31** | **~34** | **~26** |
 
----
+______________________________________________________________________
 
 **Memory update recommendation**: after Cluster 1 lands, refresh
 `docs-audit-cross-component-port-drift.md` to record the standardized 8682.

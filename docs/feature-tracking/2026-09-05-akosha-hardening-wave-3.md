@@ -1,7 +1,7 @@
 ---
 built: 2026-09-05
-wired: null
-adopted: null
+wired:
+adopted:
 phase: akosha-hardening-wave-3
 topic: medium-bugs-and-coverage-ratchet
 ---
@@ -82,13 +82,14 @@ New + modified test files:
 | `tests/unit/ingestion/test_orchestrator_health.py` (new) | 8 | ping success, ping ConnectionError → degraded, KeyboardInterrupt propagates, no client, missing ping method, fallback mode, timestamp, last_mahavishnu_contact backwards compat |
 | `tests/unit/test_health_consistency.py` (new) | 5 | CLI degraded on config failure, HTTP 503 on probe failure, status field parity, no-probe default 503, no CLI module dependency |
 | `tests/unit/test_cold_store.py` (existing) | +5 tests | close() no-cleanup-attr path, upload failure path, write_parquet failure path |
-| Storage HTTP client (since removed) | +12 tests | lifecycle (_ensure_client reuse), parse tolerance (empty content, malformed JSON, non-list parsed, missing items), HTTP 500 paths |
-| `tests/unit/processing/test_fitness_analyzer.py` (existing) | +10 tests | trace fetch fail-soft, external write, DLQ happy/requeue/DLQ-after-3/CB, _run_loop with sub-second poll |
+| Storage HTTP client (since removed) | +12 tests | lifecycle (\_ensure_client reuse), parse tolerance (empty content, malformed JSON, non-list parsed, missing items), HTTP 500 paths |
+| `tests/unit/processing/test_fitness_analyzer.py` (existing) | +10 tests | trace fetch fail-soft, external write, DLQ happy/requeue/DLQ-after-3/CB, \_run_loop with sub-second poll |
 | `tests/unit/processing/test_embedding_dim.py` (existing) | +5 tests | dimension() raises → attribute fallback; non-int return; backend_name() raises |
 | `tests/test_aging_service_coverage.py` (existing) | flipped 1 | test_basic_quantization now asserts max-abs-normalized output |
 
 Three pre-existing tests were updated to match the post-Wave-2
 contract (the original assertions locked in the old audit bugs):
+
 - `tests/unit/test_cli.py::test_version_unknown_when_metadata_lookup_fails`
   → flipped to assert non-zero exit (M2 bug)
 - `tests/test_code_graph_tools_coverage.py::test_exception_returns_zero`
@@ -158,21 +159,20 @@ Per task, all on local main (no PRs per bodai-pre-1.0-merge-policy):
 
 ## Followups
 
-- [ ] **90% coverage milestone** (per `.coverage-ratchet.json
-      next_milestone`) — close the remaining 0.90% gap:
-      - `pgvector_hot_store.py` needs integration test infra
-      - `bodai_event_subscriber.py` needs fakeredis or live redis
-      - `main.py` needs AkoshaApplication lifecycle test
-      - `group_registers.py` needs careful mock setup
+- [ ] **90% coverage milestone** (per `.coverage-ratchet.json     next_milestone`) — close the remaining 0.90% gap:
+  \- `pgvector_hot_store.py` needs integration test infra
+  \- `bodai_event_subscriber.py` needs fakeredis or live redis
+  \- `main.py` needs AkoshaApplication lifecycle test
+  \- `group_registers.py` needs careful mock setup
 - [ ] **datasketch>=2.0.0 floor** — break the 1.x compat (not a
-      blocker since this repo only ships 2.0).
+  blocker since this repo only ships 2.0).
 - [ ] **`asyncio.iscoroutinefunction` deprecation** —
-      `akosha/mcp/tools/tool_registry.py:54` should switch to
-      `inspect.iscoroutinefunction()` before Python 3.16.
+  `akosha/mcp/tools/tool_registry.py:54` should switch to
+  `inspect.iscoroutinefunction()` before Python 3.16.
 - [ ] **`FitnessSignal` default `score=0.0`** — flip to 1.0 when
-      `samples == 0` so an empty corpus reads as "neutral" not
-      "100% failed."
+  `samples == 0` so an empty corpus reads as "neutral" not
+  "100% failed."
 - [ ] **Wire live MCP backend** (Wave 5) — knowledge-graph
-      population, OTel ingester, code indexer. Each new tool
-      registration must include the four per-feed observability
-      metrics from `mcp-backend-wiring-discipline.md` §3.
+  population, OTel ingester, code indexer. Each new tool
+  registration must include the four per-feed observability
+  metrics from `mcp-backend-wiring-discipline.md` §3.

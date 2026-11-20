@@ -3,7 +3,7 @@ status: draft
 role: implementation
 date: 2026-09-05
 last_reviewed: 2026-09-05
-superseded_by: null
+superseded_by:
 blocks_on:
   - docs/specs/2026-09-05-akosha-hardening-design.md
 topic: convergence-control-plane
@@ -31,7 +31,7 @@ topic: convergence-control-plane
 - Each wave ends with: (a) wave-end commit, (b) `docs/feature-tracking/2026-09-05-akosha-hardening.md` entry marked with the wave's `built` date.
 - Use `git -c user.email='les@wedgwoodwebworks.com' -c user.name='les'` for all commits (per `git-author-email-correct-domain.md` memory).
 
----
+______________________________________________________________________
 
 ## File Structure
 
@@ -66,7 +66,7 @@ topic: convergence-control-plane
 
 Files changing together: `pyproject.toml` and `akosha/__init__.py:__version__` both define the version (pinned in sync); `akosha/main.py` boot hooks depend on `akosha/storage/cold_store.py:initialize()` existing; `akosha/cli.py:_health_probe` is the single source of truth consumed by both CLI and HTTP `/health` route.
 
----
+______________________________________________________________________
 
 # Wave 1 — P0 Critical Bugs + Broken Tests + Dependency Hygiene
 
@@ -98,7 +98,9 @@ Expected: `0.20.0` or higher (per `pyproject.toml:dependencies`).
 **Interfaces:**
 
 - Consumes: `oneiric.storage.S3StorageAdapter` (verified in Task 1.1).
+
 - Produces:
+
   ```python
   class ColdStore:
       def __init__(
@@ -325,7 +327,9 @@ in test_cold_store.py cover local write + adapter construction + close."
 **Interfaces:**
 
 - Consumes: `AkoshaApplication._check_dependency_health()` (new method on existing class).
+
 - Produces:
+
   ```python
   # akosha/mcp/server.py
   async def health_check(request: Any) -> JSONResponse: ...  # 200 if healthy, 503 if degraded
@@ -571,6 +575,7 @@ Replace with explicit 'stub' status + feature-tracking pointer."
 **Interfaces:**
 
 - Consumes: current `pyproject.toml [project] version`, current `akosha/__init__.py:__version__`.
+
 - Produces: tests pass; `pyproject.toml` declares `aiohttp>=3.12.14`.
 
 - [ ] **Step 1: Diagnose version drift**
@@ -662,13 +667,15 @@ test pinning pyproject.toml and akosha.__init__.__version__ in sync."
 **Files:**
 
 - Create: `docs/feature-tracking/2026-09-05-akosha-hardening.md`
+
 - Modify: `pyproject.toml` (bump version 0.14.3 → 0.14.4 for Wave 1)
+
 - Modify: `akosha/__init__.py:__version__`
 
 - [ ] **Step 1: Run audit-orphans.py**
 
 Run: `cd /Users/les/Projects/akosha && .venv/bin/python scripts/audit_orphans.py 2>&1 | tail -30`
-Expected: zero reports of Wave 1 symbols being unused (ColdStore.initialize/close, _check_dependency_health, stub shell commands, _check_dependency_health on AkoshaApplication).
+Expected: zero reports of Wave 1 symbols being unused (ColdStore.initialize/close, \_check_dependency_health, stub shell commands, \_check_dependency_health on AkoshaApplication).
 
 - [ ] **Step 2: Bump version to 0.14.4**
 
@@ -730,7 +737,7 @@ cd /Users/les/Projects/akosha && git -c user.email='les@wedgwoodwebworks.com' -c
 git -c user.email='les@wedgwoodwebworks.com' -c user.name='les' commit -m "chore(akosha): bump to 0.14.4 + wave-1 feature-tracking entry"
 ```
 
----
+______________________________________________________________________
 
 # Wave 2 — P1 High Bugs + Zero-Coverage Module Tests
 
@@ -833,6 +840,7 @@ Removes the silent-suppression of refactor-cluster signals."
 **Interfaces:**
 
 - Produces:
+
   ```python
   class DeduplicationService:
       def __init__(
@@ -981,6 +989,7 @@ MinHash (default) with SHA-256 fallback. add datasketch>=0.6.0 dep."
 **Interfaces:**
 
 - Produces:
+
   ```python
   class QuantizedVector(NamedTuple):
       values: list[int]  # in [-127, 127]
@@ -1254,7 +1263,7 @@ cd /Users/les/Projects/akosha && git -c user.email='les@wedgwoodwebworks.com' -c
 git -c user.email='les@wedgwoodwebworks.com' -c user.name='les' commit -m "chore(akosha): wave-2 done — bump to 0.14.5 + feature-tracking update"
 ```
 
----
+______________________________________________________________________
 
 # Wave 3 — P2 Medium Bugs + Coverage to 90%
 
@@ -1442,6 +1451,7 @@ Now actively pings the mahavishnu client and reports 'degraded' on failure."
 **Files:**
 
 - Modify: `akosha/mcp/server.py:419-432` (already uses `_check_dependency_health` after Task 1.3; verify both surfaces return identical shape)
+
 - Test: `tests/unit/test_health_consistency.py` (new)
 
 - [ ] **Step 1: Write parity test**
@@ -1535,6 +1545,7 @@ Expected: bottom-15 modules with their missing line ranges.
 - [ ] **Step 2: For each module below 80%, write tests targeting the missing lines**
 
 Modules to focus on (from the audit):
+
 - `akosha/main.py` (66%) — tests for `AkoshaApplication.start()` lifecycle paths
 - `akosha/ingestion/bodai_event_subscriber.py` (68%) — reconnect/backoff paths
 - `akosha/tools/mermaid_validator/renderer.py` (69%) — failure cases
@@ -1596,7 +1607,7 @@ cd /Users/les/Projects/akosha && git -c user.email='les@wedgwoodwebworks.com' -c
 git -c user.email='les@wedgwoodwebworks.com' -c user.name='les' commit -m "chore(akosha): wave-3 done — bump to 0.14.6 + 90% coverage milestone"
 ```
 
----
+______________________________________________________________________
 
 # Wave 4 — Test Quality Refactor
 
@@ -1605,6 +1616,7 @@ git -c user.email='les@wedgwoodwebworks.com' -c user.name='les' commit -m "chore
 **Files:**
 
 - Create: `scripts/audit_empty_tests.py` (reusable in CI)
+
 - Output: `tests/.empty_tests_inventory.json`
 
 - [ ] **Step 1: Write the AST scanner**
@@ -1808,7 +1820,7 @@ cd /Users/les/Projects/akosha && git -c user.email='les@wedgwoodwebworks.com' -c
 git -c user.email='les@wedgwoodwebworks.com' -c user.name='les' commit -m "chore(akosha): wave-4 done — bump to 0.14.7 + 382 empty tests rewritten"
 ```
 
----
+______________________________________________________________________
 
 # Wave 5 — Live MCP Backend Wiring + 0.15.0
 

@@ -61,7 +61,7 @@ The tool returns:
 ```
 
 - `anomaly_count`: how many points exceeded the threshold.
-- `anomaly_rate`: `anomaly_count / total_points`. <5% is typical.
+- `anomaly_rate`: `anomaly_count / total_points`. \<5% is typical.
 - `anomalies`: up to 10 of the worst offenders with their `z_score`.
 - `z_score`: how many standard deviations from the mean. >5 is
   usually a structural break, not noise.

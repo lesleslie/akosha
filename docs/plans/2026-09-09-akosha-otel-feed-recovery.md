@@ -3,10 +3,10 @@ status: draft
 role: implementation
 date: 2026-09-09
 last_reviewed: 2026-09-09
-superseded_by: null
+superseded_by:
 topic: akosha-otel-feed-recovery
 plan_kind: repair
-replaces: null
+replaces:
 related_decisions:
   - mahavishnu/.claude/decisions/wire-up-contract.md
   - mahavishnu/.claude/decisions/mcp-backend-wiring-discipline.md
@@ -103,11 +103,13 @@ requirements:
 **Goal:** Give the local Grafana Alloy collector a real trace pipeline so `POST /v1/traces` is accepted end-to-end instead of being dropped at the receiver.
 
 **Tasks:**
+
 - Edit `/usr/local/etc/grafana-alloy/config.alloy`: add `otelcol.exporter.debug "cli_tools_traces"` and `otelcol.processor.batch "cli_tools_traces"`, and re-route the OTLP receiver's `traces` output through the batch to the debug exporter. The existing metrics pipeline is preserved unchanged.
 - Validate with `alloy fmt` and a `brew services restart grafana-alloy` (or `launchctl kickstart -k gui/501/homebrew.mxcl.grafana-alloy`).
 - Smoke-test with `curl -X POST http://127.0.0.1:4318/v1/traces -H 'Content-Type: application/json' -d '{"resourceSpans":[]}'` (expect 200) and a real one-span envelope (expect 200 and the span name visible in `alloy` logs via the debug exporter).
 
 **Exit criteria:**
+
 - `curl POST /v1/traces` returns HTTP 200 for both empty and non-empty envelopes.
 - A real one-span envelope appears in the Alloy log via the debug exporter within 5 seconds.
 - `python scripts/audit_orphans.py` (run in Phase 3 verification, but Phase 1 must not introduce new orphans) does not flag the new exporter or batch processor as zero-caller.
@@ -125,12 +127,14 @@ requirements:
 **Goal:** Fix the spec-violating `GET` in `_fetch_spans` so the ingester speaks real OTLP/HTTP to the local collector.
 
 **Tasks:**
+
 - Edit `akosha/ingestion/otel_ingester.py::_fetch_spans` to issue a `POST` with body `{"resourceSpans": []}` and `Content-Type: application/json`. Keep the `since_unix_nano` parameter for log/observability only — server-side filtering is not implemented at the collector.
 - Add a `logger.info("OTel fetch method=POST path=%s status=%s bytes=%s", ...)` per poll cycle.
 - Add `logger.warning("OTel fetch returned status=%s; treating as empty", ...)` and increment `_errors_total` for 404/405/415 responses.
 - Add unit tests in `tests/unit/test_otel_trace_ingester.py` covering: (a) uses POST not GET (assert `.get` raises and `.post` is awaited), (b) unwraps a `resourceSpans` payload, (c) 404 returns empty + increments counter, (d) 5xx raises. (REQs: REQ-001, REQ-003, REQ-004)
 
 **Exit criteria:**
+
 - `pytest tests/unit/test_otel_trace_ingester.py -v` shows 4/4 pass.
 - The full `pytest tests/akosha` suite remains green.
 
@@ -147,6 +151,7 @@ requirements:
 **Goal:** Stop the formula from reporting `ok=false` when the OTel producer is alive but no spans have been ingested yet (because no real client has exported spans into Alloy yet).
 
 **Tasks:**
+
 - Capture a pre-change snapshot of `_build_health_payload` (or equivalent; the assembled `/health` body) into a JSON file in `tests/fixtures/health_snapshot_pre_otel_recovery.json`. (REQs: REQ-006, REQ-007)
 - Edit `akosha/mcp/server.py` `local_traces_ok` calculation. New shape: `local_traces_ok = (otel_disabled) or (local_traces_count > 0) or (not any_producer_ever_cycled) or (not any_producer_alive)`. This is functionally the existing formula with one addition: when `AKOSHA_SKIP_OTEL_INGESTER=1` is set, `otel_disabled=True` short-circuits the gate. The existing `AKOSHA_SKIP_OTEL_INGESTER` env var continues to do the gating — no new env var. (REQs: REQ-005, REQ-007)
 - Add a `feed_populated: bool` field to the `local_traces_feed` payload that is `local_traces_count > 0`. Operators can grep for `"feed_populated": false` to find steady-state-but-not-broken deployments. (REQs: REQ-005)
@@ -157,6 +162,7 @@ requirements:
 - Run `pytest tests/akosha` and confirm no regression.
 
 **Exit criteria:**
+
 - Parity test green.
 - `pytest tests/akosha` fully green.
 - `python scripts/audit_orphans.py` (from `akosha/`) reports no new zero-caller symbols.
@@ -176,6 +182,7 @@ requirements:
 **This phase is separated because it touches `~/Library/LaunchAgents/com.mcp.akosha.plist` and a long-running supervisor. The user must explicitly approve this phase before it runs.**
 
 **Tasks:**
+
 - Backup the existing plist: `cp ~/Library/LaunchAgents/com.mcp.akosha.plist ~/Library/LaunchAgents/com.mcp.akosha.plist.bak-pre-phase4-2026-09-09`.
 - Show the user a unified diff of the plist changes for approval. Two changes only:
   - Add `<key>EnvironmentVariables</key><dict><key>PYTHONUNBUFFERED</key><string>1</string></dict>` (or merge with existing `EnvironmentVariables` if any).
@@ -186,6 +193,7 @@ requirements:
 - Wait up to 60s and poll `/health`. Verify HTTP 200. If 503 persists, run `tail -n 200 /Users/les/.local/state/mcp/logs/akosha.err` to determine whether the new code path has a bug, or whether the wrapper timed out before the lifespan published the OTel ingester.
 
 **Exit criteria:**
+
 - Plist diff approved by user before apply.
 - `/health` returns HTTP 200 for 10 consecutive minutes under launchd supervision.
 - `mcp__akosha__get_liveness` returns `ok`.
@@ -204,11 +212,13 @@ requirements:
 **Goal:** Document the Tempo hook for whoever wires a real OTel backend in the future.
 
 **Tasks:**
+
 - Create `akosha/docs/ops/OTEL_TEMPO_HOOK.md` describing: (1) the current `otelcol.exporter.debug` block is a placeholder, (2) the operator steps to install Tempo (Docker, native binary), (3) the River config snippet to replace the debug exporter with `otelcol.exporter.otlp` to Tempo, (4) the verification curl.
 - Add a `docs/feature-tracking/2026-09-09-otel-feed-recovery.md` entry per `docs/feature-tracking/TEMPLATE.md`, tracking state `{built: true, wired: pending_phase4, adopted: false}`.
 - Persist a one-line state summary via `mcp__session-buddy__session_buddy_store_reflection` with tags `["feature-tracking", "akosha-otel-feed-recovery", "wire-up-state"]`.
 
 **Exit criteria:**
+
 - Both files committed to akosha.
 - Session-Buddy reflection stored.
 
@@ -265,7 +275,7 @@ requirements:
 
 The plan is "done enough" when: `/health` returns HTTP 200 with `"status":"ok"` and the OTel producer is wired (REQ-002 + REQ-005 + REQ-006 are all demonstrable), AND `mcp__akosha__get_liveness` returns `ok` for at least 10 minutes under launchd supervision (REQ-008 + REQ-009 are demonstrable), AND `pytest tests/akosha` is fully green (REQs 1, 3, 4, 5, 6 are covered by tests), AND `python scripts/audit_orphans.py` reports no new zero-caller symbols. The debug exporter is acceptable as a placeholder if (and only if) the hand-off doc at `akosha/docs/ops/OTEL_TEMPO_HOOK.md` exists and the feature-tracking entry marks `wired: pending_tempo`. If scope pressure forces a cut, drop Phase 5 (documentation) and ship the wired behavior; do not drop any of Phases 1–4.
 
----
+______________________________________________________________________
 
 ## Self-Review
 

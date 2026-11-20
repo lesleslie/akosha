@@ -4,7 +4,7 @@ role: canonical
 kind: plan
 date: 2026-09-27
 last_reviewed: 2026-09-27
-superseded_by: null
+superseded_by:
 topic: version-source-of-truth
 ---
 
@@ -41,15 +41,18 @@ Bodai ships releases where the canonical version lives in exactly one place per 
 ## 4. Current Findings
 
 **The pattern already exists in oneiric** (`oneiric/oneiric/__init__.py:9-12`):
+
 ```python
 try:
     __version__ = metadata.version("oneiric")
 except metadata.PackageNotFoundError:  # pragma: no cover - fallback for local dev
     __version__ = "0.0.0"
 ```
+
 This is the canonical pattern. Oneiric is the proof — the work is *propagation*, not design.
 
 **The bug surface is the rest of the ecosystem**:
+
 - `akosha/__init__.py:15` — `__version__ = "0.17.5"` (drifted from pyproject `0.19.1`; fixed in commit `75ab9e1`)
 - `akosha/mcp/__init__.py:5` — `__version__ = "0.17.5"` (same; fixed `75ab9e1`)
 - `akosha/mcp/server.py:50` — `APP_VERSION: Final = "0.17.5"` (same; fixed `75ab9e1`)
@@ -59,6 +62,7 @@ This is the canonical pattern. Oneiric is the proof — the work is *propagation
 **Aka**: every other repo in the bodai core set has parallel stamps. Manual `git grep` is the proof — until each migrates, it carries the same risk.
 
 **Internal invariants already exist** (akosha):
+
 - `akosha/tests/unit/test_mcp_server.py:22` — `assert APP_VERSION == __version__`
 - `akosha/tests/unit/test_mcp_health_tools.py:28` — `assert SERVICE_VERSION == __version__`
 - `akosha/tests/test_doc_drift.py:135` — `test_user_agent_matches_package_version` (catches hardcoded User-Agent strings)
@@ -90,6 +94,7 @@ requirements:
 **Goal:** Demonstrate the pattern in akosha end-to-end before propagating. The proximate-cause repo ships first.
 
 **Tasks:**
+
 - Replace `akosha/__init__.py:15` literal with `importlib.metadata` call.
 - Replace `akosha/mcp/server.py:50` literal: `APP_VERSION = akosha.__version__` (or `from akosha import __version__ as APP_VERSION`).
 - Replace `akosha/mcp/tools/__init__.py:43` literal: `SERVICE_VERSION = akosha.__version__` (same approach).
@@ -98,6 +103,7 @@ requirements:
 - Keep `akosha/tests/test_doc_drift.py` `test_user_agent_matches_package_version` — still relevant (it forbids `3.14` in User-Agent strings).
 
 **Exit criteria:**
+
 - `git grep '__version__ = ["'"'"']\d' -- akosha/akosha akosha/tests` returns empty.
 - `pytest tests/unit/test_version_sync.py tests/test_doc_drift.py` all pass.
 - Existing `test_mcp_server.py` + `test_mcp_health_tools.py` invariants still pass.
@@ -115,6 +121,7 @@ requirements:
 **Goal:** Confirm oneiric's existing implementation stays the model and update its internal stamps if any remain.
 
 **Tasks:**
+
 - Inventory oneiric for any other hardcoded version literals (likely just the `__init__.py` already migrated).
 - If `oneiric.adapters.metadata.PACKAGE_VERSION` exists (saw `metadata.py` in `adapters/`), audit it for consistency.
 - No code change expected — verify only.
@@ -134,6 +141,7 @@ requirements:
 **Goal:** Roll the pattern out to the remaining 3 bodai core repos. Same Phase 1 mechanics per repo; releases coordinated.
 
 **Tasks per repo:**
+
 - Replace top-level `__init__.py` `__version__ = "X.Y.Z"` with `importlib.metadata.version("NAME")` call.
 - Add parity CI guard (`tests/unit/test_version_sync.py` or equivalent) asserting `metadata.version("REPO") == REPO.__version__`.
 - For mahavishnu specifically, replace any service-specific stamps (e.g. `mcp/server.py:APP_VERSION` analog) with re-exports of `__version__`.
@@ -155,6 +163,7 @@ requirements:
 **Goal:** Cut all 5 releases within a short window so a future user-driven bump in any repo's `pyproject.toml` doesn't have to fight cross-repo timing. Per Bodai policy, version bumps are user-driven — this plan only *mechanically enables* a future single-source-of-truth world, not the cut itself.
 
 **Tasks:**
+
 - Document the per-repo PR ordering for the next bump window in `docs/RELEASE_NOTES.md` (or each repo's RELEASING.md if it has one).
 - Update each repo's `feedback-mcp-common-version-bump-is-user.md` analog memory if it exists, to add: "and the canonical version is now derived from `pyproject.toml` via `importlib.metadata`".
 
@@ -171,6 +180,7 @@ requirements:
 ## 6. Required Code Changes
 
 ### akosha (5 files, prove-then-template)
+
 - `akosha/__init__.py` — replace literal
 - `akosha/mcp/__init__.py` — replace literal with `from akosha import __version__`
 - `akosha/mcp/server.py` — `APP_VERSION = akosha.__version__`
@@ -178,21 +188,26 @@ requirements:
 - `akosha/tests/unit/test_version_sync.py` — rewrite to runtime equality
 
 ### oneiric (verification only)
+
 - `oneiric/oneiric/__init__.py` — already correct; no edit
 - `oneiric/docs/plans/2026-09-27-pyproject-single-source-of-truth.md` cross-link
 
 ### mahavishnu (similar 4-5 file pattern)
+
 - `mahavishnu/__init__.py` — replace literal
 - `mahavishnu/mcp/server.py` — APP_VERSION derivation
 - (auditing per-repo as work begins)
 
 ### session-buddy (similar 4-5 file pattern)
+
 - analogous 4-5 sites, depending on what MCP/hooks layer carries
 
 ### crackerjack (similar 4-5 file pattern)
+
 - analogous 4-5 sites
 
 ### docs / memory (cross-cutting)
+
 - Add `feedback-bodai-pyproject-sso-version.md` to CC memory (new)
 - Each repo's CLAUDE.md "When bumping a version" subsection gets one bullet referencing this plan
 - `akosha/docs/PLAN_INDEX.md` — add new entry
@@ -221,6 +236,7 @@ requirements:
 ## 9. Decision Rule
 
 This plan is "done enough" when:
+
 - All 5 bodai core repos ship the pattern (Phase 1 + 2 + 3 complete)
 - Each repo's CI green for runtime-equality version sync (no regex literal-scan version)
 - One full release cycle has elapsed where a bump in any one repo's `pyproject.toml` *automatically* propagates to every consumer of that repo's version stamp (Phase 4 demonstrable)

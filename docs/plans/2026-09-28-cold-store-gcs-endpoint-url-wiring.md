@@ -4,7 +4,7 @@ role: implementation
 kind: plan
 date: 2026-09-28
 last_reviewed: 2026-09-28
-superseded_by: null
+superseded_by:
 blocks_on: []
 blocks: []
 activation_signal: ColdStore GCS branch is missing endpoint_url wiring; fake-gcs-server round-trip (B2) cannot pass until this is fixed.
@@ -88,9 +88,11 @@ dependency just doesn't include that release yet.
 2. Re-sync akosha's venv: `uv pip install -e .` (or `uv sync`).
 
 3. Re-run the test:
+
    ```
    .venv/bin/python -m pytest tests/integration/test_cold_tier_local.py::test_cold_store_gcs_branch_forwards_endpoint_url -x
    ```
+
    Expected: PASSES.
 
 ## Why this ticket exists (unrelated to current session)
@@ -117,10 +119,10 @@ own schedule without blocking any other workstream.
 ## Acceptance criteria
 
 - [ ] `oneiric >= 0.24.0` (or version containing `d809cad`) declared
-      in `akosha/pyproject.toml`.
+  in `akosha/pyproject.toml`.
 - [ ] `pytest tests/integration/test_cold_tier_local.py::test_cold_store_gcs_branch_forwards_endpoint_url` passes.
 - [ ] `pytest tests/integration/test_cold_tier_local.py` full file
-      passes (sibling S3 + StandardMode tests still green).
+  passes (sibling S3 + StandardMode tests still green).
 - [ ] No regressions in the rest of the akosha suite (`pytest tests/`).
 
 ## Notes

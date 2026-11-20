@@ -1,7 +1,7 @@
 ---
 built: 2026-11-05
 wired: 2026-11-05
-adopted: null
+adopted:
 phase: cold-tier-write-path
 topic: cold-storage
 plan: docs/plans/2026-11-05-akosha-cold-write-path.md

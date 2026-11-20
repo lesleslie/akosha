@@ -154,12 +154,12 @@ Akosha uses Oneiric’s layered configuration loader. For `project_name="akosha"
 the file layers are applied in this order:
 
 1. Defaults in the configuration models
-1. `settings/akosha.yaml` — committed project defaults
-1. `settings/local.yaml` — gitignored project-local overrides
-1. `${XDG_CONFIG_HOME:-~/.config}/akosha/config.yaml` — user configuration
-1. `${XDG_CONFIG_HOME:-~/.config}/akosha/local.yaml` — user-local overrides
-1. `AKOSHA_*` environment variables, including nested `__` overrides
-1. An explicit configuration path when supplied
+2. `settings/akosha.yaml` — committed project defaults
+3. `settings/local.yaml` — gitignored project-local overrides
+4. `${XDG_CONFIG_HOME:-~/.config}/akosha/config.yaml` — user configuration
+5. `${XDG_CONFIG_HOME:-~/.config}/akosha/local.yaml` — user-local overrides
+6. `AKOSHA_*` environment variables, including nested `__` overrides
+7. An explicit configuration path when supplied
 
 Missing files are ignored. Set `XDG_CONFIG_HOME` to relocate the user-level
 configuration directory. The CLI also accepts `--config /path/to/config.yaml`.

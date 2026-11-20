@@ -272,11 +272,11 @@ ______________________________________________________________________
 **Recommended next actions** (prioritized):
 
 1. **Move `CURRENT_STATUS.md` and `COMPREHENSIVE_ARCHITECTURE_REVIEW_2025-01-31.md` to `docs/archive/`** — they're historical, but currently sit at docs root.
-1. **Refresh `PROJECT_STRUCTURE.md`** with `tree`-generated output (single command, single edit).
-1. **Update `ARCHITECTURE.md` hot-tier section** to describe pgvector backend and deprecate DuckDB as production.
-1. **Update `ARCHITECTURE.md` cache section** to remove the `akosha/cache/layered_cache.py` claim or implement the module.
-1. **Update `ARCHITECTURE.md` ingestion flow diagram** to show the actual wired paths (websocket_invocations_subscriber + bodai_event_subscriber), not the unwired IngestionWorker pull model.
-1. **Append a "Hardening History" or "Post-Jul-2026 Status" section to ARCHITECTURE.md** referencing the 5 hardening waves.
-1. **Refresh `MEMORY_ARCHITECTURE.md:48`** — cold-store upload is now real (Wave 1 C1).
+2. **Refresh `PROJECT_STRUCTURE.md`** with `tree`-generated output (single command, single edit).
+3. **Update `ARCHITECTURE.md` hot-tier section** to describe pgvector backend and deprecate DuckDB as production.
+4. **Update `ARCHITECTURE.md` cache section** to remove the `akosha/cache/layered_cache.py` claim or implement the module.
+5. **Update `ARCHITECTURE.md` ingestion flow diagram** to show the actual wired paths (websocket_invocations_subscriber + bodai_event_subscriber), not the unwired IngestionWorker pull model.
+6. **Append a "Hardening History" or "Post-Jul-2026 Status" section to ARCHITECTURE.md** referencing the 5 hardening waves.
+7. **Refresh `MEMORY_ARCHITECTURE.md:48`** — cold-store upload is now real (Wave 1 C1).
 
 **Files**: `/Users/les/Projects/akosha/AKOSHA_ARCHITECTURE_AUDIT_2026-09-09.md`

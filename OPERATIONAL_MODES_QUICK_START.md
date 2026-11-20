@@ -121,9 +121,9 @@ A: Yes, cloud storage is optional. You'll get Redis caching without long-term st
 ## Next Steps
 
 1. **Try lite mode**: `uv run akosha start`
-1. **Explore the docs**: [Complete Guide](docs/guides/operational-modes.md)
-1. **Set up Redis**: `docker run -d -p 6379:6379 redis:alpine`
-1. **Try standard mode**: `uv run akosha start --mode=standard`
+2. **Explore the docs**: [Complete Guide](docs/guides/operational-modes.md)
+3. **Set up Redis**: `docker run -d -p 6379:6379 redis:alpine`
+4. **Try standard mode**: `uv run akosha start --mode=standard`
 
 ______________________________________________________________________
 
