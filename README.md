@@ -47,7 +47,7 @@ Akosha is a universal memory aggregation system that collects, processes, and an
 
 ### Key Capabilities
 
-✅ **Privacy-First**: Deterministic mock embeddings; real backends delegated to MCP-side providers (Ollama, OpenAI)
+✅ **Privacy-First**: Deterministic mock embeddings; real backends delegated to the OpenAI-compatible provider (Bifrost gateway, then direct OpenAI)
 ✅ **Real-Time Analytics**: Trend detection, anomaly spotting, cross-system correlation
 ✅ **MCP Protocol**: Exposes all capabilities via Model Context Protocol
 ✅ **Operational Baseline**: Health probes, graceful degradation, metrics, and type-safe code
@@ -64,7 +64,8 @@ ______________________________________________________________________
 
 > **Note on embeddings**: Akosha generates deterministic mock embeddings
 > in-process (see `akosha/processing/embeddings.py`); real embeddings
-> are delegated to MCP-side providers (Ollama, OpenAI). The historical
+> are delegated to the OpenAI-compatible provider (Bifrost gateway, then
+> direct OpenAI). The historical
 > `embeddings` optional dependency group was emptied in 2026-08 when
 > `onnxruntime` was dropped, so there is no native ONNX / sentence-
 > transformers install path from this repo.
@@ -131,7 +132,8 @@ pip install -e .
 Akosha has no optional dependency groups for in-process embeddings — the
 `embeddings` PEP 735 group in `pyproject.toml` is intentionally empty
 (see its inline comment). Real semantic embeddings, when you need them,
-are produced by MCP-side providers (Ollama, OpenAI) configured in your
+are produced by the OpenAI-compatible provider (Bifrost gateway, then
+direct OpenAI) configured in your
 Bodai deployment; this package does not ship a native ONNX / sentence-
 transformers runtime.
 
@@ -488,7 +490,7 @@ ______________________________________________________________________
 
 Akosha is built on open-source foundations including [FastMCP](https://github.com/jlowin/fastmcp),
 [DuckDB](https://duckdb.org/), [PyArrow](https://arrow.apache.org/docs/python/),
-Redis, PostgreSQL/pgvector, and the configured Ollama or OpenAI embedding
+Redis, PostgreSQL/pgvector, and the configured OpenAI-compatible embedding
 providers.
 
 ______________________________________________________________________

@@ -31,9 +31,9 @@ The query is a natural-language question. The Skill will:
 `mcp__akosha__akosha_search_all_systems` performs **hybrid semantic +
 lexical** retrieval:
 
-- **Semantic**: encodes the query with the local all-MiniLM-L6-v2
-  embedding model (384-dimensional) and runs a vector similarity
-  search against the HotStore corpus.
+- **Semantic**: encodes the query with the configured embedding model
+  (384-dimensional) and runs a vector similarity search against the
+  HotStore corpus.
 - **Lexical**: the same call also tokenizes the query and ranks by
   token overlap. The two signals are fused before ranking.
 

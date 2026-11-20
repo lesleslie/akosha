@@ -303,7 +303,7 @@ they exercise.
 
 | Tool | What it reads | Use when |
 |------|---------------|----------|
-| `akosha_generate_embedding` | Calls `EmbeddingService.generate_embedding` (mock-only in-process; real embeddings must be routed through a configured MCP-side provider like Ollama or OpenAI) | Inline vectorization for an ad-hoc search or semantic classification |
+| `akosha_generate_embedding` | Calls `EmbeddingService.generate_embedding` (mock-only in-process; real embeddings must be routed through a configured OpenAI-compatible provider -- the Bifrost gateway, then direct OpenAI) | Inline vectorization for an ad-hoc search or semantic classification |
 | `akosha_generate_batch_embeddings` | Same, vectorized | Bulk-ingest pipelines, code-graph pre-embedding |
 
 Both return `mode: "real" | "fallback"` so callers can degrade
@@ -790,8 +790,8 @@ storage:
 export AKOSHA__STORAGE__WARM__BACKEND=pgvector
 export AKOSHA__STORAGE__WARM__PG_URL=postgresql://akosha:***@localhost:5432/akosha
 
-# Embedding model — currently hard-coded; override requires editing
-# akosha/processing/embeddings.py:38 ("all-MiniLM-L6-v2" default).
+# Embedding model — resolved by the embedding chain, not by an env var.
+# See the fleet standardisation plan for the move to a single provider.
 ```
 
 ### Backup and migration
