@@ -132,6 +132,64 @@ SYSTEM_ID_MAHAVISHNU: str = "mahavishnu"
 #: Sentinel watermark row content (search-time filters exclude this).
 WATERMARK_CONTENT: str = "__watermark__"
 
+#: Connect timeout for the subscriber's Redis client, in seconds.
+#:
+#: A read on this group may legitimately take minutes. A connect never
+#: does -- so a connect that never completes must fail fast instead of
+#: hanging the read loop.
+SUBSCRIBER_CONNECT_TIMEOUT_SECONDS: float = 10.0
+
+#: Multiplier applied to the per-event processing timeout to get the
+#: socket timeout.
+#:
+#: The socket timeout bounds the wall-clock wait for a reply, and the
+#: reply is delayed by whatever the event loop is doing. The event
+#: loop's longest occupancy is the per-entry processing timeout: a
+#: batch of entries is processed CONCURRENTLY, so the batch is bounded
+#: by ONE entry's timeout, not by the batch size times it. The factor
+#: leaves room for the BLOCK duration and for scheduling jitter on
+#: top of that bound.
+SOCKET_TIMEOUT_PER_EVENT_FACTOR: float = 2.0
+
+#: Floor on the socket timeout, in seconds. It has to clear the BLOCK
+#: duration (``xreadgroup_block_ms``, 1500 ms by default) with room to
+#: spare: a BLOCK that outlives its own socket timeout is a timeout on
+#: a healthy server.
+SOCKET_TIMEOUT_FLOOR_SECONDS: float = 10.0
+
+#: Phrases that identify a duplicate primary key across the storage
+#: backends Akosha can be configured with.
+#:
+#: DuckDB raises ``ConstraintException`` with "Duplicate key ... violates
+#: primary key constraint"; PostgreSQL raises ``UniqueViolation`` with
+#: "duplicate key value violates unique constraint". The two backends
+#: raise different exception types, so the MESSAGE is the portable
+#: signal -- and it is the precise one: a NOT NULL violation is a real
+#: failure and must not be mistaken for a replay.
+_DUPLICATE_KEY_MARKERS: tuple[str, ...] = (
+    "duplicate key",
+    "violates primary key constraint",
+    "violates unique constraint",
+)
+
+
+def _is_duplicate_key_error(exc: BaseException) -> bool:
+    """Whether ``exc`` says the row is ALREADY stored.
+
+    The substrate's ``INSERT`` is not idempotent -- it has no
+    ``ON CONFLICT`` clause -- so re-inserting a ``conversation_id``
+    that is already present raises. For the subscriber that is not a
+    failure: it is a REPLAY of a message whose work is already done,
+    and the row is present, which is the desired end state.
+
+    The live proof, 2026-11-21: a backlog replay logged 170 duplicate
+    key failures for rows that were already in DuckDB. Each one parked
+    its message in the PEL for three pointless retries.
+    """
+    text = str(exc).lower()
+    return any(marker in text for marker in _DUPLICATE_KEY_MARKERS)
+
+
 #: Exponential backoff bounds for reconnect-after-error.
 DEFAULT_RECONNECT_BACKOFF_SECONDS: float = 1.0
 DEFAULT_RECONNECT_BACKOFF_MAX_SECONDS: float = 30.0
@@ -216,13 +274,30 @@ def _message_id_from_metadata(metadata: object) -> str | None:
     return None
 
 
-def _create_redis_client(redis_url: str) -> Any | None:
+def _create_redis_client(redis_url: str, *, socket_timeout: float) -> Any | None:
     """Return an async redis client or ``None`` when redis.asyncio is unavailable.
 
     Mirrors the lazy-creation pattern in
     ``mahavishnu/core/events/bodai_subscriber.py:_create_redis_client``:
     when ``redis.asyncio`` is not installed, ``None`` signals the
     caller to idle until cancellation.
+
+    The socket timeout is REQUIRED, not inherited. redis-py 8's
+    default is 5 seconds, and that default is a bound on the SERVER's
+    work -- not on how long the client should tolerate an idle BLOCK.
+    The reply to this subscriber's read is delayed by whatever the
+    event loop is doing, and the event loop is doing per-entry
+    embedding and DuckDB work.
+
+    The live proof, 2026-11-21: with the default in place, a backlog
+    replay logged 31 ``xreadgroup error: Timeout reading from
+    localhost:6379`` failures. Every one aborted client-side against a
+    server that was answering normally, and each aborted read had
+    already registered its consumer on the server.
+
+    The connect timeout is a different bound: a read on this group may
+    legitimately take minutes, but a connect never does, so a connect
+    that never completes must fail fast rather than hang the loop.
     """
     try:
         import redis.asyncio as aioredis
@@ -232,7 +307,12 @@ def _create_redis_client(redis_url: str) -> Any | None:
             "subscriber will idle and the orchestrator will fall back to polling",
         )
         return None
-    return aioredis.from_url(redis_url, decode_responses=False)
+    return aioredis.from_url(
+        redis_url,
+        decode_responses=False,
+        socket_timeout=socket_timeout,
+        socket_connect_timeout=SUBSCRIBER_CONNECT_TIMEOUT_SECONDS,
+    )
 
 
 class BodaiToolInvocationSubscriber:
@@ -296,6 +376,14 @@ class BodaiToolInvocationSubscriber:
         )
         self._consumer_name = consumer_name
         self._consumer_name_supplied = consumer_name is not None
+        # The socket timeout for the Redis client, derived from the
+        # bounds this subscriber already carries. See
+        # :attr:`socket_timeout_seconds`.
+        self._socket_timeout_seconds = max(
+            SOCKET_TIMEOUT_FLOOR_SECONDS,
+            self._per_event_timeout_seconds * SOCKET_TIMEOUT_PER_EVENT_FACTOR,
+            (self._xreadgroup_block_ms / 1000.0) * SOCKET_TIMEOUT_PER_EVENT_FACTOR,
+        )
         # message_id -> how many times indexing has failed for it. See
         # MAX_INDEX_RETRIES for why this is bounded.
         self._index_retry_counts: dict[str, int] = {}
@@ -395,6 +483,22 @@ class BodaiToolInvocationSubscriber:
         """Embedding dim of the HotStore; used for the zero-vector watermark."""
         return getattr(self._hot_store, "_embedding_dim", 384)
 
+    @property
+    def socket_timeout_seconds(self) -> float:
+        """The socket timeout the Redis client is built with, in seconds.
+
+        Derived from the two bounds this subscriber already carries:
+        the per-event processing timeout (the event loop's longest
+        occupancy, because a batch is processed concurrently) and the
+        BLOCK duration (how long an idle read waits for a reply).
+
+        The socket timeout is a bound on the SERVER's work, so it has
+        to clear both. redis-py 8's 5-second default clears neither,
+        which is why a backlog replay logged 31 read timeouts against
+        a server that was answering normally.
+        """
+        return self._socket_timeout_seconds
+
     async def start(self) -> None:
         """Connect, ensure consumer group, spawn the read loop.
 
@@ -415,7 +519,10 @@ class BodaiToolInvocationSubscriber:
             logger.debug("BodaiToolInvocationSubscriber: no hot_store, skipping start")
             return
 
-        client = _create_redis_client(self._redis_url)
+        client = _create_redis_client(
+            self._redis_url,
+            socket_timeout=self._socket_timeout_seconds,
+        )
         if client is None:
             # Import failure: _create_redis_client already logged.
             logger.warning(
@@ -920,6 +1027,23 @@ class BodaiToolInvocationSubscriber:
             await self._note_index_failure(client, message_id, reason="timeout")
             return
         except Exception as exc:
+            if _is_duplicate_key_error(exc):
+                # The row is ALREADY stored, so this message's work is
+                # DONE. The substrate's INSERT is not idempotent, so a
+                # replay raises instead of being a no-op -- and a
+                # raised duplicate used to park the message in the PEL
+                # for three pointless retries, growing the pending
+                # list with rows that were never going to land.
+                #
+                # The row is present but no NEW row landed, so the
+                # "rows that actually landed" counter is not bumped.
+                logger.info(
+                    "akosha.bodai_subscriber: message_id=%s is already indexed; acking as a replay",
+                    message_id,
+                )
+                await self._update_watermark(message_id)
+                await self._safe_xack(client, message_id)
+                return
             logger.warning(
                 "akosha.bodai_subscriber: indexing failed for message_id=%s: %s",
                 message_id,

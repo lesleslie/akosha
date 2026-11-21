@@ -121,6 +121,52 @@ class WebSocketInvocationsSubscriber:
             return 0
         return int(getattr(self._bodai_subscriber, "entries_consumed", 0) or 0)
 
+    @property
+    def entries_candidate(self) -> int:
+        """How many consumed entries SHOULD have produced a row.
+
+        This is the counter the stall signal gates on, so it is the
+        one that must not read as zero when the producer is working:
+        a stall is "the producer received input that should have
+        landed and nothing landed", and that test needs the
+        candidate count.
+
+        The live proof, 2026-11-21: the stack proxied
+        ``entries_consumed`` and NOTHING else, so the three counters
+        below read 0 on a producer that was actively indexing. The
+        health payload reported ``read_errors_total: 0`` while the
+        same process logged 31 ``xreadgroup`` timeouts, and the stall
+        signal could never fire because its input was always zero.
+        """
+        if self._bodai_subscriber is None:
+            return 0
+        return int(getattr(self._bodai_subscriber, "entries_candidate", 0) or 0)
+
+    @property
+    def entries_indexed(self) -> int:
+        """How many rows the producer actually landed.
+
+        The gap between this and :attr:`entries_candidate` is the
+        stall signal's subject: entries that owed a row and did not
+        get one.
+        """
+        if self._bodai_subscriber is None:
+            return 0
+        return int(getattr(self._bodai_subscriber, "entries_indexed", 0) or 0)
+
+    @property
+    def read_errors(self) -> int:
+        """How many times the producer's read from Redis has failed.
+
+        A transport failure has to be visible WITHOUT grepping a log
+        file: the rollback signal used to count "xreadgroup error"
+        lines in another component's log, which reads zero forever
+        once that file rotates.
+        """
+        if self._bodai_subscriber is None:
+            return 0
+        return int(getattr(self._bodai_subscriber, "read_errors", 0) or 0)
+
     async def start(self) -> None:
         """Start the push subscriber.
 

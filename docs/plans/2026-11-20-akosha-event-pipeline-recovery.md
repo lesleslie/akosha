@@ -1,8 +1,8 @@
 ---
-status: draft
+status: active
 role: implementation
 date: 2026-11-20
-last_reviewed: 2026-11-20
+last_reviewed: 2026-11-21
 superseded_by: null
 topic: akosha-event-pipeline-recovery
 plan_kind: repair
@@ -28,19 +28,22 @@ cross_repo_plans:
 **Goal:** Make the `bodai:events` -> Akosha ingestion path actually produce
 HotStore rows, so the knowledge graph stops being empty.
 
-**Verification status: the CODE is verified; the LIVE run is NOT.** The
-code on this branch is complete and the automated gates are green: the
+**Verification status: the code is verified AND the live run has
+happened.** The code is complete and the automated gates are green: the
 full suite is **3351 passed / 10 skipped** (exit 0), and the
 crackerjack gate is green — **18/18 fast hooks**, **12/12 comprehensive
 hooks**, **58 tests, 0 errors** in the gate's own test phase. `ruff` and
 `ty` are clean.
 
-**Task 6 — the live end-to-end verification — has NOT run.** The Akosha
-service is still on the pre-fix code, so nothing in this document
-reports an OBSERVED result yet. Every step in this plan that is marked
-`- [ ]` is unexecuted, and the numbers in the header are the criteria,
-not the measurements. The distinction matters: "the tests pass" is a
-measurement; "the pipeline ingests" is still a claim.
+**Task 6 — the live end-to-end verification — RAN on 2026-11-21.** The
+service was restarted onto the merged code, the leaked consumers were
+cleaned up, the backlog was replayed, and the observed results are in
+"Verification runbook" at the end of this document. The run PASSED its
+primary criteria and exposed three defects that the code-level fixes
+had not covered; those three are now fixed and merged
+(`665bbe6`). One step remains outstanding: the live service still runs
+the pre-fix code until it is restarted onto `665bbe6`, so the three
+fixes are verified by tests but not yet by a second live run.
 
 **Which store each number belongs to — read this before writing the success
 check.** The `conversations` table lives in the **hot** tier (DuckDB). The
@@ -704,17 +707,19 @@ git commit -m "feat(scripts): add a repeatable bodai:events consumer recovery to
 
 ### Task 6: End-to-end verification and the operational runbook
 
-> **Status: NOT RUN.** The code is merged and every precondition of this
-> task has been measured against the live system (see "Verified
-> preconditions" under Step 1). The run itself has not happened: Step 1
-> restarts a live launchd service, and that restart needs the operator's
-> explicit go-ahead. Nothing in this plan is waiting on anything else.
+> **Status: RAN on 2026-11-21.** The service was restarted onto the
+> merged code, the group was cleaned, the backlog was replayed, and the
+> results were observed. The run passed its primary criteria and
+> exposed three defects the code-level fixes had not covered; those are
+> fixed in `665bbe6` and recorded under "Verification runbook" below.
+> The live service still runs the pre-fix code until it is restarted
+> onto that commit.
 
 **Files:**
 - Modify: `docs/plans/2026-11-20-akosha-event-pipeline-recovery.md`
   (append a "Verification runbook" section with the observed results)
 
-- [ ] **Step 1: Restart the Akosha MCP server**
+- [x] **Step 1: Restart the Akosha MCP server**
 
 The running process started 2026-11-16 09:57:07 and never loaded the
 2026-11-17 warm-tier commits (`7b04dc5`, `f2ff08b`, `c118972`, `9b6e5f9`) or
@@ -775,7 +780,7 @@ The 111 consumers that still own pending messages are preserved:
 `XGROUP DELCONSUMER` destroys those messages — they are neither acked
 nor redelivered, and `XAUTOCLAIM` can no longer recover them.
 
-- [ ] **Step 2: Backfill the backlog — MANDATORY, not optional**
+- [x] **Step 2: Backfill the backlog — MANDATORY, not optional**
 
 The group already delivered every entry (`lag=0`), so the 13,878 backlog
 entries were consumed and acked without being indexed. Reset the group's
@@ -809,7 +814,7 @@ the operator has to run Step 2 by hand, so the plan says so here.
 Use `scripts/recover_event_stream.py --apply` for the consumer cleanup in the
 same pass.
 
-- [ ] **Step 3: Verify the pipeline end to end**
+- [x] **Step 3: Verify the pipeline end to end**
 
 Run each of these and record the output in the plan's Verification runbook:
 
@@ -858,7 +863,7 @@ opening the same file fails with "Conflicting lock is held". The health
 endpoint is the operator-facing view of that table, which is why it is
 the criterion.
 
-- [ ] **Step 4: Record the results and commit**
+- [x] **Step 4: Record the results and commit**
 
 Append the observed output to the plan file, then:
 
@@ -1523,7 +1528,8 @@ difference between a MEASUREMENT and a CLAIM stays visible.
 | Gate, test phase | **58 tests, 0 failed, 0 errors** | `crackerjack run -v -t` |
 | `ruff check akosha/` | clean | — |
 | `ty check` | clean | — |
-| Live end-to-end | **NOT RUN** | Task 6 below |
+| Live end-to-end | **RAN 2026-11-21** — leak fixed, backlog replayed, `entities_count` 0 → 1 | "Verification runbook" below |
+| Live re-verification of `665bbe6` | **OUTSTANDING** — the live service still runs the pre-fix code | "The remaining step" below |
 
 Two of those numbers were earned the hard way, and the way is worth
 recording because it is the kind of thing that looks like success:
@@ -1547,3 +1553,116 @@ instead. It passed, and it was still the wrong tree. The lesson is
 general — **a green result from an unverified target is not a
 result** — and it is why the table above names the command, not just
 the verdict.
+
+## Verification runbook
+
+Recorded 2026-11-21. Every number below was READ from the live system
+after the run — from `/health`, from `XINFO GROUPS`, from the Akosha
+log — and not inferred from the code.
+
+### What was run
+
+| Step | Command | Outcome |
+|---|---|---|
+| 1. Restart | `launchctl kickstart -k gui/$(id -u)/com.mcp.akosha` | Service back up, HTTP 200, `event_subscriber_running: true` |
+| 2. Consumer cleanup | `scripts/recover_event_stream.py --apply` | **36,582 of 36,583** targeted consumers deleted |
+| 2. Backlog reset | `XGROUP SETID bodai:events akosha-tool-invocation-indexers 0-0` | Group position reset to the start of the stream |
+| 2. Pending reclaim | `XAUTOCLAIM bodai:events akosha-tool-invocation-indexers akosha-b0b632b473a4 0 0` | **397** pending entries claimed in one round |
+| 3. Verify | `recover_event_stream.py --dry-run`, `GET /health` | See the tables below |
+
+The recovery script exited **1**, not 0, and the exit code is worth
+reading rather than glossing: its post-condition asserts that every
+targeted consumer is gone, and one was not — the LIVE subscriber's own
+consumer (`akosha-b0b632b473a4`), which the cleanup deleted and the
+running process immediately re-registered. The bulk cleanup succeeded
+(36,582 deleted); the script's post-condition is simply wrong for a
+process that stays online.
+
+### The leak is fixed
+
+| Fact | Before | After |
+|---|---|---|
+| Group consumers | **36,667** and growing at 0.5/s | **85** and **Δ+0 over 8 s** |
+| `XINFO CONSUMERS` cost | 10.8 s (23.6 s cold) | **0.27 s → 0.006 s** |
+| `last-delivered-id` | `1795254219344-0` (stream tail) | rewound to `0-0`, then replayed to `1795257627636-0` |
+| Stream length | 14,328 | 14,367 (new traffic during the run) |
+
+### The pipeline ingests
+
+| Signal | Before the run | After the run |
+|---|---|---|
+| `knowledge_graph_feed.status` | `warming_up` | **`healthy`** |
+| `knowledge_graph_feed.entities_count` | 0 | **1** |
+| `knowledge_graph_feed.reason_codes` | `["warming_up_empty_feed"]` | `[]` |
+| `source_producer_entries_total` | 0 | **14,709** |
+| `source_producer_read_errors_total` | — | **0** |
+| Hot-store `conversations` rows (`kg_refresh: rows=`) | 88 | **100** (the refresh's `limit=100`) |
+
+**The primary criterion — `entities_count > 0` with the feed healthy —
+is met.** The warm tier's `vectors_conversations` stayed empty, as the
+header note predicts: its only writer is the hot→warm migration, which
+this plan does not enable.
+
+### What the run found that the code did not cover
+
+Three defects, all in the subscriber's own plumbing, all invisible to
+the code-level tests and only visible against the live system.
+
+**1. The health counters were not wired through.** The health payload
+holds the `WebSocketInvocationsSubscriber` stack and reads the
+producer's counters off it with `getattr`. The stack proxied
+`entries_consumed` and NOTHING else, so `entries_candidate`,
+`entries_indexed` and `read_errors` all read **0** on a producer that
+was actively indexing and actively failing to read. `getattr` on a
+missing attribute is silent, so a missing proxy reads as a counter of
+zero — and the stall signal, which gates on the candidate count, could
+never fire. The live proof: `/health` reported `read_errors_total: 0`
+while the same process logged **31** `xreadgroup` timeouts.
+
+**2. The subscriber's client still inherited redis-py's five-second
+socket timeout.** That default is a bound on the SERVER's work, and the
+server's work here is not bounded by the `BLOCK` duration: the reply to
+a read is delayed by whatever the event loop is doing, and the event
+loop is doing per-entry embedding and DuckDB work. The replay aborted
+**31** reads client-side against a server that was answering normally,
+plus **9** per-entry processing timeouts. This is the same trap as the
+recovery script's failure, one layer down: the script was fixed in
+`0304857`; the subscriber was not.
+
+**3. A replayed row was treated as a failure.** The substrate's
+`INSERT` has no `ON CONFLICT` clause, so re-indexing a
+`conversation_id` that is already stored raises. The subscriber
+treated that as an indexing failure and parked the message in the PEL
+for three pointless retries: **170** duplicate-key failures during the
+replay, and a pending list that could not drain. A duplicate key means
+the message's work is DONE — the row is present — so it must be ACKed
+and the watermark advanced. No new row landed, so the "rows that
+actually landed" counter is not bumped.
+
+All three are fixed in **`665bbe6`** (`fix/health-counters-and-timeout`),
+each with a test that fails before the fix.
+
+### The remaining step
+
+The live service still runs the code from before `665bbe6`. To pick up
+the three fixes and confirm them against the live system:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/com.mcp.akosha
+curl -s http://127.0.0.1:8682/health | python3 -m json.tool \
+  | grep -E 'source_producer_(read_errors_total|entries_candidate|entries_indexed)'
+```
+
+The three counters must now be NON-ZERO and must MOVE: before the fix
+they read zero because nothing was proxied, and after it they read the
+producer's real numbers. A zero after the restart would mean the
+proxies are still missing.
+
+### One thing this plan does not fix
+
+The `bodai-task-orphan-sweeper` group on the same stream carries **437
+consumers and 18,164 pending** — the same consumer-leak shape, in a
+different component (Mahavishnu's sweeper, not Akosha's subscriber).
+It is outside this plan's scope and was not touched. It is recorded
+here because the shape is identical to the bug this plan fixed, and
+because the group shares a stream with the one that was cleaned.

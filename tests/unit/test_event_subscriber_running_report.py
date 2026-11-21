@@ -98,6 +98,88 @@ class TestTheStackExposesItsRunningState:
         assert stack.running is False
 
 
+class TestTheStackProxiesEveryProducerCounter:
+    """``/health`` reads the producer's counters off the STACK, not off
+    the push subscriber.
+
+    The health payload holds the object the lifespan built -- the
+    ``WebSocketInvocationsSubscriber`` stack -- and reads the
+    producer's four counters off it with ``getattr``. The stack proxied
+    ``entries_consumed`` and NOTHING else, so the other three read 0 on
+    a producer that was actively indexing and actively failing to read.
+
+    The live proof, 2026-11-21: after the event-pipeline recovery run,
+    ``/health`` reported ``entries_total: 14741`` (proxied, real),
+    ``entries_candidate: 0``, ``entries_indexed: 0`` and
+    ``read_errors_total: 0`` -- while the same process's log recorded
+    170 duplicate-key indexing failures, 9 indexing timeouts and 31
+    ``xreadgroup`` timeouts. The feed reported ``healthy`` with "no
+    read errors" on a pipeline that was failing, and the stall signal
+    (which gates on the candidate count) could never fire.
+
+    ``getattr`` on a missing attribute is silent, so a missing proxy
+    reads as a counter of zero. That is the failure mode this pins:
+    a counter that cannot be absent.
+    """
+
+    @staticmethod
+    def _stack_with_counters(**counters: int) -> WebSocketInvocationsSubscriber:
+        return WebSocketInvocationsSubscriber(
+            hot_store=MagicMock(),
+            bodai_subscriber=MagicMock(
+                running=True,
+                start=AsyncMock(),
+                entries_consumed=counters.get("entries_consumed", 0),
+                entries_candidate=counters.get("entries_candidate", 0),
+                entries_indexed=counters.get("entries_indexed", 0),
+                read_errors=counters.get("read_errors", 0),
+            ),
+        )
+
+    def test_it_proxies_entries_consumed(self) -> None:
+        stack = self._stack_with_counters(entries_consumed=14741)
+
+        assert stack.entries_consumed == 14741
+
+    def test_it_proxies_entries_candidate(self) -> None:
+        stack = self._stack_with_counters(entries_candidate=4099)
+
+        assert stack.entries_candidate == 4099
+
+    def test_it_proxies_entries_indexed(self) -> None:
+        stack = self._stack_with_counters(entries_indexed=37)
+
+        assert stack.entries_indexed == 37
+
+    def test_it_proxies_read_errors(self) -> None:
+        stack = self._stack_with_counters(read_errors=31)
+
+        assert stack.read_errors == 31
+
+    def test_every_counter_is_zero_without_a_bodai_subscriber(self) -> None:
+        """No push subscriber means no producer, so no counts."""
+        stack = WebSocketInvocationsSubscriber(hot_store=MagicMock())
+
+        assert stack.entries_consumed == 0
+        assert stack.entries_candidate == 0
+        assert stack.entries_indexed == 0
+        assert stack.read_errors == 0
+
+    def test_a_counter_missing_from_the_subscriber_reads_as_zero(self) -> None:
+        """A producer that has no counter yet is zero, not an error."""
+        # ``spec`` matters: a bare MagicMock auto-creates every
+        # attribute, so a missing counter would read as 1 (MagicMock's
+        # ``__int__``) instead of exercising the ``getattr`` default.
+        stack = WebSocketInvocationsSubscriber(
+            hot_store=MagicMock(),
+            bodai_subscriber=MagicMock(spec=["running", "start"]),
+        )
+
+        assert stack.entries_candidate == 0
+        assert stack.entries_indexed == 0
+        assert stack.read_errors == 0
+
+
 class TestStartReportsTheTruth:
     """``start_event_subscriber`` is what the health flag is built from."""
 

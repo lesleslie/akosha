@@ -349,7 +349,7 @@ class TestTheLiveShapeIsTheOneThatLands:
                     consumer_name="c1",
                 )
                 monkeypatch.setattr(
-                    f"{SUB_MODULE}._create_redis_client", lambda _url: client
+                    f"{SUB_MODULE}._create_redis_client", lambda _url, **_kwargs: client
                 )
                 await sub.start()
                 try:
@@ -835,7 +835,7 @@ class TestARestartStillDeliversNewMessages:
             try:
                 # --- first run: index one message, write the watermark
                 monkeypatch.setattr(
-                    f"{SUB_MODULE}._create_redis_client", lambda _url: first_client
+                    f"{SUB_MODULE}._create_redis_client", lambda _url, **_kwargs: first_client
                 )
                 first = BodaiToolInvocationSubscriber(
                     redis_url="redis://test",
@@ -867,7 +867,7 @@ class TestARestartStillDeliversNewMessages:
 
                 # --- restart: a NEW consumer, a message published after it
                 monkeypatch.setattr(
-                    f"{SUB_MODULE}._create_redis_client", lambda _url: second_client
+                    f"{SUB_MODULE}._create_redis_client", lambda _url, **_kwargs: second_client
                 )
                 second = BodaiToolInvocationSubscriber(
                     redis_url="redis://test",
@@ -922,7 +922,7 @@ class TestARestartStillDeliversNewMessages:
                 monkeypatch.setattr(client, "xreadgroup", _recording_xreadgroup)
 
                 monkeypatch.setattr(
-                    f"{SUB_MODULE}._create_redis_client", lambda _url: client
+                    f"{SUB_MODULE}._create_redis_client", lambda _url, **_kwargs: client
                 )
                 sub = BodaiToolInvocationSubscriber(
                     redis_url="redis://test",
@@ -1055,7 +1055,7 @@ class TestFallbackWhenRedisUnavailable:
         try:
             # Force the redis import to "fail" by patching the module
             # reference the subscriber uses.
-            def _fake_creator(url: str) -> Any | None:
+            def _fake_creator(url: str, **_kwargs: Any) -> Any | None:
                 return None
 
             monkeypatch.setattr(f"{SUB_MODULE}._create_redis_client", _fake_creator)
@@ -1171,7 +1171,7 @@ class TestStartConsumerGroupIdempotent:
                 # ``start()`` should not raise even though the group exists.
                 monkeypatch.setattr(
                     f"{SUB_MODULE}._create_redis_client",
-                    lambda url: client,
+                    lambda url, **_kwargs: client,
                 )
                 sub = BodaiToolInvocationSubscriber(
                     redis_url="redis://test",

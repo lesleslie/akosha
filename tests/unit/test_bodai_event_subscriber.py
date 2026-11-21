@@ -60,6 +60,7 @@ from akosha.ingestion.bodai_event_subscriber import (
     WATERMARK_CONVERSATION_ID,
     BodaiToolInvocationSubscriber,
     _create_redis_client,
+    _is_duplicate_key_error,
     _is_newer,
     _stream_id_key,
 )
@@ -216,7 +217,7 @@ class TestCreateRedisClient:
             return original_import(name, *args, **kwargs)
 
         with patch.object(builtins, "__import__", side_effect=fake_import):
-            result = _create_redis_client("redis://localhost:6379/0")
+            result = _create_redis_client("redis://localhost:6379/0", socket_timeout=30.0)
         assert result is None
 
     def test_returns_client_when_redis_asyncio_is_available(self) -> None:
@@ -226,9 +227,112 @@ class TestCreateRedisClient:
         fake_aioredis.from_url = MagicMock(return_value="FAKE_CLIENT")
         fake_module.asyncio = fake_aioredis
         with patch.dict("sys.modules", {"redis": fake_module, "redis.asyncio": fake_aioredis}):
-            result = _create_redis_client("redis://localhost:6379/0")
+            result = _create_redis_client("redis://localhost:6379/0", socket_timeout=30.0)
         assert result == "FAKE_CLIENT"
         fake_aioredis.from_url.assert_called_once()
+
+    def test_the_client_gets_a_socket_timeout(self) -> None:
+        """The client must carry an explicit socket timeout.
+
+        redis-py 8's default is 5 seconds, and that default is a bound
+        on the SERVER's work -- not on how long the client is willing
+        to wait for an idle BLOCK. The reply to this subscriber's read
+        is delayed by whatever the event loop is doing, and the event
+        loop is doing per-entry embedding and DuckDB work.
+
+        The live proof, 2026-11-21: with the default in place, a
+        backlog replay logged 31 ``xreadgroup error: Timeout reading
+        from localhost:6379`` failures. Every one of them aborted
+        client-side on a server that was answering normally.
+        """
+        fake_module = MagicMock()
+        fake_aioredis = MagicMock()
+        fake_aioredis.from_url = MagicMock(return_value="FAKE_CLIENT")
+        fake_module.asyncio = fake_aioredis
+        with patch.dict("sys.modules", {"redis": fake_module, "redis.asyncio": fake_aioredis}):
+            _create_redis_client("redis://localhost:6379/0", socket_timeout=30.0)
+
+        kwargs = fake_aioredis.from_url.call_args.kwargs
+        assert kwargs.get("socket_timeout") is not None
+        assert kwargs["socket_timeout"] > 0
+
+    def test_the_socket_timeout_exceeds_the_block_duration(self) -> None:
+        """The timeout must clear the BLOCK duration by a wide margin.
+
+        A BLOCK that outlives its own socket timeout is a timeout on a
+        healthy server: the client gives up on a reply that was going
+        to arrive.
+        """
+        fake_module = MagicMock()
+        fake_aioredis = MagicMock()
+        fake_aioredis.from_url = MagicMock(return_value="FAKE_CLIENT")
+        fake_module.asyncio = fake_aioredis
+        with patch.dict("sys.modules", {"redis": fake_module, "redis.asyncio": fake_aioredis}):
+            _create_redis_client("redis://localhost:6379/0", socket_timeout=30.0)
+
+        kwargs = fake_aioredis.from_url.call_args.kwargs
+        assert kwargs["socket_timeout"] > 1.5
+
+    def test_the_client_gets_a_connect_timeout(self) -> None:
+        """A connect that never completes must fail fast, not hang.
+
+        A read on this group may legitimately take minutes; a connect
+        never does. The two bounds are different problems and get
+        different values.
+        """
+        fake_module = MagicMock()
+        fake_aioredis = MagicMock()
+        fake_aioredis.from_url = MagicMock(return_value="FAKE_CLIENT")
+        fake_module.asyncio = fake_aioredis
+        with patch.dict("sys.modules", {"redis": fake_module, "redis.asyncio": fake_aioredis}):
+            _create_redis_client("redis://localhost:6379/0", socket_timeout=30.0)
+
+        kwargs = fake_aioredis.from_url.call_args.kwargs
+        assert 0 < kwargs["socket_connect_timeout"] <= 30
+
+
+class TestTheSocketTimeoutIsDerivedFromTheConfiguredWork:
+    """The timeout must scale with the per-event processing bound.
+
+    The event loop's longest occupancy is the per-entry processing
+    timeout: a batch of entries is processed concurrently, so the batch
+    is bounded by ONE entry's timeout, not by the batch size times it.
+    The socket timeout has to clear that, because a reply that arrives
+    while the loop is busy is still a valid reply -- the client just
+    has to be willing to wait for it.
+    """
+
+    def test_the_timeout_clears_the_per_event_timeout(self) -> None:
+        subscriber = _make_subscriber(per_event_timeout_seconds=30.0)
+
+        assert subscriber.socket_timeout_seconds > 30.0
+
+    def test_a_longer_per_event_timeout_raises_the_socket_timeout(self) -> None:
+        fast = _make_subscriber(per_event_timeout_seconds=5.0)
+        slow = _make_subscriber(per_event_timeout_seconds=120.0)
+
+        assert slow.socket_timeout_seconds > fast.socket_timeout_seconds
+
+    def test_the_timeout_clears_the_block_duration(self) -> None:
+        subscriber = _make_subscriber(xreadgroup_block_ms=1500)
+
+        assert subscriber.socket_timeout_seconds > 1.5
+
+    def test_the_client_is_built_with_the_derived_timeout(self) -> None:
+        subscriber = _make_subscriber(per_event_timeout_seconds=30.0)
+        fake_module = MagicMock()
+        fake_aioredis = MagicMock()
+        fake_aioredis.from_url = MagicMock(return_value="FAKE_CLIENT")
+        fake_module.asyncio = fake_aioredis
+
+        with patch.dict("sys.modules", {"redis": fake_module, "redis.asyncio": fake_aioredis}):
+            _create_redis_client(
+                "redis://localhost:6379/0",
+                socket_timeout=subscriber.socket_timeout_seconds,
+            )
+
+        kwargs = fake_aioredis.from_url.call_args.kwargs
+        assert kwargs["socket_timeout"] == subscriber.socket_timeout_seconds
 
 
 # ---------------------------------------------------------------------------
@@ -1314,6 +1418,134 @@ class TestProcessEntry:
             await s._process_entry(_decode_envelope_payload(), client=client)
         client.xack.assert_not_awaited()
         assert any("indexing failed" in rec.message for rec in caplog.records)
+
+
+class TestAReplayedRowIsNotAFailure:
+    """Re-indexing a row that is already stored must be a no-op.
+
+    The substrate's ``INSERT`` is not idempotent: it has no
+    ``ON CONFLICT`` clause, so re-inserting a ``conversation_id`` that
+    is already present raises a duplicate-key error. The subscriber
+    treated that as an indexing FAILURE, which parks the message in
+    the PEL and retries it three times before dropping it.
+
+    The live proof, 2026-11-21: the backlog replay logged 170
+    duplicate-key failures for rows that were already in DuckDB. The
+    rows were fine. The pending list was not: the group's pending
+    count sat at 108 with entries that could never succeed.
+
+    A replay is the message's work being DONE, not a failure: the row
+    is present, so the message must be ACKed and the watermark advanced.
+    But no NEW row landed, so the "rows that actually landed" counter
+    must not claim one.
+    """
+
+    @staticmethod
+    def _duplicate_error() -> Exception:
+        return RuntimeError(
+            'Constraint Error: Duplicate key "conversation_id: 1791599555476-0" '
+            "violates primary key constraint."
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_duplicate_row_is_acked(self) -> None:
+        s = _make_subscriber(hot_store=MagicMock())
+        client = _FakeRedisClient()
+
+        async def boom(*_a: Any, **_kw: Any) -> bool:
+            raise self._duplicate_error()
+
+        with patch.object(s, "_index_envelope", side_effect=boom):
+            await s._process_entry(_decode_envelope_payload(), client=client)
+        client.xack.assert_awaited_once_with(
+            STREAM_NAME, s._consumer_group, "1700000000000-0"
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_duplicate_row_is_not_left_pending(self) -> None:
+        """The message must not be parked for a retry that cannot win."""
+        s = _make_subscriber(hot_store=MagicMock())
+        client = _FakeRedisClient()
+
+        async def boom(*_a: Any, **_kw: Any) -> bool:
+            raise self._duplicate_error()
+
+        with patch.object(s, "_index_envelope", side_effect=boom):
+            await s._process_entry(_decode_envelope_payload(), client=client)
+        assert not s._index_retry_counts
+
+    @pytest.mark.asyncio
+    async def test_a_duplicate_row_does_not_count_as_a_landed_row(self) -> None:
+        """The row was already there, so no new row landed."""
+        s = _make_subscriber(hot_store=MagicMock())
+        client = _FakeRedisClient()
+
+        async def boom(*_a: Any, **_kw: Any) -> bool:
+            raise self._duplicate_error()
+
+        with patch.object(s, "_index_envelope", side_effect=boom):
+            await s._process_entry(_decode_envelope_payload(), client=client)
+        assert s.entries_indexed == 0
+
+    @pytest.mark.asyncio
+    async def test_a_duplicate_row_is_logged_as_a_replay(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        s = _make_subscriber(hot_store=MagicMock())
+        client = _FakeRedisClient()
+
+        async def boom(*_a: Any, **_kw: Any) -> bool:
+            raise self._duplicate_error()
+
+        with (
+            patch.object(s, "_index_envelope", side_effect=boom),
+            caplog.at_level(
+                logging.INFO,
+                logger="akosha.ingestion.bodai_event_subscriber",
+            ),
+        ):
+            await s._process_entry(_decode_envelope_payload(), client=client)
+        assert any("already indexed" in rec.message for rec in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_a_genuine_failure_is_still_a_failure(self) -> None:
+        """Only a duplicate is a replay. Everything else keeps failing."""
+        s = _make_subscriber(hot_store=MagicMock())
+        client = _FakeRedisClient()
+
+        async def boom(*_a: Any, **_kw: Any) -> bool:
+            raise RuntimeError("hot_store down")
+
+        with patch.object(s, "_index_envelope", side_effect=boom):
+            await s._process_entry(_decode_envelope_payload(), client=client)
+        client.xack.assert_not_awaited()
+
+
+class TestTheDuplicateKeyDetector:
+    """The detector must recognise the backends, not everything."""
+
+    def test_it_recognises_the_duckdb_message(self) -> None:
+        exc = RuntimeError(
+            'Constraint Error: Duplicate key "conversation_id: 1-0" violates '
+            "primary key constraint."
+        )
+        assert _is_duplicate_key_error(exc) is True
+
+    def test_it_recognises_the_postgres_message(self) -> None:
+        exc = RuntimeError(
+            'duplicate key value violates unique constraint "conversations_pkey"'
+        )
+        assert _is_duplicate_key_error(exc) is True
+
+    def test_it_rejects_an_unrelated_error(self) -> None:
+        assert _is_duplicate_key_error(RuntimeError("hot_store down")) is False
+
+    def test_it_rejects_a_not_null_violation(self) -> None:
+        """A NOT NULL violation is a real failure, not a replay."""
+        exc = RuntimeError(
+            "Constraint Error: NOT NULL constraint failed: conversations.content"
+        )
+        assert _is_duplicate_key_error(exc) is False
 
 
 # ---------------------------------------------------------------------------
