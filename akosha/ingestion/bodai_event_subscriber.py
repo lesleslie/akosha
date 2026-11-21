@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import json
 import logging
 import time
@@ -160,6 +161,14 @@ SOCKET_TIMEOUT_FLOOR_SECONDS: float = 10.0
 #: The column the substrate's ``conversations`` table keys on. A row
 #: found under this key IS the event with this identity.
 _CONVERSATION_KEY_COLUMN = "conversation_id"
+
+#: How long the replay-verification read may take, in seconds.
+#:
+#: The read is a single primary-key lookup, so it should be
+#: near-instant. The bound exists so a store that is stuck cannot stall
+#: the subscriber: a verification that could not complete is reported
+#: as "not stored", and the message is retried rather than dropped.
+VERIFICATION_TIMEOUT_SECONDS: float = 5.0
 
 
 #: Exponential backoff bounds for reconnect-after-error.
@@ -693,7 +702,12 @@ class BodaiToolInvocationSubscriber:
             return None
         return message_id
 
-    async def _conversation_is_stored(self, conversation_id: str) -> bool:
+    async def _conversation_is_stored(
+        self,
+        conversation_id: str,
+        *,
+        content: str,
+    ) -> bool:
         """Whether the substrate already holds this conversation.
 
         Read by primary key. The row's identity IS the event identity:
@@ -722,11 +736,19 @@ class BodaiToolInvocationSubscriber:
         Each one parked its message in the PEL for three pointless
         retries.
         """
+        if conversation_id == WATERMARK_CONVERSATION_ID:
+            # The watermark row is this subscriber's own bookkeeping.
+            # It is never an indexed event, so it can never satisfy
+            # the replay check.
+            return False
         try:
-            row = await self._query_row(
-                f"SELECT {_CONVERSATION_KEY_COLUMN} FROM conversations "
-                f"WHERE {_CONVERSATION_KEY_COLUMN} = ?",
-                [conversation_id],
+            row = await asyncio.wait_for(
+                self._query_row_off_loop(
+                    f"SELECT {_CONVERSATION_KEY_COLUMN}, content FROM conversations "
+                    f"WHERE {_CONVERSATION_KEY_COLUMN} = ? AND system_id = ?",
+                    [conversation_id, SYSTEM_ID_MAHAVISHNU],
+                ),
+                timeout=VERIFICATION_TIMEOUT_SECONDS,
             )
         except Exception as exc:
             logger.warning(
@@ -736,17 +758,33 @@ class BodaiToolInvocationSubscriber:
                 exc,
             )
             return False
-        return bool(row)
+        if not row:
+            return False
+        # The row is under this subscriber's system id and carries this
+        # event's content. A producer that reused an event id for a
+        # different payload is caught here rather than dropped.
+        return str(row[1]) == content
 
     async def _query_row(self, sql: str, params: list[Any]) -> Any:
-        """Run one query and fetch its first row, holding the store's lock.
+        """Run one query and fetch its first row, off the event loop.
 
         The lock is the store's, not this subscriber's: every operation
         that goes through the HotStore's API takes it, so holding it
         makes the connection quiescent for the whole execute-then-fetch
-        pair. This is the pattern
+        pair. That is the pattern
         :mod:`akosha.storage.metrics_query` uses for its health-probe
         queries.
+
+        The query itself runs on a worker thread. ``duckdb``'s
+        ``execute`` blocks the calling thread until the result is
+        materialised, so calling it straight from an ``async def`` pins
+        the event loop for the whole query. The substrate knows this:
+        it exposes ``_run_off_loop`` for exactly this, and its own
+        docstring warns that callers which reach for ``conn`` directly
+        collide with an in-flight write. This subscriber reads the hot
+        store on the failure path, where a backlog can mean hundreds of
+        reads in a row -- pinning the loop there starves every other
+        coroutine.
 
         Returns ``None`` when the query matches no row.
         """
@@ -761,6 +799,40 @@ class BodaiToolInvocationSubscriber:
             return conn.execute(sql, params).fetchone()
         async with lock:
             return conn.execute(sql, params).fetchone()
+
+    async def _query_row_off_loop(self, sql: str, params: list[Any]) -> Any:
+        """Run one query on a worker thread and fetch its first row.
+
+        ``duckdb``'s ``execute`` blocks the calling thread until the
+        result is materialised, so calling it straight from an
+        ``async def`` pins the event loop for the whole query. The
+        substrate knows this: it exposes ``_run_off_loop`` for exactly
+        this, and its own docstring warns that callers which reach for
+        ``conn`` directly collide with an in-flight write.
+
+        The replay verification reads the store on the FAILURE path,
+        where a backlog can mean hundreds of reads in a row. Pinning
+        the loop there starves every other coroutine -- which is how
+        the Redis client starts timing out while the HTTP surfaces stop
+        answering.
+
+        Falls back to the direct read when the store has no off-loop
+        helper. The substrate's HotStore always has one, so that is a
+        degraded path for an exotic store, not the normal one.
+        """
+        store = self._hot_store
+        run_off_loop = getattr(store, "_run_off_loop", None)
+        if run_off_loop is None:
+            return await self._query_row(sql, params)
+        lock = getattr(store, "_lock", None)
+
+        def runner(conn: Any) -> Any:
+            return conn.execute(sql, params).fetchone()
+
+        if lock is None or not hasattr(lock, "__aenter__"):
+            return await _await_if_needed(run_off_loop(runner))
+        async with lock:
+            return await _await_if_needed(run_off_loop(runner))
 
     async def _run_loop(self) -> None:
         """xreadgroup loop with exponential-backoff reconnect.
@@ -1044,7 +1116,10 @@ class BodaiToolInvocationSubscriber:
             await self._note_index_failure(client, message_id, reason="timeout")
             return
         except Exception as exc:
-            if await self._conversation_is_stored(event_id):
+            if await self._conversation_is_stored(
+                event_id,
+                content=self._build_content(inner_payload, topic=topic),
+            ):
                 # The row is ALREADY stored, so this message's work is
                 # DONE. The substrate's INSERT is not idempotent, so a
                 # replay raises instead of being a no-op -- and a
@@ -1432,3 +1507,14 @@ class BodaiToolInvocationSubscriber:
                 message_id,
                 exc,
             )
+
+
+async def _await_if_needed(result: Any) -> Any:
+    """Await ``result`` when it is awaitable, else return it unchanged.
+
+    A store whose ``_run_off_loop`` is not a coroutine function -- an
+    in-memory fixture, a test double -- returns its result directly.
+    """
+    if inspect.isawaitable(result):
+        return await result
+    return result

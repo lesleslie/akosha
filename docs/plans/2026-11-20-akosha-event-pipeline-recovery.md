@@ -1707,6 +1707,30 @@ exception and checking which constraint failed: that tells you what
 kind of failure occurred, while the read tells you the fact that
 matters — whether the work is done.
 
+The replay gate then went one step further: it must prove the row is
+THIS subscriber's row for THIS event.
+
+* The read is scoped to `system_id = SYSTEM_ID_MAHAVISHNU`. The
+  `conversations` primary key is `conversation_id` alone, so a row
+  written by another system under the same id would otherwise satisfy
+  the check.
+* The stored `content` must equal the content this event would have
+  written, so a producer that reused an event id for a different
+  payload is caught rather than silently dropped.
+* The reserved watermark id can never satisfy the check: that row is
+  the subscriber's own bookkeeping, not an indexed event.
+
+The read also runs on a worker thread now. `duckdb`'s `execute` blocks
+the calling thread until the result is materialised, so calling it
+from an `async def` pins the event loop for the whole query — and the
+substrate's own docstring warns that callers which reach for `conn`
+directly collide with an in-flight write. The replay verification
+reads the store on the FAILURE path, where a backlog means hundreds of
+reads in a row; pinning the loop there starves every other coroutine.
+The read is also time-bounded, and a verification that could not
+complete is reported as "not stored", so the message is retried rather
+than dropped.
+
 The upstream half — making the substrate's `INSERT` idempotent with
 `ON CONFLICT (conversation_id) DO NOTHING` — is not changed here. The
 substrate is oneiric's, and a fresh `uv sync` would install a

@@ -1534,6 +1534,32 @@ class TestAReplayedRowIsNotAFailure:
         client.xack.assert_not_awaited()
 
 
+class _FakeHotStore:
+    """A hot store whose reads run off the loop, like the real one."""
+
+    def __init__(
+        self,
+        row: Any = None,
+        *,
+        error: Exception | None = None,
+        foreign_system: bool = False,
+    ) -> None:
+        self.conn = MagicMock()
+        self.conn.execute.return_value.fetchone.return_value = row
+        self._lock = None
+        self._error = error
+        # A row that belongs to another system is not found by a query
+        # scoped to this subscriber's system_id.
+        self._foreign_system = foreign_system
+
+    async def _run_off_loop(self, func: Any) -> Any:
+        if self._error is not None:
+            raise self._error
+        if self._foreign_system:
+            self.conn.execute.return_value.fetchone.return_value = None
+        return func(self.conn)
+
+
 class TestTheReplayVerification:
     """The verdict comes from the store, not from the error message.
 
@@ -1563,42 +1589,21 @@ class TestTheReplayVerification:
 
     @pytest.mark.asyncio
     async def test_a_row_present_means_the_message_is_a_replay(self) -> None:
-        s = _make_subscriber(hot_store=MagicMock())
-        conn = MagicMock()
-        conn.execute.return_value.fetchone.return_value = ("1700000000000-0",)
-        s._hot_store.conn = conn
-        s._hot_store._lock = None
-
-        assert await s._conversation_is_stored("1700000000000-0") is True
-        sql = conn.execute.call_args[0][0]
-        assert "conversation_id" in sql
+        s = _make_subscriber(hot_store=_FakeHotStore(row=("e-1", "content")))
+        assert await s._conversation_is_stored("e-1", content="content") is True
 
     @pytest.mark.asyncio
     async def test_no_row_means_the_message_is_not_stored(self) -> None:
-        s = _make_subscriber(hot_store=MagicMock())
-        conn = MagicMock()
-        conn.execute.return_value.fetchone.return_value = None
-        s._hot_store.conn = conn
-        s._hot_store._lock = None
-
-        assert await s._conversation_is_stored("1700000000000-0") is False
+        s = _make_subscriber(hot_store=_FakeHotStore(row=None))
+        assert await s._conversation_is_stored("e-1", content="content") is False
 
     @pytest.mark.asyncio
     async def test_a_failed_read_is_not_a_replay(self) -> None:
         """A verification that could not run must not ack the message."""
-        s = _make_subscriber(hot_store=MagicMock())
-        conn = MagicMock()
-        conn.execute.side_effect = RuntimeError("store unreachable")
-        s._hot_store.conn = conn
-        s._hot_store._lock = None
-
-        assert await s._conversation_is_stored("1700000000000-0") is False
-
-
-
-# ---------------------------------------------------------------------------
-# _safe_xack
-# ---------------------------------------------------------------------------
+        s = _make_subscriber(
+            hot_store=_FakeHotStore(error=RuntimeError("store unreachable"))
+        )
+        assert await s._conversation_is_stored("e-1", content="content") is False
 
 
 class TestSafeXack:
@@ -2427,3 +2432,60 @@ class TestTheBatchIsBoundedByOneEntriesTimeout:
             await subscriber._process_response([["bodai:events", entries]], client=client)
 
         assert subscriber.entries_consumed == 2
+
+
+class TestTheReplayGateProvesTheIdentity:
+    """The row must be THIS subscriber's row for THIS event.
+
+    The ``conversations`` primary key is ``conversation_id`` alone, so a
+    row written by another system under the same id would satisfy a bare
+    primary-key lookup -- and so would the subscriber's own reserved
+    watermark row, which is bookkeeping and never an indexed event.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_row_from_another_system_is_not_a_replay(self) -> None:
+        """The query is scoped to this subscriber's system_id."""
+        s = _make_subscriber(
+            hot_store=_FakeHotStore(row=("e-1", "content"), foreign_system=True)
+        )
+        assert await s._conversation_is_stored("e-1", content="content") is False
+
+    @pytest.mark.asyncio
+    async def test_different_content_is_not_a_replay(self) -> None:
+        """A producer that reused an event id for another payload."""
+        s = _make_subscriber(hot_store=_FakeHotStore(row=("e-1", "other content")))
+        assert await s._conversation_is_stored("e-1", content="content") is False
+
+    @pytest.mark.asyncio
+    async def test_the_reserved_watermark_id_is_never_a_replay(self) -> None:
+        s = _make_subscriber(hot_store=_FakeHotStore(row=("wm", "content")))
+        assert (
+            await s._conversation_is_stored(
+                WATERMARK_CONVERSATION_ID, content="content"
+            )
+            is False
+        )
+
+    @pytest.mark.asyncio
+    async def test_matching_content_is_a_replay(self) -> None:
+        s = _make_subscriber(hot_store=_FakeHotStore(row=("e-1", "content")))
+        assert await s._conversation_is_stored("e-1", content="content") is True
+
+    @pytest.mark.asyncio
+    async def test_the_read_is_scoped_to_this_subscribers_system(self) -> None:
+        s = _make_subscriber(hot_store=_FakeHotStore(row=("e-1", "content")))
+        await s._conversation_is_stored("e-1", content="content")
+        sql = s._hot_store.conn.execute.call_args[0][0]
+        assert "system_id" in sql
+        assert s._hot_store.conn.execute.call_args[0][1] == [
+            "e-1",
+            SYSTEM_ID_MAHAVISHNU,
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_failed_read_is_not_a_replay(self) -> None:
+        s = _make_subscriber(
+            hot_store=_FakeHotStore(error=RuntimeError("store unreachable"))
+        )
+        assert await s._conversation_is_stored("e-1", content="content") is False
