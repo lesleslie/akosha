@@ -70,10 +70,20 @@ def build_event_subscribers(
         )
         return None
 
-    if not websocket_cfg.enabled:
+    # EITHER flag builds the stack. The websocket subscriber's own
+    # indexing path was removed on 2026-09-26 -- it now only
+    # orchestrates the Redis push subscriber -- so the websocket flag
+    # gates nothing. Gating the whole stack on it meant an operator who
+    # enabled the producer and disabled the orchestrator got NO
+    # producer at all: the conversations table stayed empty and the
+    # knowledge graph stayed empty, with nothing in the logs to say
+    # why. Do not "simplify" this back to the websocket flag alone.
+    if not websocket_cfg.enabled and not bodai_cfg.enabled:
         logger.info(
-            "websocket_invocations_subscriber disabled; the conversations "
-            "table will not be populated and the knowledge graph stays empty"
+            "both websocket_invocations_subscriber and "
+            "bodai_tool_invocation_subscriber are disabled; the "
+            "conversations table will not be populated and the knowledge "
+            "graph stays empty"
         )
         return None
 

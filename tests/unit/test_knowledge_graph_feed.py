@@ -299,7 +299,8 @@ class TestSharedBuilderInstance:
 class TestEventSubscriberWiring:
     """The MCP lifespan must own the event subscriber."""
 
-    def test_build_event_subscribers_returns_none_when_disabled(self) -> None:
+    def test_build_event_subscribers_returns_none_when_both_are_disabled(self) -> None:
+        """Nothing to run: neither producer is enabled."""
         from akosha.config import (
             BodaiToolInvocationSubscriberConfig,
             WebSocketInvocationsSubscriberConfig,
@@ -309,9 +310,38 @@ class TestEventSubscriberWiring:
         subscriber = build_event_subscribers(
             MagicMock(),
             websocket_cfg=WebSocketInvocationsSubscriberConfig(enabled=False),
-            bodai_cfg=BodaiToolInvocationSubscriberConfig(enabled=True),
+            bodai_cfg=BodaiToolInvocationSubscriberConfig(enabled=False),
         )
         assert subscriber is None
+
+    def test_the_bodai_producer_alone_is_enough(self) -> None:
+        """A disabled websocket block must not veto the Redis producer.
+
+        ``BodaiToolInvocationSubscriber`` is the ONLY producer of the
+        ``conversations`` table -- the websocket subscriber's own
+        indexing path was removed in 2026-09-26 and it now only
+        orchestrates the push subscriber. Gating the whole stack on the
+        websocket flag meant an operator who enabled the producer and
+        disabled the orchestrator got no producer at all: the
+        conversations table stayed empty and the knowledge graph stayed
+        empty, with nothing in the logs to say why.
+        """
+        from akosha.config import (
+            BodaiToolInvocationSubscriberConfig,
+            WebSocketInvocationsSubscriberConfig,
+        )
+        from akosha.ingestion.subscriber_wiring import build_event_subscribers
+
+        subscriber = build_event_subscribers(
+            MagicMock(),
+            websocket_cfg=WebSocketInvocationsSubscriberConfig(enabled=False),
+            bodai_cfg=BodaiToolInvocationSubscriberConfig(
+                enabled=True, redis_url="redis://example:6379/1"
+            ),
+        )
+        assert subscriber is not None
+        assert subscriber._bodai_subscriber is not None
+        assert subscriber._bodai_subscriber._redis_url == "redis://example:6379/1"
 
     def test_build_event_subscribers_builds_the_stack(self) -> None:
         from akosha.config import (

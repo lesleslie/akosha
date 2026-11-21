@@ -95,6 +95,32 @@ class WebSocketInvocationsSubscriber:
         """Which source the orchestrator currently drives (always ``"push"``)."""
         return self._source
 
+    @property
+    def running(self) -> bool:
+        """Whether this stack is actively producing.
+
+        ``start_event_subscriber`` reads this attribute to set the
+        ``source_producer_running`` / ``event_subscriber_running``
+        flags that ``/health`` publishes. The attribute did not exist,
+        so ``getattr(stack, "running", False)`` was always ``False`` --
+        and the health surface reported "not producing" for a producer
+        that was running. The live proof: the subscriber's read loop
+        logging every 35 seconds while ``/health`` said it was down.
+        """
+        return self._running
+
+    @property
+    def entries_consumed(self) -> int:
+        """How many stream entries the producer has consumed.
+
+        Published as the producer's WORK in the health payload: a
+        subscriber that has consumed entries and landed none is
+        starving; one that has consumed none has nothing to do.
+        """
+        if self._bodai_subscriber is None:
+            return 0
+        return int(getattr(self._bodai_subscriber, "entries_consumed", 0) or 0)
+
     async def start(self) -> None:
         """Start the push subscriber.
 

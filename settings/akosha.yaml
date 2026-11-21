@@ -29,10 +29,45 @@ hot:
   path: "hot/hot.db"
   write_ahead_log: true
 
+# Warm tier — the committed default is the on-disk DuckDB backend.
+#
+# THIS BLOCK IS READ DIRECTLY, not through the layered Oneiric loader:
+# `resolve_warm_store_config()` (akosha/storage/__init__.py) opens this
+# file and returns `backend` / `pg_url` / `db_path`, because `warm.backend`
+# and `warm.pg_url` are substrate-mapped and are stripped from the YAML
+# before AkoshaConfig is built. The XDG overlay at
+# ~/.config/akosha/local.yaml therefore does NOT reach the warm store.
+#
+# NOT YET AN OPERATOR-FACING SWITCH. `resolve_warm_store_config()` reads
+# this block, but the only production warm store — the MCP server's aging
+# store — is constructed as `create_warm_store(backend="duckdb-ssd")` and
+# never consults the resolver. `AkoshaApplication`, which does consult it,
+# is never started in production. Setting `backend: pgvector` here has no
+# effect on the running service today.
+#
+# The two readers of this key also disagree. `akosha/config.py` documents
+# `ONEIRIC__SUBSTRATE__WARM__BACKEND` as THE environment mechanism for the
+# warm tier and strips `warm.backend` from the YAML so the substrate wins;
+# the resolver reads the repo file raw and honours the legacy
+# `AKOSHA__STORAGE__WARM__*` variable instead. Three defaults exist for
+# one concept: the substrate's (`pgvector`), the resolver's (`duckdb-ssd`)
+# and this file's.
+#
+# Wiring the MCP path through the resolver and reconciling the two
+# readers is Phase 2 of
+# docs/plans/2026-11-17-unified-pgvector-warm-tier.md. Until that lands,
+# this block records the committed intent, not a live switch.
+#
+# CONNECTION BUDGET: `PgvectorWarmStore.initialize()` eagerly creates one
+# pgvector collection + one asyncpg pool per shard, so the shard count
+# multiplies the backend connection count. With a DSN, asyncpg's own
+# defaults apply (min_size=10, max_size=10) — at the default
+# `shard_count: 256` that is 2,560 connections, not 256: far past
+# `max_connections` (100) and pgbouncer's `default_pool_size` (20). There
+# is no warm-tier-specific shard-count knob yet.
 warm:
   backend: duckdb-ssd   # options: duckdb-ssd, duckdb-hdd, pgvector
-  num_partitions: 256
-  pg_url: ""            # required when warm.backend="pgvector"; e.g. postgresql://user@host:5432/akosha
+  pg_url: ""            # read as the file-level default by the resolver
 
 # Cold storage — backend/bucket/prefix/compression are substrate-mapped
 # (per akosha/config.py:_SUBSTRATE_MAPPED_NESTED). The committed substrate

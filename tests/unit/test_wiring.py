@@ -224,3 +224,72 @@ async def test_w0_discover_tools_schema(monkeypatch: pytest.MonkeyPatch) -> None
             f"discover_tools dict entries must include key '{key}' "
             f"(W0 schema); got keys: {sorted(first.keys())}"
         )
+
+
+# ---------------------------------------------------------------------------
+# The stall signal must be WIRED, not merely implemented
+# ---------------------------------------------------------------------------
+#
+# ``apply_stall_status`` and ``apply_stall_status_to_aggregate`` are
+# pure functions, and both have unit tests that call them with a
+# hand-built dict. That proves the FUNCTIONS work; it does not prove
+# the server calls them. Delete the call site in ``_default_health_probe``
+# and the whole suite stays green while ``/health`` goes back to
+# reporting a six-week starvation as ``warming_up``.
+#
+# The probe lives inside the lifespan and cannot be started in a test
+# (the OTLP receiver binds the canonical :4318 unconditionally), so
+# the wiring is pinned by reading the source with ``ast`` -- the same
+# idiom this file already uses for the tool-profile guard.
+
+
+def _stall_signal_targets() -> set[str]:
+    """The feed dicts ``apply_stall_status`` is called on, by name."""
+    tree = ast.parse(_server_path().read_text())
+    targets: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if getattr(node.func, "id", None) != "apply_stall_status":
+            continue
+        for arg in node.args:
+            if isinstance(arg, ast.Name):
+                targets.add(arg.id)
+    return targets
+
+
+def test_the_stall_signal_is_applied_to_every_starved_feed() -> None:
+    """The signal must reach the feeds whose producers are starving.
+
+    ``knowledge_graph_feed`` has cycled 3,585 times with zero rows.
+    ``local_traces_feed`` has cycled 46,571 times with zero rows while
+    its OTLP receiver ingested 42,985 batches -- the same signature,
+    and a six-week-old draft plan (``2026-09-09-akosha-otel-feed-recovery``)
+    that does not address it.
+
+    ``mcp_tool_call_feed`` is deliberately NOT in this set: its emptiness
+    can be legitimate -- it counts spans carrying a ``task_class`` that
+    no instrumented tool call may set -- and a false "degraded" on a
+    healthy feed is worse than a missing signal.
+    """
+    assert _stall_signal_targets() == {"kg_dict", "lt_dict"}
+
+
+def test_the_aggregate_is_told_about_the_stall() -> None:
+    """The roll-up must be told, or it keeps saying ``warming_up``.
+
+    ``warming_up`` answers 200. The per-feed correction is invisible to
+    the 503 rule without this call.
+    """
+    tree = ast.parse(_server_path().read_text())
+    called = False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if getattr(node.func, "id", None) == "apply_stall_status_to_aggregate":
+            called = True
+            break
+    assert called, (
+        "akosha/mcp/server.py must call apply_stall_status_to_aggregate(checks) "
+        "so the aggregate stops reporting a starved feed as warming_up"
+    )

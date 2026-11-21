@@ -20,20 +20,20 @@ from typing import Any
 from oneiric.adapters.vector.duckdb_hot_store import DuckdbHotStore
 
 from akosha.json_utils import coerce_json_object
+from akosha.models import RESERVED_WATERMARK_CONVERSATION_ID
 from akosha.processing.embedding_dim import resolve_embedding_dim
 
 logger = logging.getLogger(__name__)
 
 
 def _strip_tz_suffix(s: str) -> str:
-    """Strip ISO-8601 tz suffix off a timestamp string (``+HH:MM`` / ``-HH:MM`` / ``Z``).
+    """Strip ISO-8601 tz suffix off a timestamp string.
 
     DuckDB currently accepts the ``+00:00`` suffix against a
-    ``TIMESTAMP`` column without complaint, but stripping it is
-    defense in depth — a DuckDB/ICU upgrade could regress this
-    path, and query_traces is on the hot read-side of every Bodai
-    component. The space-separator ``YYYY-MM-DD HH:MM:SS`` form
-    (also accepted by DuckDB) is unchanged.
+    ``TIMESTAMP`` column without complaint, but stripping it is defense
+    in depth -- a DuckDB/ICU upgrade could regress this path, and
+    query_traces is on the hot read-side of every Bodai component. The
+    space-separator ``YYYY-MM-DD HH:MM:SS`` form is unchanged.
     """
     if "T" not in s:
         return s  # already space-separated, not ISO; leave as-is
@@ -55,12 +55,11 @@ def _is_zero_vector(v: list[float]) -> bool:
     """True iff every component of ``v`` is numerically ~zero.
 
     Used by :meth:`HotStore.search_similar` to detect callers that
-    probe with a zero embedding (e.g. watermark detection in
-    :func:`akosha.ingestion.bodai_event_subscriber._read_watermark_async`).
-    A zero query produces NULL cosine similarities against every row
-    (``0 / 0 = NaN`` in DuckDB), and ``NULL >= threshold`` filters them
-    out — so without this guard the substrate returns ``[]`` and
-    silently breaks the watermark-detection call path.
+    probe with a zero embedding. A zero query produces NULL cosine
+    similarities against every row (``0 / 0 = NaN`` in DuckDB), and
+    ``NULL >= threshold`` filters them out — so without this guard the
+    substrate returns ``[]`` and silently breaks any caller that
+    probes that way.
 
     Threshold ``1e-10`` matches the pre-Phase-5 akosha heuristic;
     tight enough to reject actual zero vectors but loose enough to
@@ -95,13 +94,10 @@ class HotStore(DuckdbHotStore):
         # Resolve AkoSHA's smarter embedding dim before delegating so
         # the schema dim matches the active backend.
         if embedding_dim is None:
-            # 2026-09-28: explicitly pass the live embedding service so
-            # ``resolve_embedding_dim`` returns the post-init dim (768
-            # for the llama.cpp default table entry). Without the
-            # explicit arg, the resolver falls back to
-            # ``DEFAULT_DIMENSION = 384`` and the schema is locked to
-            # the wrong size, breaking OtelTraceIngester.insert with
-            # "embedding dim mismatch".
+            # Pass the live embedding service so ``resolve_embedding_dim``
+            # returns the post-init dim. Without it the resolver falls back
+            # to DEFAULT_DIMENSION = 384 and the schema is locked to the
+            # wrong size, breaking OtelTraceIngester.insert.
             from akosha.processing.embeddings import get_embedding_service
 
             embedding_dim = resolve_embedding_dim(get_embedding_service())
@@ -129,16 +125,12 @@ class HotStore(DuckdbHotStore):
         Vector similarity uses ``array_cosine_similarity(...)`` —
         no index required (HNSW skipped; see ``initialize``).
 
-        Zero-vector fallback: a zero query vector produces NULL
-        cosine similarities against every row (``0 / 0 = NaN`` in
-        DuckDB), and ``NULL >= threshold`` filters them out — so the
-        substrate silently returns ``[]`` even though callers like
-        :func:`akosha.ingestion.bodai_event_subscriber._read_watermark_async`
-        (which probes with ``[0.0] * embedding_dim``) expect a
-        time-ordered scan as a fallback. Pre-refactor akosha
-        returned the timestamp-ordered fallback; this override
-        preserves that contract so substrate changes cannot
-        regress it.
+        Zero-vector fallback: a zero query vector produces NULL cosine
+        similarities against every row (``0 / 0 = NaN`` in DuckDB), and
+        ``NULL >= threshold`` filters them out -- so the substrate
+        silently returns ``[]`` even though a caller probing with
+        ``[0.0] * embedding_dim`` expects a time-ordered scan. This
+        override preserves that pre-refactor contract.
         """
         if _is_zero_vector(query_embedding):
             return await self._search_recent(system_id=system_id, limit=limit)
@@ -148,7 +140,16 @@ class HotStore(DuckdbHotStore):
             limit=limit,
             threshold=threshold,
         )
-        return [{**r, "similarity": r["score"]} for r in results]
+        # The subscriber's watermark row is bookkeeping, not a
+        # conversation. It leaks badly: its embedding is the ZERO
+        # VECTOR, so its similarity is NaN, and DuckDB orders NaN ABOVE
+        # every number -- the threshold cannot filter it and the sort
+        # puts it FIRST.
+        return [
+            {**r, "similarity": r["score"]}
+            for r in results
+            if r.get("conversation_id") != RESERVED_WATERMARK_CONVERSATION_ID
+        ]
 
     async def _search_recent(
         self,
@@ -173,6 +174,10 @@ class HotStore(DuckdbHotStore):
             if system_id is not None:
                 conditions.append("system_id = ?")
                 params.append(system_id)
+            # Excluded here too, and this path leaks it WORSE: it is
+            # time-ordered, and the watermark is usually the newest row.
+            conditions.append("conversation_id != ?")
+            params.append(RESERVED_WATERMARK_CONVERSATION_ID)
             where_clause = " AND ".join(conditions) if conditions else "TRUE"
             rows = self.conn.execute(
                 f"""
@@ -272,6 +277,15 @@ class HotStore(DuckdbHotStore):
 
             common_conditions: list[str] = []
             params: list[Any] = []
+
+            # The event subscriber's watermark row is bookkeeping, not a
+            # conversation. It records how far the ingestion pipeline
+            # has got, and it must never reach a caller: the knowledge
+            # graph would grow a phantom entity for it, and a "the
+            # pipeline produced something" check would be satisfied by a
+            # row that records no event.
+            common_conditions.append("conversation_id != ?")
+            params.append(RESERVED_WATERMARK_CONVERSATION_ID)
 
             if system_id:
                 common_conditions.append("system_id = ?")

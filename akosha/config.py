@@ -738,10 +738,17 @@ class OTelReceiverConfig(BaseModel):
 class WebSocketInvocationsSubscriberConfig(BaseModel):
     """Settings for the ``websocket_invocations_subscriber`` block.
 
-    This block gates the orchestrator that turns Mahavishnu's websocket
-    tool-invocation rows into HotStore records. It is the ONLY producer
-    of the ``conversations`` table that the knowledge-graph refresh loop
-    reads, so when it is off the graph stays empty.
+    This block gates the ORCHESTRATOR: the subscriber that drives the
+    ingestion of Mahavishnu's tool-invocation rows into HotStore
+    records. It does not index anything by itself — its own indexing
+    path was removed on 2026-09-26, and it now only owns the Redis
+    push subscriber.
+
+    The producer of the ``conversations`` table that the
+    knowledge-graph refresh loop reads is the
+    ``bodai_tool_invocation_subscriber`` block. Turning THIS block off
+    does not stop the producer; the stack is built when either flag is
+    on.
 
     Declared on ``AkoshaConfig`` so it survives ``get_config()`` — that
     function drops any key that is not an ``AkoshaConfig`` field, and it

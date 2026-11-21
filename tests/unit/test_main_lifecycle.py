@@ -670,7 +670,8 @@ class TestStorageHelper:
         # guard is present.
         from pathlib import Path
 
-        main_path = Path("/Users/les/Projects/akosha/akosha/main.py")
+        main_path = Path(__file__).resolve().parents[2] / "akosha" / "main.py"
+        assert Path(__file__).resolve().parents[2] in main_path.resolve().parents
         assert main_path.exists()
         text = main_path.read_text()
         assert "__main__" in text

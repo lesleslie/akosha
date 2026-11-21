@@ -9,7 +9,7 @@ import signal
 import sys
 from typing import TYPE_CHECKING, Any
 
-from akosha.storage import create_hot_store, create_warm_store
+from akosha.storage import create_hot_store, create_warm_store, effective_warm_backend
 from akosha.storage.hot_store import HotStore
 from akosha.storage.warm_store import WarmStore
 
@@ -235,6 +235,7 @@ class AkoshaApplication:
         # when warm.backend="pgvector". pgvector is the new warm-tier
         # backend (one collection per ShardRouter shard); see
         # ``akosha/storage/pgvector_warm_store.py``.
+        warm_cfg: dict[str, Any] = {"backend": "duckdb-ssd", "pg_url": "", "db_path": None}
         try:
             warm_cfg = self._read_warm_store_config()
             warm_store: WarmStore | PgvectorWarmStore | None = create_warm_store(
@@ -245,8 +246,16 @@ class AkoshaApplication:
             if warm_store is not None:
                 await warm_store.initialize()
             self.warm_store = warm_store
+            # Log the EFFECTIVE backend (the selector that is actually
+            # running), not only the requested one: ``create_warm_store``
+            # fail-softs to DuckDB when pgvector is requested without a
+            # DSN, so the requested backend can differ from what is
+            # running. The class name goes in its own field: a field
+            # named ``backend`` that holds a class name cannot be
+            # grepped against the configured selector.
             logger.info(
-                "WarmStore initialized (%s, backend=%s)",
+                "WarmStore initialized (backend=%s, backend_class=%s, requested=%s)",
+                effective_warm_backend(warm_store),
                 type(warm_store).__name__ if warm_store else "disabled",
                 warm_cfg["backend"],
             )
@@ -452,45 +461,17 @@ class AkoshaApplication:
     def _read_warm_store_config() -> dict[str, Any]:
         """Read the ``warm`` block from settings.
 
-        Returns only the keys ``create_warm_store`` cares about — ``backend``,
-        ``pg_url``, ``db_path``. The pgvector path is the new
-        warm-tier backend (replaces the legacy hot-tier pgvector backend
-        removed 2026-09-27).
+        Delegates to :func:`akosha.storage.resolve_warm_store_config` so
+        this process and the MCP server's aging service resolve the
+        warm-tier backend the SAME way. The old local implementation
+        resolved the repo root as ``Path(__file__).resolve().parents[2]``,
+        which points one directory ABOVE the repo — so the settings file it
+        looked for never existed and every call silently fell back to the
+        ``duckdb-ssd`` defaults without a warning.
         """
-        from pathlib import Path
+        from akosha.storage import resolve_warm_store_config
 
-        defaults: dict[str, Any] = {
-            "backend": "duckdb-ssd",
-            "pg_url": "",
-            "db_path": None,
-        }
-        try:
-            import yaml
-        except ImportError:
-            logger.warning("PyYAML unavailable; warm_store defaults to duckdb-ssd")
-            return defaults
-
-        akosha_root = Path(__file__).resolve().parents[2]
-        settings_path = akosha_root / "settings" / "akosha.yaml"
-        if not settings_path.exists():
-            return defaults
-        try:
-            with settings_path.open() as handle:
-                cfg = yaml.safe_load(handle) or {}
-        except (OSError, yaml.YAMLError) as exc:
-            logger.warning(
-                "Could not read %s (%s); warm_store defaults to duckdb-ssd",
-                settings_path,
-                exc,
-            )
-            return defaults
-        warm = cfg.get("warm") or {}
-        db_path_raw = warm.get("path", defaults["db_path"])
-        return {
-            "backend": str(warm.get("backend", defaults["backend"])),
-            "pg_url": str(warm.get("pg_url", defaults["pg_url"])),
-            "db_path": Path(db_path_raw) if db_path_raw else None,
-        }
+        return resolve_warm_store_config()
 
     def _wire_eventbridge_publisher(self) -> None:
         """Resolve and inject the EventBridge publisher at app startup.

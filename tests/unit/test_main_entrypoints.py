@@ -10,9 +10,12 @@ non-zero exit only on actual errors. Catches:
 from __future__ import annotations
 
 import os
+import shutil
 import signal
+import socket
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -22,12 +25,79 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _free_port() -> int:
+    """An ephemeral port that is free right now."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def _isolated_env() -> tuple[dict[str, str], Path]:
+    """Build an environment that gives the subprocess its own machine.
+
+    Spawning a second akosha on a host that already runs one collides
+    three ways, and every collision looks like a code bug:
+
+    1. **The DuckDB write lock.** The live service holds a lock on the
+       shared XDG ``hot.db``; a second process opening the same file
+       dies with ``_duckdb.IOException: Conflicting lock is held``.
+       ``AKOSHA_DATA_PATH`` -- the highest-priority override in
+       ``StoragePathResolver.get_base_path`` -- redirects the whole
+       storage tree to a throwaway directory.
+    2. **The OTLP receiver ports.** The receiver binds :4317/:4318
+       unconditionally, by design (the lifespan comment in
+       ``akosha/mcp/server.py`` says a flag there would let a config
+       error silently un-own the fleet's OTLP endpoint). There is no
+       environment variable for the port, but ``AKOSHA_CONFIG`` points
+       the loader at a settings file, and ``spans_substrate`` is read
+       from it.
+    3. **The MCP server's own port.** ``MCP_PORT`` is what
+       ``akosha/mcp/__main__.py`` binds.
+
+    Without all three, the smoke test can only pass while the service is
+    stopped -- and it fails identically on unmodified ``main``, which
+    makes it look like a regression when it is not.
+
+    ``AKOSHA_CONFIG`` REPLACES the project settings file rather than
+    merging with it, so the two subscriber opt-outs are restated here:
+    under the replacement they default to ENABLED, and the subprocess
+    would reach for Redis.
+
+    Returns:
+        The environment mapping and the throwaway data directory it
+        points at. The caller owns the directory's lifetime.
+    """
+    data_dir = Path(tempfile.mkdtemp(prefix="akosha-entrypoint-"))
+    config_path = data_dir / "akosha-test.yaml"
+    config_path.write_text(
+        "spans_substrate:\n"
+        f"  receiver_http_port: {_free_port()}\n"
+        f"  receiver_grpc_port: {_free_port()}\n"
+        "bodai_tool_invocation_subscriber:\n"
+        "  enabled: false\n"
+        "websocket_invocations_subscriber:\n"
+        "  enabled: false\n"
+    )
+    env = dict(os.environ)
+    env["AKOSHA_DATA_PATH"] = str(data_dir)
+    env["AKOSHA_CONFIG"] = str(config_path)
+    env["MCP_PORT"] = str(_free_port())
+    env["MCP_HOST"] = "127.0.0.1"
+    return env, data_dir
+
+
 def _run(
     *args: str,
-    timeout: float = 15.0,
+    timeout: float = 60.0,
     marker: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Helper: spawn python -m <args> from the repo root.
+
+    The timeout is 60s, not 15s, because the import is the expensive
+    part and it is not free: ``python -m akosha --help`` measured
+    3.5-8.7s warm and 23.9s cold on this machine. A 15s budget turned
+    the cold import into an intermittent failure that had nothing to do
+    with the code under test.
 
     For short-lived CLI subcommands (--help, --version) the subprocess
     exits cleanly within the timeout. For server entry points
@@ -40,6 +110,7 @@ def _run(
     usage but takes >10s in subprocess ``communicate``, which would
     blow the 20s smoke-test budget.
     """
+    env, data_dir = _isolated_env()
     proc = subprocess.Popen(
         [sys.executable, "-m", *args],
         cwd=str(REPO_ROOT),
@@ -47,6 +118,7 @@ def _run(
         stderr=subprocess.PIPE,
         text=True,
         bufsize=1,  # line-buffered so marker detection is timely
+        env=env,
     )
     captured_stdout: list[str] = []
     captured_stderr: list[str] = []
@@ -98,6 +170,7 @@ def _run(
         captured_stdout.append(remaining_out)
         captured_stderr.append(remaining_err)
 
+    shutil.rmtree(data_dir, ignore_errors=True)
     return subprocess.CompletedProcess(
         args=[sys.executable, "-m", *args],
         returncode=proc.returncode,
@@ -112,6 +185,77 @@ def test_python_m_akosha_help_exits_0() -> None:
     assert result.returncode == 0, f"stderr: {result.stderr}"
     # Sanity: the help text should mention something Akosha-shaped.
     assert "akosha" in result.stdout.lower() or "usage" in result.stdout.lower()
+
+
+def test_entrypoint_subprocess_gets_an_isolated_storage_root() -> None:
+    """The spawned entry point must not touch the machine's shared storage.
+
+    The live Akosha service holds a DuckDB write lock on the shared
+    XDG ``hot.db``. A second process opening that file dies with
+    ``Conflicting lock is held``, so the MCP entry-point smoke test
+    could only pass while the service was stopped -- it failed on a
+    machine with the service running, and for a reason that had
+    nothing to do with the code under test.
+
+    ``AKOSHA_DATA_PATH`` is the highest-priority override in
+    ``StoragePathResolver.get_base_path``, so pointing it at a
+    throwaway directory redirects the whole storage tree.
+    """
+    env, data_dir = _isolated_env()
+
+    assert env["AKOSHA_DATA_PATH"] == str(data_dir)
+    assert data_dir.is_absolute()
+    # It is a throwaway under the system temp dir, not the shared XDG
+    # location the running service uses.
+    assert str(data_dir).startswith(tempfile.gettempdir())
+    # And it is not the resolver's default base path.
+    from akosha.storage.path_resolver import StoragePathResolver
+
+    default_base = StoragePathResolver().base_path
+    assert data_dir != default_base
+
+
+def test_two_isolated_environments_use_different_directories() -> None:
+    """Each subprocess gets its OWN root, so two runs cannot collide."""
+    _, first = _isolated_env()
+    _, second = _isolated_env()
+    assert first != second
+
+
+def test_entrypoint_subprocess_gets_its_own_ports() -> None:
+    """The spawned entry point must not bind a port the service holds.
+
+    The OTLP receiver binds :4317/:4318 unconditionally, and the MCP
+    server binds its own port. Both are held by the live service, and
+    both fail with ``[Errno 48] address already in use`` -- which kills
+    the subprocess before it can print the marker the test looks for.
+    """
+    env, data_dir = _isolated_env()
+
+    assert env["MCP_PORT"] != "8682"
+    assert int(env["MCP_PORT"]) > 0
+
+    config = Path(env["AKOSHA_CONFIG"]).read_text()
+    assert "receiver_http_port" in config
+    assert "receiver_grpc_port" in config
+    # The canonical OTLP ports must not be the ones handed out.
+    assert "receiver_http_port: 4318\n" not in config
+    assert "receiver_grpc_port: 4317\n" not in config
+    assert Path(env["AKOSHA_CONFIG"]).parent == data_dir
+
+
+def test_the_isolated_config_keeps_the_subscribers_off() -> None:
+    """``AKOSHA_CONFIG`` REPLACES the settings file, so the opt-outs are restated.
+
+    Under the replacement the two subscriber blocks fall back to their
+    code defaults, which are ENABLED -- and the subprocess would reach
+    for Redis.
+    """
+    env, _ = _isolated_env()
+
+    config = Path(env["AKOSHA_CONFIG"]).read_text()
+    assert "bodai_tool_invocation_subscriber:\n  enabled: false\n" in config
+    assert "websocket_invocations_subscriber:\n  enabled: false\n" in config
 
 
 def test_python_m_akosha_mcp_imports_and_initializes_tools() -> None:

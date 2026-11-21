@@ -681,3 +681,123 @@ def test_akosha_health_mcp_tool_call_feed_degraded_drives_503(
 
     # local_traces_feed is still healthy.
     assert body["checks"]["local_traces_feed"]["status"] == "healthy"
+
+
+# ---------------------------------------------------------------------------
+# A permanent stall must not read as "warming up"
+# ---------------------------------------------------------------------------
+
+
+def _probe_with_a_knowledge_graph_feed(cycles_total: int) -> Any:
+    """A probe whose knowledge graph feed has cycled but never produced.
+
+    The probe builds the checks dict in the shape the production
+    ``_default_health_probe`` builds it, then runs the PRODUCTION stall
+    functions over it — ``apply_stall_status`` on the feed and
+    ``apply_stall_status_to_aggregate`` on the roll-up. So the signal
+    under test is the shipped one, not a hand-written imitation.
+
+    What this test cannot reach is the lifespan that installs the
+    probe: ``set_health_probe(_default_health_probe)`` runs inside the
+    lifespan, and the lifespan cannot start in a test because the OTLP
+    receiver binds the canonical :4318 unconditionally (a second akosha
+    on one host cannot have it). The wiring between the lifespan and
+    the probe is therefore pinned by the unit tests on the two
+    functions; what this test pins is the other half — that the HTTP
+    route, the aggregate roll-up and the 503 rule all honour the
+    signal once the probe reports it.
+    """
+    from akosha.mcp import server as server_mod
+
+    async def probe() -> dict[str, dict[str, Any]]:
+        checks: dict[str, dict[str, Any]] = {
+            "knowledge_graph_feed": {
+                "ok": False,
+                "status": "warming_up",
+                "reason_codes": ["warming_up_empty_feed"],
+                "entities_count": 0,
+                "last_updated_timestamp": None,
+                "cycles_total": cycles_total,
+                "errors_total": 0,
+            },
+            "code_graphs_feed": {
+                "ok": True,
+                "status": "healthy",
+                "reason_codes": [],
+                "entities_count": 3,
+                "last_updated_timestamp": None,
+                "cycles_total": 12,
+                "errors_total": 0,
+            },
+            "hot_store": {"ok": True},
+            "embeddings": {"ok": True},
+            "cold_storage": {"ok": True},
+            "_aggregate": {
+                "status": "warming_up",
+                "reason_codes": ["warming_up_empty_feed"],
+                "data_feeds_ok": True,
+                "halflife_seconds": 300,
+            },
+        }
+        server_mod.apply_stall_status(checks["knowledge_graph_feed"])
+        server_mod.apply_stall_status_to_aggregate(checks)
+        return checks
+
+    return probe
+
+
+def test_akosha_health_reports_a_stalled_knowledge_graph_not_a_warmup(
+    http_client: TestClient,
+) -> None:
+    """A feed that has cycled for weeks without a row is STALLED.
+
+    The stall that prompted the signal: the knowledge graph feed
+    reported ``cycles_total=3055`` and ``entities_count=0`` for six
+    weeks. The aggregator called that "warming_up", so the 503 rule
+    never fired and a severed ingestion pipeline looked like a service
+    that had not finished starting.
+    """
+    set_health_probe(_probe_with_a_knowledge_graph_feed(cycles_total=3055))
+
+    response = http_client.get("/health")
+    body = response.json()
+
+    feed = body["checks"]["knowledge_graph_feed"]
+    assert feed["stalled"] is True
+    assert feed["status"] == "degraded"
+    assert feed["ok"] is False
+    assert "feed_stalled" in feed["reason_codes"]
+
+    # The aggregate must not keep reporting "warming_up" while a feed
+    # underneath it has been cycling for weeks without producing a row.
+    aggregate = body["checks"]["_aggregate"]
+    assert aggregate["status"] == "degraded"
+    assert "feed_stalled" in aggregate["reason_codes"]
+
+    # And the top-level verdict agrees with the aggregate — and the
+    # 503 rule fires, because "degraded" is what it reads.
+    assert body["status"] == "degraded"
+    assert response.status_code == 503
+
+
+def test_akosha_health_keeps_warming_up_for_a_fresh_feed(
+    http_client: TestClient,
+) -> None:
+    """A feed that has not cycled yet is still warming up, not stalled.
+
+    The stall signal must not fire on a feed that has simply not
+    started. Otherwise every fresh service would report degraded and
+    the 503 would be noise.
+    """
+    set_health_probe(_probe_with_a_knowledge_graph_feed(cycles_total=3))
+
+    response = http_client.get("/health")
+    body = response.json()
+
+    feed = body["checks"]["knowledge_graph_feed"]
+    assert feed.get("stalled") is not True
+    assert feed["status"] == "warming_up"
+    assert "feed_stalled" not in feed["reason_codes"]
+
+    # "warming_up" answers 200 — that is the whole difference.
+    assert response.status_code == 200

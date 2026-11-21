@@ -61,3 +61,16 @@ class ColdRecord(BaseModel):
     ultra_summary: str  # Single-sentence summary
     timestamp: datetime
     metadata: dict[str, Any] = Field(default_factory=dict)  # Plain dict for JSON
+
+
+#: The ``conversation_id`` the event subscriber reserves for its watermark
+#: row in the hot tier's ``conversations`` table.
+#:
+#: The row is bookkeeping, not a conversation: it records how far the
+#: ingestion pipeline has got. It is defined here rather than in either
+#: of its two users -- the subscriber that writes it and the hot store
+#: that must exclude it from every query -- so the two cannot drift
+#: apart. A query that returned it would put a phantom entity in the
+#: knowledge graph and let a "the pipeline produced something" check be
+#: satisfied by a row that records no event.
+RESERVED_WATERMARK_CONVERSATION_ID: str = "__bodai_subscriber_watermark__"

@@ -139,20 +139,61 @@ class PgvectorWarmStore:
         return ShardRouter(num_shards=num_shards)
 
     async def initialize(self) -> None:
-        """Initialize pgvector adapters and ensure each shard's collection exists."""
+        """Initialize pgvector adapters and ensure each shard's collection exists.
+
+        Each shard gets its OWN ``PgvectorAdapter``, and each adapter owns
+        an asyncpg pool. With a DSN — which is the only way this store is
+        configured — asyncpg's own defaults apply (``min_size=10``,
+        ``max_size=10``); the ``min_size=1`` figure belongs to oneiric's
+        non-DSN branch. So the shard count multiplies the backend
+        connection count by ten: at the default 256 shards that is 2,560
+        connections, far past Postgres ``max_connections=100`` and
+        pgbouncer's ``default_pool_size=20``. There is no warm-tier
+        specific shard-count knob yet; the effective count comes from the
+        global ``shard_count`` setting.
+
+        A failure part-way through the loop used to leak every adapter
+        already created — their pools stayed open against a store that
+        never finished initializing. The adapters are now registered
+        BEFORE they are used, and closed before the error propagates, so
+        neither the shards that succeeded nor the shard that failed can
+        leak its pool.
+        """
         async with self._init_lock:
             if self._initialized:
                 return
             settings = PgvectorSettings(dsn=self._pg_url)
-            for shard_id in range(self._shard_router.num_shards):
-                adapter = PgvectorAdapter(settings)
-                await adapter.init()
-                await adapter.create_collection(
-                    name=_collection_name(shard_id),
-                    dimension=self._embedding_dimension,
-                    distance_metric=_DISTANCE_METRIC,
-                )
-                self._adapters[shard_id] = adapter
+            try:
+                for shard_id in range(self._shard_router.num_shards):
+                    adapter = PgvectorAdapter(settings)
+                    # Register BEFORE use: if ``init()`` or
+                    # ``create_collection()`` fails, the adapter still
+                    # owns a pool and ``close()`` must be able to reach
+                    # it. ``PgvectorAdapter.cleanup()`` no-ops when the
+                    # pool was never created.
+                    self._adapters[shard_id] = adapter
+                    await adapter.init()
+                    await adapter.create_collection(
+                        name=_collection_name(shard_id),
+                        dimension=self._embedding_dimension,
+                        distance_metric=_DISTANCE_METRIC,
+                    )
+            except BaseException:
+                # Close every adapter this loop touched so their pools do
+                # not leak. ``close()`` is best-effort per adapter and
+                # never raises, so the original exception still propagates.
+                # ``BaseException`` because ``asyncio.CancelledError``
+                # derives from it and not from ``Exception``: a shutdown
+                # in the middle of this loop is exactly the path that
+                # must not leave pools open against Postgres.
+                try:
+                    await self.close()
+                except Exception:
+                    logger.warning(
+                        "akosha.pgvector_warm_store.close_failed: the adapters "
+                        "this loop touched may still hold a Postgres pool",
+                    )
+                raise
             self._initialized = True
             logger.info(
                 "PgvectorWarmStore initialized (shards=%d, dim=%d)",
@@ -384,11 +425,17 @@ class PgvectorWarmStore:
                     await task
 
     async def close(self) -> None:
-        """Close all pgvector adapter connections."""
+        """Close all pgvector adapter connections.
+
+        Best-effort per adapter: one adapter failing to clean up must not
+        leave the others' pools open. ``BaseException`` is caught because
+        a cancellation raised inside one adapter's ``cleanup()`` must not
+        abort the loop and strand the remaining shards' pools.
+        """
         for shard_id, adapter in self._adapters.items():
             try:
                 await adapter.cleanup()
-            except Exception as e:  # pragma: no cover - cleanup best-effort
+            except BaseException as e:  # pragma: no cover - cleanup best-effort
                 # NOTE (2026-09-27 security review): str(e) may contain
                 # the connection DSN — redact before logging.
                 logger.warning(

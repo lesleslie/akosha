@@ -1,7 +1,7 @@
 """Tests for :mod:`akosha.ingestion.bodai_event_subscriber`.
 
 Coverage was at ~68% before these tests. The subscriber is a Redis
-Streams consumer with exponential backoff, a watermark-based resume
+Streams consumer with exponential backoff, a group-positioned resume
 mechanism, and a per-event timeout pipeline. We mock the redis client,
 the embedding service, and the HotStore so each branch is reachable in
 isolation.
@@ -10,15 +10,14 @@ Branch matrix pinned by these tests:
 
 * ``_create_redis_client`` — ImportError path returns ``None``
 * ``start`` — early-returns when ``_running``, ``hot_store=None``, redis
-  import failure, ``xgroup_create`` non-BUSYGROUP failure, resume-id
-  read failure (falls back to ``">"``)
+  import failure, ``xgroup_create`` non-BUSYGROUP failure, watermark
+  read failure (the group then starts at ``"0"``)
 * ``stop`` — idempotent (running=False, no task, no client)
-* ``_ensure_consumer_group`` — first-time create + BUSYGROUP tolerance
-* ``_resume_id`` / ``_resume_id_async`` — bump ms-seq, malformed
-  watermark, missing watermark
-* ``_read_watermark_async`` — hot_store=None, search_similar exception,
-  str metadata decoded, bytes last_message_id, non-dict row, non-dict
-  metadata, missing last_message_id
+* ``_ensure_consumer_group`` — first-time create, start at the
+  watermark, BUSYGROUP tolerance
+* ``_read_watermark_id`` — hot_store=None, no conn, query exception,
+  absent row, JSON/dict/bytes metadata, non-JSON metadata, missing
+  last_message_id, malformed watermark
 * ``_run_loop`` — xreadgroup exception → backoff, empty response, normal
   process path
 * ``_process_entry`` — normalize None, decode None + xack, topic mismatch,
@@ -43,6 +42,7 @@ import asyncio
 import contextlib
 import json
 import logging
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -51,6 +51,7 @@ import pytest
 from akosha.ingestion.bodai_event_subscriber import (
     DEFAULT_RECONNECT_BACKOFF_MAX_SECONDS,
     DEFAULT_RECONNECT_BACKOFF_SECONDS,
+    MAX_INDEX_RETRIES,
     STREAM_NAME,
     SUPPORTED_SCHEMA_VERSION,
     SYSTEM_ID_MAHAVISHNU,
@@ -59,6 +60,8 @@ from akosha.ingestion.bodai_event_subscriber import (
     WATERMARK_CONVERSATION_ID,
     BodaiToolInvocationSubscriber,
     _create_redis_client,
+    _is_newer,
+    _stream_id_key,
 )
 
 # ---------------------------------------------------------------------------
@@ -77,13 +80,39 @@ class _FakeRedisClient:
 
     def __init__(self) -> None:
         self.xgroup_create = AsyncMock()
+        self.xgroup_delconsumer = AsyncMock(return_value=0)
+        self.xpending_range = AsyncMock(return_value=[])
         self.xreadgroup = AsyncMock(return_value=[])
+        self.xautoclaim = AsyncMock(return_value=["0-0", [], []])
         self.xack = AsyncMock()
         self.aclose = AsyncMock()
         self.close = AsyncMock()
 
 
 _HOT_STORE_SENTINEL = object()
+
+#: The captured live wire shape, kept as a data file so the
+#: producer/consumer contract is pinned by DATA rather than by a
+#: hand-edited dict that can drift. The path is derived from this test
+#: file so the fixture is always the one in this tree.
+LIVE_ENTRY_FIXTURE = (
+    Path(__file__).resolve().parents[1] / "fixtures" / "bodai_events_stream_entry.json"
+)
+
+
+@pytest.fixture
+def live_entry() -> dict[str, Any]:
+    """The live stream entry, in the byte layout the stream actually uses.
+
+    The stream stores the payload as a JSON STRING under the ``payload``
+    field, so the fixture's dict is re-serialised on the way in.
+    """
+    fixture = json.loads(LIVE_ENTRY_FIXTURE.read_text())
+    return {
+        "channel": fixture["channel"],
+        "headers": fixture["headers"],
+        "payload": json.dumps(fixture["payload"]),
+    }
 
 
 def _make_subscriber(
@@ -119,7 +148,13 @@ def _envelope_triplet(
     headers: dict[str, Any] | None = None,
     source: str | None = "mahavishnu",
 ) -> dict[str, Any]:
-    """Build a Phase 1 wire-shape stream payload (direct triplet)."""
+    """Build a stream payload in the LIVE wire shape.
+
+    ``oneiric``'s Redis Streams adapter writes ``channel`` (the bus
+    topic), ``payload`` (the JSON body) and ``headers`` (the JSON
+    headers). The name is historical: the direct-triplet shape this
+    helper used to build is gone -- nothing in the fleet writes it.
+    """
     body = (
         payload
         if payload is not None
@@ -132,12 +167,13 @@ def _envelope_triplet(
             "error": "",
         }
     )
+    header_map = dict(headers or {})
+    if event_id is not None:
+        header_map.setdefault("event_id", event_id)
     return {
-        "topic": topic,
-        "payload_json": json.dumps(body),
-        "headers_json": json.dumps(headers or {}),
-        "event_id": event_id,
-        "source": source,
+        "channel": topic,
+        "payload": json.dumps(body),
+        "headers": json.dumps(header_map),
     }
 
 
@@ -292,24 +328,31 @@ class TestStartNoopBranches:
         client.aclose.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_resume_id_failure_falls_back_to_greater_than(
+    async def test_a_watermark_read_failure_still_starts_the_loop(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """When ``_resume_id_async`` raises, the loop still starts from ``>``."""
-        s = _make_subscriber()
+        """A watermark read that blows up must not stop the subscriber.
+
+        The read only decides where a NEWLY CREATED group starts; the
+        group already exists in every restart, so a failure costs a
+        replayed back-catalogue, not a dead pipeline.
+        """
         client = _FakeRedisClient()
         client.xreadgroup.side_effect = [
             # First call returns empty so the loop exits immediately.
             [],
             asyncio.CancelledError(),
         ]
+        hot_store = MagicMock()
+        conn = MagicMock()
+        conn.execute.side_effect = RuntimeError("duckdb down")
+        hot_store.conn = conn
+        hot_store._lock = asyncio.Lock()
+        s = _make_subscriber(hot_store=hot_store)
         with (
             patch(
                 "akosha.ingestion.bodai_event_subscriber._create_redis_client",
                 return_value=client,
-            ),
-            patch.object(
-                s, "_resume_id_async", AsyncMock(side_effect=RuntimeError("watermark db down"))
             ),
             caplog.at_level(
                 logging.INFO,
@@ -318,18 +361,28 @@ class TestStartNoopBranches:
         ):
             await s.start()
             await asyncio.sleep(0)
+            started = s._running
             s._running = False
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await s._task
-        # The subscriber should be running and logged resume_id=">".
-        assert any("resume_id=>" in rec.message for rec in caplog.records)
+        # The subscriber started and is reading for new messages.
+        assert started is True
+        assert any("read=>" in rec.message for rec in caplog.records)
+        assert any("watermark read failed" in rec.message for rec in caplog.records)
+        # The group was created at the start of the stream, not skipped.
+        client.xgroup_create.assert_awaited_once_with(
+            name=STREAM_NAME,
+            groupname="akosha-tool-invocation-indexers",
+            id="0",
+            mkstream=True,
+        )
 
 
 class TestStartHappyPath:
-    """``start`` connects, ensures the group, resumes from watermark, spawns loop."""
+    """``start`` connects, ensures the group, and spawns the read loop."""
 
     @pytest.mark.asyncio
-    async def test_starts_loop_and_logs_resume_id(self, caplog: pytest.LogCaptureFixture) -> None:
+    async def test_starts_loop_and_logs_the_read_mode(self, caplog: pytest.LogCaptureFixture) -> None:
         s = _make_subscriber()
         client = _FakeRedisClient()
         # Empty response + cancel so the loop terminates immediately.
@@ -361,6 +414,9 @@ class TestStartHappyPath:
         client.xgroup_create.assert_awaited_once()
         client.xreadgroup.assert_awaited()
         assert any("started" in rec.message for rec in caplog.records)
+        # The read asks for NEW messages -- the only form that delivers
+        # a message nobody has seen.
+        assert client.xreadgroup.await_args.kwargs["streams"] == {STREAM_NAME: ">"}
 
 
 # ---------------------------------------------------------------------------
@@ -400,6 +456,45 @@ class TestStop:
         await s.stop()
         client.aclose.assert_awaited_once()
         assert s._redis_client is None
+
+    @pytest.mark.asyncio
+    async def test_stop_deletes_the_consumer_name(self) -> None:
+        s = _make_subscriber()
+        client = _FakeRedisClient()
+        client.xpending_range = AsyncMock(return_value=[])
+        s._redis_client = client
+        s._consumer_name = "akosha-fixed123"
+        await s.stop()
+        client.xgroup_delconsumer.assert_awaited_once_with(
+            STREAM_NAME, s._consumer_group, "akosha-fixed123"
+        )
+
+    @pytest.mark.asyncio
+    async def test_stop_keeps_a_consumer_that_has_pending_messages(self) -> None:
+        """XGROUP DELCONSUMER destroys pending messages. Never call it on a
+        consumer that still owns one: the message would be neither acked
+        nor redelivered, and XAUTOCLAIM could never recover it.
+        """
+        s = _make_subscriber()
+        client = _FakeRedisClient()
+        client.xpending_range = AsyncMock(
+            return_value=[{"message_id": "1-0", "consumer": "akosha-fixed123"}]
+        )
+        s._redis_client = client
+        s._consumer_name = "akosha-fixed123"
+        await s.stop()
+        client.xgroup_delconsumer.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_stop_preserves_a_caller_supplied_consumer_name(self) -> None:
+        """A stable, operator-supplied name must survive stop/start."""
+        s = _make_subscriber(consumer_name="my-stable-consumer")
+        client = _FakeRedisClient()
+        client.xpending_range = AsyncMock(return_value=[])
+        s._redis_client = client
+        s._consumer_name = "my-stable-consumer"
+        await s.stop()
+        assert s._consumer_name == "my-stable-consumer"
 
     @pytest.mark.asyncio
     async def test_stop_falls_back_to_close_when_aclose_raises(self) -> None:
@@ -481,6 +576,19 @@ class TestEnsureConsumerGroup:
         assert any("Created consumer group" in rec.message for rec in caplog.records)
 
     @pytest.mark.asyncio
+    async def test_the_group_starts_at_the_watermark(self) -> None:
+        """A group created over an indexed stream skips the back-catalogue."""
+        s = _make_subscriber()
+        client = _FakeRedisClient()
+        await s._ensure_consumer_group(client, start_id="1700000000000-7")
+        client.xgroup_create.assert_awaited_once_with(
+            name=STREAM_NAME,
+            groupname="akosha-tool-invocation-indexers",
+            id="1700000000000-7",
+            mkstream=True,
+        )
+
+    @pytest.mark.asyncio
     async def test_busygroup_is_tolerated(self, caplog: pytest.LogCaptureFixture) -> None:
         s = _make_subscriber()
         client = _FakeRedisClient()
@@ -504,178 +612,132 @@ class TestEnsureConsumerGroup:
 # ---------------------------------------------------------------------------
 
 
-class TestReadWatermarkAsync:
-    """``_read_watermark_async`` parses HotStore rows into a stream id."""
+class TestReadWatermarkId:
+    """``_read_watermark_id`` reads the watermark row by primary key.
 
-    @pytest.mark.asyncio
+    The row is NOT found by vector search: it carries a zero-vector
+    embedding, and a zero-vector query against the HNSW index is
+    degenerate -- the row is not reliably in the result set. A primary
+    key lookup is exact and cheap.
+
+    The read holds the STORE's lock for the whole execute-then-fetch
+    pair. Reading the connection without it is not safe: the substrate
+    holds its threading lock only for the statement, and a write
+    landing in the gap replaces the result.
+    """
+
+    @staticmethod
+    def _store(row: Any) -> MagicMock:
+        """A HotStore whose primary-key lookup returns ``row``."""
+        hot_store = MagicMock()
+        conn = MagicMock()
+        conn.execute.return_value.fetchone.return_value = row
+        hot_store.conn = conn
+        # A real async lock, so the read exercises the locked path.
+        # (``MagicMock()._lock`` is a threading RLock -- a mock
+        # artefact -- and the substrate's HotStore holds an
+        # ``asyncio.Lock``.)
+        hot_store._lock = asyncio.Lock()
+        return hot_store
+
     async def test_returns_none_when_hot_store_is_none(self) -> None:
         s = _make_subscriber(hot_store=None)
-        assert await s._read_watermark_async() is None
+        assert await s._read_watermark_id() is None
 
-    @pytest.mark.asyncio
-    async def test_returns_none_on_search_exception(self, caplog: pytest.LogCaptureFixture) -> None:
+    async def test_returns_none_when_conn_is_missing(self) -> None:
+        hot_store = MagicMock(spec=[])  # no `.conn` attribute
+        s = _make_subscriber(hot_store=hot_store)
+        assert await s._read_watermark_id() is None
+
+    async def test_returns_none_on_query_exception(self, caplog: pytest.LogCaptureFixture) -> None:
         hot_store = MagicMock()
-        hot_store.search_similar = AsyncMock(side_effect=RuntimeError("duckdb fail"))
+        conn = MagicMock()
+        conn.execute.side_effect = RuntimeError("duckdb fail")
+        hot_store.conn = conn
+        hot_store._lock = asyncio.Lock()
         s = _make_subscriber(hot_store=hot_store)
         with caplog.at_level(logging.WARNING, logger="akosha.ingestion.bodai_event_subscriber"):
-            result = await s._read_watermark_async()
+            result = await s._read_watermark_id()
         assert result is None
         assert any("watermark read failed" in rec.message for rec in caplog.records)
 
-    @pytest.mark.asyncio
-    async def test_returns_last_message_id_from_str_metadata(self) -> None:
-        hot_store = MagicMock()
-        hot_store.search_similar = AsyncMock(
-            return_value=[
-                {
-                    "conversation_id": WATERMARK_CONVERSATION_ID,
-                    "metadata": {"last_message_id": "1700000000000-0"},
-                }
-            ]
+    async def test_returns_none_when_the_row_is_absent(self) -> None:
+        s = _make_subscriber(hot_store=self._store(None))
+        assert await s._read_watermark_id() is None
+
+    async def test_reads_the_row_by_primary_key(self) -> None:
+        hot_store = self._store((json.dumps({"last_message_id": "1700000000000-2"}),))
+        s = _make_subscriber(hot_store=hot_store)
+        assert await s._read_watermark_id() == "1700000000000-2"
+        hot_store.conn.execute.assert_called_once_with(
+            "SELECT metadata FROM conversations WHERE conversation_id = ?",
+            [WATERMARK_CONVERSATION_ID],
         )
-        s = _make_subscriber(hot_store=hot_store)
-        result = await s._read_watermark_async()
-        assert result == "1700000000000-0"
 
-    @pytest.mark.asyncio
-    async def test_returns_last_message_id_from_bytes_metadata(self) -> None:
-        hot_store = MagicMock()
-        hot_store.search_similar = AsyncMock(
-            return_value=[
-                {
-                    "conversation_id": WATERMARK_CONVERSATION_ID,
-                    "metadata": {"last_message_id": b"1700000000000-1"},
-                }
-            ]
+    async def test_accepts_dict_metadata(self) -> None:
+        s = _make_subscriber(
+            hot_store=self._store(({"last_message_id": "1700000000000-0"},))
         )
-        s = _make_subscriber(hot_store=hot_store)
-        result = await s._read_watermark_async()
-        assert result == "1700000000000-1"
+        assert await s._read_watermark_id() == "1700000000000-0"
 
-    @pytest.mark.asyncio
-    async def test_decodes_json_metadata_string(self) -> None:
-        """DuckDB returns JSON columns as strings — decode them before parsing."""
-        hot_store = MagicMock()
-        hot_store.search_similar = AsyncMock(
-            return_value=[
-                {
-                    "conversation_id": WATERMARK_CONVERSATION_ID,
-                    "metadata": json.dumps({"last_message_id": "1700000000000-2"}),
-                }
-            ]
+    async def test_accepts_bytes_metadata(self) -> None:
+        s = _make_subscriber(
+            hot_store=self._store((b'{"last_message_id": "1700000000000-1"}',))
         )
-        s = _make_subscriber(hot_store=hot_store)
-        result = await s._read_watermark_async()
-        assert result == "1700000000000-2"
+        assert await s._read_watermark_id() == "1700000000000-1"
 
-    @pytest.mark.asyncio
-    async def test_skips_non_watermark_rows(self) -> None:
-        hot_store = MagicMock()
-        hot_store.search_similar = AsyncMock(
-            return_value=[
-                {
-                    "conversation_id": "some-real-conversation",
-                    "metadata": {"last_message_id": "1-0"},
-                },
-                {
-                    "conversation_id": WATERMARK_CONVERSATION_ID,
-                    "metadata": {"last_message_id": "9-9"},
-                },
-            ]
+    async def test_returns_none_when_the_metadata_is_not_json(self) -> None:
+        s = _make_subscriber(hot_store=self._store(("not-json-at-all",)))
+        assert await s._read_watermark_id() is None
+
+    async def test_returns_none_when_there_is_no_last_message_id(self) -> None:
+        s = _make_subscriber(
+            hot_store=self._store((json.dumps({"other_field": "value"}),))
         )
-        s = _make_subscriber(hot_store=hot_store)
-        result = await s._read_watermark_async()
-        assert result == "9-9"
+        assert await s._read_watermark_id() is None
 
-    @pytest.mark.asyncio
-    async def test_skips_non_dict_rows(self) -> None:
-        hot_store = MagicMock()
-        hot_store.search_similar = AsyncMock(return_value=["not-a-dict", 42, None])
-        s = _make_subscriber(hot_store=hot_store)
-        assert await s._read_watermark_async() is None
-
-    @pytest.mark.asyncio
-    async def test_skips_non_dict_metadata(self) -> None:
-        hot_store = MagicMock()
-        hot_store.search_similar = AsyncMock(
-            return_value=[
-                {
-                    "conversation_id": WATERMARK_CONVERSATION_ID,
-                    "metadata": "not-json-at-all",
-                },
-            ]
+    async def test_ignores_a_malformed_watermark(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A watermark that is not a stream id is ignored, not used."""
+        s = _make_subscriber(
+            hot_store=self._store(
+                (json.dumps({"last_message_id": "malformed-no-dash"}),)
+            )
         )
-        s = _make_subscriber(hot_store=hot_store)
-        assert await s._read_watermark_async() is None
-
-    @pytest.mark.asyncio
-    async def test_skips_missing_last_message_id(self) -> None:
-        hot_store = MagicMock()
-        hot_store.search_similar = AsyncMock(
-            return_value=[
-                {
-                    "conversation_id": WATERMARK_CONVERSATION_ID,
-                    "metadata": {"other_field": "value"},
-                },
-            ]
-        )
-        s = _make_subscriber(hot_store=hot_store)
-        assert await s._read_watermark_async() is None
-
-
-class TestResumeId:
-    """``_resume_id`` / ``_resume_id_async`` bump the seq component."""
-
-    def test_sync_resume_id_bumps_seq(self) -> None:
-        s = _make_subscriber()
-        with patch.object(s, "_read_watermark", return_value="1700000000000-7"):
-            assert s._resume_id() == "1700000000000-8"
-
-    def test_sync_resume_id_returns_greater_than_when_no_watermark(self) -> None:
-        s = _make_subscriber()
-        with patch.object(s, "_read_watermark", return_value=None):
-            assert s._resume_id() == ">"
-
-    def test_sync_resume_id_handles_malformed_watermark(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        s = _make_subscriber()
-        with (
-            patch.object(s, "_read_watermark", return_value="malformed-no-dash"),
-            caplog.at_level(
-                logging.WARNING,
-                logger="akosha.ingestion.bodai_event_subscriber",
-            ),
+        with caplog.at_level(
+            logging.WARNING,
+            logger="akosha.ingestion.bodai_event_subscriber",
         ):
-            assert s._resume_id() == ">"
+            assert await s._read_watermark_id() is None
         assert any("malformed watermark" in rec.message for rec in caplog.records)
 
-    @pytest.mark.asyncio
-    async def test_async_resume_id_bumps_seq(self) -> None:
-        s = _make_subscriber()
-        with patch.object(s, "_read_watermark_async", AsyncMock(return_value="1700000000000-3")):
-            assert await s._resume_id_async() == "1700000000000-4"
 
-    @pytest.mark.asyncio
-    async def test_async_resume_id_returns_greater_than_when_no_watermark(self) -> None:
-        s = _make_subscriber()
-        with patch.object(s, "_read_watermark_async", AsyncMock(return_value=None)):
-            assert await s._resume_id_async() == ">"
+class TestStreamIdComparison:
+    """``_stream_id_key`` and ``_is_newer`` decide whether the watermark advances."""
 
-    @pytest.mark.asyncio
-    async def test_async_resume_id_handles_malformed_watermark(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        s = _make_subscriber()
-        with (
-            patch.object(s, "_read_watermark_async", AsyncMock(return_value="not-a-stream-id")),
-            caplog.at_level(
-                logging.WARNING,
-                logger="akosha.ingestion.bodai_event_subscriber",
-            ),
-        ):
-            assert await s._resume_id_async() == ">"
-        assert any("malformed watermark" in rec.message for rec in caplog.records)
+    def test_a_well_formed_id_sorts_by_milliseconds_then_sequence(self) -> None:
+        assert _stream_id_key("1700000000000-7") == (1700000000000, 7)
+
+    def test_a_malformed_id_has_no_key(self) -> None:
+        assert _stream_id_key("no-dash") is None
+        assert _stream_id_key("1700000000000-x") is None
+
+    def test_a_newer_millisecond_wins(self) -> None:
+        assert _is_newer("1700000000001-0", "1700000000000-9") is True
+
+    def test_the_same_millisecond_breaks_the_tie_on_the_sequence(self) -> None:
+        assert _is_newer("1700000000000-8", "1700000000000-7") is True
+        assert _is_newer("1700000000000-7", "1700000000000-8") is False
+
+    def test_an_equal_id_is_not_an_advance(self) -> None:
+        assert _is_newer("1700000000000-7", "1700000000000-7") is False
+
+    def test_an_unparseable_candidate_is_rejected(self) -> None:
+        """Accepting it would overwrite a good watermark with garbage."""
+        assert _is_newer("not-a-stream-id", "1700000000000-7") is False
+
+    def test_an_unparseable_current_is_ignored(self) -> None:
+        """A valid id beats garbage."""
+        assert _is_newer("1700000000000-7", "not-a-stream-id") is True
 
 
 # ---------------------------------------------------------------------------
@@ -806,77 +868,81 @@ class TestDecodeEnvelope:
         # to the triplet path, which fails (no payload_json) and returns None.
         assert subscriber._decode_envelope(payload) is None
 
-    def test_direct_triplet_path(self, subscriber: BodaiToolInvocationSubscriber) -> None:
-        body = _envelope_triplet(
-            topic="websocket_tool_invocation",
-            payload={"version": "1.0.0"},
-            event_id="evt-7",
-            headers={"traceparent": "abc"},
-        )
-        result = subscriber._decode_envelope(body)
-        assert result == {
-            "topic": "websocket_tool_invocation",
-            "payload": {"version": "1.0.0"},
-            "event_id": "evt-7",
-            "headers": {"traceparent": "abc"},
-            "source": "mahavishnu",
+    def test_live_channel_payload_shape_decodes(
+        self, subscriber: BodaiToolInvocationSubscriber
+    ) -> None:
+        payload = {
+            "channel": "bodai.hooks.post-tool-use",
+            "headers": "{}",
+            "payload": json.dumps(
+                {
+                    "agent_id": "agent-1",
+                    "event": "PostToolUse",
+                    "tool_name": "Read",
+                    "tool_input": {"file_path": "/tmp/example"},
+                }
+            ),
         }
-
-    def test_direct_triplet_payload_as_bytes(
-        self, subscriber: BodaiToolInvocationSubscriber
-    ) -> None:
-        body = _envelope_triplet()
-        body["payload_json"] = json.dumps({"version": "1.0.0"}).encode("utf-8")
-        result = subscriber._decode_envelope(body)
+        result = subscriber._decode_envelope(payload)
         assert result is not None
-        assert result["payload"] == {"version": "1.0.0"}
-
-    def test_direct_triplet_missing_topic_returns_none(
-        self, subscriber: BodaiToolInvocationSubscriber
-    ) -> None:
-        body = {"payload_json": "{}"}
-        assert subscriber._decode_envelope(body) is None
-
-    def test_direct_triplet_missing_payload_json_returns_none(
-        self, subscriber: BodaiToolInvocationSubscriber
-    ) -> None:
-        body = {"topic": "x"}
-        assert subscriber._decode_envelope(body) is None
-
-    def test_direct_triplet_invalid_json(
-        self,
-        subscriber: BodaiToolInvocationSubscriber,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        body = {"topic": "x", "payload_json": "{bad"}
-        with caplog.at_level(logging.WARNING, logger="akosha.ingestion.bodai_event_subscriber"):
-            assert subscriber._decode_envelope(body) is None
-        assert any("failed to parse triplet" in rec.message for rec in caplog.records)
-
-    def test_direct_triplet_non_dict_payload_defaulted_to_empty(
-        self, subscriber: BodaiToolInvocationSubscriber
-    ) -> None:
-        body = {
-            "topic": "x",
-            "payload_json": json.dumps("a string"),
-            "headers_json": "{}",
-        }
-        result = subscriber._decode_envelope(body)
-        assert result is not None
-        assert result["payload"] == {}
-
-    def test_direct_triplet_non_dict_headers_defaulted_to_empty(
-        self, subscriber: BodaiToolInvocationSubscriber
-    ) -> None:
-        """``headers`` defaults to ``{}`` when ``headers_json`` parses to a non-dict."""
-        body = {
-            "topic": "x",
-            "payload_json": json.dumps({"k": "v"}),
-            "headers_json": json.dumps([1, 2, 3]),  # valid JSON, but a list
-        }
-        result = subscriber._decode_envelope(body)
-        assert result is not None
+        assert result["topic"] == "bodai.hooks.post-tool-use"
+        assert result["payload"]["tool_name"] == "Read"
         assert result["headers"] == {}
+
+    def test_the_captured_live_fixture_decodes(
+        self, subscriber: BodaiToolInvocationSubscriber, live_entry: dict[str, Any]
+    ) -> None:
+        """The captured wire shape decodes, end to end, from the fixture.
+
+        The fixture is the producer/consumer contract. If the producer's
+        field names change, this test fails against the OLD expectation
+        rather than the decoder quietly accepting a new shape nobody
+        noticed.
+        """
+        result = subscriber._decode_envelope(live_entry)
+        assert result is not None
+        assert result["topic"] == "bodai.hooks.post-tool-use"
+        assert result["payload"]["tool_name"] == "Read"
+        assert result["payload"]["event"] == "PostToolUse"
+        assert result["payload"]["harness"] == "claude-code"
+        assert result["headers"] == {}
+
+    def test_the_live_fixture_names_the_fields_the_stream_carries(
+        self, live_entry: dict[str, Any]
+    ) -> None:
+        """The fixture lists exactly the fields the entry has."""
+        fixture = json.loads(LIVE_ENTRY_FIXTURE.read_text())
+        assert set(fixture["stream_entry_fields"]) == set(live_entry)
+
+    def test_flat_enqueue_shape_decodes(
+        self, subscriber: BodaiToolInvocationSubscriber
+    ) -> None:
+        """session-buddy's publisher writes the body fields directly onto
+        the entry, with no nested ``payload`` field.
+        """
+        payload = {
+            "channel": "session_buddy.publisher.heartbeat",
+            "task_id": "t-1",
+            "outcome": "ok",
+        }
+        result = subscriber._decode_envelope(payload)
+        assert result is not None
+        assert result["topic"] == "session_buddy.publisher.heartbeat"
+        assert result["payload"]["task_id"] == "t-1"
+        assert result["payload"]["outcome"] == "ok"
+        assert "channel" not in result["payload"]
+
+    def test_non_string_headers_do_not_drop_the_envelope(
+        self, subscriber: BodaiToolInvocationSubscriber
+    ) -> None:
+        payload = {
+            "channel": "x",
+            "headers": {"already": "a dict"},
+            "payload": json.dumps({"k": "v"}),
+        }
+        result = subscriber._decode_envelope(payload)
+        assert result is not None
+        assert result["payload"] == {"k": "v"}
 
 
 # ---------------------------------------------------------------------------
@@ -910,6 +976,27 @@ class TestBuildContent:
         assert content == (
             "websocket tool invocation: tool=? surface=? result=? duration_ms=? error=''"
         )
+
+    def test_hook_event_uses_its_own_template(self) -> None:
+        """A Claude Code hook envelope is not a websocket tool invocation.
+
+        ``event`` is the event NAME (``PostToolUse``); the surface the tool
+        ran on is ``harness`` (``claude-code``). The websocket prefix and
+        the ``surface=event`` mapping mislabel every hook row.
+        """
+        content = BodaiToolInvocationSubscriber._build_content(
+            {
+                "event": "PostToolUse",
+                "harness": "claude-code",
+                "tool_name": "Read",
+                "session_id": "s-1",
+            },
+            topic="bodai.hooks.post-tool-use",
+        )
+        assert content.startswith("hook tool invocation:")
+        assert "tool=Read" in content
+        assert "surface=claude-code" in content
+        assert "surface=PostToolUse" not in content
 
 
 class TestParseTimestamp:
@@ -1016,7 +1103,14 @@ def _decode_envelope_payload(
     event_id: str = "evt-1",
     body: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build a complete redis-stream entry in the direct-triplet shape."""
+    """Build a complete redis-stream entry in the LIVE wire shape.
+
+    ``oneiric``'s Redis Streams adapter writes ``channel`` (the bus
+    topic), ``payload`` (the JSON body) and ``headers`` (the JSON
+    headers). Nothing in the fleet writes the older
+    ``{topic, payload_json, headers_json}`` triplet, so the tests do
+    not use it.
+    """
     if body is None:
         body = {
             "version": SUPPORTED_SCHEMA_VERSION,
@@ -1029,10 +1123,9 @@ def _decode_envelope_payload(
     return [
         "1700000000000-0",
         {
-            "topic": topic,
-            "payload_json": json.dumps(body),
-            "headers_json": "{}",
-            "event_id": event_id,
+            "channel": topic,
+            "payload": json.dumps(body),
+            "headers": json.dumps({"event_id": event_id}),
         },
     ]
 
@@ -1097,6 +1190,56 @@ class TestProcessEntry:
         entry = _decode_envelope_payload(topic="pattern.detected")
         await s._process_entry(entry, client=client)
         client.xack.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_indexes_the_live_hook_channel(self) -> None:
+        """The channel the hook bridge actually publishes must be indexed."""
+        hot_store = MagicMock()
+        hot_store.insert = AsyncMock()
+        hot_store.search_similar = AsyncMock(return_value=[])
+        hot_store.conn = MagicMock()
+        s = _make_subscriber(hot_store=hot_store)
+        client = _FakeRedisClient()
+        mock_embedding = MagicMock()
+        mock_embedding.tolist = MagicMock(return_value=[0.0] * 384)
+        mock_service = MagicMock()
+        mock_service.generate_embedding = AsyncMock(return_value=mock_embedding)
+        entry = [
+            "1700000000000-0",
+            {
+                "channel": "bodai.hooks.post-tool-use",
+                "headers": "{}",
+                "payload": json.dumps({"event": "PostToolUse", "tool_name": "Read"}),
+            },
+        ]
+        with patch(
+            "akosha.ingestion.bodai_event_subscriber.get_embedding_service",
+            return_value=mock_service,
+        ):
+            await s._process_entry(entry, client=client)
+        # The indexed row and the watermark row are both inserts; the
+        # indexed row is the one keyed by the message id.
+        indexed = [
+            call.args[0]
+            for call in hot_store.insert.await_args_list
+            if getattr(call.args[0], "conversation_id", None) == "1700000000000-0"
+        ]
+        assert len(indexed) == 1
+        assert "Read" in indexed[0].content
+        client.xack.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_logs_a_warning_when_decode_fails(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A silent drop is how a retired producer survived unnoticed."""
+        s = _make_subscriber(hot_store=MagicMock())
+        client = _FakeRedisClient()
+        bad_entry = ["1700000000000-0", {"unrecognized": "shape"}]
+        with caplog.at_level(
+            logging.WARNING,
+            logger="akosha.ingestion.bodai_event_subscriber",
+        ):
+            await s._process_entry(bad_entry, client=client)
+        assert any("decode" in rec.message.lower() for rec in caplog.records)
 
     @pytest.mark.asyncio
     async def test_indexes_and_xacks_on_success(self) -> None:
@@ -1206,16 +1349,33 @@ class TestSafeXack:
 class TestUpdateWatermark:
     """``_update_watermark`` upserts the reserved watermark row."""
 
-    @pytest.mark.asyncio
-    async def test_writes_watermark_row_when_conn_present(self) -> None:
+    @staticmethod
+    def _store(current: str | None, *, rows_updated: int = 0) -> MagicMock:
+        """A HotStore holding ``current`` as the watermark."""
         hot_store = MagicMock()
         hot_store.insert = AsyncMock()
         conn = MagicMock()
+        metadata = (
+            (json.dumps({"last_message_id": current}),) if current else None
+        )
+        # The SELECT returns the current row; the UPDATE returns a count.
+        conn.execute.return_value.fetchone.side_effect = [
+            metadata,
+            (rows_updated,),
+        ]
         hot_store.conn = conn
+        # A real async lock, so the write exercises the locked path.
+        hot_store._lock = asyncio.Lock()
+        return hot_store
+
+    @pytest.mark.asyncio
+    async def test_creates_the_row_when_it_does_not_exist(self) -> None:
+        hot_store = self._store(None)
         s = _make_subscriber(hot_store=hot_store)
         await s._update_watermark("1700000000000-9")
-        conn.execute.assert_called_once()
-        # The reserved watermark row was inserted.
+        # The UPDATE ran (and matched no row)...
+        assert hot_store.conn.execute.call_count == 2
+        # ...so the row was created.
         hot_store.insert.assert_awaited_once()
         record = hot_store.insert.await_args.args[0]
         assert record.conversation_id == WATERMARK_CONVERSATION_ID
@@ -1223,8 +1383,31 @@ class TestUpdateWatermark:
         assert record.metadata == {"last_message_id": "1700000000000-9"}
 
     @pytest.mark.asyncio
-    async def test_logs_warning_when_conn_missing(self, caplog: pytest.LogCaptureFixture) -> None:
-        hot_store = MagicMock(spec=[])  # no `.conn` attribute
+    async def test_updates_the_row_in_place_when_it_exists(self) -> None:
+        """An UPDATE, not a delete-and-reinsert: it cannot lose the row."""
+        hot_store = self._store("1700000000000-3", rows_updated=1)
+        s = _make_subscriber(hot_store=hot_store)
+        await s._update_watermark("1700000000000-9")
+        hot_store.insert.assert_not_awaited()
+        update_call = hot_store.conn.execute.call_args_list[1]
+        assert update_call.args[0].startswith("UPDATE conversations SET metadata")
+        assert update_call.args[1][0] == {"last_message_id": "1700000000000-9"}
+        assert update_call.args[1][2] == WATERMARK_CONVERSATION_ID
+
+    @pytest.mark.asyncio
+    async def test_a_lower_id_does_not_overwrite_a_higher_one(self) -> None:
+        """The watermark is monotonic: it holds the highest id indexed."""
+        hot_store = self._store("1700000000000-9")
+        s = _make_subscriber(hot_store=hot_store)
+        await s._update_watermark("1700000000000-3")
+        # Only the read happened; nothing was written.
+        assert hot_store.conn.execute.call_count == 1
+        hot_store.insert.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_logs_warning_when_the_store_cannot_write(self, caplog: pytest.LogCaptureFixture) -> None:
+        hot_store = self._store(None)
+        hot_store.conn.execute.side_effect = RuntimeError("duckdb fail")
         s = _make_subscriber(hot_store=hot_store)
         with caplog.at_level(logging.WARNING, logger="akosha.ingestion.bodai_event_subscriber"):
             await s._update_watermark("1700000000000-9")
@@ -1294,6 +1477,26 @@ class TestRunLoop:
         s._running = True
         with pytest.raises(asyncio.CancelledError):
             await s._run_loop()
+
+    @pytest.mark.asyncio
+    async def test_uses_one_stable_consumer_name(self) -> None:
+        s = _make_subscriber()
+        client = _FakeRedisClient()
+        seen: list[str] = []
+
+        async def record_consumer(*, consumername: str, **_: Any) -> list[Any]:
+            seen.append(consumername)
+            if len(seen) >= 2:
+                raise asyncio.CancelledError()
+            return []
+
+        client.xreadgroup.side_effect = record_consumer
+        s._redis_client = client
+        s._running = True
+        with pytest.raises(asyncio.CancelledError):
+            await s._run_loop()
+        assert len(seen) == 2
+        assert len(set(seen)) == 1
 
     @pytest.mark.asyncio
     async def test_processes_response_when_non_empty(self) -> None:
@@ -1421,9 +1624,504 @@ class TestRunLoop:
 # ---------------------------------------------------------------------------
 
 
-class TestReadWatermarkSyncShim:
-    """The sync shim always returns ``None`` (callers must use the async one)."""
+@pytest.fixture
+def subscriber() -> BodaiToolInvocationSubscriber:
+    """A subscriber with the test-suite defaults."""
+    return _make_subscriber()
 
-    def test_returns_none(self) -> None:
+
+class TestEnvelopePayloadIsAlwaysADict:
+    """A non-dict payload must be coerced, not passed through.
+
+    ``_index_envelope`` does ``payload.get("version")`` and
+    ``_build_content`` does ``payload.get("tool_name")``. A payload
+    that is a string raises AttributeError inside the indexing path,
+    the message is never ACKed, and it is re-delivered on every read
+    -- a poison message that never drains.
+
+    The canonical ``envelope=`` blob is the one shape that did not
+    coerce, while the two newer shapes did. The asymmetry was
+    preserved through a refactor on the argument that the canonical
+    envelope is "an object by definition" -- true, but the failure
+    mode is a stuck message, not a clean rejection.
+    """
+
+    def test_a_string_payload_becomes_an_empty_dict(
+        self, subscriber: BodaiToolInvocationSubscriber
+    ) -> None:
+        envelope = subscriber._decode_envelope(
+            {"envelope": json.dumps({"topic": "t", "payload": "not a dict"})}
+        )
+        assert envelope is not None
+        assert envelope["payload"] == {}
+
+    def test_a_list_payload_becomes_an_empty_dict(
+        self, subscriber: BodaiToolInvocationSubscriber
+    ) -> None:
+        envelope = subscriber._decode_envelope(
+            {"envelope": json.dumps({"topic": "t", "payload": [1, 2, 3]})}
+        )
+        assert envelope is not None
+        assert envelope["payload"] == {}
+
+    def test_a_dict_payload_is_kept(
+        self, subscriber: BodaiToolInvocationSubscriber
+    ) -> None:
+        envelope = subscriber._decode_envelope(
+            {"envelope": json.dumps({"topic": "t", "payload": {"k": "v"}})}
+        )
+        assert envelope is not None
+        assert envelope["payload"] == {"k": "v"}
+
+
+class TestAPoisonMessageCannotStarveThePipeline:
+    """A message that keeps failing must not be retried forever.
+
+    With a STABLE consumer name (the leak fix), a message that is
+    never ACKed stays in that consumer's PEL, and every XREADGROUP
+    re-delivers it -- so it is served again and again. Once ten such
+    messages accumulate they fill the ``count=10`` batch, and because
+    pending entries are ordered before new ones, every new message is
+    starved behind them. The pipeline stops without any error.
+
+    The fix bounds the retries: after MAX_INDEX_RETRIES the message is
+    ACKed and dropped with a warning, so the PEL drains.
+    """
+
+    @staticmethod
+    def _failing_subscriber() -> BodaiToolInvocationSubscriber:
+        return _make_subscriber()
+
+    async def test_a_failing_message_is_retried_before_being_dropped(self) -> None:
+        subscriber = self._failing_subscriber()
+        client = MagicMock()
+        client.xack = AsyncMock()
+
+        with patch.object(
+            subscriber,
+            "_index_envelope",
+            AsyncMock(side_effect=RuntimeError("indexing is down")),
+        ):
+            for _ in range(MAX_INDEX_RETRIES - 1):
+                await subscriber._process_entry(
+                    [b"1-1", {"channel": "bodai.hooks.post-tool-use", "payload": "{}"}], client=client
+                )
+
+        # Not yet dropped: the message stays pending for a retry.
+        client.xack.assert_not_awaited()
+
+    async def test_a_message_that_keeps_failing_is_eventually_dropped(self) -> None:
+        subscriber = self._failing_subscriber()
+        client = MagicMock()
+        client.xack = AsyncMock()
+
+        with patch.object(
+            subscriber,
+            "_index_envelope",
+            AsyncMock(side_effect=RuntimeError("indexing is down")),
+        ):
+            for _ in range(MAX_INDEX_RETRIES):
+                await subscriber._process_entry(
+                    [b"1-1", {"channel": "bodai.hooks.post-tool-use", "payload": "{}"}], client=client
+                )
+
+        # Dropped, so the PEL drains and new messages are not starved.
+        client.xack.assert_awaited_once_with(
+            "bodai:events", "akosha-tool-invocation-indexers", "1-1"
+        )
+
+    async def test_a_successful_message_clears_its_retry_count(self) -> None:
+        """A transient failure must not consume the retry budget."""
+        subscriber = self._failing_subscriber()
+        client = MagicMock()
+        client.xack = AsyncMock()
+
+        with patch.object(
+            subscriber,
+            "_index_envelope",
+            AsyncMock(side_effect=RuntimeError("indexing is down")),
+        ):
+            await subscriber._process_entry(
+                [b"1-1", {"channel": "bodai.hooks.post-tool-use", "payload": "{}"}], client=client
+            )
+
+        with patch.object(subscriber, "_index_envelope", AsyncMock(return_value=True)):
+            await subscriber._process_entry(
+                [b"1-1", {"channel": "bodai.hooks.post-tool-use", "payload": "{}"}], client=client
+            )
+
+        assert subscriber._index_retry_counts.get("1-1", 0) == 0
+
+    async def test_a_timeout_is_bounded_too(self) -> None:
+        """A timeout leaves the message pending, but not forever."""
+        subscriber = self._failing_subscriber()
+        client = MagicMock()
+        client.xack = AsyncMock()
+
+        with patch.object(subscriber, "_index_envelope", AsyncMock(side_effect=TimeoutError)):
+            for _ in range(MAX_INDEX_RETRIES):
+                await subscriber._process_entry(
+                    [b"1-1", {"channel": "bodai.hooks.post-tool-use", "payload": "{}"}], client=client
+                )
+
+        client.xack.assert_awaited_once()
+
+
+class TestReleaseConsumerWhenThePendingCountCannotBeRead:
+    """An unreadable pending count must leave the consumer registered.
+
+    ``XGROUP DELCONSUMER`` destroys every message still pending for the
+    consumer. If the pending count cannot be determined, the safe move
+    is to leave the consumer alone: a stale consumer is recoverable, a
+    destroyed message is not.
+    """
+
+    async def test_the_consumer_is_kept_when_xpending_raises(self) -> None:
+        subscriber = _make_subscriber()
+        client = MagicMock()
+        client.xpending_range = AsyncMock(side_effect=RuntimeError("connection reset"))
+        client.xgroup_delconsumer = AsyncMock(return_value=0)
+        subscriber._redis_client = client
+        subscriber._consumer_name = "akosha-stable"
+
+        await subscriber._release_consumer(client)
+
+        client.xgroup_delconsumer.assert_not_awaited()
+
+    async def test_a_consumer_with_pending_messages_is_kept(self) -> None:
+        subscriber = _make_subscriber()
+        client = MagicMock()
+        client.xpending_range = AsyncMock(
+            return_value=[{"message_id": "1-1", "consumer": "akosha-stable"}]
+        )
+        client.xgroup_delconsumer = AsyncMock(return_value=0)
+        subscriber._redis_client = client
+        subscriber._consumer_name = "akosha-stable"
+
+        await subscriber._release_consumer(client)
+
+        client.xgroup_delconsumer.assert_not_awaited()
+
+    async def test_an_empty_consumer_is_removed(self) -> None:
+        subscriber = _make_subscriber()
+        client = MagicMock()
+        client.xpending_range = AsyncMock(return_value=[])
+        client.xgroup_delconsumer = AsyncMock(return_value=0)
+        subscriber._redis_client = client
+        subscriber._consumer_name = "akosha-stable"
+
+        await subscriber._release_consumer(client)
+
+        client.xgroup_delconsumer.assert_awaited_once_with(
+            "bodai:events", "akosha-tool-invocation-indexers", "akosha-stable"
+        )
+
+
+def _indexable_entry() -> dict[str, Any]:
+    """A stream entry on a channel that IS indexed.
+
+    ``_process_entry`` skips (and ACKs) any topic outside
+    ``INDEXED_CHANNELS`` without attempting an index -- so a test that
+    wants to reach the indexing path has to use one of them.
+    """
+    return {"channel": "bodai.hooks.post-tool-use", "payload": "{}"}
+
+
+class TestTheIdleStreamStillReclaimsPendingEntries:
+    """A failed message on a quiet stream must still be retried.
+
+    ``_retry_pending`` used to run only after a NON-EMPTY ``xreadgroup``
+    response. On a quiet stream the read blocks for ``block_ms`` and
+    returns empty, so the sweep never ran -- and the pending entry sat
+    in the PEL until the NEXT message arrived. On a low-traffic stream
+    that is minutes or hours; on a stream that has gone quiet for good
+    it is for ever: the entry is never retried, never dropped, and the
+    retry cap is never reached.
+
+    The sweep is the ONLY thing that can reclaim a pending entry --
+    ``XREADGROUP`` with ``>`` never returns one -- so a sweep that is
+    gated on traffic is a sweep that stops.
+    """
+
+    async def test_the_sweep_runs_even_when_no_new_message_arrived(self) -> None:
         s = _make_subscriber()
-        assert s._read_watermark() is None
+        client = _FakeRedisClient()
+        client.xreadgroup.side_effect = [[], asyncio.CancelledError()]
+        s._redis_client = client
+        s._running = True
+
+        with pytest.raises(asyncio.CancelledError):
+            await s._run_loop()
+
+        client.xautoclaim.assert_awaited()
+
+    async def test_a_reclaimed_entry_on_an_idle_stream_is_processed(self) -> None:
+        """Not merely claimed -- it has to reach the indexing path."""
+        s = _make_subscriber()
+        client = _FakeRedisClient()
+        client.xautoclaim = AsyncMock(
+            return_value=["0-0", [(b"1-1", _indexable_entry())], []]
+        )
+        client.xreadgroup.side_effect = [[], asyncio.CancelledError()]
+        s._redis_client = client
+        s._running = True
+
+        with (
+            patch.object(s, "_index_envelope", AsyncMock(return_value=True)) as index,
+            pytest.raises(asyncio.CancelledError),
+        ):
+            await s._run_loop()
+
+        index.assert_awaited()
+        client.xack.assert_awaited()
+
+    async def test_the_sweep_is_not_run_on_every_idle_iteration(self) -> None:
+        """One round trip per idle poll would be 40 a minute.
+
+        The sweep can only ever claim an entry that has been pending for
+        at least ``RETRY_CLAIM_MIN_IDLE_MS``, so sweeping more often
+        than that cannot reclaim anything new.
+        """
+        s = _make_subscriber()
+        client = _FakeRedisClient()
+        client.xreadgroup.side_effect = [[], [], [], asyncio.CancelledError()]
+        s._redis_client = client
+        s._running = True
+
+        with pytest.raises(asyncio.CancelledError):
+            await s._run_loop()
+
+        assert client.xautoclaim.await_count == 1
+
+
+class TestPendingEntriesAreActuallyRedelivered:
+    """The retry cap is only reachable if the runtime delivers the retry.
+
+    ``XREADGROUP`` with ``>`` NEVER returns a message that is already
+    pending for this consumer. Verified against Redis 7.4: a message
+    read and not ACKed comes back once from ``>`` and never again --
+    only ``0`` or ``XAUTOCLAIM`` brings it back.
+
+    So without a reclaim sweep, a message whose indexing failed sits in
+    the PEL forever: never retried, never dropped, and the retry cap
+    never reached. The counter would stall at 1 and the drop path
+    would be dead code that the tests nevertheless exercised.
+    """
+
+    async def test_the_sweep_reclaims_this_consumers_own_pending_entries(self) -> None:
+        subscriber = _make_subscriber()
+        subscriber._consumer_name = "akosha-stable"
+        client = MagicMock()
+        client.xautoclaim = AsyncMock(
+            return_value=["0-0", [(b"1-1", _indexable_entry())], []]
+        )
+        client.xack = AsyncMock()
+
+        await subscriber._retry_pending(client)
+
+        client.xautoclaim.assert_awaited_once()
+        # redis-py: xautoclaim(name, groupname, consumername, ...) -- the
+        # consumer name is the THIRD POSITIONAL argument.
+        args = client.xautoclaim.await_args.args
+        assert args[2] == "akosha-stable"
+
+    async def test_a_reclaimed_entry_is_processed(self) -> None:
+        subscriber = _make_subscriber()
+        subscriber._consumer_name = "akosha-stable"
+        client = MagicMock()
+        client.xautoclaim = AsyncMock(
+            return_value=["0-0", [(b"1-1", _indexable_entry())], []]
+        )
+        client.xack = AsyncMock()
+
+        with patch.object(subscriber, "_index_envelope", AsyncMock(return_value=True)) as index:
+            await subscriber._retry_pending(client)
+
+        # The reclaimed entry went through the indexing path -- not just
+        # the ack path a non-indexed channel would take.
+        index.assert_awaited()
+        client.xack.assert_awaited()
+
+    async def test_a_failed_sweep_does_not_stop_the_loop(self) -> None:
+        """Redis trouble in the sweep must not take the subscriber down."""
+        subscriber = _make_subscriber()
+        subscriber._consumer_name = "akosha-stable"
+        client = MagicMock()
+        client.xautoclaim = AsyncMock(side_effect=RuntimeError("connection reset"))
+
+        await subscriber._retry_pending(client)
+
+    async def test_an_empty_claim_does_nothing(self) -> None:
+        subscriber = _make_subscriber()
+        subscriber._consumer_name = "akosha-stable"
+        client = MagicMock()
+        client.xautoclaim = AsyncMock(return_value=["0-0", [], []])
+        client.xack = AsyncMock()
+
+        await subscriber._retry_pending(client)
+
+        client.xack.assert_not_awaited()
+
+    async def test_the_sweep_resumes_from_the_cursor_redis_handed_back(self) -> None:
+        """Redis returns a cursor; discarding it re-scans the same prefix.
+
+        ``XAUTOCLAIM`` examines at most ``count * 10`` entries of the
+        group's PEL per call, and an entry skipped for insufficient
+        idle time CONSUMES that budget -- it is examined, not claimed.
+        Starting every sweep at ``"0-0"`` therefore re-examines the same
+        low-id prefix for ever. When that prefix is entirely inside the
+        idle window, the sweep claims nothing and the entries past it
+        are unreachable.
+        """
+        subscriber = _make_subscriber()
+        subscriber._consumer_name = "akosha-stable"
+        client = MagicMock()
+        client.xautoclaim = AsyncMock(
+            return_value=["10-0", [(b"1-1", _indexable_entry())], []]
+        )
+        client.xack = AsyncMock()
+
+        await subscriber._retry_pending(client)
+        await subscriber._retry_pending(client)
+
+        calls = client.xautoclaim.await_args_list
+        assert calls[0].kwargs["start_id"] == "0-0"
+        assert calls[1].kwargs["start_id"] == "10-0"
+
+    async def test_the_cursor_wraps_when_redis_reports_the_scan_finished(self) -> None:
+        """A cursor of ``0-0`` means the scan reached the end of the PEL.
+
+        The next sweep must start over, or the entries at the low end
+        would never be looked at again.
+        """
+        subscriber = _make_subscriber()
+        subscriber._consumer_name = "akosha-stable"
+        client = MagicMock()
+        client.xautoclaim = AsyncMock(
+            return_value=["0-0", [(b"1-1", _indexable_entry())], []]
+        )
+        client.xack = AsyncMock()
+
+        await subscriber._retry_pending(client)
+        await subscriber._retry_pending(client)
+
+        calls = client.xautoclaim.await_args_list
+        assert calls[0].kwargs["start_id"] == "0-0"
+        assert calls[1].kwargs["start_id"] == "0-0"
+
+    async def test_the_claim_idle_time_exceeds_the_processing_timeout(self) -> None:
+        """A peer must not be able to claim an entry that is still in flight.
+
+        ``XAUTOCLAIM`` reclaims across the WHOLE consumer group and
+        transfers ownership. An entry whose idle time equals the
+        per-event processing timeout is therefore eligible for a peer's
+        claim while this process is still working on it -- concurrent
+        double-processing, and a duplicate-key error for whoever loses
+        the race.
+        """
+        s = _make_subscriber(per_event_timeout_seconds=30.0)
+        s._consumer_name = "akosha-stable"
+        client = MagicMock()
+        client.xautoclaim = AsyncMock(return_value=["0-0", [], []])
+
+        await s._retry_pending(client)
+
+        min_idle = client.xautoclaim.await_args.kwargs["min_idle_time"]
+        assert min_idle > s._per_event_timeout_seconds * 1000
+
+    async def test_a_longer_configured_timeout_raises_the_claim_idle_time(self) -> None:
+        """The floor is a floor: the configured timeout wins when it is longer."""
+        s = _make_subscriber(per_event_timeout_seconds=120.0)
+        s._consumer_name = "akosha-stable"
+        client = MagicMock()
+        client.xautoclaim = AsyncMock(return_value=["0-0", [], []])
+
+        await s._retry_pending(client)
+
+        min_idle = client.xautoclaim.await_args.kwargs["min_idle_time"]
+        assert min_idle >= 120.0 * 1000
+
+    async def test_a_retry_that_fails_again_increments_the_counter(self) -> None:
+        """The cap counts DELIVERIES, and the sweep is what delivers them."""
+        subscriber = _make_subscriber()
+        subscriber._consumer_name = "akosha-stable"
+        client = MagicMock()
+        client.xautoclaim = AsyncMock(
+            return_value=["0-0", [(b"1-1", _indexable_entry())], []]
+        )
+        client.xack = AsyncMock()
+
+        with patch.object(
+            subscriber, "_index_envelope", AsyncMock(side_effect=RuntimeError("down"))
+        ):
+            await subscriber._retry_pending(client)
+
+        assert subscriber._index_retry_counts.get("1-1") == 1
+
+
+class TestTheBatchIsBoundedByOneEntriesTimeout:
+    """A batch must not cost ten times one entry's timeout.
+
+    Each entry's indexing is capped at ``per_event_timeout_seconds``
+    (30s). Processed one after another, a batch of ten could hold the
+    read loop for 300 seconds -- and with a hung embedding service a
+    backlog drains at a fraction of a message per second. The entries
+    in a batch are processed concurrently, so the batch costs one
+    entry's timeout, not ten.
+    """
+
+    async def test_the_entries_in_a_batch_are_processed_concurrently(self) -> None:
+        subscriber = _make_subscriber()
+        client = MagicMock()
+        client.xack = AsyncMock()
+        in_flight = 0
+        peak = 0
+
+        async def _slow_index(*_args: Any, **_kwargs: Any) -> bool:
+            nonlocal in_flight, peak
+            in_flight += 1
+            peak = max(peak, in_flight)
+            await asyncio.sleep(0.05)
+            in_flight -= 1
+            return True
+
+        entries = [
+            [str(i).encode(), {"channel": "bodai.hooks.post-tool-use", "payload": "{}"}]
+            for i in range(4)
+        ]
+        with patch.object(subscriber, "_index_envelope", _slow_index):
+            await subscriber._process_response([["bodai:events", entries]], client=client)
+
+        assert peak > 1, "the entries must be indexed concurrently"
+
+    async def test_a_failure_in_one_entry_does_not_stop_the_others(self) -> None:
+        subscriber = _make_subscriber()
+        client = MagicMock()
+        client.xack = AsyncMock()
+        entries = [
+            [b"1-1", {"channel": "bodai.hooks.post-tool-use", "payload": "{}"}],
+            [b"2-2", {"channel": "bodai.hooks.post-tool-use", "payload": "{}"}],
+        ]
+        with patch.object(
+            subscriber,
+            "_index_envelope",
+            AsyncMock(side_effect=[RuntimeError("boom"), True]),
+        ):
+            await subscriber._process_response([["bodai:events", entries]], client=client)
+
+        # The second entry still landed.
+        assert client.xack.await_count >= 1
+
+    async def test_the_consumed_count_is_published(self) -> None:
+        """The health payload needs the producer's WORK."""
+        subscriber = _make_subscriber()
+        client = MagicMock()
+        client.xack = AsyncMock()
+        entries = [
+            [b"1-1", {"channel": "bodai.hooks.post-tool-use", "payload": "{}"}],
+            [b"2-2", {"channel": "bodai.hooks.post-tool-use", "payload": "{}"}],
+        ]
+        with patch.object(subscriber, "_index_envelope", AsyncMock(return_value=True)):
+            await subscriber._process_response([["bodai:events", entries]], client=client)
+
+        assert subscriber.entries_consumed == 2

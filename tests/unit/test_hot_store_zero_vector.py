@@ -3,15 +3,20 @@
 Pre-fix: a zero query embedding produced NULL cosine similarities
 against every row (``0 / 0 = NaN`` in DuckDB), and ``NULL >=
 threshold`` filtered them all out. The substrate silently returned
-``[]``, breaking callers like
-:func:`akosha.ingestion.bodai_event_subscriber._read_watermark_async`
-which probes with ``[0.0] * embedding_dim`` to scan for the
-watermark conversation.
+``[]``, breaking any caller that probes with ``[0.0] *
+embedding_dim`` to scan for a row by content rather than by
+similarity.
 
 Post-fix: HotStore.search_similar detects zero vectors and routes
 to a timestamp-ordered scan with ``similarity=None``. This test
 pins the fallback contract so future substrate changes cannot
 silently regress it.
+
+(The akosha subscriber's watermark row is now read by primary key
+instead — see
+``akosha.ingestion.bodai_event_subscriber._read_watermark_id`` — so
+the fallback is a substrate-level guard rather than a dependency of
+the watermark path.)
 """
 
 from __future__ import annotations

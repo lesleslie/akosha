@@ -64,7 +64,14 @@ from akosha.models import WarmRecord
 # test. Importing the file directly via ``importlib`` sidesteps the
 # ``__init__.py`` chain entirely.
 
-_mod_path = Path("/Users/les/Projects/akosha/akosha/storage/pgvector_warm_store.py")
+#: The repository root, derived from THIS test file's location. The
+#: module under test is loaded by path (see the note above), so that
+#: path is load-bearing: a hardcoded absolute literal here makes the
+#: suite exercise a different checkout's copy of the module — silently,
+#: and with a green suite. Derive it from ``__file__`` so the suite
+#: always tests the tree it ships with.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_mod_path = _REPO_ROOT / "akosha" / "storage" / "pgvector_warm_store.py"
 _storage_dir = _mod_path.parent
 
 
@@ -284,6 +291,42 @@ def _set_router_targeted(router: MagicMock, shard_ids: list[int]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Harness invariant — the module under test is THIS repository's copy
+# ---------------------------------------------------------------------------
+
+
+class TestModuleUnderTestIsThisRepositorysCopy:
+    """The suite must exercise the code in the tree it ships with.
+
+    The module is loaded by path rather than by import, because the
+    package ``__init__`` pulls in numpy and the coverage plugin cannot
+    load numpy twice per process. That makes the path a load-bearing
+    value: get it wrong and the suite silently tests a DIFFERENT copy
+    of the module — the one in some other checkout on the machine.
+
+    That is not hypothetical. The path used to be hardcoded to the
+    primary checkout, so every run from a worktree (or a clone) tested
+    the primary checkout's file. A change in the worktree would go
+    untested and the suite would still be green, and a change on
+    ``main`` would be tested against worktree expectations.
+    """
+
+    def test_the_module_path_is_derived_from_this_test_file(self) -> None:
+        """The loaded path is the repo-relative one, not an absolute literal."""
+        repo_root = Path(__file__).resolve().parents[2]
+        assert _mod_path == repo_root / "akosha" / "storage" / "pgvector_warm_store.py"
+
+    def test_the_loaded_module_is_the_file_on_disk(self) -> None:
+        """The module object's ``__file__`` is the path the suite resolved."""
+        assert Path(_mod.__file__).resolve() == _mod_path.resolve()
+
+    def test_the_module_path_is_inside_this_repository(self) -> None:
+        """No absolute literal from another checkout can sneak back in."""
+        repo_root = Path(__file__).resolve().parents[2].resolve()
+        assert repo_root in _mod_path.resolve().parents
+
+
+# ---------------------------------------------------------------------------
 # __init__ — dim resolution + shard router injection
 # ---------------------------------------------------------------------------
 
@@ -400,6 +443,46 @@ class TestInitialize:
         # init/create_collection only fire on the first call.
         assert adapter.init.await_count == 2
         assert adapter.create_collection.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_initialize_closes_adapters_when_a_shard_fails(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A mid-loop failure must not leak the pools of the shards already built.
+
+        Each shard owns an asyncpg pool, so an adapter left open by a
+        failed ``initialize()`` keeps a backend connection for the life
+        of the process. The store now closes everything it created before
+        re-raising.
+        """
+        router = _make_router(4)
+        monkeypatch.setattr(_sharding_mod, "ShardRouter", lambda num_shards=None: router)
+
+        # A fresh adapter per shard, so cleanup can be attributed.
+        adapters: list[MagicMock] = []
+
+        def _adapter_factory(settings: Any) -> MagicMock:
+            adapter = _adapter_mock()
+            adapters.append(adapter)
+            if len(adapters) == 3:
+                adapter.create_collection.side_effect = RuntimeError("boom")
+            return adapter
+
+        monkeypatch.setattr(_mod, "PgvectorAdapter", _adapter_factory)
+
+        store = _store(shard_router=router)
+
+        with pytest.raises(RuntimeError, match="boom"):
+            await store.initialize()
+
+        # Every adapter the loop touched was cleaned up — including the
+        # shard that failed, whose pool was already open.
+        assert len(adapters) == 3
+        for adapter in adapters:
+            assert adapter.cleanup.await_count == 1
+        # And the store did not end up half-initialized.
+        assert store._initialized is False
+        assert store._adapters == {}
 
 
 # ---------------------------------------------------------------------------

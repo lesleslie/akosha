@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from akosha.models import HotRecord
+from akosha.models import RESERVED_WATERMARK_CONVERSATION_ID, HotRecord
 from akosha.storage.hot_store import HotStore
 
 
@@ -498,6 +498,138 @@ class TestHotStore:
         rows = await hot_store.query_traces(system_id="ak", limit=10)
         ids = sorted(r["conversation_id"] for r in rows)
         assert ids == ["c1", "c2", "c3"]
+
+    @pytest.mark.asyncio
+    async def test_query_traces_excludes_the_watermark_row(
+        self, hot_store: HotStore
+    ) -> None:
+        """The subscriber's watermark row is not a conversation.
+
+        It is bookkeeping -- how far the ingestion pipeline has got --
+        and it must never reach a caller: the knowledge graph would grow
+        a phantom entity for it, and a "the pipeline produced something"
+        check would be satisfied by a row that records no event.
+        """
+        now = datetime.now(UTC)
+        await hot_store.insert(
+            HotRecord(
+                system_id="mahavishnu",
+                conversation_id="c1",
+                content="x",
+                embedding=[0.0] * 384,
+                timestamp=now,
+                metadata={},
+            )
+        )
+        await hot_store.insert(
+            HotRecord(
+                system_id="mahavishnu",
+                conversation_id=RESERVED_WATERMARK_CONVERSATION_ID,
+                content="__watermark__",
+                embedding=[0.0] * 384,
+                timestamp=now,
+                metadata={"last_message_id": "1700000000000-0"},
+            )
+        )
+
+        rows = await hot_store.query_traces(system_id="mahavishnu", limit=10)
+        ids = sorted(r["conversation_id"] for r in rows)
+        assert ids == ["c1"], f"the watermark row leaked into the results: {ids}"
+
+    @pytest.mark.asyncio
+    async def test_search_similar_excludes_the_watermark_row(
+        self, hot_store: HotStore
+    ) -> None:
+        """The watermark row must not reach a search result.
+
+        It is bookkeeping, not a conversation, and it leaks badly: its
+        embedding is the ZERO VECTOR, so its cosine similarity is NaN,
+        and DuckDB orders NaN ABOVE every number. The threshold cannot
+        filter it -- ``NaN >= threshold`` is TRUE in DuckDB -- and the
+        sort puts it FIRST.
+
+        That is not cosmetic. ``akosha/ingestion/worker.py`` asks for
+        ``limit=1`` to test whether a row it is about to write already
+        exists, so the watermark takes the one slot and the real
+        duplicate is never found.
+        """
+        now = datetime.now(UTC)
+        await hot_store.insert(
+            HotRecord(
+                system_id="mahavishnu",
+                conversation_id="c1",
+                content="x",
+                embedding=[1.0] + [0.0] * 383,
+                timestamp=now,
+                metadata={},
+            )
+        )
+        await hot_store.insert(
+            HotRecord(
+                system_id="mahavishnu",
+                conversation_id=RESERVED_WATERMARK_CONVERSATION_ID,
+                content="__watermark__",
+                embedding=[0.0] * 384,
+                timestamp=now,
+                metadata={"last_message_id": "1700000000000-0"},
+            )
+        )
+
+        rows = await hot_store.search_similar(
+            query_embedding=[1.0] + [0.0] * 383,
+            system_id="mahavishnu",
+            limit=10,
+            threshold=0.0,
+        )
+        ids = [r["conversation_id"] for r in rows]
+        assert RESERVED_WATERMARK_CONVERSATION_ID not in ids, (
+            f"the watermark row leaked into the search results: {ids}"
+        )
+        assert "c1" in ids, f"the real row went missing: {ids}"
+
+    @pytest.mark.asyncio
+    async def test_the_zero_vector_fallback_excludes_the_watermark_row(
+        self, hot_store: HotStore
+    ) -> None:
+        """The fallback path leaks it WORSE: it is time-ordered.
+
+        A zero query vector returns the most RECENT rows, and the
+        watermark's timestamp is rewritten on every successful index --
+        so the watermark is usually the most recent row, and it comes
+        back first.
+        """
+        now = datetime.now(UTC)
+        await hot_store.insert(
+            HotRecord(
+                system_id="mahavishnu",
+                conversation_id="c1",
+                content="x",
+                embedding=[1.0] + [0.0] * 383,
+                timestamp=now - timedelta(seconds=60),
+                metadata={},
+            )
+        )
+        await hot_store.insert(
+            HotRecord(
+                system_id="mahavishnu",
+                conversation_id=RESERVED_WATERMARK_CONVERSATION_ID,
+                content="__watermark__",
+                embedding=[0.0] * 384,
+                timestamp=now,
+                metadata={"last_message_id": "1700000000000-0"},
+            )
+        )
+
+        rows = await hot_store.search_similar(
+            query_embedding=[0.0] * 384,
+            system_id="mahavishnu",
+            limit=10,
+        )
+        ids = [r["conversation_id"] for r in rows]
+        assert RESERVED_WATERMARK_CONVERSATION_ID not in ids, (
+            f"the watermark row leaked into the fallback results: {ids}"
+        )
+        assert "c1" in ids, f"the real row went missing: {ids}"
 
     @pytest.mark.asyncio
     async def test_query_traces_task_class_misses_rows_without_task_class(

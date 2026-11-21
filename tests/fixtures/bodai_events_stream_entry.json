@@ -1,0 +1,24 @@
+{
+  "_comment": "The live wire shape oneiric's Redis Streams adapter writes onto a `bodai:events` entry. Field NAMES are the real ones, captured from the live stream; the VALUES are synthetic, because a captured payload carries session data. This file is the producer/consumer contract: when the producer's field names change, this fixture changes with them, and the decoder tests fail against the old expectation rather than silently drifting.",
+  "channel": "bodai.hooks.post-tool-use",
+  "headers": "{}",
+  "payload": {
+    "agent_id": "agent-1",
+    "agent_type": "claude-code",
+    "event": "PostToolUse",
+    "harness": "claude-code",
+    "permission_mode": "default",
+    "session_id": "session-1",
+    "timestamp": "2026-11-20T04:30:00+00:00",
+    "tool_input": {
+      "file_path": "/tmp/example"
+    },
+    "tool_name": "Read",
+    "tool_use_id": "toolu_01"
+  },
+  "stream_entry_fields": [
+    "channel",
+    "headers",
+    "payload"
+  ]
+}

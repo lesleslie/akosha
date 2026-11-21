@@ -411,9 +411,21 @@ def _sample_value(field: str) -> float:
     mixes every metric in the shared registry; the object is the one
     counter under test, so a delta assertion against it cannot be moved by
     an unrelated metric changing.
+
+    The ``_created`` samples are EXCLUDED. ``prometheus_client`` emits
+    one per label combination, carrying the timestamp at which that
+    child was created, and it carries the SAME labels as the counter
+    sample. Summing it makes the value depend on WHEN the child was
+    created: the first test to create a given label combination saw
+    ``0.0`` before and ``1 + timestamp`` after, so the delta assertion
+    failed or passed depending on the order the suite happened to run
+    in. It was caught by the merge gate, which orders the suite
+    differently from a plain ``pytest`` run.
     """
     total = 0.0
     for sample in _metric_samples(otlp_metrics.spans_rejected_total):
+        if sample.name.endswith("_created"):
+            continue
         if sample.labels.get("field") == field:
             total += float(sample.value)
     return total

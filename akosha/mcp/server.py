@@ -54,6 +54,104 @@ logger = logging.getLogger(__name__)
 APP_NAME: Final = "akosha-mcp"
 APP_VERSION: Final[str] = __version__
 
+#: A feed that has cycled this many times without producing a single
+#: entity is not warming up. It is stalled. The shared aggregator reports
+#: ``warming_up`` for "cycled at least once, nothing yet", which is correct
+#: for a cold start and wrong for a producer that has been starved for
+#: weeks — that difference is how a severed ingestion pipeline stayed
+#: invisible behind a green health payload.
+FEED_STALL_CYCLES_THRESHOLD: Final[int] = 100
+
+
+def feed_is_stalled(*, cycles_total: int, entities_count: int) -> bool:
+    """Whether a feed has cycled repeatedly without ever producing a row.
+
+    A feed with ``entities_count == 0`` is normal during warm-up. A feed
+    that has cycled :data:`FEED_STALL_CYCLES_THRESHOLD` times and still has
+    nothing is stalled, and saying "warming up" for that is what let the
+    Akosha event pipeline stay broken while the health endpoint reported
+    ``status: warming_up`` for 3,055 cycles.
+    """
+    return cycles_total >= FEED_STALL_CYCLES_THRESHOLD and entities_count == 0
+
+
+def apply_stall_status(feed: dict[str, Any], *, producer_active: bool = True) -> dict[str, Any]:
+    """Downgrade a stalled feed's status from ``warming_up`` to ``degraded``.
+
+    The status string is the field an operator and an aggregator read. A
+    ``stalled`` boolean sitting next to a ``status`` that still says
+    ``warming_up`` changes nothing that can be acted on, so the status
+    itself has to move.
+
+    Args:
+        feed: The feed dict, mutated in place.
+        producer_active: Whether the feed's producer is expected to be
+            landing input RIGHT NOW. ``False`` means the feed is empty
+            because nothing was produced -- the producer is switched
+            off, or it has received no input at all -- and an empty
+            feed is then the correct answer rather than a stall.
+
+            The gate matters. The committed default has the event
+            subscriber OFF, and the OTLP receiver always runs: judged
+            on cycles alone, a healthy and idle system crosses the
+            threshold and answers /health 503 for a feed that is empty
+            because there was nothing to ingest.
+    """
+    if not producer_active:
+        return feed
+    if not feed_is_stalled(
+        cycles_total=int(feed.get("cycles_total", 0)),
+        entities_count=int(feed.get("entities_count", 0)),
+    ):
+        return feed
+    feed["stalled"] = True
+    feed["ok"] = False
+    feed["status"] = "degraded"
+    reason_codes = list(feed.get("reason_codes") or [])
+    if "feed_stalled" not in reason_codes:
+        reason_codes.append("feed_stalled")
+    feed["reason_codes"] = reason_codes
+    return feed
+
+
+def apply_stall_status_to_aggregate(checks: dict[str, Any]) -> dict[str, Any]:
+    """Stop the aggregate from masking a stalled feed as ``warming_up``.
+
+    The shared aggregator scores "cycled at least once, nothing yet" as
+    a warm-up regardless of age, so a feed that had been starving for
+    six weeks still rolled up to ``warming_up`` — and ``warming_up``
+    answers 200. This moves the aggregate's verdict when — and only
+    when — a feed underneath it is carrying the stall signal.
+
+    The aggregate's ``data_feeds_ok`` is deliberately left alone: it
+    reports what the aggregator scored, and rewriting that would make
+    the check disagree with the aggregator it is supposed to summarise.
+    The status is what the 503 rule reads, so that is what moves.
+
+    Args:
+        checks: The per-feed checks dict, mutated in place.
+
+    Returns:
+        The same ``checks`` dict, for convenience.
+    """
+    aggregate = checks.get("_aggregate")
+    if not isinstance(aggregate, dict):
+        return checks
+    stalled = any(
+        isinstance(feed, dict) and feed.get("stalled")
+        for name, feed in checks.items()
+        if name.endswith("_feed")
+    )
+    if not stalled:
+        return checks
+    if aggregate.get("status") == "warming_up":
+        aggregate["status"] = "degraded"
+    reason_codes = list(aggregate.get("reason_codes") or [])
+    if "feed_stalled" not in reason_codes:
+        reason_codes.append("feed_stalled")
+    aggregate["reason_codes"] = reason_codes
+    return checks
+
 
 # ---------------------------------------------------------------------------
 # mcp_common.health.aggregator shape shim
@@ -1080,7 +1178,16 @@ async def _lifespan_start_event_subscriber(hot_store: Any, is_lite_mode: bool) -
         )
 
         _app_cfg = get_config()
-        _event_subscriber_enabled = _app_cfg.websocket_invocations_subscriber.enabled
+        # The stack is built when EITHER flag is on: the Redis push
+        # subscriber is the only producer of the ``conversations``
+        # table, and the websocket subscriber no longer indexes
+        # anything of its own. Reporting only the websocket flag would
+        # say "enabled: false" next to "running: true" for an operator
+        # who switched the producer on and the orchestrator off.
+        _event_subscriber_enabled = bool(
+            _app_cfg.websocket_invocations_subscriber.enabled
+            or _app_cfg.bodai_tool_invocation_subscriber.enabled
+        )
         if is_lite_mode:
             # Lite mode means "zero external dependencies"; Redis is an
             # external dependency. Skip the producer, and say so — an
@@ -1812,6 +1919,22 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 from akosha.storage import create_warm_store
                 from akosha.storage.aging import AgingService
 
+                # The aging service is pinned to the DuckDB warm store on
+                # purpose. `AgingService` calls `warm_store.insert_batch(...)`
+                # and reads `warm_store.conn` (a DuckDB cursor), and
+                # `PgvectorWarmStore` implements neither — so handing it a
+                # pgvector store would break the batch migration path.
+                #
+                # `create_warm_store` honours its arguments exactly; the
+                # machine-local `AKOSHA__STORAGE__WARM_BACKEND` override is
+                # applied by `resolve_warm_store_config()`, the resolution
+                # step. So this explicit `duckdb-ssd` survives a machine
+                # that selected the pgvector warm tier.
+                #
+                # This is NOT the same store as `AkoshaApplication.warm_store`
+                # (which serves aged-vector queries and CAN be pgvector).
+                # Aged records land in the DuckDB warm store.
+                #
                 # DuckDB-ssd backend always returns WarmStore; cast the
                 # ``create_warm_store`` union to narrow the type for ty.
                 aging_warm_store = cast("WarmStore", create_warm_store(backend="duckdb-ssd"))
@@ -2088,6 +2211,46 @@ def create_app(mode: Any | None = None) -> FastMCP:
             # "nothing to see" when the truth is "nothing is producing".
             kg_dict["source_producer_running"] = _event_subscriber_running
             kg_dict["source_producer"] = "event_subscriber (Redis bodai:events -> conversations)"
+            # The producer's WORK, in three numbers.
+            #
+            # ``entries_total`` is every entry read. ``entries_candidate``
+            # is the subset that SHOULD have produced a row: the indexed
+            # channels, plus the entries whose channel could not be read.
+            # ``entries_indexed`` is the rows that actually landed.
+            #
+            # The stall signal gates on the CANDIDATE count, not on the
+            # total: the hook bridge publishes six channels and only one
+            # of them is indexed, so gating on "entries read" reports a
+            # healthy pipeline that is correctly dropping traffic as
+            # stalled. Gating on the candidate count keeps the two apart
+            # -- "the producer received input that should have landed
+            # and nothing landed" is a stall; "the producer received
+            # nothing indexable" is an empty feed.
+            kg_dict["source_producer_entries_total"] = int(
+                getattr(_event_subscriber, "entries_consumed", 0) or 0
+            )
+            kg_dict["source_producer_entries_candidate"] = int(
+                getattr(_event_subscriber, "entries_candidate", 0) or 0
+            )
+            kg_dict["source_producer_entries_indexed"] = int(
+                getattr(_event_subscriber, "entries_indexed", 0) or 0
+            )
+            # Transport failures, counted. The rollback signal used to
+            # grep "xreadgroup error" out of another component's log
+            # file, which reads zero forever once that file rotates or
+            # that component is fixed -- a green check that means
+            # nothing. A counter in the payload cannot rot.
+            kg_dict["source_producer_read_errors_total"] = int(
+                getattr(_event_subscriber, "read_errors", 0) or 0
+            )
+            # A feed that has cycled for weeks without a single row is
+            # stalled, not warming up. Move the status, so the difference
+            # between "not started yet" and "never producing" is visible
+            # in the field an operator and an aggregator actually read.
+            apply_stall_status(
+                kg_dict,
+                producer_active=int(kg_dict.get("source_producer_entries_candidate") or 0) > 0,
+            )
             checks["knowledge_graph_feed"] = kg_dict
 
             lt_dict = _feed_dict("local_traces_feed", local_traces_state)
@@ -2111,6 +2274,18 @@ def create_app(mode: Any | None = None) -> FastMCP:
             lt_dict["source"] = (
                 "hot_store.query_traces (populated via kg_refresh) + "
                 "spans_substrate (populated by the OTLP receiver)"
+            )
+            # The same starvation signature as the knowledge graph: the
+            # feed has cycled tens of thousands of times with zero rows
+            # while its producer (the OTLP receiver) is ingesting
+            # batches. "warming_up" after 46,571 cycles is not a warm-up.
+            #
+            # Gated on the receiver's WORK: a box where nobody sends
+            # spans has an empty feed because there was nothing to
+            # ingest, and that is not a stall.
+            apply_stall_status(
+                lt_dict,
+                producer_active=int(lt_dict.get("otel_receiver_batches_total") or 0) > 0,
             )
             checks["local_traces_feed"] = lt_dict
 
@@ -2228,6 +2403,11 @@ def create_app(mode: Any | None = None) -> FastMCP:
                 "data_feeds_ok": all_data_feeds_ok,
                 "halflife_seconds": halflife_seconds,
             }
+            # A stalled feed must not be masked by the aggregate's
+            # ``warming_up`` verdict: the whole point of the signal is
+            # that "not started yet" and "never producing" look
+            # different to whoever reads this.
+            apply_stall_status_to_aggregate(checks)
 
             return checks
 
