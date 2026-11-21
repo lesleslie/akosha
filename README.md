@@ -8,7 +8,7 @@
 
 Universal memory aggregation and cross-system analytics for distributed systems.
 
-**Version:** 0.28.1
+**Version:** 0.28.2
 
 ## Quick Links
 

@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.2] - 2026-11-21
+
+### Changed
+
+- mcp: Update the remaining tool references to the component prefix
+- mcp: Update tool references to the component prefix
+
+### Fixed
+
+- mcp: Pass server_name to register_health_tools
+
+### Documentation
+
+- Correct the retired embedding provider claims
+
 ## [0.28.1] - 2026-11-21
 
 ### Changed
