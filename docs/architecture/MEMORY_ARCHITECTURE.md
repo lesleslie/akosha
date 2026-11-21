@@ -22,13 +22,13 @@ ______________________________________________________________________
 ## Table of Contents
 
 1. [Storage Inventory](#1-storage-inventory)
-2. [MCP Write Surface](#2-mcp-write-surface)
-3. [MCP Read Surface](#3-mcp-read-surface)
-4. [Cross-Component Visibility](#4-cross-component-visibility)
-5. [Integration Contract](#5-integration-contract)
-6. [Sample Queries](#6-sample-queries)
-7. [Diagrams](#7-diagrams)
-8. [Operational Notes](#8-operational-notes)
+1. [MCP Write Surface](#2-mcp-write-surface)
+1. [MCP Read Surface](#3-mcp-read-surface)
+1. [Cross-Component Visibility](#4-cross-component-visibility)
+1. [Integration Contract](#5-integration-contract)
+1. [Sample Queries](#6-sample-queries)
+1. [Diagrams](#7-diagrams)
+1. [Operational Notes](#8-operational-notes)
 
 ______________________________________________________________________
 
@@ -185,9 +185,9 @@ erDiagram
 deployment environment to concrete paths. Environment detection priority:
 
 1. `AKOSHA_ENV` if set (`container` / `local` / `development` / `test`).
-2. `/.dockerenv` or `/proc/1/cgroup` → `container`.
-3. `pytest` in `sys.modules` or `PYTEST_CURRENT_TEST` → `test`.
-4. Otherwise `local`.
+1. `/.dockerenv` or `/proc/1/cgroup` → `container`.
+1. `pytest` in `sys.modules` or `PYTEST_CURRENT_TEST` → `test`.
+1. Otherwise `local`.
 
 The resolver returns:
 
@@ -225,8 +225,8 @@ publishes analytics events onto the Bodai EventBridge.
 `akosha_publish_to_eventbridge` is gated three ways:
 
 1. **`enabled`** parameter passed at registration time (legacy, captured once).
-2. **`enabled_fn` callable** invoked on every tool invocation — the production wiring reads `AkoshaConfig().eventbridge.enabled` per call so operators can flip `AKOSHA_EVENTBRIDGE_ENABLED` without restarting the MCP server.
-3. **Publisher presence** — when the module-level `_publisher` in `akosha/observability/eventbridge_publisher.py` is `None` (no Oneiric dispatcher wired), the tool returns `{"status": "no_publisher", "warning": ...}` instead of failing.
+1. **`enabled_fn` callable** invoked on every tool invocation — the production wiring reads `AkoshaConfig().eventbridge.enabled` per call so operators can flip `AKOSHA_EVENTBRIDGE_ENABLED` without restarting the MCP server.
+1. **Publisher presence** — when the module-level `_publisher` in `akosha/observability/eventbridge_publisher.py` is `None` (no Oneiric dispatcher wired), the tool returns `{"status": "no_publisher", "warning": ...}` instead of failing.
 
 When disabled, every call returns `{"status": "disabled"}`. When no
 publisher is wired but `enabled=true`, the tool warns but does not
@@ -424,7 +424,7 @@ own lifespan reference at `__init__` time. With the lifespan
 no-op'd, two failure modes surfaced:
 
 1. **MCP routing 404**: Claude Code's transport auto-detector fell back to REST-style `/mcp/tools/call` routing, which returned 404 because only `/mcp` is mounted.
-2. **Startup registration never fired**: Akosha never pushed its agent catalog to Oneiric, so the runtime registry never learned about Akosha.
+1. **Startup registration never fired**: Akosha never pushed its agent catalog to Oneiric, so the runtime registry never learned about Akosha.
 
 **Contract**: `create_app()` MUST pass the lifespan via the public
 `lifespan=` kwarg to the `FastMCP(...)` constructor. Any code path that
@@ -739,7 +739,7 @@ Three diagrams are persisted with this document. Two are embedded
 above:
 
 1. **Schema map** (Section 1) — `erDiagram` of all three storage tiers, the in-process fitness buffer, and the knowledge graph; arrows show the `AgingService` hot→warm migration and the FitnessAnalyzer's read from the hot tier.
-2. **Startup** (Section 2) — `sequenceDiagram` of the lifespan-initiated embedding/hot-store/tool registration, the Oneiric runtime push, and the steady-state 60-second fitness loop.
+1. **Startup** (Section 2) — `sequenceDiagram` of the lifespan-initiated embedding/hot-store/tool registration, the Oneiric runtime push, and the steady-state 60-second fitness loop.
 
 The third — **Cross-system data flow** — lives in the global Bodai
 docs at `bodai/docs/memory/INDEX.md` because it spans all five

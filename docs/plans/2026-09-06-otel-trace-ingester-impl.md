@@ -610,8 +610,8 @@ ______________________________________________________________________
 Read `/Users/les/Projects/akosha/akosha/mcp/server.py` lines 460-560 (the lifespan body) to identify the exact insertion points. Locate:
 
 1. The `CodeGraphIngester` construction block (mirror it for OTel)
-2. The shutdown block where `_code_graph_ingester.stop()` is called
-3. The `/health` probe block where `code_graphs_feed` is built (extend `local_traces_feed` aggregate)
+1. The shutdown block where `_code_graph_ingester.stop()` is called
+1. The `/health` probe block where `code_graphs_feed` is built (extend `local_traces_feed` aggregate)
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -645,8 +645,8 @@ class TestOtelTraceIngesterLifespanWiring:
 For the **real** assertions, look at the existing `test_lifespan_starts_code_graph_ingester` test in this file and mirror its pattern. The two new tests should:
 
 1. Patch `akosha.ingestion.otel_ingester.OtelTraceIngester` with an `AsyncMock` so `start()` is awaitable.
-2. Construct the app, enter the lifespan, assert `OtelTraceIngester` was called and `start()` was awaited.
-3. For the opt-out test, set `AKOSHA_SKIP_OTEL_INGESTER=1` and assert `OtelTraceIngester` was NOT called.
+1. Construct the app, enter the lifespan, assert `OtelTraceIngester` was called and `start()` was awaited.
+1. For the opt-out test, set `AKOSHA_SKIP_OTEL_INGESTER=1` and assert `OtelTraceIngester` was NOT called.
 
 - [ ] **Step 3: Modify akosha/mcp/server.py lifespan**
 
@@ -946,6 +946,6 @@ ______________________________________________________________________
    - "Unit tests" → Task 1 (lifecycle) + Task 2 (normalize/insert)
    - "Integration test with mock OTLP collector" → Task 4
 
-2. **Placeholder scan:** All test code and implementation snippets are concrete. No "TBD" or "implement later" markers.
+1. **Placeholder scan:** All test code and implementation snippets are concrete. No "TBD" or "implement later" markers.
 
-3. **Type consistency:** `OtelTraceIngester.__init__` signature matches in Tasks 1, 2, 3, 4. `_watermarks` is declared in Task 1, used in Tasks 2 and 3. `_normalize_span` signature matches between Task 2 (production) and Task 2 (test). `_ingest_span` signature matches.
+1. **Type consistency:** `OtelTraceIngester.__init__` signature matches in Tasks 1, 2, 3, 4. `_watermarks` is declared in Task 1, used in Tasks 2 and 3. `_normalize_span` signature matches between Task 2 (production) and Task 2 (test). `_ingest_span` signature matches.

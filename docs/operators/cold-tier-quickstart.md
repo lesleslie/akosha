@@ -3,8 +3,8 @@
 This guide covers three things:
 
 1. Running akosha's cold tier against fake-gcs-server (dev).
-2. Pointing the cold tier at Cloudflare R2 (prod).
-3. A smoke-test recipe for verifying your R2 wiring before committing.
+1. Pointing the cold tier at Cloudflare R2 (prod).
+1. A smoke-test recipe for verifying your R2 wiring before committing.
 
 ## 1. fake-gcs-server (dev)
 
@@ -160,8 +160,8 @@ than in a tracked file.
 R2 tokens don't auto-rotate. Periodically:
 
 1. Generate a new token in the Cloudflare dashboard.
-2. Update env vars / `local.yaml`.
-3. Revoke the old token in the Cloudflare dashboard.
+1. Update env vars / `local.yaml`.
+1. Revoke the old token in the Cloudflare dashboard.
 
 ## 3. Smoke-test recipe
 

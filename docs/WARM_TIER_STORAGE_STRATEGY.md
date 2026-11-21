@@ -1879,9 +1879,9 @@ hot:
   path: ":memory:"
   write_ahead_log: true
 
+shard_count: 256  # top level; the warm store reads config.shard_count
 warm:
   backend: duckdb-ssd
-  num_partitions: 256
 
 cold:
   enabled: true

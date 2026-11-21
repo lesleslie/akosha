@@ -288,10 +288,10 @@ that no longer exists.
 
 The plan says: *"Reducing `warm.num_partitions` to 4 unblocks both backends."*
 
-**Setting it does nothing.** `num_partitions` is declared on
-`WarmStorageConfig` (`akosha/config.py:274`, default 256) and read by
-**no production code** — the only other reference in the repo is a
-config test asserting the default. The warm store sizes its shards from
+**Setting it does nothing.** `num_partitions` was declared on
+`WarmStorageConfig` (default 256) and read by **no production code** —
+the only other reference in the repo was a config test asserting the
+default. The warm store sizes its shards from
 `akosha.config.config.shard_count` (a different field, also defaulting
 to 256), via `PgvectorWarmStore._build_default_router`
 (`akosha/storage/pgvector_warm_store.py:129`).
@@ -302,17 +302,18 @@ wrong. An operator who follows it — set `warm.num_partitions: 4`,
 restart, expect the connection storm to stop — sees no change at all,
 and the shard count stays at 256.
 
-This branch removes the dead key from `settings/akosha.yaml`, which
-makes the advice *worse*: it now names a key that is not in the
-committed settings at all. The plan must be corrected to name
-`shard_count` (the knob that is actually read) — and `shard_count` has
-no `settings/` entry either, so the fix is a real one: either the
-knob gets a `settings/` home, or the operator is told to set it in the
-environment.
+**Fixed here.** The dead field is removed from `WarmStorageConfig`, the
+plan is corrected to name `shard_count`, and a configuration that still
+carries `warm.num_partitions` now gets a warning instead of silence —
+pydantic ignores unknown keys, so without that the same operator would
+still see nothing happen. The dead key is also gone from the `warm:`
+block in `settings/akosha.yaml`; that block now carries only `backend`
+and `pg_url`. `shard_count` has a settings home: the top-level
+`shard_count: 256` at `settings/akosha.yaml:136`.
 
-This is the `config-that-nobody-reads` pattern (the fleet's
-`docs/plans/2026-11-05-config-that-nobody-reads.md`), and it is worth
-one row in that plan's sweep rather than a fix here.
+This was the `config-that-nobody-reads` pattern (the fleet's
+`docs/plans/2026-11-05-config-that-nobody-reads.md`). It is now fixed
+here rather than waiting for that plan's sweep.
 
 ### Stale — the subject has been overtaken
 

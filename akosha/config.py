@@ -238,7 +238,6 @@ class WarmStorageConfig(BaseModel):
         path: Path to warm storage directory
         pg_url: PostgreSQL connection string for pgvector backend.
             Adopted from substrate (``warm__pg_url``).
-        num_partitions: Number of shards for distributed queries
         pg_pool_size: SQLAlchemy connection pool size. Adopted from substrate
             (``warm__pg_pool_size``).
 
@@ -271,7 +270,6 @@ class WarmStorageConfig(BaseModel):
         default_factory=lambda: _substrate_field("warm__pg_pool_size"),
         description="SQLAlchemy connection pool size (from substrate).",
     )
-    num_partitions: int = 256
 
     def __init__(self, **data: Any) -> None:
         # Legacy ``AKOSHA__STORAGE__WARM__*`` env vars remain honored as a
@@ -283,6 +281,18 @@ class WarmStorageConfig(BaseModel):
             data["backend"] = _env_backend
         if _env_pg_url and "pg_url" not in data:
             data["pg_url"] = _env_pg_url
+        if "num_partitions" in data:
+            # This knob used to be declared here and read by no production
+            # code: the warm store sizes its shards from the top-level
+            # ``shard_count`` setting (``akosha/storage/sharding.py``).
+            # Pydantic ignores unknown keys silently, so an operator whose
+            # overlay still carried it would see no change and no
+            # explanation. Say so instead.
+            logger.warning(
+                "akosha.config.warm.num_partitions_ignored: 'warm.num_partitions' "
+                "is not read. The warm tier's shard count comes from the "
+                "top-level 'shard_count' setting; set that instead."
+            )
         super().__init__(**data)
 
     @model_validator(mode="after")

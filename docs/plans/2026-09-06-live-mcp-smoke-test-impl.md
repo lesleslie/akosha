@@ -803,7 +803,7 @@ ______________________________________________________________________
    - Marked @pytest.mark.slow → Task 3
    - Default pytest skips it → Task 3 Step 4
 
-2. **Scope refinement** *(status 2026-09-06: closed)*: The OTel half of the
+1. **Scope refinement** *(status 2026-09-06: closed)*: The OTel half of the
    smoke test was originally deferred until the OTel ingester landed.
    Both have shipped — `OtelTraceIngester` is wired in the lifespan
    (commit `b3b298e`), `MockBodaiEcosystem` accepts `otel_spans`, and
@@ -812,6 +812,6 @@ ______________________________________________________________________
    framing in the Scope Notes block above is preserved for historical
    accuracy; see the status note at the top of that block.
 
-3. **Placeholder scan**: All test code is concrete; no "TBD" markers.
+1. **Placeholder scan**: All test code is concrete; no "TBD" markers.
 
-4. **Type consistency**: `MockBodaiEcosystem.session_buddy_url` returns `str` consistently across Task 2 and Task 3.
+1. **Type consistency**: `MockBodaiEcosystem.session_buddy_url` returns `str` consistently across Task 2 and Task 3.

@@ -20,10 +20,10 @@ This guide provides step-by-step instructions for implementing the warm tier sto
 
 ```yaml
 mode: lite
+shard_count: 64  # Reduced for dev -- TOP LEVEL, not under warm:
 warm:
   backend: duckdb-ssd
   path: "~/.akosha/dev/warm"  # Updated - uses home directory
-  num_partitions: 64  # Reduced for dev
 ```
 
 **Edit `settings/akosha.yaml` for prod** (committed; see file's existing

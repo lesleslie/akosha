@@ -1738,10 +1738,15 @@ this design rather than implemented.**
 workaround applied to XDG layer (`num_partitions: 16`)"*. `num_partitions`
 is **never read** — `ShardRouter` takes its shard count from
 `akosha.config.config.shard_count` (`akosha/storage/sharding.py:31`), which
-is 256. The `warm:` block in `settings/akosha.yaml` says so in a comment
-("declared but UNREAD"), and the XDG overlay's `num_partitions: 16` has had
-no effect. The warm store has been running with 256 shards. The workaround
-that is real is `shard_count: 16` — the value the operator script stages.
+is 256. The XDG overlay's `num_partitions: 16` has had no effect. The warm
+store has been running with 256 shards. The workaround that is real is
+`shard_count: 16` — the value the operator script stages.
+
+The plan is now marked `role: superseded` with
+`superseded_by: docs/plans/2026-11-17-unified-pgvector-warm-tier.md`, and the dead key has been removed
+from the `warm:` block in `settings/akosha.yaml` — that block now carries
+only `backend` and `pg_url`. The top-level `shard_count: 256` that the
+store actually reads lives at `settings/akosha.yaml:136`.
 
 ### `2026-09-09-akosha-otel-feed-recovery.md` — **adjacent, and incomplete**
 

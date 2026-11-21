@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -56,7 +57,6 @@ class TestWarmStorageConfig:
         assert cfg.backend == "pgvector"
         assert cfg.pg_url != ""  # substrate ships a non-empty DSN default
         assert cfg.path is not None  # resolved by validator
-        assert cfg.num_partitions == 256
         assert cfg.pg_pool_size == 8  # substrate warm__pg_pool_size default
 
     def test_custom_values(self):
@@ -65,10 +65,40 @@ class TestWarmStorageConfig:
         cfg = WarmStorageConfig(
             backend="pgvector",
             path=Path("/tmp/warm"),
-            num_partitions=128,
         )
         assert cfg.backend == "pgvector"
-        assert cfg.num_partitions == 128
+
+    def test_the_dead_shard_count_knob_is_not_declared(self):
+        """``warm.num_partitions`` must not come back.
+
+        It was declared on this model and read by no production code:
+        the warm store sizes its shards from the top-level
+        ``shard_count`` setting (``akosha/storage/sharding.py:31``).
+        Both defaulted to 256, so the mistake was invisible -- and
+        ``docs/plans/2026-10-05-lazy-warm-shard-init.md`` told
+        operators to set it as the remedy for a connection storm, which
+        did nothing at all.
+        """
+        from akosha.config import WarmStorageConfig
+
+        assert "num_partitions" not in WarmStorageConfig.model_fields
+
+    def test_a_stray_num_partitions_key_is_reported(self, caplog):
+        """A configuration that still sets the dead knob must say so.
+
+        Pydantic ignores unknown keys silently, so an operator whose
+        overlay still carries ``warm.num_partitions`` would otherwise
+        see no change and no explanation -- the exact failure this
+        knob already caused once.
+        """
+        from akosha.config import WarmStorageConfig
+
+        with caplog.at_level(logging.WARNING, logger="akosha.config"):
+            WarmStorageConfig(num_partitions=16)
+
+        assert any(
+            "num_partitions" in record.message for record in caplog.records
+        ), f"no warning about the ignored knob; records: {caplog.records!r}"
 
     def test_substrate_env_override(self) -> None:
         """``ONEIRIC__SUBSTRATE__WARM__PG_URL`` overrides the substrate default."""

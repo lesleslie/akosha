@@ -16,7 +16,7 @@ _Regenerated 2026-11-21 by `crackerjack.tools.plan_index_sync` (phase)._
 | [`docs/plans/2026-09-09-akosha-otel-feed-recovery.md`](2026-09-09-akosha-otel-feed-recovery.md) | 2026-09-09 | `draft` | `implementation` | `akosha-otel-feed-recovery` | Akosha OTel Feed Recovery Plan |
 | [`docs/plans/2026-09-27-pyproject-single-source-of-truth.md`](2026-09-27-pyproject-single-source-of-truth.md) | 2026-09-27 | `active` | `canonical` | `version-source-of-truth` | Pyproject as Single Source of Truth for Version Strings |
 | [`docs/plans/2026-09-28-cold-store-gcs-endpoint-url-wiring.md`](2026-09-28-cold-store-gcs-endpoint-url-wiring.md) | 2026-09-28 | `draft` | `implementation` | `cold-store-wiring` | ColdStore GCS Branch — Missing endpoint_url Wiring (TICKET) |
-| [`docs/plans/2026-10-05-lazy-warm-shard-init.md`](2026-10-05-lazy-warm-shard-init.md) | 2026-10-05 | `draft` | `implementation` | `warm-tier-storage` | Plan — Lazy initialization of PgvectorWarmStore shards |
+| [`docs/plans/2026-10-05-lazy-warm-shard-init.md`](2026-10-05-lazy-warm-shard-init.md) | 2026-10-05 | `complete` | `superseded` | `warm-tier-storage` | Plan — Lazy initialization of PgvectorWarmStore shards |
 | [`docs/plans/2026-11-05-akosha-cold-write-path.md`](2026-11-05-akosha-cold-write-path.md) | 2026-11-05 | `active` | `implementation` | `cold-write-path` | Cold tier write path — implementation plan |
 | [`docs/plans/2026-11-17-unified-pgvector-warm-tier.md`](2026-11-17-unified-pgvector-warm-tier.md) | 2026-11-17 | `draft` | `implementation` | `unified-pgvector-warm-tier` | Plan M — Fleet-standard embeddings, unified pgvector warm tier |
 | [`docs/plans/2026-11-20-akosha-event-pipeline-recovery.md`](2026-11-20-akosha-event-pipeline-recovery.md) | 2026-11-20 | `draft` | `implementation` | `akosha-event-pipeline-recovery` | Akosha Event-Pipeline Recovery Implementation Plan |
@@ -47,8 +47,8 @@ _Regenerated 2026-11-21 by `crackerjack.tools.plan_index_sync` (phase)._
 | Role \\ Lifecycle | draft | active | partial | shipped | complete | Total |
 |---|---|---|---|---|---|---|
 | `canonical` | · | 2 | · | · | · | **2** |
-| `implementation` | 6 | 4 | · | · | 1 | **11** |
+| `implementation` | 5 | 4 | · | · | 1 | **10** |
 | `umbrella` | · | · | · | · | · | **0** |
 | `historical` | · | · | · | · | · | **0** |
-| `superseded` | · | · | · | · | · | **0** |
-| **Total** | **6** | **6** | **·** | **·** | **1** | **13** |
+| `superseded` | · | · | · | · | 1 | **1** |
+| **Total** | **5** | **6** | **·** | **·** | **2** | **13** |

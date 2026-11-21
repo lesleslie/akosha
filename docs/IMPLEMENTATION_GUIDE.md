@@ -94,7 +94,6 @@ class WarmStorageConfig(BaseModel):
 
     backend: str = "duckdb-ssd"
     path: Path = Field(default_factory=lambda: Path("/data/akosha/warm"))
-    num_partitions: int = 256
 
 
 class ColdStorageConfig(BaseModel):
