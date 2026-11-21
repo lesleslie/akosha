@@ -445,7 +445,7 @@ class VectorEmbeddingStorage:
 
     def __init__(self, storage_adapter: Any):
         self.storage = storage_adapter
-        self.embedding_dim = 384  # all-MiniLM-L6-v2
+        self.embedding_dim = 384
 
     async def store_embeddings_batch(
         self,

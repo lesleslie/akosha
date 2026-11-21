@@ -232,7 +232,7 @@ similarity = jaccard(fingerprint1, fingerprint2)
 
 - `M = 16` (connections per node)
 - `ef_construction = 200` (index quality)
-- Dimension: 384 (all-MiniLM-L6-v2)
+- Dimension: 384
 
 **Performance**:
 

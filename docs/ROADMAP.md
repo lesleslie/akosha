@@ -44,7 +44,7 @@ Phase 2: Advanced Features (1,000 systems)
 │  Warm: DuckDB on-disk         │
 │  Cold: Parquet + CF R2         │
 │  Graph: DuckDB + Redis         │
-│  Embeddings: all-MiniLM        │
+│  Embeddings: OpenAI            │
 │  Analytics: Time-series       │
 └─────────────────────────────┘
 
@@ -141,7 +141,7 @@ ______________________________________________________________________
 
 ### 📋 Phase 2 Targets (Week 8)
 
-- [x] ONNX embedding generation <!-- verified 2026-07-15: akosha/processing/embeddings.py (sentence_transformers all-MiniLM-L6-v2) -->
+- [ ] ONNX embedding generation <!-- was checked 2026-07-15; onnxruntime and sentence-transformers are no longer dependencies, so there is no in-process neural embedder -->
 - [ ] Semantic search with real embeddings
 - [x] Time-series aggregator <!-- verified 2026-07-15: akosha/processing/analytics.py with TrendSegment -->
 - [ ] Trend and anomaly detection

@@ -81,9 +81,6 @@ AKOSHA_COLD_BUCKET=your-bucket-name
 AKOSHA_COLD_ENDPOINT=https://your-account.r2.cloudflarestorage.com
 AKOSHA_COLD_REGION=auto
 
-# Optional: Embedding Model
-AKOSHA_EMBEDDING_MODEL=all-MiniLM-L6-v2
-
 # Optional: Storage Paths
 AKOSHA_HOT_PATH=/tmp/akosha/hot
 AKOSHA_WARM_PATH=/tmp/akosha/warm
