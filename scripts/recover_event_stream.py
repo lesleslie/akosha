@@ -66,6 +66,21 @@ CONSUMER_PREFIX: str = "akosha-"
 #: per consumer in a single unbounded transaction.
 DELETE_BATCH_SIZE: int = 5000
 
+#: Socket timeout for the recovery client, in seconds.
+#:
+#: redis-py 8's default is 5 seconds. ``XINFO CONSUMERS`` on the leaked
+#: group took 158 seconds to answer, so with the default the tool could
+#: not read the list of consumers it exists to delete: it reported "cannot
+#: read the consumer list ... Timeout reading from socket", changed
+#: nothing, and exited non-zero. The read this tool exists to perform is
+#: inherently slow on the group it exists to clean.
+RECOVERY_SOCKET_TIMEOUT_SECONDS: float = 600.0
+
+#: Connect timeout for the recovery client, in seconds. A read may
+#: legitimately take minutes on this group; a connect never does, and a
+#: connect that never completes must not hang the tool.
+RECOVERY_CONNECT_TIMEOUT_SECONDS: float = 10.0
+
 #: Environment variable holding the Redis DSN.
 REDIS_URL_ENV: str = "REDIS_URL"
 
@@ -73,6 +88,23 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
 _DEFAULT_REDIS_URL = "redis://localhost:6379/0"
+
+
+def _build_client(url: str) -> Any:
+    """Build the Redis client the recovery runs against.
+
+    The socket timeout is deliberately long, because the consumer list
+    on the leaked group takes minutes to read. The connect timeout is
+    not: a connect that never completes should fail fast, while a slow
+    read is the normal case for this particular group.
+    """
+    import redis
+
+    return redis.Redis.from_url(
+        url,
+        socket_timeout=RECOVERY_SOCKET_TIMEOUT_SECONDS,
+        socket_connect_timeout=RECOVERY_CONNECT_TIMEOUT_SECONDS,
+    )
 
 
 def _consumer_name(entry: dict[str, Any]) -> str:
@@ -395,14 +427,13 @@ def main(argv: list[str] | None = None, *, redis_client: Any = None) -> int:
     if redis_client is None:
         url = os.getenv(REDIS_URL_ENV, "") or _DEFAULT_REDIS_URL
         try:
-            import redis
+            owned_client = _build_client(url)
         except ImportError:  # pragma: no cover - redis is a hard dependency
             print(
                 "akosha.recover_event_stream: the redis package is not installed",
                 file=sys.stderr,
             )
             return 1
-        owned_client = redis.Redis.from_url(url)
         redis_client = owned_client
 
     try:

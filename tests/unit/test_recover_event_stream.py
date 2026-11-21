@@ -569,3 +569,34 @@ class TestTheToolDoesNotHoldTheWholeConsumerList:
 
 class _ObservedRow(dict):
     """An ``XINFO CONSUMERS`` row that a weak reference can watch."""
+
+
+class TestTheClientCanOutlastTheLeakedGroup:
+    """The tool must be able to read the consumer list it exists to clean.
+
+    redis-py 8's default socket timeout is 5 seconds, and
+    ``XINFO CONSUMERS`` on the leaked group took 158 seconds to answer.
+    With the default timeout the tool cannot read the list of the 446,049
+    consumers it exists to delete: it failed with "cannot read the
+    consumer list ... Timeout reading from socket" and reported nothing,
+    which is the opposite of what a recovery tool should do.
+    """
+
+    def test_the_client_is_built_with_a_long_socket_timeout(self) -> None:
+        client = _mod._build_client("redis://localhost:6379/0")
+
+        kwargs = client.connection_pool.connection_kwargs
+        assert kwargs.get("socket_timeout") == _mod.RECOVERY_SOCKET_TIMEOUT_SECONDS
+
+    def test_the_timeout_outlasts_the_observed_read(self) -> None:
+        """158 s was the measured cost of one ``XINFO CONSUMERS``."""
+        assert _mod.RECOVERY_SOCKET_TIMEOUT_SECONDS >= 300
+
+    def test_the_connect_timeout_is_bounded(self) -> None:
+        """A connect that never completes must not hang the tool."""
+        client = _mod._build_client("redis://localhost:6379/0")
+
+        kwargs = client.connection_pool.connection_kwargs
+        connect_timeout = kwargs.get("socket_connect_timeout")
+        assert connect_timeout is not None
+        assert connect_timeout <= 30
