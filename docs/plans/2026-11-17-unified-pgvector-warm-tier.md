@@ -102,7 +102,7 @@ vectors from two different models or two different widths at the same time.
   repo's public surface needs that repo's release before the consumer's pin
   can move, and the pin bump is the operator's.
 
----
+______________________________________________________________________
 
 ## Phase 0 — The embedding contract
 
@@ -120,65 +120,65 @@ FLEET_EMBEDDING_SPACE = "openai/text-embedding-3-small/v1"
 
 - [ ] Add the three constants.
 - [ ] `FLEET_EMBEDDING_DIM` is the model's **native** width (1536). The
-      client therefore never sends `dimensions` — do not add a
-      `FLEET_EMBEDDING_REQUESTS_DIMENSIONS` knob unless the width is
-      changed, and if it ever is, the space id changes with it.
+  client therefore never sends `dimensions` — do not add a
+  `FLEET_EMBEDDING_REQUESTS_DIMENSIONS` knob unless the width is
+  changed, and if it ever is, the space id changes with it.
 - [ ] Export them from the module's `__all__`.
 - [ ] Unit test: the constants are consistent (dim is a positive int; the
-      space id contains the model name).
+  space id contains the model name).
 
 ### 0.2 — [oneiric] The OpenAI legs
 
 - [ ] Add an `openai_gateway` leg (Bifrost) and an `openai_direct` leg
-      (api.openai.com) to the probe chain, **ahead of** `llama_cpp`, so the
-      order becomes
-      `openai_gateway → openai_direct → llama_cpp → minimax → model2vec`.
+  (api.openai.com) to the probe chain, **ahead of** `llama_cpp`, so the
+  order becomes
+  `openai_gateway → openai_direct → llama_cpp → minimax → model2vec`.
 - [ ] **Reuse the existing `oneiric/adapters/embedding/openai.py`
-      `OpenAIEmbeddingAdapter`.** Do not write a parallel HTTP client — that
-      adapter already handles `dimensions`, credential resolution, batching,
-      retries and rate limiting. This is the central design decision of the
-      fleet-768 plan and it is correct.
+  `OpenAIEmbeddingAdapter`.** Do not write a parallel HTTP client — that
+  adapter already handles `dimensions`, credential resolution, batching,
+  retries and rate limiting. This is the central design decision of the
+  fleet-768 plan and it is correct.
 - [ ] The gateway leg authenticates with the **virtual key** in the
-      `x-bf-vk` header, read from `BIFROST_VIRTUAL_KEY`. A provider key is a
-      hard `401 virtual_key_required`.
+  `x-bf-vk` header, read from `BIFROST_VIRTUAL_KEY`. A provider key is a
+  hard `401 virtual_key_required`.
 - [ ] The direct leg reads `OPENAI_API_KEY` from the environment at call
-      time. Never inline a literal.
+  time. Never inline a literal.
 - [ ] Base-URL convention: the base URL **includes** the API prefix
-      (`http://127.0.0.1:8471/v1`, `https://api.openai.com/v1`) and the
-      endpoint is `{base}/embeddings`. The existing `llama_cpp` leg is the
-      one exception (bare root + `/v1/embeddings`) — leave it, but do not
-      copy the convention anywhere else. A base that already ends in `/v1`
-      plus a `/v1/embeddings` suffix produces `/v1/v1/embeddings` and a
-      guaranteed 404.
+  (`http://127.0.0.1:8471/v1`, `https://api.openai.com/v1`) and the
+  endpoint is `{base}/embeddings`. The existing `llama_cpp` leg is the
+  one exception (bare root + `/v1/embeddings`) — leave it, but do not
+  copy the convention anywhere else. A base that already ends in `/v1`
+  plus a `/v1/embeddings` suffix produces `/v1/v1/embeddings` and a
+  guaranteed 404.
 - [ ] `backend_name()` returns `"openai"` for both OpenAI legs, so
-      `BACKEND_DEFAULT_DIMS["openai"]` resolves. Expose the specific leg
-      separately as `EmbeddingService.backend_leg()`.
+  `BACKEND_DEFAULT_DIMS["openai"]` resolves. Expose the specific leg
+  separately as `EmbeddingService.backend_leg()`.
 - [ ] **Fail loud on a wrong virtual key.** Bifrost returns a misleading
-      `400 "could not auto resolve a provider"` for a bad VK on an
-      embeddings request, not a 401. Surface the gateway's error body
-      verbatim rather than collapsing it to "embedding failed".
+  `400 "could not auto resolve a provider"` for a bad VK on an
+  embeddings request, not a 401. Surface the gateway's error body
+  verbatim rather than collapsing it to "embedding failed".
 - [ ] **The gateway is already proven to serve this.** Verified live
-      2026-11-17 after the OpenAI credits were restored: a request through
-      Bifrost for `text-embedding-3-small` with **no** `dimensions`
-      parameter returned HTTP 200 and a 1536-wide unit-norm vector; the same
-      request with `dimensions: 1536` also returned 1536. This phase is
-      plumbing, not provider access.
+  2026-11-17 after the OpenAI credits were restored: a request through
+  Bifrost for `text-embedding-3-small` with **no** `dimensions`
+  parameter returned HTTP 200 and a 1536-wide unit-norm vector; the same
+  request with `dimensions: 1536` also returned 1536. This phase is
+  plumbing, not provider access.
 
 ### 0.3 — [oneiric] The mock becomes a startup failure
 
 - [ ] Remove the `mock` leg from any code path that feeds a semantic
-      vector store. If a semantic tier cannot reach a real provider,
-      **startup must fail** — not fall through.
+  vector store. If a semantic tier cannot reach a real provider,
+  **startup must fail** — not fall through.
 - [ ] Keep the mock available for tests, behind an explicit opt-in, and
-      label every vector it produces so a test cannot mistake it for a real
-      one.
+  label every vector it produces so a test cannot mistake it for a real
+  one.
 - [ ] **Do not widen the mock to the fleet width and keep writing.** That
-      is the fleet-768 plan's position and this plan rejects it: the mock
-      is precisely what hid the original dimension defect (a 384-wide mock
-      matched a stale 384-wide schema), and a width-compatible mock is a
-      silent corruption that no dimension check can detect.
+  is the fleet-768 plan's position and this plan rejects it: the mock
+  is precisely what hid the original dimension defect (a 384-wide mock
+  matched a stale 384-wide schema), and a width-compatible mock is a
+  silent corruption that no dimension check can detect.
 - [ ] Expose the active leg and the space id on `/health`, so a tier can
-      assert it is holding real vectors.
+  assert it is holding real vectors.
 
 ### 0.4 — [oneiric] The dimension bounds and the shape gate
 
@@ -198,86 +198,84 @@ the configured width equals `FLEET_EMBEDDING_DIM` — raising at
 construction rather than at first insert.
 
 - [ ] `oneiric/adapters/observability/queries.py:55` —
-      `if embedding.shape != (384,):` — replace the hardcoded tuple with the
-      configured width. This gate currently rejects the 768 vectors
-      Session-Buddy already produces.
+  `if embedding.shape != (384,):` — replace the hardcoded tuple with the
+  configured width. This gate currently rejects the 768 vectors
+  Session-Buddy already produces.
 - [ ] `oneiric/adapters/vector/vector_types.py:37` —
-      `VectorBaseSettings.default_dimension = 1536` — align it with
-      `FLEET_EMBEDDING_DIM` (it happens to agree today; it must not
-      drift).
+  `VectorBaseSettings.default_dimension = 1536` — align it with
+  `FLEET_EMBEDDING_DIM` (it happens to agree today; it must not
+  drift).
 - [ ] `oneiric/adapters/vector/duckdb_hot_store.py:343`
-      (`DEFAULT_EMBEDDING_DIM = 384`) — derive from the contract.
+  (`DEFAULT_EMBEDDING_DIM = 384`) — derive from the contract.
 
 ### 0.5 — [oneiric] The substrate contract is wired or deleted
 
 - [ ] Decide per field: `embedding__backend`, `embedding__model`,
-      `embedding__dim`, `embedding__normalize`, `warm__embedding_dim`.
+  `embedding__dim`, `embedding__normalize`, `warm__embedding_dim`.
 - [ ] If a field stays, **wire it**: `embedding__backend` must actually
-      select the chain's first leg, `embedding__dim` must reach the store
-      constructors. Today all five have at most one production reader
-      across the whole fleet.
+  select the chain's first leg, `embedding__dim` must reach the store
+  constructors. Today all five have at most one production reader
+  across the whole fleet.
 - [ ] If a field cannot be wired, **delete it**. A knob that resolves but
-      is never read is worse than no knob, because it looks like one in
-      every review.
+  is never read is worse than no knob, because it looks like one in
+  every review.
 - [ ] If it stays, add the validator the docstring already promises:
-      "mismatches trigger a hard substrate init error (REQ-WARM-DIM-001)".
-      `substrate_settings.py` currently has no `model_validator` or
-      `field_validator` at all.
+  "mismatches trigger a hard substrate init error (REQ-WARM-DIM-001)".
+  `substrate_settings.py` currently has no `model_validator` or
+  `field_validator` at all.
 - [ ] Fix the `Literal["openai", "fastembed", "llama_server"]` vocabulary so
-      it matches the legs that actually run — it omits `minimax` and
-      `model2vec`, which *are* live legs.
+  it matches the legs that actually run — it omits `minimax` and
+  `model2vec`, which *are* live legs.
 - [ ] Resolve the internal inconsistency: `embedding__model` defaults to
-      `nomic-embed-text` (768-wide) while `embedding__dim` and
-      `warm__embedding_dim` default to `384`.
+  `nomic-embed-text` (768-wide) while `embedding__dim` and
+  `warm__embedding_dim` default to `384`.
 
 ### 0.6 — [akosha] Delete the dimension table
 
 - [ ] `akosha/processing/embedding_dim.py:63-67` — delete
-      `BACKEND_DEFAULT_DIMS` (`mock 384, model2vec 256, llama_cpp 768,
-      minimax 1024`). The **probed** dimension is the only source of truth.
-      The table is what let the mock's 384 and the live 768 coexist without
-      either being wrong on its own terms.
+  `BACKEND_DEFAULT_DIMS` (`mock 384, model2vec 256, llama_cpp 768,     minimax 1024`). The **probed** dimension is the only source of truth.
+  The table is what let the mock's 384 and the live 768 coexist without
+  either being wrong on its own terms.
 - [ ] `akosha/processing/embedding_dim.py` `DEFAULT_DIMENSION = 384` — derive
-      from the contract, or fail rather than guess.
+  from the contract, or fail rather than guess.
 - [ ] `akosha/processing/embeddings.py` — expose the active leg, the model
-      id and the space id, so `/health` can assert
-      `embeddings.mode == "real"` and `embeddings.space == <expected>`.
+  id and the space id, so `/health` can assert
+  `embeddings.mode == "real"` and `embeddings.space == <expected>`.
 
 ### 0.7 — [akosha] Rebuild the hot store's `conversations` table
 
 - [ ] `conversations` holds **0 rows** and is the only embedding-bearing
-      table in the hot store (`spans_substrate` and `metrics_substrate` have
-      no embedding column). Rebuilding it is close to free.
+  table in the hot store (`spans_substrate` and `metrics_substrate` have
+  no embedding column). Rebuilding it is close to free.
 - [ ] DuckDB cannot change a fixed-size ARRAY's width in place
-      (`Conversion Error: Cannot cast array of size 384 to array of size
-      1536`). Use the `EXPORT DATABASE` / `IMPORT DATABASE` route, as
-      `session-buddy/scripts/migrate_embedding_dim.py` already does — that
-      script takes `--to-dim` and is the fleet's reference implementation.
+  (`Conversion Error: Cannot cast array of size 384 to array of size     1536`). Use the `EXPORT DATABASE` / `IMPORT DATABASE` route, as
+  `session-buddy/scripts/migrate_embedding_dim.py` already does — that
+  script takes `--to-dim` and is the fleet's reference implementation.
 - [ ] **Back up `hot.db` *and* `hot.db.wal` together.** The file is 853 MB
-      and carries `spans_substrate`, `metrics_substrate`,
-      `_akosha_otel_receiver_state` (the receiver's resume watermark),
-      `_dlq_rows` and Akosha's `code_graphs`. A copy of the `.db` without
-      the `.wal` is not a copy. Deleting the db but leaving the WAL yields
-      "WAL file exists but the database file is missing" and a restart
-      storm.
+  and carries `spans_substrate`, `metrics_substrate`,
+  `_akosha_otel_receiver_state` (the receiver's resume watermark),
+  `_dlq_rows` and Akosha's `code_graphs`. A copy of the `.db` without
+  the `.wal` is not a copy. Deleting the db but leaving the WAL yields
+  "WAL file exists but the database file is missing" and a restart
+  storm.
 - [ ] Stop the Akosha server first — DuckDB is single-writer and the file
-      must not be held open.
+  must not be held open.
 - [ ] After the rebuild, verify the live table's column type is
-      `FLOAT[<fleet_dim>]`.
+  `FLOAT[<fleet_dim>]`.
 
 ### 0.8 — Phase 0 verification gate
 
 - [ ] A live `/v1/embeddings` round trip through Bifrost returns vectors of
-      exactly `FLEET_EMBEDDING_DIM` and a unit L2 norm.
+  exactly `FLEET_EMBEDDING_DIM` and a unit L2 norm.
 - [ ] The direct-OpenAI leg is proven to work when Bifrost is unreachable
-      (failover within the same vector space).
+  (failover within the same vector space).
 - [ ] The mock is **not** reachable in any semantic tier — attempting it
-      fails at startup, not at first insert.
+  fails at startup, not at first insert.
 - [ ] `/health` reports the active leg, the model id and the space id.
 - [ ] A vector of the wrong width is **rejected**, and a vector of the right
-      width but the wrong **model** is also rejected (the space check).
+  width but the wrong **model** is also rejected (the space check).
 
----
+______________________________________________________________________
 
 ## Phase 1 — The adapter consolidation
 
@@ -291,116 +289,115 @@ the operator's.*
 "Extends Oneiric's PgvectorAdapter to support HNSW". It does not.
 
 - [ ] `class PgvectorAdapter(OneiricPgvectorAdapter)`, importing from
-      `oneiric.adapters.vector.pgvector`.
+  `oneiric.adapters.vector.pgvector`.
 - [ ] `PgvectorSettings(OneiricPgvectorSettings)` adding `index_type`,
-      `hnsw_config` (m / ef_construction / ef_search), `ivfflat_config`
-      (lists) and `min_connections`.
+  `hnsw_config` (m / ef_construction / ef_search), `ivfflat_config`
+  (lists) and `min_connections`.
 - [ ] Override only: `create_collection` (port the fork's HNSW/IVFFlat
-      branch, GIN metadata index and `created_at`/`updated_at` DDL
-      **verbatim**, so the emitted SQL is byte-identical to today),
-      `search`, `_write_documents`, `health`, `_connection_kwargs`.
+  branch, GIN metadata index and `created_at`/`updated_at` DDL
+  **verbatim**, so the emitted SQL is byte-identical to today),
+  `search`, `_write_documents`, `health`, `_connection_kwargs`.
 - [ ] Oneiric needs **no** change in this step. `oneiric>=0.39.0` already
-      provides the ACL, the JSONB decode, the `VectorBase` base class, the
-      registry entry and the injectable pool factory.
+  provides the ACL, the JSONB decode, the `VectorBase` base class, the
+  registry entry and the injectable pool factory.
 
 ### 1.2 — [mahavishnu] Fix `ef_search`
 
 - [ ] Replace `SET LOCAL hnsw.ef_search = $1` (`:238`) with
-      `SELECT set_config('hnsw.ef_search', $1, true)`. PostgreSQL's `SET` is
-      a utility statement and **does not accept bind parameters**; the
-      current code raises `PostgresSyntaxError` when the override is used.
+  `SELECT set_config('hnsw.ef_search', $1, true)`. PostgreSQL's `SET` is
+  a utility statement and **does not accept bind parameters**; the
+  current code raises `PostgresSyntaxError` when the override is used.
 - [ ] Run it on the **same pooled connection** as the query (`:236` and
-      `:259` currently take two different connections) and **inside an
-      explicit transaction** — `SET LOCAL` outside one is a no-op.
+  `:259` currently take two different connections) and **inside an
+  explicit transaction** — `SET LOCAL` outside one is a no-op.
 - [ ] Apply the **configured** `hnsw_config.ef_search` to every query. It
-      is currently never applied to any query at all; pgvector's built-in
-      default of 40 applies instead, coincidentally the same number, which
-      is why the bug is invisible.
+  is currently never applied to any query at all; pgvector's built-in
+  default of 40 applies instead, coincidentally the same number, which
+  is why the bug is invisible.
 - [ ] Add a **real-Postgres integration test** for the `ef_search` path.
-      The existing `AsyncMock` harness structurally cannot catch a SQL
-      syntax error — that is the whole reason the bug survived.
+  The existing `AsyncMock` harness structurally cannot catch a SQL
+  syntax error — that is the whole reason the bug survived.
 
 ### 1.3 — [mahavishnu] Fix the metadata decode and the health contract
 
 - [ ] `pgvector_adapter.py:265` and `:353` — route metadata through
-      Oneiric's `_decode_metadata` (`:487-502`). asyncpg returns JSONB as a
-      **`str`** by default, and `register_vector` registers no jsonb codec.
-      This is a **live bug**: `mahavishnu/ingesters/otel_ingester.py:986`
-      does `result["metadata"].get(...)` on a `str` and raises
-      `AttributeError`, which the MCP tool's broad `except Exception`
-      swallows into an empty result list. The GET path at `:1073-1078`
-      already works around it.
+  Oneiric's `_decode_metadata` (`:487-502`). asyncpg returns JSONB as a
+  **`str`** by default, and `register_vector` registers no jsonb codec.
+  This is a **live bug**: `mahavishnu/ingesters/otel_ingester.py:986`
+  does `result["metadata"].get(...)` on a `str` and raises
+  `AttributeError`, which the MCP tool's broad `except Exception`
+  swallows into an empty result list. The GET path at `:1073-1078`
+  already works around it.
 - [ ] `health()` — catch `asyncpg.PostgresError` as well, so an auth
-      failure returns `False` rather than propagating out of `/health`.
-      Oneiric's version catches only `(OSError, RuntimeError)`.
+  failure returns `False` rather than propagating out of `/health`.
+  Oneiric's version catches only `(OSError, RuntimeError)`.
 
 ### 1.4 — [oneiric] Upstream HNSW and `halfvec`
 
 - [ ] Add `halfvec` support and HNSW index creation to Oneiric's
-      `PgvectorAdapter`.
+  `PgvectorAdapter`.
 - [ ] **Keep IVFFlat the default** so Akosha's existing collections are
-      unaffected by the release. Mahavishnu passes `index_type="hnsw"`
-      explicitly.
+  unaffected by the release. Mahavishnu passes `index_type="hnsw"`
+  explicitly.
 - [ ] **Derive the index name from the index method.** The fork names its
-      index `{table}_embedding_hnsw_idx` (`:635`); Oneiric names its IVFFlat
-      `{table}_embedding_idx` (`:273`). They never collide — which means
-      switching a table from Oneiric to the fork silently leaves **two** ANN
-      indexes on one column, and PostgreSQL's planner then picks one
-      arbitrarily.
-- [ ] **Detect and log a build-parameter mismatch.** `CREATE INDEX IF NOT
-      EXISTS` matches on name only, so changing `m`, `ef_construction` or
-      `lists` in config has **no effect** on an existing table and the old
-      definition silently wins.
+  index `{table}_embedding_hnsw_idx` (`:635`); Oneiric names its IVFFlat
+  `{table}_embedding_idx` (`:273`). They never collide — which means
+  switching a table from Oneiric to the fork silently leaves **two** ANN
+  indexes on one column, and PostgreSQL's planner then picks one
+  arbitrarily.
+- [ ] **Detect and log a build-parameter mismatch.** `CREATE INDEX IF NOT     EXISTS` matches on name only, so changing `m`, `ef_construction` or
+  `lists` in config has **no effect** on an existing table and the old
+  definition silently wins.
 - [ ] Read `warm__hnsw_m` / `warm__hnsw_ef_construction` /
-      `warm__hnsw_ef_search` from the substrate. They are declared today and
-      read by nothing.
+  `warm__hnsw_ef_search` from the substrate. They are declared today and
+  read by nothing.
 - [ ] Oneiric release → the operator bumps the pin.
 
 ### 1.5 — [mahavishnu] Delete the fork and correct the records
 
 - [ ] Delete `mahavishnu/adapters/pgvector_adapter.py` once 1.4 has shipped
-      and the pin has moved.
+  and the pin has moved.
 - [ ] `mahavishnu/ingesters/otel_ingester.py:638-647` — import Oneiric's
-      adapter.
+  adapter.
 - [ ] `otel_ingester.py:821-830` — build `VectorDocument` objects
-      (Oneiric reads `doc.id` / `doc.vector` / `doc.metadata`; a plain dict
-      raises `AttributeError`).
+  (Oneiric reads `doc.id` / `doc.vector` / `doc.metadata`; a plain dict
+  raises `AttributeError`).
 - [ ] `otel_ingester.py:969-991` and `:1065-1085` — `result["score"]` →
-      `result.score`; Oneiric returns `VectorSearchResult`.
+  `result.score`; Oneiric returns `VectorSearchResult`.
 - [ ] Delete the dead `mahavishnu/core/config.py:989-1032`
-      `HNSWIndexConfig` (never read) and the name-colliding
-      `HNSWConfig` in `mahavishnu/core/vector_search.py:53-72` (a third,
-      separately dead pgvector implementation).
+  `HNSWIndexConfig` (never read) and the name-colliding
+  `HNSWConfig` in `mahavishnu/core/vector_search.py:53-72` (a third,
+  separately dead pgvector implementation).
 - [ ] **Correct the false claims:**
-      `pgvector_adapter.py:3` ("Extends Oneiric's PgvectorAdapter"),
-      `docs/specs/2026-10-14-decision-adapter-category-design.md:596-598`
-      ("Oneiric's class supports HNSW per the verified source"),
-      `docs/decisions/2026-10-14-decision-adapter-category.md:81-88`, and
-      `docs/specs/2026-09-27-shared-bodai-substrate-design.md:479` (a
-      `get_feed_state` that does not exist anywhere in Oneiric).
-      **Deleting the fork on the stated rationale would silently drop HNSW
-      indexing.**
+  `pgvector_adapter.py:3` ("Extends Oneiric's PgvectorAdapter"),
+  `docs/specs/2026-10-14-decision-adapter-category-design.md:596-598`
+  ("Oneiric's class supports HNSW per the verified source"),
+  `docs/decisions/2026-10-14-decision-adapter-category.md:81-88`, and
+  `docs/specs/2026-09-27-shared-bodai-substrate-design.md:479` (a
+  `get_feed_state` that does not exist anywhere in Oneiric).
+  **Deleting the fork on the stated rationale would silently drop HNSW
+  indexing.**
 - [ ] `mahavishnu/scripts/setup_otel_storage.sh` is an **empty file**
-      (0 bytes) and is referenced by three docs — either fill it in or
-      remove the references.
+  (0 bytes) and is referenced by three docs — either fill it in or
+  remove the references.
 
----
+______________________________________________________________________
 
 ## Phase 2 — The unified pgvector warm tier
 
 ### 2.1 — The table
 
 - [ ] Create `akosha_warm` with `embedding halfvec(<FLEET_EMBEDDING_DIM>)`,
-      `system_id`, `summary`, `timestamp`, `metadata JSONB`.
+  `system_id`, `summary`, `timestamp`, `metadata JSONB`.
 - [ ] Real columns, not JSONB extraction: the cold exporter's
-      `ORDER BY timestamp ASC LIMIT ?` needs an indexable timestamp, and the
-      per-tenant filter needs an indexable `system_id`. Oneiric's
-      `metadata @> $1::jsonb` has **no index at all**.
+  `ORDER BY timestamp ASC LIMIT ?` needs an indexable timestamp, and the
+  per-tenant filter needs an indexable `system_id`. Oneiric's
+  `metadata @> $1::jsonb` has **no index at all**.
 - [ ] HNSW index with `m = 16, ef_construction = 200` (the substrate's
-      value, not the fork's 64), plus indexes on `timestamp` and
-      `system_id`.
+  value, not the fork's 64), plus indexes on `timestamp` and
+  `system_id`.
 - [ ] **One table, not 256 collections.** Shard routing leaves the warm
-      path entirely.
+  path entirely.
 
 ### 2.2 — The store-level API
 
@@ -408,45 +405,44 @@ The aging service and cold exporter currently speak DuckDB SQL against
 `warm_store.conn`. They call store methods instead:
 
 - [ ] `insert_batch(records)` — via asyncpg's `copy_records_to_table`.
-      Oneiric's current `insert` is **one round trip per document**
-      (`oneiric/adapters/vector/pgvector.py:524-533`), so a 1000-record
-      aging batch would be 1000 round trips through pgbouncer.
+  Oneiric's current `insert` is **one round trip per document**
+  (`oneiric/adapters/vector/pgvector.py:524-533`), so a 1000-record
+  aging batch would be 1000 round trips through pgbouncer.
 - [ ] `count()` — replaces `SELECT COUNT(*) FROM conversations`.
 - [ ] `fetch_older_than(cutoff, limit)` — replaces the cold exporter's
-      `SELECT ... WHERE timestamp < ? ORDER BY timestamp LIMIT ?`
-      (`akosha/storage/cold_exporter.py:373-381`).
-- [ ] `delete_by_ids(ids)` — replaces `DELETE ... WHERE conversation_id IN
-      (...)` (`cold_exporter.py:449`). **Note this is lossy**: the cold
-      record keeps only a MinHash fingerprint, a one-sentence summary and
-      metadata — **no embedding** (`cold_exporter.py:434`).
+  `SELECT ... WHERE timestamp < ? ORDER BY timestamp LIMIT ?`
+  (`akosha/storage/cold_exporter.py:373-381`).
+- [ ] `delete_by_ids(ids)` — replaces `DELETE ... WHERE conversation_id IN     (...)` (`cold_exporter.py:449`). **Note this is lossy**: the cold
+  record keeps only a MinHash fingerprint, a one-sentence summary and
+  metadata — **no embedding** (`cold_exporter.py:434`).
 - [ ] `search_similar()` — note it currently has **no caller anywhere**
-      (`akosha/storage/pgvector_warm_store.py`). Either wire it or drop it.
+  (`akosha/storage/pgvector_warm_store.py`). Either wire it or drop it.
 
 ### 2.3 — Fail-loud backend selection
 
 - [ ] `create_warm_store` currently fails soft to DuckDB when the pgvector
-      backend is unavailable. Under a unified tier that is a split brain:
-      aging writes DuckDB, queries read pgvector, nothing errors.
+  backend is unavailable. Under a unified tier that is a split brain:
+  aging writes DuckDB, queries read pgvector, nothing errors.
 - [ ] The backend is selected **once, at startup**, and the selection is
-      logged.
+  logged.
 - [ ] If the selected backend cannot initialise, **startup fails loudly** —
-      or the whole tier is disabled, consistently. No mixed state.
+  or the whole tier is disabled, consistently. No mixed state.
 
 ### 2.4 — The DuckDB warm store is deleted
 
 - [ ] `akosha/storage/warm_store.py` (`embedding INT8[384]`) and
-      `akosha/storage/pgvector_warm_store.py` (one asyncpg pool per shard,
-      no `insert_batch`, no `.conn`) are removed once 2.2 is live.
+  `akosha/storage/pgvector_warm_store.py` (one asyncpg pool per shard,
+  no `insert_batch`, no `.conn`) are removed once 2.2 is live.
 - [ ] `akosha/mcp/server.py:1833`'s `create_warm_store(backend="duckdb-ssd")`
-      hardcode is removed.
+  hardcode is removed.
 - [ ] `akosha/storage/aging.py:461-462` (`get_migration_stats` reads
-      `warm_store.conn`) uses the store API.
+  `warm_store.conn`) uses the store API.
 - [ ] `akosha/storage/aging.py:204-242` (`_migrate_batch`) hands the raw
-      float32 to the backend. The inline numpy quantisation that **drops
-      the scale** is deleted; `quantize_embedding`/`dequantize`
-      (`aging.py:498-519`) go with it.
+  float32 to the backend. The inline numpy quantisation that **drops
+  the scale** is deleted; `quantize_embedding`/`dequantize`
+  (`aging.py:498-519`) go with it.
 
----
+______________________________________________________________________
 
 ## Phase 3 — The feed repair and the missing writer
 
@@ -456,29 +452,27 @@ enabled.*
 ### 3.1 — The producer
 
 - [ ] Get `task_class` onto arriving spans, or change the feed's query.
-      Every one of the ~362k rows in `spans_substrate` has
-      `task_class IS NULL`, and the 34,400 `tools/call` spans arriving are
-      FastMCP transport-seam spans carrying only `{fastmcp.span.seam,
-      mcp.method.name, fastmcp.server.name, mcp.protocol.version}`.
+  Every one of the ~362k rows in `spans_substrate` has
+  `task_class IS NULL`, and the 34,400 `tools/call` spans arriving are
+  FastMCP transport-seam spans carrying only `{fastmcp.span.seam,     mcp.method.name, fastmcp.server.name, mcp.protocol.version}`.
 - [ ] `mahavishnu/mcp/tool_call_enricher.py:97-100` sets
-      `task_class`/`selector`/`outcome`/`duration_ms`, but it is **not in
-      the path of the spans that arrive**. **[mahavishnu]**
+  `task_class`/`selector`/`outcome`/`duration_ms`, but it is **not in
+  the path of the spans that arrive**. **[mahavishnu]**
 - [ ] Cross-repo: this is the one task that cannot be done inside Akosha.
 - [ ] The subscriber indexes only `topic == "websocket_tool_invocation"`
-      and XACKs everything else
-      (`akosha/ingestion/bodai_event_subscriber.py:462-469`). Its own
-      module docstring records that the publisher **"was removed in
-      2026-09-26"**. Either re-create the producer or make the OTLP
-      receiver persist `task_class` into `spans_substrate`. Until one
-      exists, `mcp_tool_call_feed.entities_count` cannot be non-zero.
+  and XACKs everything else
+  (`akosha/ingestion/bodai_event_subscriber.py:462-469`). Its own
+  module docstring records that the publisher **"was removed in
+  2026-09-26"**. Either re-create the producer or make the OTLP
+  receiver persist `task_class` into `spans_substrate`. Until one
+  exists, `mcp_tool_call_feed.entities_count` cannot be non-zero.
 
 ### 3.2 — The Redis subscriber
 
 > **Status 2026-11-20: the code half of this task is DONE**, by
 > `docs/plans/2026-11-20-akosha-event-pipeline-recovery.md` (commits
 > `a26ee1e`, `4ae9ef6`). The live consumer name is now per-process and
-> removed on stop; `_decode_envelope` accepts the live `{channel, headers,
-> payload}` shape; `bodai.hooks.post-tool-use` is indexed alongside
+> removed on stop; `_decode_envelope` accepts the live `{channel, headers, payload}` shape; `bodai.hooks.post-tool-use` is indexed alongside
 > `websocket_tool_invocation`; decode failures are logged instead of
 > silently dropped. The consumer group was cleaned from 446,049 consumers
 > to ~200 in the live environment, and `XINFO CONSUMERS` on it went from
@@ -489,64 +483,63 @@ enabled.*
 > recorded as open items in the 2026-11-20 plan.
 
 - [ ] `_auto_consumer_name()` (`akosha/ingestion/bodai_event_subscriber.py:406-411`)
-      returns a **fresh uuid per call**, and it is called on every
-      `xreadgroup` (`:365`). Make it per-process.
+  returns a **fresh uuid per call**, and it is called on every
+  `xreadgroup` (`:365`). Make it per-process.
 - [ ] **XAUTOCLAIM the 659 pending entries before deleting any consumer.**
-      `XGROUP DELCONSUMER` does not return PEL entries to the group — it
-      strands them under the deleted consumer, and `XPENDING` then reads
-      **0**, so the loss looks like a clean drain. Order: fix the leak →
-      `XAUTOCLAIM bodai:events <group> <consumer> <min-idle-ms> 0-0` → then
-      delete the dead consumers in pages. **Do not `XGROUP DESTROY`** — that
-      loses the pending entries and the group's position outright.
+  `XGROUP DELCONSUMER` does not return PEL entries to the group — it
+  strands them under the deleted consumer, and `XPENDING` then reads
+  **0**, so the loss looks like a clean drain. Order: fix the leak →
+  `XAUTOCLAIM bodai:events <group> <consumer> <min-idle-ms> 0-0` → then
+  delete the dead consumers in pages. **Do not `XGROUP DESTROY`** — that
+  loses the pending entries and the group's position outright.
 - [ ] There are **405,790 consumers** on the group
-      `akosha-tool-invocation-indexers` and **660 pending entries**, against
-      a stream of 13,506 entries (live count, 2026-11-17). That is why
-      `XGROUP CREATE` times out and the subscriber cannot start at all.
-      `akosha.err` holds **3,021** `xreadgroup error: Timeout reading from
-      localhost:6379` lines.
+  `akosha-tool-invocation-indexers` and **660 pending entries**, against
+  a stream of 13,506 entries (live count, 2026-11-17). That is why
+  `XGROUP CREATE` times out and the subscriber cannot start at all.
+  `akosha.err` holds **3,021** `xreadgroup error: Timeout reading from     localhost:6379` lines.
 - [ ] Teach `_decode_envelope` (`:526-587`) the live wire shape
-      `{channel, headers, payload}` (documented by
-      `session_buddy/mcp/events/bodai_events_publisher.py:65-67`). It
-      currently understands only `envelope=<JSON>` and
-      `{topic, payload_json, headers_json}` — so it returns `None` and the
-      message is XACKed and dropped **with no warning**.
-      **Confirmed against the live stream** — the newest entry is
-      `channel = bodai.hooks.post-tool-use`, `payload` a JSON object with
-      `event`/`harness`/`session_id`/`tool_name`/`tool_input`, plus
-      `headers`. The group *is* advancing (`last-delivered-id` current,
-      `lag: 0`, `entries-read: 17310`), so messages are being read and then
-      discarded.
+  `{channel, headers, payload}` (documented by
+  `session_buddy/mcp/events/bodai_events_publisher.py:65-67`). It
+  currently understands only `envelope=<JSON>` and
+  `{topic, payload_json, headers_json}` — so it returns `None` and the
+  message is XACKed and dropped **with no warning**.
+  **Confirmed against the live stream** — the newest entry is
+  `channel = bodai.hooks.post-tool-use`, `payload` a JSON object with
+  `event`/`harness`/`session_id`/`tool_name`/`tool_input`, plus
+  `headers`. The group *is* advancing (`last-delivered-id` current,
+  `lag: 0`, `entries-read: 17310`), so messages are being read and then
+  discarded.
 - [ ] **Log decode failures.** A silent drop is how a retired producer
-      survived unnoticed.
+  survived unnoticed.
 - [ ] Read the **PEL**, not `>`. The loop's read ID is fixed for the life
-      of the process (`:351`, `:366`), so the documented redelivery
-      contract ("the same message is re-delivered on next xreadgroup",
-      `:28-32`) is unimplementable as written.
+  of the process (`:351`, `:366`), so the documented redelivery
+  contract ("the same message is re-delivered on next xreadgroup",
+  `:28-32`) is unimplementable as written.
 
 ### 3.3 — Observability accounting
 
 - [ ] The aging loop logs `stats.errors` but never adds them to
-      `_aging_errors` (`akosha/mcp/server.py:1859-1884`), so a per-batch
-      insert failure is invisible in `/health`.
+  `_aging_errors` (`akosha/mcp/server.py:1859-1884`), so a per-batch
+  insert failure is invisible in `/health`.
 - [ ] `/health` returns HTTP 200 with four empty feeds
-      (`http_ok = worst_severity < 2`, `server.py:192-207`). A feed with
-      zero entities is not healthy.
+  (`http_ok = worst_severity < 2`, `server.py:192-207`). A feed with
+  zero entities is not healthy.
 
 ### 3.4 — The aging filter reads the wrong shape
 
 - [ ] `AgingService._get_eligible_records` filters
-      `WHERE timestamp < ? AND metadata->>'task_class' = ?` — **top-level
-      only** (`akosha/storage/aging.py:299-318`). Neither producer writes
-      `task_class` at the top level: the OTel ingester nests it under
-      `attributes` (`akosha/ingestion/otel_ingester.py:405-412`) and the
-      Redis subscriber stores the raw wire payload
-      (`akosha/ingestion/bodai_event_subscriber.py:610`).
+  `WHERE timestamp < ? AND metadata->>'task_class' = ?` — **top-level
+  only** (`akosha/storage/aging.py:299-318`). Neither producer writes
+  `task_class` at the top level: the OTel ingester nests it under
+  `attributes` (`akosha/ingestion/otel_ingester.py:405-412`) and the
+  Redis subscriber stores the raw wire payload
+  (`akosha/ingestion/bodai_event_subscriber.py:610`).
 - [ ] The **read** path was already fixed for this and the aging path was
-      not — `HotStore.query_traces` filters on top-level **or**
-      `attributes.task_class` (`akosha/storage/hot_store.py:316-317`).
-      Match it.
+  not — `HotStore.query_traces` filters on top-level **or**
+  `attributes.task_class` (`akosha/storage/hot_store.py:316-317`).
+  Match it.
 - [ ] This is independent of 3.1. Even with `task_class` arriving, aging
-      would still miss every row nested under `attributes`.
+  would still miss every row nested under `attributes`.
 
 ### 3.5 — **The missing writer** — the decision this plan exists to surface
 
@@ -593,141 +586,141 @@ only writer, the `OtelTraceIngester` poller, is disabled by configuration
 ### 3.6 — The `/health` flags that lie
 
 - [ ] `akosha/ingestion/subscriber_wiring.py:128` reads `.running` off the
-      **orchestrator** `WebSocketInvocationsSubscriber`, which has no such
-      property — it exists only on the inner
-      `BodaiToolInvocationSubscriber` (`bodai_event_subscriber.py:154-155`).
-      So `start_event_subscriber()` always returns False and
-      `server.py:1101` sets `_event_subscriber_running = False`
-      unconditionally. **The consumer is alive** (Redis: `lag: 0`,
-      `entries-read: 17311`). This is why
-      `knowledge_graph_feed.source_producer_running` and
-      `local_traces_feed.event_subscriber_running` are both false
-      negatives — a feed that lies about its own producer.
+  **orchestrator** `WebSocketInvocationsSubscriber`, which has no such
+  property — it exists only on the inner
+  `BodaiToolInvocationSubscriber` (`bodai_event_subscriber.py:154-155`).
+  So `start_event_subscriber()` always returns False and
+  `server.py:1101` sets `_event_subscriber_running = False`
+  unconditionally. **The consumer is alive** (Redis: `lag: 0`,
+  `entries-read: 17311`). This is why
+  `knowledge_graph_feed.source_producer_running` and
+  `local_traces_feed.event_subscriber_running` are both false
+  negatives — a feed that lies about its own producer.
 - [ ] `local_traces_feed`'s declared source claims `query_traces` **plus**
-      `spans_substrate`, but `entities_count` is computed **only** from
-      `query_traces` (`server.py:655-658`), which reads `conversations`.
-      Either count both or stop claiming to.
+  `spans_substrate`, but `entities_count` is computed **only** from
+  `query_traces` (`server.py:655-658`), which reads `conversations`.
+  Either count both or stop claiming to.
 - [ ] The count is wrapped in `with suppress(Exception)`, so a raised query
-      reads as zero rather than as an error. Surface the exception.
+  reads as zero rather than as an error. Surface the exception.
 
 ### 3.7 — The analytics instance that is never initialised
 
 - [ ] `akosha/mcp/tools/group_registers.py:73` creates a **second**
-      `TimeSeriesAnalytics()` that is never `initialize()`d, while the
-      properly-initialised instance (`akosha/mcp/server.py:931-934`) is
-      only used at shutdown (`:1372-1374`).
+  `TimeSeriesAnalytics()` that is never `initialize()`d, while the
+  properly-initialised instance (`akosha/mcp/server.py:931-934`) is
+  only used at shutdown (`:1372-1374`).
 - [ ] The durable SQLite `~/.akosha/state/metrics.db` holds **47,386
-      rows** that the tool-side instance never loads — so
-      `akosha_get_system_metrics` returns `total_metrics: 0` and
-      `akosha_detect_anomalies`, `akosha_analyze_trends` and
-      `akosha_correlate_systems` all return "Insufficient data".
+  rows** that the tool-side instance never loads — so
+  `akosha_get_system_metrics` returns `total_metrics: 0` and
+  `akosha_detect_anomalies`, `akosha_analyze_trends` and
+  `akosha_correlate_systems` all return "Insufficient data".
 - [ ] Fix by registering the tools against the **initialised** instance.
-      This is a one-line wiring fix that turns four permanently-empty
-      advertised tools into working ones.
+  This is a one-line wiring fix that turns four permanently-empty
+  advertised tools into working ones.
 
 ### 3.8 — The metadata conventions must match
 
 - [ ] `_build_memory_metadata` (`akosha/mcp/tools/session_buddy_tools.py:26-42`)
-      keeps only `source`, `original_id`, `type` and `ingestion_method`,
-      discarding `category`, `subcategory`, `importance_score`,
-      `memory_tier`, `source_type`, `project`, `namespace`, `session_id` and
-      `user_id`. Preserve the lineage.
+  keeps only `source`, `original_id`, `type` and `ingestion_method`,
+  discarding `category`, `subcategory`, `importance_score`,
+  `memory_tier`, `source_type`, `project`, `namespace`, `session_id` and
+  `user_id`. Preserve the lineage.
 - [ ] It sets **no `task_class`**, so even a successful push would be
-      invisible to `query_traces(task_class='mcp_tool_call')` and would
-      never be aged by `AgingService`'s
-      `metadata->>'task_class' = ?` filter (`akosha/storage/aging.py:289-320`).
+  invisible to `query_traces(task_class='mcp_tool_call')` and would
+  never be aged by `AgingService`'s
+  `metadata->>'task_class' = ?` filter (`akosha/storage/aging.py:289-320`).
 - [ ] **The vocabulary must be settled before the writer is built.**
-      `task_class = 'mcp_tool_call'` is a *span* concept, applied over a
-      table that holds both spans and memories. Either the memory path
-      gets its own `task_class` values, or the aging filter stops
-      filtering on `task_class` at all. A writer built against the wrong
-      vocabulary produces rows that no consumer can see — which is what
-      happened to the span path.
+  `task_class = 'mcp_tool_call'` is a *span* concept, applied over a
+  table that holds both spans and memories. Either the memory path
+  gets its own `task_class` values, or the aging filter stops
+  filtering on `task_class` at all. A writer built against the wrong
+  vocabulary produces rows that no consumer can see — which is what
+  happened to the span path.
 - [ ] `akosha_search_all_systems` hard-filters `system_id="mahavishnu"`
-      (`akosha_tools.py:377-381`) while `akosha_store_memory` writes
-      `system_id = metadata["source"]`. Pushed memories from another host
-      are invisible to search unless the caller passes
-      `source: "mahavishnu"`. Make the filter the caller's choice.
+  (`akosha_tools.py:377-381`) while `akosha_store_memory` writes
+  `system_id = metadata["source"]`. Pushed memories from another host
+  are invisible to search unless the caller passes
+  `source: "mahavishnu"`. Make the filter the caller's choice.
 
 ### 3.9 — The Session-Buddy push client, if it is kept
 
 Three independent defects, each of which alone stops every row:
 
 - [ ] **Wrong URL.** `akosha_url` is `"http://localhost:8682/mcp"`
-      (`session_buddy/storage/akosha_sync.py:77`) and the client appends
-      `"/mcp/v1"` (`:1068`) → `http://localhost:8682/mcp/mcp/v1`. Probed
-      live: **404**. Only `/mcp` is mounted.
+  (`session_buddy/storage/akosha_sync.py:77`) and the client appends
+  `"/mcp/v1"` (`:1068`) → `http://localhost:8682/mcp/mcp/v1`. Probed
+  live: **404**. Only `/mcp` is mounted.
 - [ ] **Wrong tool name.** The client calls `batch_store_memories`;
-      Akosha exposes `akosha_batch_store_memories`.
+  Akosha exposes `akosha_batch_store_memories`.
 - [ ] **Wrong width.** Session-Buddy sends 768-dim; Akosha's hot store
-      bakes `FLOAT[384]`. Resolved by Phase 0's dimension change.
+  bakes `FLOAT[384]`. Resolved by Phase 0's dimension change.
 
 And a structural blocker that needs a config change, not a code change:
 
 - [ ] `akosha_cloud_endpoint` is **overloaded** — simultaneously the S3/R2
-      endpoint and the Akosha MCP base URL. There is no setting for "the
-      central Akosha's MCP URL", so pointing a second machine at a central
-      Akosha is **not expressible in the current config**. Split them.
+  endpoint and the Akosha MCP base URL. There is no setting for "the
+  central Akosha's MCP URL", so pointing a second machine at a central
+  Akosha is **not expressible in the current config**. Split them.
 
 ### 3.10 — The other unwired producers
 
 - [ ] `IngestionWorker` (`akosha/ingestion/worker.py`) — the S3/R2 pull
-      path, and the **surviving relative of the operator's original
-      multi-machine design** (Session-Buddy uploads its whole
-      `reflection.duckdb` to `systems/{hostname}/uploads/{upload_id}/` and
-      Akosha pulls it) — **is never instantiated**.
-      `akosha/main.py:118` initialises `self.ingestion_workers: list[Any] = []`
-      and nothing appends to it. Either wire it or delete it.
+  path, and the **surviving relative of the operator's original
+  multi-machine design** (Session-Buddy uploads its whole
+  `reflection.duckdb` to `systems/{hostname}/uploads/{upload_id}/` and
+  Akosha pulls it) — **is never instantiated**.
+  `akosha/main.py:118` initialises `self.ingestion_workers: list[Any] = []`
+  and nothing appends to it. Either wire it or delete it.
 - [ ] `spans_substrate.declared_pairs` is not set in any settings file, so
-      the fitness analyzer has no `(task_class, selector)` pairs and
-      `akosha_run_fitness_analysis` returns `no_data`.
+  the fitness analyzer has no `(task_class, selector)` pairs and
+  `akosha_run_fitness_analysis` returns `no_data`.
 - [ ] `metrics_substrate` holds 1,000 rows and its feed reports healthy,
-      but **no MCP tool reads it** — the only reader is the health counter.
-      It is also excluded from `_aggregate.all_data_feeds_ok`.
+  but **no MCP tool reads it** — the only reader is the health counter.
+  It is also excluded from `_aggregate.all_data_feeds_ok`.
 - [ ] `_index_envelope` (`bodai_event_subscriber.py:589`) additionally
-      requires `payload["version"] == "1.0.0"`. The live hook payloads have
-      no `version` field at all, so this check rejects them independently
-      of the topic filter. Both must be relaxed.
+  requires `payload["version"] == "1.0.0"`. The live hook payloads have
+  no `version` field at all, so this check rejects them independently
+  of the topic filter. Both must be relaxed.
 - [ ] `discover_tools` on the live server is mcp-common's flat catalog, not
-      Akosha's profile-aware one: `register_all_tools`
-      (`akosha/mcp/tools/__init__.py:84`) is never called by the server. The
-      profile gating is invisible at runtime.
+  Akosha's profile-aware one: `register_all_tools`
+  (`akosha/mcp/tools/__init__.py:84`) is never called by the server. The
+  profile gating is invisible at runtime.
 
----
+______________________________________________________________________
 
 ## Phase 4 — Enable aging
 
 ### 4.1 — The hold-off knob
 
 - [ ] The aging hold-off knob gates **both** the hourly loop
-      (`akosha/mcp/server.py:1886`) and the **boot pre-warm migration**
-      (`:1910-1932`), which runs synchronously at every boot. A service
-      restart alone is enough to age rows.
+  (`akosha/mcp/server.py:1886`) and the **boot pre-warm migration**
+  (`:1910-1932`), which runs synchronously at every boot. A service
+  restart alone is enough to age rows.
 - [ ] `AKOSHA_SKIP_AGING=1` is not usable: it removes the warm store
-      entirely and takes the cold exporter down with it
-      (`server.py:1197,1235`). The knob must skip **only** the aging
-      migration loop.
+  entirely and takes the cold exporter down with it
+  (`server.py:1197,1235`). The knob must skip **only** the aging
+  migration loop.
 - [ ] It was introduced to protect the float32 originals. Once the warm
-      tier is pgvector and the input is float32, there is nothing left to
-      protect — **remove it** rather than leaving a permanent off-switch.
-      Until Phase 4 it stays on.
+  tier is pgvector and the input is float32, there is nothing left to
+  protect — **remove it** rather than leaving a permanent off-switch.
+  Until Phase 4 it stays on.
 
 ### 4.2 — Bound the hot tier by size, not age
 
 - [ ] The OTel span rate is ~17k rows/day. A size cap bounds disk without
-      touching the newest rows. An age-based sweep destroys exactly the
-      float32 originals the tier exists to hold.
+  touching the newest rows. An age-based sweep destroys exactly the
+  float32 originals the tier exists to hold.
 
 ### 4.3 — The cold exporter moves to the store API
 
 - [ ] `akosha/storage/cold_exporter.py:373-381` (`_fetch_expired_rows`) and
-      `:449` (`_evict_rows`) read `self._warm_store.conn` with DuckDB SQL.
-      They call `fetch_older_than` and `delete_by_ids` instead.
+  `:449` (`_evict_rows`) read `self._warm_store.conn` with DuckDB SQL.
+  They call `fetch_older_than` and `delete_by_ids` instead.
 - [ ] The cold record's shape (Parquet batches, `system_id/YYYY/MM/DD`
-      partitions, MinHash fingerprints) is unaffected — only the **source**
-      changes.
+  partitions, MinHash fingerprints) is unaffected — only the **source**
+  changes.
 
----
+______________________________________________________________________
 
 ## Verification gate
 
@@ -735,37 +728,37 @@ The whole plan is done when all of these hold, and **none of them is an
 HTTP status code**:
 
 - [ ] `embeddings.mode == "real"` on `/health`, with the model id and the
-      space id matching the contract.
+  space id matching the contract.
 - [ ] A live Bifrost `/v1/embeddings` round trip returns vectors of exactly
-      `FLEET_EMBEDDING_DIM`, unit-norm, and the direct-OpenAI failover
-      returns vectors in the **same** space.
+  `FLEET_EMBEDDING_DIM`, unit-norm, and the direct-OpenAI failover
+  returns vectors in the **same** space.
 - [ ] A wrong-width vector is rejected; so is a right-width vector from the
-      wrong model.
+  wrong model.
 - [ ] The mock is unreachable in any semantic tier — a startup failure, not
-      a fallback.
+  a fallback.
 - [ ] `akosha_warm` exists with `halfvec(<fleet_dim>)` and an HNSW index;
-      the planner uses it (`EXPLAIN` shows an index scan, not a seq scan).
+  the planner uses it (`EXPLAIN` shows an index scan, not a seq scan).
 - [ ] `conversations` has rows, and they were written by the path chosen in
-      3.5 — **not** by `spans_substrate`'s row count.
+  3.5 — **not** by `spans_substrate`'s row count.
 - [ ] `mcp_tool_call_feed.entities_count > 0` **and** the row count of the
-      table aging actually reads is greater than zero. Both, not either.
+  table aging actually reads is greater than zero. Both, not either.
 - [ ] `akosha_search_all_systems` returns **real rows**, not the
-      hard-coded "No websocket invocations indexed yet" placeholder. The
-      response must not carry `mode: "fallback"`.
+  hard-coded "No websocket invocations indexed yet" placeholder. The
+  response must not carry `mode: "fallback"`.
 - [ ] `akosha_get_system_metrics` returns a non-zero `total_metrics` —
-      proving the tool reads the *initialised* analytics instance, not a
-      second one that was never initialised.
+  proving the tool reads the *initialised* analytics instance, not a
+  second one that was never initialised.
 - [ ] `event_subscriber_running` is **accurate** in both directions: true
-      when the consumer is alive, false when it is not. The current flag is
-      a false negative.
+  when the consumer is alive, false when it is not. The current flag is
+  a false negative.
 - [ ] `knowledge_graph_feed` reports `entities_count > 0` and
-      `edges_count > 0`.
+  `edges_count > 0`.
 - [ ] `aging_feed.errors_total` is non-zero when a batch fails — proven by
-      a deliberate failure, not by inspection.
+  a deliberate failure, not by inspection.
 - [ ] The DuckDB warm store is gone and `warm_store.conn` is no longer
-      referenced anywhere.
+  referenced anywhere.
 - [ ] `/health` `_aggregate.status` is `ok` with `data_feeds_ok: true` —
-      not `warming_up`.
+  not `warming_up`.
 
 ## Risks
 

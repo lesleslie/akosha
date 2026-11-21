@@ -18,7 +18,7 @@ topic: akosha-feature-inventory
 > and its output is not a claim.
 > **Fleet-wide scope and lane split:** Kit memory `m#10119`.
 
----
+______________________________________________________________________
 
 ## 1. Health feeds — the fastest read on the whole component
 
@@ -58,7 +58,7 @@ would alter the health contract of every other MCP server in the fleet.
 returns `warming_up` as the `status` string. The fleet-level fix belongs in
 `mcp-common`; that is not this lane.
 
----
+______________________________________________________________________
 
 ## 2. The event-ingestion pipeline — NOT WORKING, now fixed
 
@@ -173,7 +173,7 @@ task 3.2.
 verified end-to-end** (no restart, no backlog backfill). The recovery
 plan's Task 6 holds the verification runbook.
 
----
+______________________________________________________________________
 
 ## 3. MCP tool surface
 
@@ -198,7 +198,7 @@ returns an empty set forever, and the health payload says that is normal".
 That is the class the fleet's `mcp-backend-wiring-discipline.md` is meant
 to catch, and the class the `warming_up` verdict hid.
 
----
+______________________________________________________________________
 
 ## 4. CLI surface
 
@@ -210,7 +210,7 @@ to catch, and the class the `warming_up` verdict hid.
 | Vector / embedding commands | **PARTIAL** | the chain resolves to a mock in this environment |
 | Warm-tier / cold-tier commands | **PARTIAL** | the DuckDB warm store is scheduled for deletion by the warm-tier plan; the pgvector backend landed on this branch |
 
----
+______________________________________________________________________
 
 ## 5. Plans that own these findings
 
@@ -233,7 +233,7 @@ to catch, and the class the `warming_up` verdict hid.
 - `aging_feed` — depends on the conversations table, so it is downstream of
   the ingestion fix rather than independently broken.
 
----
+______________________________________________________________________
 
 ## 6. Disposition summary
 
@@ -251,7 +251,7 @@ to catch, and the class the `warming_up` verdict hid.
 | DuckDB warm store | superseded | **CONSOLIDATE** — delete per the warm-tier plan; the pgvector backend is the single warm tier |
 | `enabled: false` in `settings/akosha.yaml` vs `true` in `~/.config/akosha/local.yaml` | config drift | **OPEN** — this is the same class as the fleet's `config-that-nobody-reads` plan (REQ-DEAD-002): a YAML key and the code that implements it disagree, and the operator overlay is invisible in the repo |
 
----
+______________________________________________________________________
 
 ## 7. Plan-index consolidation — Akosha lane, verified against the code
 

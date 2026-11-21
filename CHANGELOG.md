@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.1] - 2026-11-21
+
+### Changed
+
+- Docs/supersede-lazy-shard-init -> main
+- docs: Format this repository's markdown for the first time
+- Fix/duplicate-verification -> main
+- Fix/event-pipeline-recovery -> main
+- Fix/health-counters-and-timeout -> main
+- Fix/recovery-script-socket-timeout -> main
+- Fix/replay-identity -> main
+
+### Documentation
+
+- coverage: State the claim and the floor as two separate numbers
+- plan: Record the verified preconditions for the recovery run
+
+### Internal
+
+- docs: Make the plan-index script a wrapper over the one renderer
+- Re-point the ratchet at the live coverage measurement
+
 ## [0.28.0] - 2026-11-16
 
 ### Changed

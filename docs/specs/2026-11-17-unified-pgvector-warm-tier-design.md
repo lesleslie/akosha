@@ -19,11 +19,11 @@ Three facts establish this, all verified against the running system on 2026-11-1
    against a warm store: `SELECT COUNT(*) FROM conversations` inside
    `AgingService.get_migration_stats` (`akosha/storage/aging.py:462`). No MCP
    tool searches it. `akosha/query/distributed.py` searches the *hot* tier.
-1. **Two warm stores exist.** `AkoshaApplication.warm_store`
+2. **Two warm stores exist.** `AkoshaApplication.warm_store`
    (`akosha/main.py:154`) can be pgvector and is never read. The MCP server's
    `aging_warm_store` (`akosha/mcp/server.py:1833`) is pinned to `duckdb-ssd`
    and is both written (aging) and read (cold export).
-1. **The pgvector path is strictly dominated.** As written it stores
+3. **The pgvector path is strictly dominated.** As written it stores
    INT8-quantized vectors widened back to float4 — the same bytes as float32 —
    and loses ~1.6% of top-10 recall. The DuckDB backend's `INT8[384]` column
    saves a real 4× on disk. The quantization was a DuckDB storage-format
@@ -200,7 +200,7 @@ defaults are deleted with the fork.
    built-in default of 40 applies instead, which is coincidentally the same
    number and hides the bug. No test covers it — the suite mocks the
    connection, which structurally cannot catch a SQL syntax error.
-1. **`CREATE INDEX IF NOT EXISTS` matches on name only.** Changing `m`,
+2. **`CREATE INDEX IF NOT EXISTS` matches on name only.** Changing `m`,
    `ef_construction` or `lists` in config has **no effect** on an existing
    table; the old definition silently wins with no warning. The consolidated
    adapter must compare the live index definition against the intended one
@@ -1327,9 +1327,9 @@ repair of a system whose parts disagreed.** The three fixes below are what
 1. **One client, one chain, one model.** Oneiric's `EmbeddingService` gains
    the `openai_gateway` and `openai_direct` legs and reuses its existing
    `OpenAIEmbeddingAdapter`.
-1. **The mock stops being a fallback** in any tier that holds semantic
+2. **The mock stops being a fallback** in any tier that holds semantic
    vectors. It becomes a startup failure.
-1. **Compatibility is checked on `(model, dimensions, space_version)`, not
+3. **Compatibility is checked on `(model, dimensions, space_version)`, not
    on width.**
 
 ### 7d.10 The conflict with the existing fleet plan — now resolved
@@ -1402,9 +1402,9 @@ stop every row:
    (`session_buddy/storage/akosha_sync.py:77`) and the client appends
    `"/mcp/v1"` (`:1068`), producing `http://localhost:8682/mcp/mcp/v1`.
    Probed live: **404**. Only `/mcp` is mounted.
-1. **Wrong tool name.** The client calls `batch_store_memories`;
+2. **Wrong tool name.** The client calls `batch_store_memories`;
    Akosha exposes `akosha_batch_store_memories`.
-1. **Wrong width.** Session-Buddy sends 768-dim; Akosha's hot store bakes
+3. **Wrong width.** Session-Buddy sends 768-dim; Akosha's hot store bakes
    `FLOAT[384]` and raises
    `ValueError: DuckdbHotStore.insert: embedding dim mismatch (expected 384, got 768)`
    — exactly the break the November spec predicted.
@@ -1549,13 +1549,13 @@ both the architecture-first and the feed-first plans.
    warm table, Session-Buddy's `FLOAT[N]` pair, Mahavishnu's `VECTOR(384)`,
    Crackerjack's index — is frozen at creation. Changing the fleet width
    afterwards means a rebuild of each.
-1. **A real embedding provider must be reachable before anything writes.**
+2. **A real embedding provider must be reachable before anything writes.**
    Otherwise the chain writes mock vectors that are indistinguishable from
    real ones by width.
-1. **Akosha must not own SQL.** The adapter consolidation has to land in
+3. **Akosha must not own SQL.** The adapter consolidation has to land in
    Oneiric before the warm tier can use it — and Oneiric's release is
    followed by an operator-owned version pin.
-1. **The feed repair and the embedding work are independent.** The producer
+4. **The feed repair and the embedding work are independent.** The producer
    fix is about `task_class`; the decoder fix is about the Redis wire shape.
    Neither depends on a dimension.
 
@@ -1564,51 +1564,51 @@ both the architecture-first and the feed-first plans.
 **Phase 0 — the embedding contract** (blocks everything vector-shaped)
 
 1. Oneiric: `FLEET_EMBEDDING_MODEL` / `_DIM` / `_SPACE` constants (§7.7).
-1. Oneiric: `openai_gateway` + `openai_direct` legs, reusing
+2. Oneiric: `openai_gateway` + `openai_direct` legs, reusing
    `oneiric/adapters/embedding/openai.py`. Bifrost virtual key in `x-bf-vk`;
    direct `OPENAI_API_KEY`. `dimensions` sent only if the canonical width is
    a truncation.
-1. Oneiric: **remove the mock from the semantic-vector path** — startup
+3. Oneiric: **remove the mock from the semantic-vector path** — startup
    failure, not a per-request fallback (O11).
-1. Oneiric: raise the six `le=1024` bounds; replace the `(384,)` shape gate
+4. Oneiric: raise the six `le=1024` bounds; replace the `(384,)` shape gate
    in `queries.py:55` with the configured width.
-1. Oneiric: either wire the substrate's `embedding__*` knobs so they are
+5. Oneiric: either wire the substrate's `embedding__*` knobs so they are
    read, or delete them. A knob that resolves but is never read is the
    defect class this whole section is about.
-1. Akosha: delete `BACKEND_DEFAULT_DIMS`. The probed dimension is the only
+6. Akosha: delete `BACKEND_DEFAULT_DIMS`. The probed dimension is the only
    source of truth — a hardcoded table per backend is exactly what let the
    mock's 384 and the live 768 coexist.
-1. Akosha: rebuild `conversations` at the fleet width. It holds 0 rows, so
+7. Akosha: rebuild `conversations` at the fleet width. It holds 0 rows, so
    this is free.
-1. **Verify:** a live `/v1/embeddings` round trip through Bifrost returns
+8. **Verify:** a live `/v1/embeddings` round trip through Bifrost returns
    vectors of the canonical width; `embeddings.mode == "real"`; the mock is
    unreachable in a semantic tier.
 
 **Phase 1 — the adapter consolidation** (needs a Oneiric release)
 
-9. Mahavishnu: make the fork a true subclass of Oneiric's adapter,
-   overriding only `create_collection`, `search`, `_write_documents`,
-   `health` and `_connection_kwargs`.
-1. Fix `ef_search` with `SELECT set_config('hnsw.ef_search', $1, true)`
-   on the **same connection**, inside an explicit transaction. Add a
-   **real-Postgres** integration test — the mock-only harness structurally
-   cannot catch a SQL syntax error.
-1. Add `halfvec` support; derive the index name from the index method so a
-   method change cannot leave two ANN indexes on one column.
-1. Upstream HNSW into Oneiric's adapter as a separate release, keeping
-   IVFFlat the default so Akosha's collections are unaffected.
-1. Delete the fork; correct the false "Oneiric already supports HNSW"
-   claims in the design and decision documents.
+09. Mahavishnu: make the fork a true subclass of Oneiric's adapter,
+    overriding only `create_collection`, `search`, `_write_documents`,
+    `health` and `_connection_kwargs`.
+10. Fix `ef_search` with `SELECT set_config('hnsw.ef_search', $1, true)`
+    on the **same connection**, inside an explicit transaction. Add a
+    **real-Postgres** integration test — the mock-only harness structurally
+    cannot catch a SQL syntax error.
+11. Add `halfvec` support; derive the index name from the index method so a
+    method change cannot leave two ANN indexes on one column.
+12. Upstream HNSW into Oneiric's adapter as a separate release, keeping
+    IVFFlat the default so Akosha's collections are unaffected.
+13. Delete the fork; correct the false "Oneiric already supports HNSW"
+    claims in the design and decision documents.
 
 **Phase 2 — the unified pgvector warm tier**
 
 14. `akosha_warm` with `embedding halfvec(<fleet_dim>)`, indexed with HNSW;
     `system_id` and `timestamp` as real, indexed columns.
-01. `insert_batch` via `copy_records_to_table` — Oneiric's current
+15. `insert_batch` via `copy_records_to_table` — Oneiric's current
     `insert` is one round trip per document.
-01. The store-level API: `count`, `fetch_older_than`, `delete_by_ids`.
+16. The store-level API: `count`, `fetch_older_than`, `delete_by_ids`.
     The cold exporter stops speaking DuckDB SQL against `warm_store.conn`.
-01. Fail-loud backend selection (D6): no split brain between DuckDB and
+17. Fail-loud backend selection (D6): no split brain between DuckDB and
     pgvector.
 
 **Phase 3 — the feed repair and the missing writer** (independent of 0–2,
@@ -1616,13 +1616,13 @@ but must land before aging is enabled)
 
 18. Producer side: get `task_class` onto arriving spans, or change the feed's
     query. Cross-repo.
-01. Redis: per-process consumer name → XAUTOCLAIM the pending entries →
+19. Redis: per-process consumer name → XAUTOCLAIM the pending entries →
     delete the 400k stale consumers. Teach `_decode_envelope` the
     `{channel, headers, payload}` shape and **log decode failures** — today
     a decode failure is a silent drop. Read the PEL, not `>`.
-01. Fix `aging_feed.errors_total` accounting — the loop logs `stats.errors`
+20. Fix `aging_feed.errors_total` accounting — the loop logs `stats.errors`
     but never adds them to `_aging_errors`.
-01. **Decide where `conversations` comes from.** This is the decision the
+21. **Decide where `conversations` comes from.** This is the decision the
     two plans never made. Three options, in order of preference:
     - **(a) The OTLP receiver writes `conversations` as well as
       `spans_substrate`.** One ingestion path, one set of rows, and the
@@ -1643,9 +1643,9 @@ but must land before aging is enabled)
 22. Remove the hold-off knob (it is a transition guard, not a permanent
     feature — once the warm tier is pgvector and the input is float32, there
     is nothing left to guard).
-01. Bound the hot tier by **size, not age** (O13). The OTel span rate is
+23. Bound the hot tier by **size, not age** (O13). The OTel span rate is
     ~17k rows/day; a size cap bounds disk without touching the newest rows.
-01. The cold exporter reads and deletes through the store API.
+24. The cold exporter reads and deletes through the store API.
 
 ### 8.3 Why this sequence
 
@@ -1874,7 +1874,7 @@ operator's decisions (2026-11-17) or by evidence. **Two remain.**
    worked as written. Options (a) the OTLP receiver also writes
    `conversations`, (b) aging embeds lazily at age time, (c) re-enable the
    poller (not recommended). Section 8.2 step 21; Plan M step 3.5.
-1. **Tenant isolation.** Accept a logical (indexed predicate) boundary in
+2. **Tenant isolation.** Accept a logical (indexed predicate) boundary in
    exchange for one table, or partition by `system_id` and give up the
    single-index property. Unchanged from the original design — and still a
    live question only if the deployment becomes multi-tenant.

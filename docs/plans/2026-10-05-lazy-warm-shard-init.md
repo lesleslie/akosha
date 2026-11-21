@@ -8,6 +8,7 @@ topic: warm-tier-storage
 ---
 
 # Plan — Lazy initialization of PgvectorWarmStore shards
+
 > **Superseded 2026-11-21.** This plan is not to be implemented. The
 > unified warm tier (docs/plans/2026-11-17-unified-pgvector-warm-tier.md) replaces the per-shard pgvector
 > store with a single table, which removes the connection problem this
@@ -16,7 +17,6 @@ topic: warm-tier-storage
 >
 > Its stated remedy was also dead config: `warm.num_partitions` is read by
 > no production code. The knob that works is the top-level `shard_count`.
-
 
 ## Context
 

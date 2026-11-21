@@ -3,10 +3,10 @@ status: active
 role: implementation
 date: 2026-11-20
 last_reviewed: 2026-11-21
-superseded_by: null
+superseded_by:
 topic: akosha-event-pipeline-recovery
 plan_kind: repair
-replaces: null
+replaces:
 related_decisions:
   - mahavishnu/.claude/decisions/wire-up-contract.md
   - mahavishnu/.claude/decisions/mcp-backend-wiring-discipline.md
@@ -129,18 +129,21 @@ code.
 7. **Two subscriber processes running at once** must not fight over one
    consumer name; each gets its own, and each is removed on stop.
 
----
+______________________________________________________________________
 
 ### Task 1: One consumer per process, removed on stop
 
 **Files:**
+
 - Modify: `akosha/ingestion/bodai_event_subscriber.py` (`__init__` ~L145,
   `start` ~L215, `stop` ~L228, `_run_loop` ~L351, `_auto_consumer_name`
   ~L407)
 - Test: `tests/unit/test_bodai_event_subscriber.py`
 
 **Interfaces:**
+
 - Consumes: nothing from earlier tasks.
+
 - Produces: `BodaiToolInvocationSubscriber._consumer_name` is a `str` once
   `start()` has completed and before `_run_loop` begins. `stop()` issues
   `XGROUP DELCONSUMER` for that name against
@@ -229,7 +232,7 @@ inside the existing `contextlib.suppress(Exception)` block, then set
 
 Update the `_auto_consumer_name` docstring from "Generate a unique consumer
 name per process." to "Generate a unique consumer name. Called once per
-process from ``start()``; never from inside the read loop."
+process from `start()`; never from inside the read loop."
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -243,18 +246,21 @@ git add akosha/ingestion/bodai_event_subscriber.py tests/unit/test_bodai_event_s
 git commit -m "fix(ingestion): use one Redis consumer per process, not one per read"
 ```
 
----
+______________________________________________________________________
 
 ### Task 2: Decode the shape the producer actually writes
 
 **Files:**
+
 - Create: `tests/fixtures/bodai_events_stream_entry.json`
 - Modify: `akosha/ingestion/bodai_event_subscriber.py` (`_decode_envelope`
   ~L526)
 - Test: `tests/unit/test_bodai_event_subscriber.py`
 
 **Interfaces:**
+
 - Consumes: nothing from earlier tasks.
+
 - Produces: `_decode_envelope(message_payload: dict[str, Any]) -> dict[str, Any] | None`
   additionally accepts the live shape and returns
   `{"topic", "payload", "event_id", "headers"}`. The topic for the live shape
@@ -410,19 +416,22 @@ git add akosha/ingestion/bodai_event_subscriber.py tests/unit/test_bodai_event_s
 git commit -m "fix(ingestion): decode the bodai:events wire shape the producer writes"
 ```
 
----
+______________________________________________________________________
 
 ### Task 3: Stop dropping the messages Task 2 can now decode
 
 **Files:**
+
 - Modify: `akosha/ingestion/bodai_event_subscriber.py`
   (`TOOL_INVOCATION_TOPIC` ~L56, the topic filter ~L462, the version gate
   ~L596, `_build_content` ~L616)
 - Test: `tests/unit/test_bodai_event_subscriber.py`
 
 **Interfaces:**
+
 - Consumes: the `topic` value produced by Task 2's live-shape branch
   (`channel`).
+
 - Produces: a module-level
   `INDEXED_CHANNELS: frozenset[str] = frozenset({"websocket_tool_invocation", "bodai.hooks.post-tool-use"})`
   and a `_build_content(payload: dict[str, Any]) -> str` that renders the
@@ -537,17 +546,20 @@ git add akosha/ingestion/bodai_event_subscriber.py tests/unit/test_bodai_event_s
 git commit -m "fix(ingestion): index the channel the hook bridge publishes"
 ```
 
----
+______________________________________________________________________
 
 ### Task 4: A permanent stall must not read as `warming_up`
 
 **Files:**
+
 - Modify: `akosha/mcp/server.py` (the `knowledge_graph_feed` builder ~L2098)
 - Test: `tests/unit/test_wave5_lifespan_wiring.py`
 
 **Interfaces:**
+
 - Consumes: `cycles_total` and `last_updated_timestamp` already present on
   the feed state.
+
 - Produces: `knowledge_graph_feed["stalled"] -> bool` and a
   `reason_codes` entry of `"feed_stalled"` when the feed has produced
   nothing across many cycles.
@@ -625,16 +637,19 @@ git add akosha/mcp/server.py tests/unit/test_wave5_lifespan_wiring.py
 git commit -m "feat(health): report a stalled feed as stalled, not warming up"
 ```
 
----
+______________________________________________________________________
 
 ### Task 5: A repeatable recovery script for the group and the backlog
 
 **Files:**
+
 - Create: `scripts/recover_event_stream.py`
 - Test: `tests/unit/test_recover_event_stream.py`
 
 **Interfaces:**
+
 - Consumes: nothing from earlier tasks; it operates on the live Redis stream.
+
 - Produces: a CLI with `--dry-run` (default) and `--apply`, exiting
   non-zero if the post-condition does not hold.
 
@@ -703,7 +718,7 @@ git add scripts/recover_event_stream.py tests/unit/test_recover_event_stream.py
 git commit -m "feat(scripts): add a repeatable bodai:events consumer recovery tool"
 ```
 
----
+______________________________________________________________________
 
 ### Task 6: End-to-end verification and the operational runbook
 
@@ -716,6 +731,7 @@ git commit -m "feat(scripts): add a repeatable bodai:events consumer recovery to
 > onto that commit.
 
 **Files:**
+
 - Modify: `docs/plans/2026-11-20-akosha-event-pipeline-recovery.md`
   (append a "Verification runbook" section with the observed results)
 
@@ -872,7 +888,7 @@ git add docs/plans/2026-11-20-akosha-event-pipeline-recovery.md
 git commit -m "docs(plan): record the event-pipeline recovery verification"
 ```
 
----
+______________________________________________________________________
 
 ## Integration Contract
 
@@ -923,7 +939,7 @@ and the channel it indexed; `scripts/recover_event_stream.py --dry-run`
 reporting leaked-consumer count and `XINFO CONSUMERS` latency as a
 standing check on the leak's recurrence.
 
----
+______________________________________________________________________
 
 ## Out of scope, and why
 
@@ -962,7 +978,7 @@ standing check on the leak's recurrence.
   zero consumers and a lag equal to the full stream length. Nothing
   subscribes to them in the current code.
 
----
+______________________________________________________________________
 
 ## Ensemble review findings, and what was done about them
 
@@ -1056,7 +1072,7 @@ consumers, 15,064 deletable, 107 preserved because they still own
 messages, 672 pending messages untouched.** The count is only stopped by
 restarting the service on the merged code, which is Task 6 Step 1.
 
----
+______________________________________________________________________
 
 ## Round two: three more defects, found while fixing the first two
 
@@ -1120,8 +1136,7 @@ primary key, with the INSERT awaited. Two concurrent updates
 interleave — DELETE, DELETE, INSERT, INSERT — into a duplicate-key
 error that leaves the row holding an arbitrary id. The batch became
 concurrent, so this stopped being theoretical: the test log carried
-`Duplicate key "conversation_id: __bodai_subscriber_watermark__" violates
-primary key constraint`.
+`Duplicate key "conversation_id: __bodai_subscriber_watermark__" violates primary key constraint`.
 
 The watermark also has to be MONOTONIC — it is "how far the pipeline
 has got", so it holds the highest message id indexed. Two things move
@@ -1143,7 +1158,7 @@ producer at all, with nothing in the logs to say why.
 Either flag now builds the stack, and the push subscriber is present
 when its own flag is on.
 
----
+______________________________________________________________________
 
 ## Round three: what the third ensemble review found
 
@@ -1449,6 +1464,7 @@ value.
   the duplicate-key exception and treating it as success — depends on
   recognising the substrate's exception type, which is fragile across
   the three backends. **Left for the substrate work.**
+
 - **A watermark ahead of the stream's last id.** `XGROUP CREATE` does
   not validate the id against the stream, so a group can be created at
   an id the stream has not reached, and `>` reads then deliver nothing
@@ -1462,6 +1478,7 @@ value.
   plan already uses at Task 6): the group already exists in this
   state, so `XGROUP CREATE` raises `BUSYGROUP` and ignores its id, and
   the only thing that moves an existing group's position is `SETID`.
+
 - **A destroyed consumer group leaves the subscriber deaf until the
   process restarts.** `_ensure_consumer_group` has exactly one call
   site — `start()`. If the group is destroyed (`XGROUP DELGROUP`, a
@@ -1710,14 +1727,14 @@ matters — whether the work is done.
 The replay gate then went one step further: it must prove the row is
 THIS subscriber's row for THIS event.
 
-* The read is scoped to `system_id = SYSTEM_ID_MAHAVISHNU`. The
+- The read is scoped to `system_id = SYSTEM_ID_MAHAVISHNU`. The
   `conversations` primary key is `conversation_id` alone, so a row
   written by another system under the same id would otherwise satisfy
   the check.
-* The stored `content` must equal the content this event would have
+- The stored `content` must equal the content this event would have
   written, so a producer that reused an event id for a different
   payload is caught rather than silently dropped.
-* The reserved watermark id can never satisfy the check: that row is
+- The reserved watermark id can never satisfy the check: that row is
   the subscriber's own bookkeeping, not an indexed event.
 
 The read also runs on a worker thread now. `duckdb`'s `execute` blocks
