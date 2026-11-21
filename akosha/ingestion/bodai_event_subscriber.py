@@ -157,37 +157,9 @@ SOCKET_TIMEOUT_PER_EVENT_FACTOR: float = 2.0
 #: a healthy server.
 SOCKET_TIMEOUT_FLOOR_SECONDS: float = 10.0
 
-#: Phrases that identify a duplicate primary key across the storage
-#: backends Akosha can be configured with.
-#:
-#: DuckDB raises ``ConstraintException`` with "Duplicate key ... violates
-#: primary key constraint"; PostgreSQL raises ``UniqueViolation`` with
-#: "duplicate key value violates unique constraint". The two backends
-#: raise different exception types, so the MESSAGE is the portable
-#: signal -- and it is the precise one: a NOT NULL violation is a real
-#: failure and must not be mistaken for a replay.
-_DUPLICATE_KEY_MARKERS: tuple[str, ...] = (
-    "duplicate key",
-    "violates primary key constraint",
-    "violates unique constraint",
-)
-
-
-def _is_duplicate_key_error(exc: BaseException) -> bool:
-    """Whether ``exc`` says the row is ALREADY stored.
-
-    The substrate's ``INSERT`` is not idempotent -- it has no
-    ``ON CONFLICT`` clause -- so re-inserting a ``conversation_id``
-    that is already present raises. For the subscriber that is not a
-    failure: it is a REPLAY of a message whose work is already done,
-    and the row is present, which is the desired end state.
-
-    The live proof, 2026-11-21: a backlog replay logged 170 duplicate
-    key failures for rows that were already in DuckDB. Each one parked
-    its message in the PEL for three pointless retries.
-    """
-    text = str(exc).lower()
-    return any(marker in text for marker in _DUPLICATE_KEY_MARKERS)
+#: The column the substrate's ``conversations`` table keys on. A row
+#: found under this key IS the event with this identity.
+_CONVERSATION_KEY_COLUMN = "conversation_id"
 
 
 #: Exponential backoff bounds for reconnect-after-error.
@@ -721,6 +693,51 @@ class BodaiToolInvocationSubscriber:
             return None
         return message_id
 
+    async def _conversation_is_stored(self, conversation_id: str) -> bool:
+        """Whether the substrate already holds this conversation.
+
+        Read by primary key. The row's identity IS the event identity:
+        ``conversation_id`` is the envelope's ``event_id`` (or the
+        stream message id), so a row found under this key is this
+        event -- the same immutable event, already indexed.
+
+        This is how the subscriber decides that a failed insert is a
+        REPLAY rather than a failure. The substrate's ``INSERT`` is not
+        idempotent -- it has no ``ON CONFLICT`` clause -- so
+        re-inserting a stored ``conversation_id`` raises, and for the
+        subscriber that is not a failure: the message's work is already
+        done and the row is present, which is the desired end state.
+
+        Verifying the OUTCOME is what makes that safe. Classifying the
+        failure by its message text means any error that merely
+        *mentions* "duplicate key" -- a connection error quoting a
+        config key, a driver message, an unrelated constraint -- is
+        read as a duplicate, and the message is then acked as
+        already-indexed even though it never was. A failed read is
+        reported as "not stored", so an unverifiable message stays a
+        failure and is retried rather than dropped.
+
+        The live proof, 2026-11-21: a backlog replay logged 170
+        duplicate-key failures for rows that were already in DuckDB.
+        Each one parked its message in the PEL for three pointless
+        retries.
+        """
+        try:
+            row = await self._query_row(
+                f"SELECT {_CONVERSATION_KEY_COLUMN} FROM conversations "
+                f"WHERE {_CONVERSATION_KEY_COLUMN} = ?",
+                [conversation_id],
+            )
+        except Exception as exc:
+            logger.warning(
+                "akosha.bodai_subscriber: could not verify whether %s is "
+                "stored; treating it as not stored: %s",
+                conversation_id,
+                exc,
+            )
+            return False
+        return bool(row)
+
     async def _query_row(self, sql: str, params: list[Any]) -> Any:
         """Run one query and fetch its first row, holding the store's lock.
 
@@ -1027,7 +1044,7 @@ class BodaiToolInvocationSubscriber:
             await self._note_index_failure(client, message_id, reason="timeout")
             return
         except Exception as exc:
-            if _is_duplicate_key_error(exc):
+            if await self._conversation_is_stored(event_id):
                 # The row is ALREADY stored, so this message's work is
                 # DONE. The substrate's INSERT is not idempotent, so a
                 # replay raises instead of being a no-op -- and a

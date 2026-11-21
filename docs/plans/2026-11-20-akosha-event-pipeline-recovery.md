@@ -1660,9 +1660,55 @@ proxies are still missing.
 
 ### One thing this plan does not fix
 
-The `bodai-task-orphan-sweeper` group on the same stream carries **437
-consumers and 18,164 pending** — the same consumer-leak shape, in a
+The `bodai-task-orphan-sweeper` group on the same stream carried **437
+consumers and 18,204 pending** — the same consumer-leak shape, in a
 different component (Mahavishnu's sweeper, not Akosha's subscriber).
-It is outside this plan's scope and was not touched. It is recorded
-here because the shape is identical to the bug this plan fixed, and
-because the group shares a stream with the one that was cleaned.
+It was outside this plan's scope. It is recorded here because the
+shape is identical to the bug this plan fixed, and because the group
+shares a stream with the one that was cleaned.
+
+It has since been addressed on the Mahavishnu side — see
+`mahavishnu/docs/plans/2026-11-21-task-orphan-sweeper-group-hygiene.md`.
+The root cause there was worse than a leak: the sweeper read nothing
+at all, because the same adapter dropped every entry it was handed.
+
+### Replay detection verifies the row, not the error message
+
+A security review of the duplicate-key handling found the wrong
+verdict being computed. The subscriber decided that a failed insert was
+a *replay* by matching free-form substrings against the exception
+message — `"duplicate key"`, `"violates primary key constraint"`,
+`"violates unique constraint"`.
+
+That is a fail-open gate. Any error whose text merely *mentions* those
+words — a connection error quoting a config key, a driver message, an
+unrelated constraint — was read as a duplicate, and the message was
+then acked as already-indexed even though it never was. The
+watermark advanced and the message was dropped, so the loss was
+silent.
+
+The verdict now comes from the store. After a failed insert the
+subscriber reads the row back by primary key:
+
+```sql
+SELECT conversation_id FROM conversations WHERE conversation_id = ?
+```
+
+`conversation_id` is the event's identity — the envelope's `event_id`,
+or the stream message id — so a row found under that key IS this
+event, already indexed. A read that fails reports "not stored", so an
+unverifiable message stays a failure and is retried rather than
+dropped. The watermark and the XACK still advance only after a
+successful insert or a verified replay; every other error remains a
+failure.
+
+This is stronger than catching the backend's structured duplicate
+exception and checking which constraint failed: that tells you what
+kind of failure occurred, while the read tells you the fact that
+matters — whether the work is done.
+
+The upstream half — making the substrate's `INSERT` idempotent with
+`ON CONFLICT (conversation_id) DO NOTHING` — is not changed here. The
+substrate is oneiric's, and a fresh `uv sync` would install a
+oneiric without that clause, so the change needs a oneiric release
+before Akosha's pin is satisfied.

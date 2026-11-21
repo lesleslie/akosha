@@ -60,7 +60,6 @@ from akosha.ingestion.bodai_event_subscriber import (
     WATERMARK_CONVERSATION_ID,
     BodaiToolInvocationSubscriber,
     _create_redis_client,
-    _is_duplicate_key_error,
     _is_newer,
     _stream_id_key,
 )
@@ -1410,6 +1409,7 @@ class TestProcessEntry:
 
         with (
             patch.object(s, "_index_envelope", side_effect=boom),
+            patch.object(s, "_conversation_is_stored", return_value=False),
             caplog.at_level(
                 logging.WARNING,
                 logger="akosha.ingestion.bodai_event_subscriber",
@@ -1455,7 +1455,10 @@ class TestAReplayedRowIsNotAFailure:
         async def boom(*_a: Any, **_kw: Any) -> bool:
             raise self._duplicate_error()
 
-        with patch.object(s, "_index_envelope", side_effect=boom):
+        with (
+            patch.object(s, "_index_envelope", side_effect=boom),
+            patch.object(s, "_conversation_is_stored", return_value=True),
+        ):
             await s._process_entry(_decode_envelope_payload(), client=client)
         client.xack.assert_awaited_once_with(
             STREAM_NAME, s._consumer_group, "1700000000000-0"
@@ -1470,7 +1473,10 @@ class TestAReplayedRowIsNotAFailure:
         async def boom(*_a: Any, **_kw: Any) -> bool:
             raise self._duplicate_error()
 
-        with patch.object(s, "_index_envelope", side_effect=boom):
+        with (
+            patch.object(s, "_index_envelope", side_effect=boom),
+            patch.object(s, "_conversation_is_stored", return_value=True),
+        ):
             await s._process_entry(_decode_envelope_payload(), client=client)
         assert not s._index_retry_counts
 
@@ -1483,7 +1489,10 @@ class TestAReplayedRowIsNotAFailure:
         async def boom(*_a: Any, **_kw: Any) -> bool:
             raise self._duplicate_error()
 
-        with patch.object(s, "_index_envelope", side_effect=boom):
+        with (
+            patch.object(s, "_index_envelope", side_effect=boom),
+            patch.object(s, "_conversation_is_stored", return_value=True),
+        ):
             await s._process_entry(_decode_envelope_payload(), client=client)
         assert s.entries_indexed == 0
 
@@ -1499,6 +1508,7 @@ class TestAReplayedRowIsNotAFailure:
 
         with (
             patch.object(s, "_index_envelope", side_effect=boom),
+            patch.object(s, "_conversation_is_stored", return_value=True),
             caplog.at_level(
                 logging.INFO,
                 logger="akosha.ingestion.bodai_event_subscriber",
@@ -1516,36 +1526,74 @@ class TestAReplayedRowIsNotAFailure:
         async def boom(*_a: Any, **_kw: Any) -> bool:
             raise RuntimeError("hot_store down")
 
-        with patch.object(s, "_index_envelope", side_effect=boom):
+        with (
+            patch.object(s, "_index_envelope", side_effect=boom),
+            patch.object(s, "_conversation_is_stored", return_value=False),
+        ):
             await s._process_entry(_decode_envelope_payload(), client=client)
         client.xack.assert_not_awaited()
 
 
-class TestTheDuplicateKeyDetector:
-    """The detector must recognise the backends, not everything."""
+class TestTheReplayVerification:
+    """The verdict comes from the store, not from the error message.
 
-    def test_it_recognises_the_duckdb_message(self) -> None:
-        exc = RuntimeError(
-            'Constraint Error: Duplicate key "conversation_id: 1-0" violates '
-            "primary key constraint."
-        )
-        assert _is_duplicate_key_error(exc) is True
+    Classifying a failure by its text means any error that merely
+    *mentions* "duplicate key" is read as a duplicate, and the message
+    is then acked as already-indexed even though it never was.
+    Verifying the outcome cannot be fooled that way.
+    """
 
-    def test_it_recognises_the_postgres_message(self) -> None:
-        exc = RuntimeError(
-            'duplicate key value violates unique constraint "conversations_pkey"'
-        )
-        assert _is_duplicate_key_error(exc) is True
+    @pytest.mark.asyncio
+    async def test_an_error_that_mentions_duplicate_key_is_not_a_replay(self) -> None:
+        """The message text no longer decides anything."""
+        s = _make_subscriber(hot_store=MagicMock())
+        client = _FakeRedisClient()
 
-    def test_it_rejects_an_unrelated_error(self) -> None:
-        assert _is_duplicate_key_error(RuntimeError("hot_store down")) is False
+        async def boom(*_a: Any, **_kw: Any) -> bool:
+            raise RuntimeError(
+                'duplicate key value violates unique constraint "conversations_pkey"'
+            )
 
-    def test_it_rejects_a_not_null_violation(self) -> None:
-        """A NOT NULL violation is a real failure, not a replay."""
-        exc = RuntimeError(
-            "Constraint Error: NOT NULL constraint failed: conversations.content"
-        )
-        assert _is_duplicate_key_error(exc) is False
+        with (
+            patch.object(s, "_index_envelope", side_effect=boom),
+            patch.object(s, "_conversation_is_stored", return_value=False),
+        ):
+            await s._process_entry(_decode_envelope_payload(), client=client)
+        client.xack.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_row_present_means_the_message_is_a_replay(self) -> None:
+        s = _make_subscriber(hot_store=MagicMock())
+        conn = MagicMock()
+        conn.execute.return_value.fetchone.return_value = ("1700000000000-0",)
+        s._hot_store.conn = conn
+        s._hot_store._lock = None
+
+        assert await s._conversation_is_stored("1700000000000-0") is True
+        sql = conn.execute.call_args[0][0]
+        assert "conversation_id" in sql
+
+    @pytest.mark.asyncio
+    async def test_no_row_means_the_message_is_not_stored(self) -> None:
+        s = _make_subscriber(hot_store=MagicMock())
+        conn = MagicMock()
+        conn.execute.return_value.fetchone.return_value = None
+        s._hot_store.conn = conn
+        s._hot_store._lock = None
+
+        assert await s._conversation_is_stored("1700000000000-0") is False
+
+    @pytest.mark.asyncio
+    async def test_a_failed_read_is_not_a_replay(self) -> None:
+        """A verification that could not run must not ack the message."""
+        s = _make_subscriber(hot_store=MagicMock())
+        conn = MagicMock()
+        conn.execute.side_effect = RuntimeError("store unreachable")
+        s._hot_store.conn = conn
+        s._hot_store._lock = None
+
+        assert await s._conversation_is_stored("1700000000000-0") is False
+
 
 
 # ---------------------------------------------------------------------------
@@ -1929,10 +1977,15 @@ class TestAPoisonMessageCannotStarveThePipeline:
         client = MagicMock()
         client.xack = AsyncMock()
 
-        with patch.object(
-            subscriber,
-            "_index_envelope",
-            AsyncMock(side_effect=RuntimeError("indexing is down")),
+        with (
+            patch.object(
+                subscriber,
+                "_index_envelope",
+                AsyncMock(side_effect=RuntimeError("indexing is down")),
+            ),
+            patch.object(
+                subscriber, "_conversation_is_stored", return_value=False
+            ),
         ):
             for _ in range(MAX_INDEX_RETRIES - 1):
                 await subscriber._process_entry(
@@ -1947,10 +2000,15 @@ class TestAPoisonMessageCannotStarveThePipeline:
         client = MagicMock()
         client.xack = AsyncMock()
 
-        with patch.object(
-            subscriber,
-            "_index_envelope",
-            AsyncMock(side_effect=RuntimeError("indexing is down")),
+        with (
+            patch.object(
+                subscriber,
+                "_index_envelope",
+                AsyncMock(side_effect=RuntimeError("indexing is down")),
+            ),
+            patch.object(
+                subscriber, "_conversation_is_stored", return_value=False
+            ),
         ):
             for _ in range(MAX_INDEX_RETRIES):
                 await subscriber._process_entry(
@@ -1968,10 +2026,15 @@ class TestAPoisonMessageCannotStarveThePipeline:
         client = MagicMock()
         client.xack = AsyncMock()
 
-        with patch.object(
-            subscriber,
-            "_index_envelope",
-            AsyncMock(side_effect=RuntimeError("indexing is down")),
+        with (
+            patch.object(
+                subscriber,
+                "_index_envelope",
+                AsyncMock(side_effect=RuntimeError("indexing is down")),
+            ),
+            patch.object(
+                subscriber, "_conversation_is_stored", return_value=False
+            ),
         ):
             await subscriber._process_entry(
                 [b"1-1", {"channel": "bodai.hooks.post-tool-use", "payload": "{}"}], client=client
@@ -2283,8 +2346,15 @@ class TestPendingEntriesAreActuallyRedelivered:
         )
         client.xack = AsyncMock()
 
-        with patch.object(
-            subscriber, "_index_envelope", AsyncMock(side_effect=RuntimeError("down"))
+        with (
+            patch.object(
+                subscriber,
+                "_index_envelope",
+                AsyncMock(side_effect=RuntimeError("down")),
+            ),
+            patch.object(
+                subscriber, "_conversation_is_stored", return_value=False
+            ),
         ):
             await subscriber._retry_pending(client)
 
